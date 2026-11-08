@@ -13470,6 +13470,9 @@ EOF
 }
 
 @test "update fsfs installer uses Linux lite release artifact args" {
+    unset VERSION OWNER REPO ARTIFACT_URL CHECKSUM CHECKSUM_URL
+    export ACFS_FSFS_VERSION=v1.2.5
+    uname() { printf '%s\n' Linux; }
     update_fsfs_linux_target_triple() { printf '%s\n' "x86_64-unknown-linux-musl"; }
     update_resolve_fsfs_artifact_contract() {
         printf '%s\n%s\n%s\n' \
@@ -13487,12 +13490,114 @@ EOF
     assert_success
     assert_output --partial "arg=fsfs"
     assert_output --partial "arg=--easy-mode"
+    assert_output --partial "arg=--lite"
     assert_output --partial "arg=--version"
     assert_output --partial "arg=v1.2.5"
     assert_output --partial "arg=--artifact-url"
     assert_output --partial "arg=https://github.com/Dicklesworthstone/frankensearch/releases/download/v1.2.5/fsfs-lite-1.2.5-x86_64-unknown-linux-musl.tar.xz"
     assert_output --partial "arg=--checksum"
     assert_output --partial "arg=e82922dc1e3fad90e4b4fc145853f9c30b821c51ef4496a16b4f93d39da6b01a"
+}
+
+@test "update fsfs Linux lite profile preserves verify and custom destination" {
+    unset VERSION OWNER REPO ARTIFACT_URL CHECKSUM CHECKSUM_URL
+    uname() { printf '%s\n' Linux; }
+    update_fsfs_linux_target_triple() { printf '%s\n' "aarch64-unknown-linux-musl"; }
+    update_resolve_fsfs_artifact_contract() {
+        printf '%s\n' "v1.2.5" \
+            "https://github.com/Dicklesworthstone/frankensearch/releases/download/v1.2.5/fsfs-lite-1.2.5-aarch64-unknown-linux-musl.tar.xz" \
+            "e82922dc1e3fad90e4b4fc145853f9c30b821c51ef4496a16b4f93d39da6b01a"
+    }
+    log_to_file() { :; }
+    update_run_verified_installer() { printf 'arg=%s\n' "$@"; }
+
+    run update_run_fsfs_installer --verify --dest "$HOME/custom fsfs bin"
+
+    assert_success
+    assert_output --partial $'arg=--verify\narg=--dest\n'"arg=$HOME/custom fsfs bin"
+    assert_output --partial $'arg=--lite\narg=--version\narg=v1.2.5'
+    assert_output --partial "fsfs-lite-1.2.5-aarch64-unknown-linux-musl.tar.xz"
+    refute_output --partial "arg=--from-source"
+}
+
+@test "update fsfs non-Linux path preserves installer arguments without selecting lite" {
+    unset VERSION OWNER REPO ARTIFACT_URL CHECKSUM CHECKSUM_URL
+    uname() { printf '%s\n' Darwin; }
+    update_fsfs_linux_target_triple() { echo UNEXPECTED_TARGET_RESOLUTION; return 1; }
+    update_resolve_fsfs_artifact_contract() { echo UNEXPECTED_RELEASE_RESOLUTION; return 1; }
+    update_run_verified_installer() { printf 'arg=%s\n' "$@"; }
+
+    run update_run_fsfs_installer --easy-mode --verify --dest "$HOME/custom fsfs bin"
+
+    assert_success
+    assert_output $'arg=fsfs\narg=--easy-mode\narg=--verify\narg=--dest\n'"arg=$HOME/custom fsfs bin"
+}
+
+@test "update fsfs explicit source artifact offline and release choices bypass managed selection" {
+    unset VERSION OWNER REPO ARTIFACT_URL CHECKSUM CHECKSUM_URL
+    uname() { printf '%s\n' Linux; }
+    update_fsfs_linux_target_triple() { echo UNEXPECTED_TARGET_RESOLUTION; return 1; }
+    update_resolve_fsfs_artifact_contract() { echo UNEXPECTED_RELEASE_RESOLUTION; return 1; }
+    update_run_verified_installer() { printf 'arg=%s\n' "$@"; }
+    local selector
+
+    # Forwarding only: the real verified installer still validates combinations,
+    # including rejecting --verify when no signed prebuilt archive is selected.
+    for selector in --from-source --offline; do
+        run update_run_fsfs_installer "$selector" --verify
+        assert_success
+        assert_output $'arg=fsfs\n'"arg=$selector"$'\narg=--verify'
+    done
+    for selector in --artifact-url --version --checksum --checksum-url; do
+        run update_run_fsfs_installer "$selector" custom-value --verify
+        assert_success
+        assert_output $'arg=fsfs\n'"arg=$selector"$'\narg=custom-value\narg=--verify'
+    done
+    run update_run_fsfs_installer --from-source --lite
+    assert_success
+    assert_output $'arg=fsfs\narg=--from-source\narg=--lite'
+}
+
+@test "update fsfs environment selectors preserve the verified installer path" {
+    unset VERSION OWNER REPO ARTIFACT_URL CHECKSUM CHECKSUM_URL
+    uname() { printf '%s\n' Linux; }
+    update_fsfs_linux_target_triple() { echo UNEXPECTED_TARGET_RESOLUTION; return 1; }
+    update_resolve_fsfs_artifact_contract() { echo UNEXPECTED_RELEASE_RESOLUTION; return 1; }
+    update_run_verified_installer() { echo UNEXPECTED_ENVIRONMENT_FILTERING; return 1; }
+    update_run_verified_installer_with_env() {
+        printf 'tool=%s\nenv=%s\n' "$1" "$2"
+        shift 2
+        printf 'arg=%s\n' "$@"
+        return 23
+    }
+    local selector
+
+    for selector in VERSION OWNER REPO ARTIFACT_URL CHECKSUM CHECKSUM_URL; do
+        export "$selector=custom-value"
+        run update_run_fsfs_installer --verify
+        unset "$selector"
+        [[ "$status" -eq 23 ]]
+        assert_output $'tool=fsfs\nenv='"$selector=custom-value"$'\narg=--verify'
+    done
+    export VERSION=v1.2.5 CHECKSUM=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+    run update_run_fsfs_installer --verify --dest "$HOME/custom fsfs bin"
+    [[ "$status" -eq 23 ]]
+    assert_output $'tool=fsfs\nenv=VERSION=v1.2.5\nCHECKSUM='"$CHECKSUM"$'\narg=--verify\narg=--dest\n'"arg=$HOME/custom fsfs bin"
+}
+
+@test "update fsfs rejects multiline environment selectors before installer or resolution" {
+    unset VERSION OWNER REPO ARTIFACT_URL CHECKSUM CHECKSUM_URL
+    update_resolve_fsfs_artifact_contract() { echo UNEXPECTED_RELEASE_RESOLUTION; return 1; }
+    update_run_verified_installer() { echo UNEXPECTED_INSTALLER; return 0; }
+    update_run_verified_installer_with_env() { echo UNEXPECTED_INSTALLER; return 0; }
+    local invalid
+
+    for invalid in $'v1.2.5\nCHECKSUM=unrequested' $'v1.2.5\runrequested'; do
+        export VERSION="$invalid"
+        run update_run_fsfs_installer --verify
+        assert_failure
+        assert_output "FrankenSearch VERSION override must contain a single line"
+    done
 }
 
 @test "update fsfs artifact contract falls back when latest checksum is not ready" {
@@ -13570,7 +13675,7 @@ EOF
     run grep -F "_stack_run_as_user \"mkdir -p '\$dir'" "$stack_lib"
     assert_failure
 
-    run grep -F "printf -v am_dest_q '%q' \"\$dir/am\"" "$stack_lib"
+    run grep -F "printf -v destination_q '%q' \"\$destination\"" "$stack_lib"
     assert_success
 }
 

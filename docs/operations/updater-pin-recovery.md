@@ -89,12 +89,27 @@ during hashing. Publication uses an atomic rename with file and directory
 retains the normal verified installation path.
 
 An installation that predates this evidence must complete one verified install;
-ACFS never blesses its existing files from their version output. The installer
-receives the exact selected version, archive URL, and checksum, so a concurrent
-change to `latest` cannot bind the wrong bytes to a receipt. Existing evidence is
-invalidated before executing an installer, and a failed installer cannot publish
-replacement evidence. Successful execution must also leave both required
-executables with the requested version before evidence is written.
+ACFS never blesses its existing files from their version output. Before running
+the installer, ACFS stages the exact selected archive and signed metadata in a
+private directory owned by the target account. It checks all three files against
+the authenticated contract and hashes the two executable archive members without
+extracting or executing them. The bounded reader rejects duplicate, unexpected,
+pathful, nonregular, sparse, or oversized members.
+
+The installer receives the exact version and checksum with a local `file://`
+archive URL and `--offline`. Its ordinary signature, archive-shape, and version
+verification still runs against the staged release metadata. The archive is
+downloaded once; the installer reads those same bytes locally. A concurrent
+change to `latest` cannot bind a different release to a receipt.
+
+Existing evidence is invalidated before executing an installer, and a failed
+installer cannot publish replacement evidence. After successful installation,
+ACFS requires the installed pair to match the hashes derived from the
+authenticated archive before probing its version or publishing a receipt. A
+different same-version installation that completes in the meantime is rejected.
+The `agent-mail-minisign-v2` contract deliberately invalidates receipts from the
+earlier post-install-snapshot adapter; those installations must be verified
+again before reuse.
 Once ACFS decides installation is necessary, it passes the upstream `--force`
 option to suppress informational probes of the old, potentially corrupted
 binaries. That upstream option does not disable release authentication.
@@ -122,6 +137,19 @@ actual executable upgrade still reaches the existing repair/restart path.
 ACFS passes `--no-service` to the upstream installer so service management stays
 with this conditional mechanism.
 
+For the reviewed no-op adapter, receipt checks and service reconciliation share
+the upstream installer's owner-only destination-directory kernel lock. ACFS
+releases its lock before invoking the installer, then reacquires it and checks
+the authenticated payload before reconciling the service. An active competing
+installer, changed lock authority, or unrecovered transaction prevents service
+work. A target-account helper process owns the lock descriptor, so a background
+server cannot inherit it and keep future installs locked out.
+
+Both public commands, `am` and `mcp-agent-mail`, are reconciled in the configured
+target bin directory and `~/.local/bin` even when the payload is unchanged.
+Repairing a missing or incorrect command link does not restart a healthy
+service. A link obstruction is reported before service reconciliation.
+
 `--force` bypasses the no-op and explicitly requests reinstallation; it does not
 bypass checksums or active tool holds. Tool holds suppress installation and
 service actions. Persistent service masks, operator-disabled units,
@@ -144,6 +172,13 @@ security contract before updating the adapter's reviewed pin. An unfamiliar
 installer continues through the existing verified path. Custom destinations,
 offline caches, alternate artifacts, and unsupported modes do not silently
 inherit a default adapter's no-op decision.
+
+FrankenSearch's managed Linux archive path now passes `--lite` explicitly, so
+selecting a lite archive does not also request the upstream installer's default
+semantic-model provisioning. Explicit source, artifact, checksum, offline,
+version, and repository selectors are delegated unchanged to the verified
+installer. `--verify` retains its independent archive-signature requirement.
+This profile correction does not enable a FrankenSearch no-op receipt.
 
 The other tools reported in #505 remain on their independent installer paths:
 

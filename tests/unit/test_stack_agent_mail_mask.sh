@@ -24,6 +24,8 @@
 #   - repeated updates keep the same healthy process when executable
 #     content and managed unit definition are unchanged (issue #505)
 #   - changed binaries, managed units, or failed readiness still restart
+#   - both public command links are repaired independently of the service;
+#     missing, wrong, or blocked links never force a healthy-process restart
 #
 # No real systemd, no real network, no real agent-mail.service is
 # touched: everything runs inside a mktemp sandbox with stubbed
@@ -117,6 +119,14 @@ fi
 exit 0
 AM_EOF
     chmod +x "$FAKE_HOME/mcp_agent_mail/am"
+    cat > "$FAKE_HOME/mcp_agent_mail/mcp-agent-mail" <<'SERVER_EOF'
+#!/usr/bin/env bash
+if [[ "${1:-}" == "--version" ]]; then
+    echo "mcp-agent-mail 0.0.0-test"
+fi
+exit 0
+SERVER_EOF
+    chmod +x "$FAKE_HOME/mcp_agent_mail/mcp-agent-mail"
 
     # Neutralize port-holder discovery so the harness can never see (let alone
     # signal) a real Agent Mail process on the host machine.
@@ -292,6 +302,46 @@ run_configure() {
             _stack_configure_agent_mail_service
         ' 2> "$CONFIGURE_ERR_FILE"
     CONFIGURE_RC=$?
+}
+
+# Exercise the actual command-link helper and target-account runner. No service
+# helper is called here: repairing PATH entries must have no process side effect.
+LINK_REPAIR_RC=0
+LINK_REPAIR_ERR_FILE=""
+run_link_repair() {
+    LINK_REPAIR_ERR_FILE="$SANDBOX/link-repair.stderr"
+    LINK_REPAIR_RC=0
+    env -i \
+        PATH="$BASH_BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
+        HOME="$FAKE_HOME" \
+        TARGET_HOME="$FAKE_HOME" \
+        TARGET_USER="$(id -un)" \
+        ACFS_STACK_TRUST_TARGET_HOME=true \
+        ACFS_BIN_DIR="${1:-$FAKE_HOME/.local/bin}" \
+        LIB_DIR="$LIB_DIR" \
+        bash -c '
+            set -o pipefail
+            export ACFS_BLUE="test"
+            log_info() { :; }
+            log_warn() { echo "[WARN] $*" >&2; }
+            log_error() { echo "[ERR] $*" >&2; }
+            log_detail() { :; }
+            log_debug() { :; }
+            log_success() { :; }
+            log_fatal() { echo "[FATAL] $*" >&2; exit 1; }
+            source "$LIB_DIR/stack.sh"
+            # Keep the real target runner, but never resolve this test to the
+            # callers passwd home (including /root when tests run as root).
+            _stack_target_home() { printf "%s\n" "$HOME"; }
+            _stack_repair_agent_mail_cli_symlink
+        ' 2> "$LINK_REPAIR_ERR_FILE"
+    LINK_REPAIR_RC=$?
+}
+
+# Invoked indirectly through check/check_not.
+# shellcheck disable=SC2329
+command_link_matches() {
+    [[ -L "$1" && -x "$1" && "$(readlink "$1")" == "$2" ]]
 }
 
 # Invoked indirectly through check/check_not.
@@ -602,6 +652,96 @@ settle_running_service
 rm -f "$FAKE_STATE_DIR/main-pid"
 run_configure
 check "no main pid: restart issued" calls_match "restart agent-mail.service"
+
+# ------------------------------------------------------------
+# Command links are mutable integration state, outside the release receipt.
+# Reconcile both commands without reinstalling or restarting a healthy service.
+# ------------------------------------------------------------
+begin_test "missing CLI and server command links: repaired without restart"
+settle_running_service
+link_test_pid="$(cat "$FAKE_STATE_DIR/main-pid")"
+run_link_repair
+check "link repair succeeds" test "$LINK_REPAIR_RC" -eq 0
+check "am command resolves to installed CLI" command_link_matches "$FAKE_HOME/.local/bin/am" "$FAKE_HOME/mcp_agent_mail/am"
+check "server command resolves to installed server" command_link_matches "$FAKE_HOME/.local/bin/mcp-agent-mail" "$FAKE_HOME/mcp_agent_mail/mcp-agent-mail"
+check_not "link repair does not call systemctl" test -s "$FAKE_STATE_DIR/calls.log"
+run_configure
+check "service reconciliation succeeds after link repair" test "$CONFIGURE_RC" -eq 0
+check_not "link repair does not restart healthy service" calls_match "restart agent-mail.service"
+check "healthy process is unchanged" test "$(cat "$FAKE_STATE_DIR/main-pid")" = "$link_test_pid"
+
+begin_test "correct command links: preserved across repeated repair"
+run_link_repair
+cli_link_inode="$(stat -c '%i' "$FAKE_HOME/.local/bin/am")"
+server_link_inode="$(stat -c '%i' "$FAKE_HOME/.local/bin/mcp-agent-mail")"
+run_link_repair
+check "repeat link repair succeeds" test "$LINK_REPAIR_RC" -eq 0
+check "correct CLI link inode is preserved" test "$(stat -c '%i' "$FAKE_HOME/.local/bin/am")" = "$cli_link_inode"
+check "correct server link inode is preserved" test "$(stat -c '%i' "$FAKE_HOME/.local/bin/mcp-agent-mail")" = "$server_link_inode"
+
+begin_test "wrong and dangling command links: repaired in configured and default bins"
+configured_bin="$FAKE_HOME/operator command bin"
+mkdir -p "$configured_bin"
+ln -s "$FAKE_HOME/mcp_agent_mail/mcp-agent-mail" "$configured_bin/am"
+ln -s "$SANDBOX/absent-server" "$configured_bin/mcp-agent-mail"
+ln -s "$SANDBOX/absent-cli" "$FAKE_HOME/.local/bin/am"
+ln -s "$FAKE_HOME/mcp_agent_mail/am" "$FAKE_HOME/.local/bin/mcp-agent-mail"
+run_link_repair "$configured_bin"
+check "link repair succeeds for configured bin path with spaces" test "$LINK_REPAIR_RC" -eq 0
+check "configured CLI link repaired" command_link_matches "$configured_bin/am" "$FAKE_HOME/mcp_agent_mail/am"
+check "configured server link repaired" command_link_matches "$configured_bin/mcp-agent-mail" "$FAKE_HOME/mcp_agent_mail/mcp-agent-mail"
+check "default CLI link repaired" command_link_matches "$FAKE_HOME/.local/bin/am" "$FAKE_HOME/mcp_agent_mail/am"
+check "default server link repaired" command_link_matches "$FAKE_HOME/.local/bin/mcp-agent-mail" "$FAKE_HOME/mcp_agent_mail/mcp-agent-mail"
+
+begin_test "canonical install directory configured as bin: binaries are preserved"
+cp "$FAKE_HOME/mcp_agent_mail/am" "$SANDBOX/original-cli"
+cp "$FAKE_HOME/mcp_agent_mail/mcp-agent-mail" "$SANDBOX/original-server"
+run_link_repair "$FAKE_HOME/mcp_agent_mail"
+check "canonical bin repair succeeds" test "$LINK_REPAIR_RC" -eq 0
+check_not "CLI binary is not replaced by a self-link" test -L "$FAKE_HOME/mcp_agent_mail/am"
+check_not "server binary is not replaced by a self-link" test -L "$FAKE_HOME/mcp_agent_mail/mcp-agent-mail"
+check "CLI contents preserved" cmp -s "$SANDBOX/original-cli" "$FAKE_HOME/mcp_agent_mail/am"
+check "server contents preserved" cmp -s "$SANDBOX/original-server" "$FAKE_HOME/mcp_agent_mail/mcp-agent-mail"
+check "default server link still repaired" command_link_matches "$FAKE_HOME/.local/bin/mcp-agent-mail" "$FAKE_HOME/mcp_agent_mail/mcp-agent-mail"
+ln -s "$FAKE_HOME/mcp_agent_mail" "$FAKE_HOME/canonical-bin-alias"
+run_link_repair "$FAKE_HOME/canonical-bin-alias"
+check "aliased canonical bin repair succeeds" test "$LINK_REPAIR_RC" -eq 0
+check_not "aliased bin cannot replace CLI by self-link" test -L "$FAKE_HOME/mcp_agent_mail/am"
+check_not "aliased bin cannot replace server by self-link" test -L "$FAKE_HOME/mcp_agent_mail/mcp-agent-mail"
+check "aliased bin preserves CLI contents" cmp -s "$SANDBOX/original-cli" "$FAKE_HOME/mcp_agent_mail/am"
+check "aliased bin preserves server contents" cmp -s "$SANDBOX/original-server" "$FAKE_HOME/mcp_agent_mail/mcp-agent-mail"
+
+begin_test "directory blocks server command: explicit failure, no nested link or restart"
+settle_running_service
+mkdir "$FAKE_HOME/.local/bin/mcp-agent-mail"
+printf 'operator-owned directory contents\n' > "$FAKE_HOME/.local/bin/mcp-agent-mail/keep"
+run_link_repair
+check "blocked link repair fails" test "$LINK_REPAIR_RC" -eq 1
+check "blocked server link is reported" grep -q 'Unable to repair Agent Mail command link:.*mcp-agent-mail' "$LINK_REPAIR_ERR_FILE"
+check "blocking directory contents preserved" grep -q 'operator-owned directory contents' "$FAKE_HOME/.local/bin/mcp-agent-mail/keep"
+check_not "link is not silently placed inside the directory" test -L "$FAKE_HOME/.local/bin/mcp-agent-mail/mcp-agent-mail"
+check_not "failed repair does not call systemctl" test -s "$FAKE_STATE_DIR/calls.log"
+check "running service remains active" service_active
+
+begin_test "configured bin path is blocked: fallback repaired, failure retained"
+printf 'operator-owned file\n' > "$FAKE_HOME/blocked-bin"
+run_link_repair "$FAKE_HOME/blocked-bin"
+check "unusable configured bin makes repair fail" test "$LINK_REPAIR_RC" -eq 1
+check "configured path failure is reported" grep -q 'Unable to repair Agent Mail command link:.*blocked-bin' "$LINK_REPAIR_ERR_FILE"
+check "blocking file preserved" grep -q 'operator-owned file' "$FAKE_HOME/blocked-bin"
+check "default CLI link is still repaired" command_link_matches "$FAKE_HOME/.local/bin/am" "$FAKE_HOME/mcp_agent_mail/am"
+check "default server link is still repaired" command_link_matches "$FAKE_HOME/.local/bin/mcp-agent-mail" "$FAKE_HOME/mcp_agent_mail/mcp-agent-mail"
+
+begin_test "missing server payload: no command links fabricated, service untouched"
+settle_running_service
+mv "$FAKE_HOME/mcp_agent_mail/mcp-agent-mail" "$SANDBOX/server-unavailable"
+mv "$FAKE_HOME/.local/bin/am" "$SANDBOX/cli-link-before-missing-server"
+run_link_repair
+check "missing server source makes repair fail" test "$LINK_REPAIR_RC" -eq 1
+check "missing server source is reported" grep -q 'command missing or not executable:.*mcp-agent-mail' "$LINK_REPAIR_ERR_FILE"
+check_not "no CLI link is created before validating both payloads" test -L "$FAKE_HOME/.local/bin/am"
+check_not "no dangling server link is created" test -L "$FAKE_HOME/.local/bin/mcp-agent-mail"
+check_not "missing server does not call systemctl" test -s "$FAKE_STATE_DIR/calls.log"
 
 # ------------------------------------------------------------
 # Summary

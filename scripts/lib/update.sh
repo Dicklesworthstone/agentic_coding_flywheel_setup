@@ -5062,6 +5062,38 @@ update_run_asb_installer() {
 }
 
 update_run_fsfs_installer() {
+    # Explicit source, artifact, version, and integrity selectors belong to the
+    # upstream installer. Do not replace them with ACFS's managed lite archive.
+    local fsfs_custom=false fsfs_arg="" fsfs_override="" fsfs_value="" fsfs_env=""
+    for fsfs_arg in "$@"; do
+        case "$fsfs_arg" in
+            --from-source|--artifact-url|--offline|--version|--checksum|--checksum-url)
+                fsfs_custom=true
+                ;;
+        esac
+    done
+    for fsfs_override in VERSION OWNER REPO ARTIFACT_URL CHECKSUM CHECKSUM_URL; do
+        fsfs_value="${!fsfs_override:-}"
+        [[ -n "$fsfs_value" ]] || continue
+        if [[ "$fsfs_value" == *$'\n'* || "$fsfs_value" == *$'\r'* ]]; then
+            echo "FrankenSearch $fsfs_override override must contain a single line" >&2
+            return 1
+        fi
+        fsfs_custom=true
+        [[ -z "$fsfs_env" ]] || fsfs_env+=$'\n'
+        fsfs_env+="$fsfs_override=$fsfs_value"
+    done
+    if [[ "$fsfs_custom" == true ]]; then
+        if [[ -n "$fsfs_env" ]]; then
+            # sudo can discard inherited selectors, including a required
+            # checksum. Carry them through the target-account runner explicitly.
+            update_run_verified_installer_with_env fsfs "$fsfs_env" "$@"
+        else
+            update_run_verified_installer fsfs "$@"
+        fi
+        return $?
+    fi
+
     local -a fsfs_args=("$@")
     local -a fsfs_contract=()
     local fsfs_target=""
@@ -5087,6 +5119,7 @@ update_run_fsfs_installer() {
         fi
 
         fsfs_args+=(
+            --lite
             --version "$fsfs_version"
             --artifact-url "$fsfs_artifact_url"
             --checksum "$fsfs_checksum"
@@ -8375,6 +8408,163 @@ update_go() {
     log_to_file "Go version: $go_version (path: $go_path)"
 }
 
+# Download release evidence as its owner, with bounded HTTPS transport. The
+# destination is inside a freshly created private staging directory; callers
+# verify its complete content before it can authorize execution or a receipt.
+update_download_release_file() {
+    local release_url="$1" release_path="$2" release_limit="$3" curl_bin=""
+    [[ "$release_url" == https://* && "$release_limit" =~ ^[0-9]+$ ]] || return 1
+    curl_bin="$(update_system_binary_path curl)" || return 1
+    UPDATE_CMD_TIMEOUT=180 update_run_bounded_in_target_context "$curl_bin" \
+        --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+        --connect-timeout 10 --max-time 175 --max-redirs 5 --max-filesize "$release_limit" \
+        -A 'agentic_coding_flywheel_setup-agent (+https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup)' \
+        --output "$release_path" "$release_url"
+}
+
+# Stage one authenticated archive and its exact signed metadata. Hash members
+# without extracting or executing them, so a different concurrent installation
+# cannot be mislabeled as the release we just verified. The upstream installer
+# still verifies these same staged witnesses through its ordinary local URL
+# path; no signature or archive-shape gate is bypassed.
+update_agent_mail_stage_release() {
+    local -n staged_release_result="$1"
+    local contract="$2" artifact_url="$3" archive_sha="$4" target_home="$5"
+    staged_release_result=()
+    local python_bin="" timeout_bin="" stage_dir="" proof="" rc=0
+    local artifact_name="${artifact_url##*/}" release_base="${artifact_url%/*}"
+    [[ "$artifact_url" == https://github.com/Dicklesworthstone/mcp_agent_mail_rust/releases/download/* ]] || return 1
+    [[ "$artifact_name" =~ ^mcp-agent-mail-[A-Za-z0-9_-]+\.tar\.(xz|gz)$ ]] || return 1
+    [[ "$archive_sha" =~ ^[a-f0-9]{64}$ ]] || return 1
+    python_bin="$(update_system_binary_path python3)" || return 1
+    timeout_bin="$(update_system_binary_path timeout)" || return 1
+    stage_dir="$(update_run_in_target_context "" "$timeout_bin" --signal=KILL 15 "$python_bin" -I -c '
+import os, secrets, stat, sys
+home = sys.argv[1]
+try:
+    if (home != os.environ.get("HOME") or not home.startswith("/") or home == "/"
+            or os.path.normpath(home) != home or "\n" in home or "\r" in home):
+        raise ValueError("invalid target home")
+    parent = None
+    for name in (home, ".cache", "acfs", "installer-tmp"):
+        if parent is not None:
+            try:
+                os.mkdir(name, 0o700, dir_fd=parent)
+            except FileExistsError:
+                pass
+        fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+        info = os.fstat(fd)
+        if info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) & 0o022:
+            raise ValueError("unsafe staging parent")
+        if parent is not None:
+            os.close(parent)
+        parent = fd
+    name = "mcp_agent_mail." + secrets.token_hex(16)
+    os.mkdir(name, 0o700, dir_fd=parent)
+    os.close(parent)
+    print(os.path.join(home, ".cache", "acfs", "installer-tmp", name))
+except (OSError, ValueError):
+    sys.exit(1)
+' "$target_home")" || return 1
+    [[ -n "$stage_dir" ]] || return 1
+    if ! update_download_release_file "$artifact_url" "$stage_dir/$artifact_name" 1073741824 \
+        || ! update_download_release_file "$release_base/SHA256SUMS" "$stage_dir/SHA256SUMS" 1048576 \
+        || ! update_download_release_file "$release_base/SHA256SUMS.minisig" "$stage_dir/SHA256SUMS.minisig" 1048576; then
+        rc=1
+    elif ! proof="$(update_run_in_target_context "" "$timeout_bin" --signal=KILL 180 "$python_bin" -I -c '
+import hashlib, json, os, pathlib, stat, sys, tarfile
+
+def identity(info):
+    return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,
+            info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+def opened(path, limit):
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    info = os.fstat(fd)
+    if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+            or info.st_nlink != 1 or stat.S_IMODE(info.st_mode) & 0o022
+            or not 0 < info.st_size <= limit):
+        os.close(fd)
+        raise ValueError("unsafe release evidence")
+    return os.fdopen(fd, "rb"), info
+
+def unchanged(stream, before, path):
+    after = os.fstat(stream.fileno())
+    named = os.stat(path, follow_symlinks=False)
+    if identity(before) != identity(after) or identity(after) != identity(named):
+        raise ValueError("release evidence changed while reading")
+
+def digest(stream):
+    result = hashlib.sha256()
+    for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+        result.update(chunk)
+    return result.hexdigest()
+
+try:
+    directory, name, expected, contract_text, home, artifact_url = sys.argv[1:]
+    contract = json.loads(contract_text)
+    if (contract["release"]["sha256"] != expected
+            or contract["release"]["artifact"] != artifact_url):
+        raise ValueError("archive contract differs")
+    for filename, key in (("SHA256SUMS", "manifest"), ("SHA256SUMS.minisig", "signature")):
+        path = os.path.join(directory, filename)
+        stream, before = opened(path, 1048576)
+        with stream:
+            if digest(stream) != contract["release"][key]:
+                raise ValueError("signed metadata changed since authentication")
+            unchanged(stream, before, path)
+    path = os.path.join(directory, name)
+    archive, before = opened(path, 1073741824)
+    required = ("am", "mcp-agent-mail")
+    allowed = set(required) | {"README.md", "LICENSE"}
+    members = {}
+    total = 0
+    with archive:
+        if digest(archive) != expected:
+            raise ValueError("archive checksum mismatch")
+        archive.seek(0)
+        with tarfile.open(fileobj=archive, mode="r|*") as contents:
+            for member in contents:
+                if (member.name not in allowed or member.name in members
+                        or not member.isfile() or member.issparse()
+                        or any(key.startswith("GNU.sparse") for key in member.pax_headers)
+                        or member.size < 0 or member.size > 1073741824):
+                    raise ValueError("unexpected archive member")
+                total += member.size
+                if total > 2147483648:
+                    raise ValueError("expanded archive exceeds bound")
+                if member.name in required and (not member.mode & 0o111 or member.size == 0):
+                    raise ValueError("invalid executable member")
+                source = contents.extractfile(member)
+                if source is None:
+                    raise ValueError("missing member bytes")
+                with source:
+                    members[member.name] = digest(source)
+        unchanged(archive, before, path)
+    if not all(name in members for name in required):
+        raise ValueError("incomplete release payload")
+    inventory = [{"path": os.path.join(home, "mcp_agent_mail", name),
+                  "mode": 0o755, "sha256": members[name]} for name in required]
+    print(json.dumps(inventory, sort_keys=True, separators=(",", ":")))
+    print(pathlib.Path(path).as_uri())
+except (OSError, ValueError, KeyError, TypeError, tarfile.TarError, EOFError):
+    sys.exit(1)
+' "$stage_dir" "$artifact_name" "$archive_sha" "$contract" "$target_home" "$artifact_url")"; then
+        rc=1
+    fi
+    if [[ "$rc" -ne 0 ]]; then
+        update_remove_target_installer_tmpdir mcp_agent_mail "$stage_dir" || true
+        return 1
+    fi
+    local -a proof_lines=()
+    mapfile -t proof_lines <<< "$proof"
+    if [[ ${#proof_lines[@]} -ne 2 || -z "${proof_lines[0]}" || "${proof_lines[1]}" != file://* ]]; then
+        update_remove_target_installer_tmpdir mcp_agent_mail "$stage_dir" || true
+        return 1
+    fi
+    staged_release_result=("${proof_lines[0]}" "${proof_lines[1]}" "$stage_dir")
+}
+
 # Evidence of a completed, verified installation, never a version-string cache.
 # The adapter supplies its complete release/installer/options contract and ALL
 # immutable payload paths. Only that adapter may write after verified success.
@@ -8387,7 +8577,16 @@ update_release_receipt() {
     local receipt_mode="${1:-}" receipt_tool="${2:-}" receipt_contract="${3:-}"
     [[ $# -ge 3 ]] || return 1
     shift 3
-    case "$receipt_mode" in match|write|invalidate) ;; *) return 1 ;; esac
+    local receipt_expected=""
+    case "$receipt_mode" in
+        match|invalidate) ;;
+        check-verified|write-verified)
+            [[ $# -gt 1 && -n "$1" ]] || return 1
+            receipt_expected="$1"
+            shift
+            ;;
+        *) return 1 ;;
+    esac
     [[ "$receipt_tool" =~ ^[a-z][a-z0-9_]{0,63}$ ]] || return 1
     local receipt_home="" receipt_python="" receipt_timeout=""
     receipt_home="$(update_target_home "$(update_target_user)")" || return 1
@@ -8472,7 +8671,7 @@ def inventory(home_fd, home, paths):
     return result
 
 try:
-    mode, tool, home, contract_text, *paths = sys.argv[1:]
+    mode, tool, home, contract_text, expected_text, *paths = sys.argv[1:]
     if (not home.startswith("/") or home == "/" or os.path.normpath(home) != home
             or home != os.environ.get("HOME")):
         raise ValueError("invalid target home")
@@ -8480,10 +8679,22 @@ try:
     if not isinstance(contract, dict) or (mode != "invalidate" and not contract):
         raise ValueError("missing contract")
     home_fd = safe_directory(home)
+    # Expected digests come from authenticated archive members, before the
+    # installer runs. A same-version concurrent replacement cannot become
+    # release evidence merely because it now occupies the installed paths.
+    if mode in ("check-verified", "write-verified"):
+        expected = decode(expected_text)
+        if not isinstance(expected, list) or not expected:
+            raise ValueError("missing authenticated payload inventory")
+        if inventory(home_fd, home, paths) != expected:
+            raise ValueError("installed payload differs from authenticated archive")
+        if mode == "check-verified":
+            os.close(home_fd)
+            sys.exit(0)
     parent = os.dup(home_fd)
     try:
         for part in (".local", "state", "acfs", "verified-installs"):
-            child = safe_directory(part, parent, create=(mode == "write"),
+            child = safe_directory(part, parent, create=(mode == "write-verified"),
                                    private=(part == "verified-installs"))
             os.close(parent)
             parent = child
@@ -8504,6 +8715,8 @@ try:
         else:
             payload = {"schema": 1, "contract": contract,
                        "files": inventory(home_fd, home, paths)}
+            if mode == "write-verified" and payload["files"] != expected:
+                raise ValueError("payload changed before receipt publication")
         if mode == "match":
             if (not isinstance(previous, dict) or type(previous.get("schema")) is not int
                     or previous != payload):
@@ -8532,7 +8745,231 @@ except FileNotFoundError:
     sys.exit(0 if sys.argv[1] == "invalidate" else 1)
 except (OSError, ValueError, TypeError, KeyError):
     sys.exit(1)
-' "$receipt_mode" "$receipt_tool" "$receipt_home" "$receipt_contract" "$@"
+' "$receipt_mode" "$receipt_tool" "$receipt_home" "$receipt_contract" "$receipt_expected" "$@"
+}
+
+# Hold the pinned Agent Mail installer's own destination lock while checking a
+# no-op and reconciling the service. The lock lives only in the target-account
+# helper: neither this shell nor a background service can inherit its flock fd.
+# Keep Bash's original coprocess pipes (close-on-exec), never duplicated fds.
+# Call these helpers directly, not through command substitution or a subshell.
+# acquire: 0=held, 75=busy, 3=destination absent, 1=unsafe/unavailable.
+# check:   0=clear, 2=pending transaction, 1=unsafe/lost.
+update_agent_mail_lock_acquire() {
+    local lock_home="${1:-}" lock_python="" lock_reply="" lock_status=1
+    [[ -z "${UPDATE_AGENT_MAIL_LOCK_PID:-}" ]] || return 1
+    [[ "$lock_home" == /* && "$lock_home" != / ]] || return 1
+    lock_python="$(update_system_binary_path python3)" || return 1
+
+    coproc ACFS_AGENT_MAIL_LOCK_HOLDER {
+        update_run_in_target_context "" "$lock_python" -I -c '
+import fcntl, os, stat, sys
+
+class MissingDestination(Exception):
+    pass
+
+class BusyLock(Exception):
+    pass
+
+def directory(name, parent=None, owned=False, private=False):
+    fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+    info = os.fstat(fd)
+    mode = stat.S_IMODE(info.st_mode)
+    if ((owned and (info.st_uid != os.geteuid() or mode & 0o022)) or
+            (private and mode != 0o700)):
+        os.close(fd)
+        raise ValueError("unsafe directory owner/mode")
+    return fd
+
+def identity(fd):
+    info = os.fstat(fd)
+    return info.st_dev, info.st_ino, info.st_uid, stat.S_IMODE(info.st_mode)
+
+def open_home(home):
+    if (not home.startswith("/") or home == "/" or os.path.normpath(home) != home
+            or home != os.environ.get("HOME")):
+        raise ValueError("invalid target home")
+    parts = home[1:].split("/")
+    if any(part in ("", ".", "..") for part in parts):
+        raise ValueError("noncanonical target home")
+    fd = directory("/")
+    chain = [identity(fd)]
+    try:
+        for index, part in enumerate(parts):
+            child = directory(part, fd, owned=(index == len(parts) - 1))
+            os.close(fd)
+            fd = child
+            chain.append(identity(fd))
+        return fd, chain
+    except BaseException:
+        os.close(fd)
+        raise
+
+def inspect(home, home_chain, dest_identity, lock_name, lock_identity):
+    home_fd, current_chain = open_home(home)
+    try:
+        if current_chain != home_chain:
+            raise ValueError("target home authority changed")
+        dest_fd = directory("mcp_agent_mail", home_fd, owned=True)
+        try:
+            if identity(dest_fd) != dest_identity:
+                raise ValueError("destination authority changed")
+            current_lock = directory(lock_name, dest_fd, owned=True, private=True)
+            try:
+                if identity(current_lock) != lock_identity:
+                    raise ValueError("lock authority changed")
+            finally:
+                os.close(current_lock)
+            try:
+                os.stat(".mcp-agent-mail-install-transaction.active",
+                        dir_fd=dest_fd, follow_symlinks=False)
+            except FileNotFoundError:
+                return "CLEAR"
+            return "PENDING"
+        finally:
+            os.close(dest_fd)
+    finally:
+        os.close(home_fd)
+
+def reply(value):
+    print("ACFS_AM_LOCK_" + value, flush=True)
+
+home = sys.argv[1]
+held = None
+try:
+    # Wait until Bash has saved the original coprocess descriptors. Even an
+    # immediate BUSY/MISSING response then remains available for its handshake.
+    if sys.stdin.readline(32) != "ACQUIRE\n":
+        raise ValueError("invalid acquire command")
+    try:
+        home_fd, home_chain = open_home(home)
+        try:
+            try:
+                dest_fd = directory("mcp_agent_mail", home_fd, owned=True)
+            except FileNotFoundError as exc:
+                raise MissingDestination() from exc
+            try:
+                dest_identity = identity(dest_fd)
+                lock_name = ".mcp-agent-mail-install.lock.%s.d" % os.geteuid()
+                try:
+                    os.mkdir(lock_name, 0o700, dir_fd=dest_fd)
+                except FileExistsError:
+                    pass
+                held = directory(lock_name, dest_fd, owned=True, private=True)
+                lock_identity = identity(held)
+                try:
+                    fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError as exc:
+                    raise BusyLock() from exc
+                inspect(home, home_chain, dest_identity, lock_name, lock_identity)
+            finally:
+                os.close(dest_fd)
+        finally:
+            os.close(home_fd)
+        startup = "READY"
+    except MissingDestination:
+        startup = "MISSING"
+    except BusyLock:
+        startup = "BUSY"
+    except (OSError, ValueError):
+        startup = "UNSAFE"
+    if startup != "READY" and held is not None:
+        os.close(held)
+        held = None
+    reply(startup)
+    while True:
+        command = sys.stdin.readline(32)
+        if not command:
+            break
+        if command == "RELEASE\n":
+            if held is not None:
+                os.close(held)
+                held = None
+            reply("RELEASED")
+            break
+        if command != "CHECK\n" or held is None or startup != "READY":
+            reply("UNSAFE")
+            break
+        try:
+            if identity(held) != lock_identity:
+                raise ValueError("held authority changed")
+            reply(inspect(home, home_chain, dest_identity, lock_name, lock_identity))
+        except (OSError, ValueError):
+            reply("UNSAFE")
+            break
+except (OSError, ValueError):
+    pass
+finally:
+    if held is not None:
+        os.close(held)
+' "$lock_home"
+    }
+    UPDATE_AGENT_MAIL_LOCK_READ_FD="${ACFS_AGENT_MAIL_LOCK_HOLDER[0]:-}" \
+    UPDATE_AGENT_MAIL_LOCK_WRITE_FD="${ACFS_AGENT_MAIL_LOCK_HOLDER[1]:-}" \
+    UPDATE_AGENT_MAIL_LOCK_PID="${ACFS_AGENT_MAIL_LOCK_HOLDER_PID:-}" \
+    UPDATE_AGENT_MAIL_LOCK_HOME="$lock_home"
+
+    if [[ "${UPDATE_AGENT_MAIL_LOCK_READ_FD:-}" =~ ^[0-9]+$ \
+        && "${UPDATE_AGENT_MAIL_LOCK_WRITE_FD:-}" =~ ^[0-9]+$ ]] \
+        && { printf 'ACQUIRE\n' >&"$UPDATE_AGENT_MAIL_LOCK_WRITE_FD"; } 2>/dev/null \
+        && IFS= read -r -t 10 -u "$UPDATE_AGENT_MAIL_LOCK_READ_FD" lock_reply; then
+        case "$lock_reply" in
+            ACFS_AM_LOCK_READY) return 0 ;;
+            ACFS_AM_LOCK_BUSY) lock_status=75 ;;
+            ACFS_AM_LOCK_MISSING) lock_status=3 ;;
+        esac
+    fi
+    update_agent_mail_lock_release || true
+    return "$lock_status"
+}
+
+update_agent_mail_lock_check() {
+    local lock_reply=""
+    [[ "${UPDATE_AGENT_MAIL_LOCK_PID:-}" =~ ^[0-9]+$ \
+        && "${UPDATE_AGENT_MAIL_LOCK_READ_FD:-}" =~ ^[0-9]+$ \
+        && "${UPDATE_AGENT_MAIL_LOCK_WRITE_FD:-}" =~ ^[0-9]+$ ]] || return 1
+    { printf 'CHECK\n' >&"$UPDATE_AGENT_MAIL_LOCK_WRITE_FD"; } 2>/dev/null || return 1
+    IFS= read -r -t 5 -u "$UPDATE_AGENT_MAIL_LOCK_READ_FD" lock_reply 2>/dev/null || return 1
+    case "$lock_reply" in
+        ACFS_AM_LOCK_CLEAR) return 0 ;;
+        ACFS_AM_LOCK_PENDING) return 2 ;;
+        *) return 1 ;;
+    esac
+}
+
+update_agent_mail_lock_release() {
+    local lock_read_fd="${UPDATE_AGENT_MAIL_LOCK_READ_FD:-}"
+    local lock_write_fd="${UPDATE_AGENT_MAIL_LOCK_WRITE_FD:-}"
+    local lock_pid="${UPDATE_AGENT_MAIL_LOCK_PID:-}" lock_reply="" lock_status=0
+    if [[ "$lock_read_fd" =~ ^[0-9]+$ && "$lock_write_fd" =~ ^[0-9]+$ ]]; then
+        if { printf 'RELEASE\n' >&"$lock_write_fd"; } 2>/dev/null \
+            && IFS= read -r -t 5 -u "$lock_read_fd" lock_reply 2>/dev/null \
+            && [[ "$lock_reply" == ACFS_AM_LOCK_RELEASED ]]; then
+            # The acknowledgment follows close(flock_fd). Do not wait without
+            # a deadline for a privilege-switching wrapper to finish cleanup.
+            :
+        else
+            lock_status=1
+        fi
+    elif [[ -n "$lock_pid" ]]; then
+        lock_status=1
+    fi
+    if [[ "$lock_write_fd" =~ ^[0-9]+$ ]]; then
+        { exec {lock_write_fd}>&-; } 2>/dev/null || true
+    fi
+    if [[ "$lock_read_fd" =~ ^[0-9]+$ ]]; then
+        { exec {lock_read_fd}<&-; } 2>/dev/null || true
+    fi
+    # Bash reaps a live coprocess asynchronously; reap an already dead child
+    # here without allowing release to become an unbounded process wait.
+    if [[ "$lock_pid" =~ ^[0-9]+$ ]] && ! kill -0 "$lock_pid" 2>/dev/null; then
+        wait "$lock_pid" 2>/dev/null || true
+    fi
+    UPDATE_AGENT_MAIL_LOCK_READ_FD=""
+    UPDATE_AGENT_MAIL_LOCK_WRITE_FD=""
+    UPDATE_AGENT_MAIL_LOCK_PID=""
+    UPDATE_AGENT_MAIL_LOCK_HOME=""
+    return "$lock_status"
 }
 
 # Opt in only for the reviewed release-archive contract. A new installer pin
@@ -8545,6 +8982,9 @@ update_agent_mail_release_contract() {
     am_contract_result=()
     [[ "$installer_url" == https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail_rust/refs/heads/main/install.sh ]] || return 1
     [[ "$installer_sha" == 3de2d65db5405432e56e28eddfd5046226fc8d2bedf53b7fb56a003aa9e88454 ]] || return 1
+    # Archive-derived inventory and target-account lock coordination require
+    # Python. Without it retain the existing verified installer path.
+    update_system_binary_path python3 >/dev/null || return 1
     local override=""
     for override in OWNER REPO ARTIFACT_URL CHECKSUM CHECKSUM_URL SIGSTORE_BUNDLE_URL DEST \
         ACFS_VERIFIED_INSTALLER_CACHE AM_INSTALL_LOCK_FILE AM_LINK_DIR \
@@ -8647,7 +9087,7 @@ update_agent_mail_release_contract() {
             --arg tag "$tag" --arg artifact "$release_base/$artifact" --arg hash "$artifact_sha" \
             --arg manifest "$manifest_sha" --arg signature "$signature_sha" --arg key "$public_key" \
             --arg platform "$platform/$arch" \
-            '{adapter:"agent-mail-minisign-v1",installer:{url:$url,sha256:$pin},release:{tag:$tag,artifact:$artifact,sha256:$hash,manifest:$manifest,signature:$signature,key:$key},platform:$platform,options:["--yes","--no-service","--force","AM_INSTALL_SKIP_MCP_SETUP=1","AM_INSTALL_SKIP_REMOTE_HTTP_READINESS=1"]}')" || status=1
+            '{adapter:"agent-mail-minisign-v2",installer:{url:$url,sha256:$pin},release:{tag:$tag,artifact:$artifact,sha256:$hash,manifest:$manifest,signature:$signature,key:$key},platform:$platform,options:["--yes","--no-service","--force","--offline","AM_INSTALL_SKIP_MCP_SETUP=1","AM_INSTALL_SKIP_REMOTE_HTTP_READINESS=1"]}')" || status=1
     fi
     rm -f -- "$manifest" "$signature"
     [[ "$status" -eq 0 ]] || return 1
@@ -8657,6 +9097,15 @@ update_agent_mail_release_contract() {
 # Installer and service idempotency are deliberately separate. Even a verified
 # payload no-op must reconcile a changed unit or repair an unhealthy service.
 update_agent_mail() {
+    local agent_mail_rc=0
+    update_agent_mail_impl "$@" || agent_mail_rc=$?
+    # All early exits release the coprocess-held lock. The service cannot
+    # inherit the lock descriptor, which exists only in its owner process.
+    update_agent_mail_lock_release || true
+    return "$agent_mail_rc"
+}
+
+update_agent_mail_impl() {
     local minisign_ready="${1:-false}" tool=mcp_agent_mail
     local url="${KNOWN_INSTALLERS[$tool]:-}" expected_sha256=""
     expected_sha256="$(get_checksum "$tool")"
@@ -8694,22 +9143,32 @@ update_agent_mail() {
         return 0
     fi
 
-    local -a am_release=() am_release_args=()
+    local -a am_release=() am_release_args=() am_stage=()
     local -a am_files=("$target_home/mcp_agent_mail/am" "$target_home/mcp_agent_mail/mcp-agent-mail")
-    local am_current=false
+    local am_current=false am_lock_rc=0 am_lock_held=false am_payload_inventory=""
     if update_agent_mail_release_contract am_release "$url" "$expected_sha256"; then
         # Resolve once and constrain the upstream installer to those exact
         # archive bytes; a latest-release race cannot mint a false receipt.
         am_release_args=(--version "${am_release[1]}" --artifact-url "${am_release[2]}" --checksum "${am_release[3]}")
-        # An interrupted upstream binary transaction must be recovered under
-        # its own lock, even if today's payload hashes happen to match.
-        local am_test_shell="" am_transaction_clear=false
-        am_test_shell="$(update_system_binary_path sh 2>/dev/null || true)"
-        if [[ -n "$am_test_shell" ]] && update_run_in_target_context "" "$am_test_shell" -c \
-            'test ! -e "$1" && test ! -L "$1"' acfs-am-transaction \
-            "$target_home/mcp_agent_mail/.mcp-agent-mail-install-transaction.active"; then
-            am_transaction_clear=true
-        fi
+        # Share the upstream destination lock through receipt verification and
+        # service work. A pending transaction requires the installer to recover
+        # it, so release our acquisition before running the installer itself.
+        local am_transaction_clear=false
+        update_agent_mail_lock_acquire "$target_home" || am_lock_rc=$?
+        case "$am_lock_rc" in
+            0)
+                am_lock_held=true
+                am_lock_rc=0
+                update_agent_mail_lock_check || am_lock_rc=$?
+                case "$am_lock_rc" in
+                    0) am_transaction_clear=true ;;
+                    2) ;; # Upstream recovery owns the active journal.
+                    *) update_finish_cmd_fail "MCP Agent Mail" "installer lock authority changed"; return 0 ;;
+                esac
+                ;;
+            3) ;; # Fresh install: upstream creates its destination authority.
+            *) update_finish_cmd_fail "MCP Agent Mail" "another installer is active or the destination lock is unsafe"; return 0 ;;
+        esac
         if [[ "$FORCE_MODE" != true && "$am_transaction_clear" == true ]] \
             && update_release_receipt match "$tool" "${am_release[0]}" "${am_files[@]}"; then
             am_current=true
@@ -8717,6 +9176,13 @@ update_agent_mail() {
         fi
     fi
     if [[ "$am_current" != true ]]; then
+        if [[ "$am_lock_held" == true ]]; then
+            if ! update_agent_mail_lock_release; then
+                update_finish_cmd_fail "MCP Agent Mail" "could not release installer lock before installation"
+                return 0
+            fi
+            am_lock_held=false
+        fi
         local tmp_install="" installer_chmod_bin="" am_installer_sha=""
         tmp_install="$(update_create_target_readable_temp_file "acfs-install-am" 2>/dev/null)" || tmp_install=""
         if [[ -z "$tmp_install" ]]; then
@@ -8737,6 +9203,21 @@ update_agent_mail() {
         # Verification may refresh the approved pin. Bind evidence only to the
         # exact reviewed bytes actually executed, never a stale expected SHA.
         am_installer_sha="$(update_sha256_file "$tmp_install" 2>/dev/null || true)"
+        if [[ ${#am_release[@]} -gt 0 && "$am_installer_sha" != "$expected_sha256" ]]; then
+            # A refreshed pin is allowed to install, but the old adapter must
+            # not attest its payload or impose an unreviewed local-artifact route.
+            am_release=()
+            am_release_args=()
+        fi
+        if [[ ${#am_release[@]} -gt 0 ]]; then
+            if ! update_agent_mail_stage_release am_stage "${am_release[0]}" "${am_release[2]}" "${am_release[3]}" "$target_home"; then
+                rm -f -- "$tmp_install"
+                update_finish_cmd_fail "MCP Agent Mail" "authenticated release staging failed"
+                return 0
+            fi
+            am_payload_inventory="${am_stage[0]}"
+            am_release_args=(--version "${am_release[1]}" --artifact-url "${am_stage[1]}" --checksum "${am_release[3]}" --offline)
+        fi
         update_release_receipt invalidate "$tool" '{}' >/dev/null 2>&1 || true
         log_item run "MCP Agent Mail"
         local am_installer_env=$'AM_INSTALL_SKIP_MCP_SETUP=1\nAM_INSTALL_SKIP_REMOTE_HTTP_READINESS=1'
@@ -8753,9 +9234,23 @@ update_agent_mail() {
         if [[ -n "$am_installer_tmpdir" ]]; then
             update_remove_target_installer_tmpdir "$tool" "$am_installer_tmpdir" || true
         fi
+        if [[ ${#am_stage[@]} -gt 0 ]]; then
+            update_remove_target_installer_tmpdir "$tool" "${am_stage[2]}" || true
+        fi
         if [[ "$am_installer_rc" -ne 0 ]]; then
             log_item fail "MCP Agent Mail" "installer failed (exit $am_installer_rc)"
             return 0
+        fi
+        if [[ ${#am_release[@]} -gt 0 ]]; then
+            if ! update_agent_mail_lock_acquire "$target_home" || ! update_agent_mail_lock_check; then
+                update_finish_cmd_fail "MCP Agent Mail" "installation changed or another installer is active before reconciliation"
+                return 0
+            fi
+            am_lock_held=true
+            if ! update_release_receipt check-verified "$tool" "${am_release[0]}" "$am_payload_inventory" "${am_files[@]}"; then
+                update_finish_cmd_fail "MCP Agent Mail" "installed payload differs from the authenticated release archive"
+                return 0
+            fi
         fi
         if [[ ${#am_release[@]} -gt 0 && "$am_installer_sha" == "$expected_sha256" \
               && "${KNOWN_INSTALLERS[$tool]:-}" == "$url" && "$(get_checksum "$tool")" == "$expected_sha256" ]]; then
@@ -8764,7 +9259,7 @@ update_agent_mail() {
                 && server_version="$(update_run_smoke_probe "${am_files[1]}" --version)" \
                 && [[ "$cli_version" == "am ${am_release[1]#v}" \
                    && "$server_version" == "mcp-agent-mail ${am_release[1]#v}" ]] \
-                && update_release_receipt write "$tool" "${am_release[0]}" "${am_files[@]}"; then
+                && update_release_receipt write-verified "$tool" "${am_release[0]}" "$am_payload_inventory" "${am_files[@]}"; then
                 log_to_file "Recorded verified Agent Mail release/install evidence for ${am_release[1]}"
             else
                 log_to_file "Agent Mail install evidence unavailable; next update will reverify through the installer"
@@ -8772,10 +9267,17 @@ update_agent_mail() {
         fi
     fi
 
+    if [[ "$am_lock_held" == true ]] && ! update_agent_mail_lock_check; then
+        update_finish_cmd_fail "MCP Agent Mail" "installer transaction or lock authority changed before service reconciliation"
+        return 0
+    fi
     local am_service_rc=1
     if update_source_stack_lib; then
-        ACFS_STACK_TRUST_TARGET_HOME=true TARGET_USER="$target_user" TARGET_HOME="$target_home" \
-            _stack_repair_agent_mail_cli_symlink >/dev/null 2>&1 || true
+        if ! ACFS_STACK_TRUST_TARGET_HOME=true TARGET_USER="$target_user" TARGET_HOME="$target_home" \
+            _stack_repair_agent_mail_cli_symlink; then
+            update_finish_cmd_fail "MCP Agent Mail" "command link repair failed"
+            return 0
+        fi
         am_service_rc=0
         ACFS_STACK_TRUST_TARGET_HOME=true TARGET_USER="$target_user" TARGET_HOME="$target_home" \
             _stack_configure_agent_mail_service || am_service_rc=$?

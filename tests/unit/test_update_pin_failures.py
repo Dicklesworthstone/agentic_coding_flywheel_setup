@@ -1788,7 +1788,7 @@ if (( ${#release[@]} )); then printf '%s\n' "${release[@]}"; fi
                 url = f"{self.RELEASE_BASE}/v0.3.40/mcp-agent-mail-{target}.tar.xz"
                 self.assertEqual(values[1:], ["v0.3.40", url, digest])
                 record = json.loads(values[0])
-                self.assertEqual(record["adapter"], "agent-mail-minisign-v1")
+                self.assertEqual(record["adapter"], "agent-mail-minisign-v2")
                 self.assertEqual(record["installer"], {"url": self.INSTALLER_URL, "sha256": self.INSTALLER_SHA})
                 self.assertEqual(record["release"], {
                     "tag": "v0.3.40", "artifact": url, "sha256": digest,
@@ -1796,7 +1796,7 @@ if (( ${#release[@]} )); then printf '%s\n' "${release[@]}"; fi
                     "signature": hashlib.sha256(self.SIGNATURE).hexdigest(), "key": self.PUBLIC_KEY,
                 })
                 self.assertEqual(record["platform"], f"Linux/{arch}")
-                self.assertEqual(record["options"], ["--yes", "--no-service", "--force", "AM_INSTALL_SKIP_MCP_SETUP=1",
+                self.assertEqual(record["options"], ["--yes", "--no-service", "--force", "--offline", "AM_INSTALL_SKIP_MCP_SETUP=1",
                                                      "AM_INSTALL_SKIP_REMOTE_HTTP_READINESS=1"])
                 self.assertEqual(events, [f"{self.RELEASE_BASE}/v0.3.40/SHA256SUMS",
                                           f"{self.RELEASE_BASE}/v0.3.40/SHA256SUMS.minisig"])

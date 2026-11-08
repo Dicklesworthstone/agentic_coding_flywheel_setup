@@ -620,10 +620,27 @@ _stack_agent_mail_cli_path() {
 
 _stack_repair_agent_mail_cli_symlink() {
     local target_home=""
-    target_home="$(_stack_target_home "${TARGET_USER:-ubuntu}")"
+    target_home="$(_stack_target_home "${TARGET_USER:-ubuntu}")" || return 1
 
-    local am_src="$target_home/mcp_agent_mail/am"
-    [[ -x "$am_src" ]] || return 1
+    # The release installs two public commands. Keep both PATH entries usable
+    # when the updater skips an already verified installation; the HTTP service
+    # uses the canonical am path and must not restart just to repair these links.
+    local command="" source=""
+    for command in am mcp-agent-mail; do
+        source="$target_home/mcp_agent_mail/$command"
+        if [[ ! -f "$source" || ! -x "$source" ]]; then
+            log_warn "Agent Mail command missing or not executable: $source"
+            return 1
+        fi
+    done
+
+    local mkdir_bin="" ln_bin="" readlink_bin=""
+    mkdir_bin="$(_stack_system_binary_path mkdir)" || return 1
+    ln_bin="$(_stack_system_binary_path ln)" || return 1
+    readlink_bin="$(_stack_system_binary_path readlink)" || return 1
+    printf -v mkdir_bin '%q' "$mkdir_bin"
+    printf -v ln_bin '%q' "$ln_bin"
+    printf -v readlink_bin '%q' "$readlink_bin"
 
     local primary_dir=""
     primary_dir="$(_stack_target_bin_dir "${TARGET_USER:-ubuntu}" 2>/dev/null || true)"
@@ -634,21 +651,38 @@ _stack_repair_agent_mail_cli_symlink() {
         bin_dirs+=("$fallback_dir")
     fi
 
-    local dir=""
-    local repaired=0
+    local dir="" destination="" dir_q="" source_q="" destination_q=""
+    local failed=0
     for dir in "${bin_dirs[@]}"; do
         [[ -n "$dir" ]] || continue
-        [[ "$dir/am" == "$am_src" ]] && continue
-        local dir_q=""
-        local am_src_q=""
-        local am_dest_q=""
+        # An alternate spelling or symlink to the install directory must not
+        # replace either executable with a link back to itself.
+        [[ "$dir" -ef "$target_home/mcp_agent_mail" ]] && continue
         printf -v dir_q '%q' "$dir"
-        printf -v am_src_q '%q' "$am_src"
-        printf -v am_dest_q '%q' "$dir/am"
-        _stack_run_as_user "mkdir -p $dir_q && ln -sfn $am_src_q $am_dest_q && [[ -x $am_dest_q ]]" || repaired=1
+        for command in am mcp-agent-mail; do
+            source="$target_home/mcp_agent_mail/$command"
+            destination="$dir/$command"
+            [[ "$destination" == "$source" ]] && continue
+            printf -v source_q '%q' "$source"
+            printf -v destination_q '%q' "$destination"
+            # -T refuses a real directory at the command path instead of
+            # silently creating a link inside it and reporting success.
+            if ! _stack_run_as_user "
+                if [[ -L $destination_q && -x $destination_q ]] && [[ \"\$($readlink_bin -- $destination_q)\" == $source_q ]]; then
+                    exit 0
+                fi
+                $mkdir_bin -p -- $dir_q &&
+                    $ln_bin -sfnT -- $source_q $destination_q &&
+                    [[ -L $destination_q && -x $destination_q ]] &&
+                    [[ \"\$($readlink_bin -- $destination_q)\" == $source_q ]]
+            "; then
+                log_warn "Unable to repair Agent Mail command link: $destination -> $source"
+                failed=1
+            fi
+        done
     done
 
-    return "$repaired"
+    return "$failed"
 }
 
 _stack_agent_mail_liveness() {

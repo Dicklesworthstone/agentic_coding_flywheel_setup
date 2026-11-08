@@ -6,7 +6,10 @@ service operations: they prove installation/reconciliation decisions, not
 cryptographic authenticity. Signed-manifest verification is tested separately.
 No package manager, external network, real tool installation or service runs.
 """
+from contextlib import contextmanager
+import fcntl
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -14,8 +17,11 @@ import pwd
 import shlex
 import stat
 import subprocess
+import tarfile
 import tempfile
+import time
 import unittest
+from urllib.parse import unquote, urlsplit
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -54,6 +60,20 @@ acfs_download_to_file() {
     [[ "$1" == "${KNOWN_INSTALLERS[mcp_agent_mail]}" ]] || return 1
     printf 'installer-download\n' >> "$TEST_ROOT/events"
     cat "$TEST_ROOT/installer.sh" > "$2"
+}
+# Substitute transport only: production staging, signed-metadata hash binding,
+# archive parsing, installed-file comparisons, and kernel locking remain real.
+update_download_release_file() {
+    local kind='' source=''
+    case "$1" in
+        "$TEST_ARTIFACT_URL") kind=archive; source="$TEST_ROOT/release.tar.xz" ;;
+        "${TEST_ARTIFACT_URL%/*}/SHA256SUMS") kind=manifest; source="$TEST_ROOT/SHA256SUMS" ;;
+        "${TEST_ARTIFACT_URL%/*}/SHA256SUMS.minisig") kind=signature; source="$TEST_ROOT/SHA256SUMS.minisig" ;;
+        *) return 22 ;;
+    esac
+    printf '%s-download\n' "$kind" >> "$TEST_ROOT/events"
+    [[ "${TEST_RELEASE_FILE_UNAVAILABLE:-}" != "$kind" ]] || return 22
+    cat "$source" > "$2"
 }
 update_create_target_readable_temp_file() { mktemp "$TEST_ROOT/stage.XXXXXX"; }
 update_private_installer_tmpdir() { printf '%s\n' "$TEST_ROOT/private-tmp"; }
@@ -113,7 +133,7 @@ while [[ $# -gt 0 ]]; do
         --dest) dest="$2"; shift 2 ;;
         --version|--artifact-url|--checksum) shift 2 ;;
         --force) force=true; shift ;;
-        --yes|--no-service) shift ;;
+        --yes|--no-service|--offline) shift ;;
         *) printf 'unexpected fixture installer argument: %s\n' "$1" >&2; exit 90 ;;
     esac
 done
@@ -130,6 +150,13 @@ if [[ "$force" != true ]]; then
 fi
 [[ "${TEST_INSTALLER_FAIL:-}" != before ]] || exit 17
 mkdir -p "$dest"
+lock="$dest/.mcp-agent-mail-install.lock.$(id -u).d"
+if [[ ! -e "$lock" && ! -L "$lock" ]]; then
+    mkdir -m 700 "$lock"
+fi
+[[ -d "$lock" && ! -L "$lock" && "$(stat -c %a "$lock")" == 700 ]] || exit 19
+exec 8< "$lock"
+flock -n -x 8 || exit 18
 transaction="$dest/.mcp-agent-mail-install-transaction.active"
 if [[ -e "$transaction" || -L "$transaction" ]]; then
     mv "$transaction" "$dest/fixture-recovered-transaction"
@@ -143,6 +170,18 @@ else
     chmod 755 "$dest/am"
 fi
 [[ "${TEST_INSTALLER_FAIL:-}" != after ]] || exit 23
+'''
+
+
+REAL_AGENT_MAIL_COMMAND_LINKS = r'''
+# Link-specific cases use the real stack helper and account runner while keeping
+# the service fixture. Isolate only passwd-home resolution from the real host.
+fixture_service_helpers="$(declare -f _stack_configure_agent_mail_service _stack_wait_for_agent_mail_health)"
+ACFS_BLUE=fixture
+source "$REPO_ROOT/scripts/lib/stack.sh"
+eval "$fixture_service_helpers"
+_stack_target_home() { printf '%s\n' "$TEST_HOME"; }
+log_warn() { printf '%s\n' "$*" >&2; }
 '''
 
 
@@ -199,9 +238,29 @@ class IdempotencyFixture(unittest.TestCase):
         contract = self.contract if contract is None else contract
         serialized = json.dumps(contract, sort_keys=True, separators=(",", ":"))
         files = [self.server, self.cli] if files is None else files
-        command = shlex.join(["update_release_receipt", mode, tool, serialized,
-                              *(str(path) for path in files)])
+        arguments = ["update_release_receipt", mode, tool, serialized]
+        if mode == "write":
+            # These low-level filesystem tests explicitly supply fixture
+            # expectations, including deliberately unsafe types/modes. They
+            # test path validation, not independent release authenticity.
+            # Updater tests below obtain expectations from archive members.
+            arguments[1] = "write-verified"
+            arguments.append(json.dumps(self.fixture_inventory(files)))
+        command = shlex.join([*arguments, *(str(path) for path in files)])
         return self.shell(command, code=code)
+
+    def fixture_inventory(self, files):
+        expected = []
+        for path in files:
+            try:
+                digest = hashlib.sha256(Path(path).read_bytes()).hexdigest()
+                mode = stat.S_IMODE(Path(path).stat().st_mode)
+            except OSError:
+                # Keep nonexistent/invalid paths as inputs to the production
+                # validator so the shell helper must refuse them itself.
+                digest, mode = "0" * 64, 0o755
+            expected.append({"path": str(path), "mode": mode, "sha256": digest})
+        return expected
 
     def assert_receipt_refused(self, *, mode="match", **kwargs):
         result = self.receipt_call(mode, code=None, **kwargs)
@@ -432,11 +491,247 @@ class ReleaseReceiptTests(IdempotencyFixture):
         for contract in ({}, [], None, "not a release", 17):
             with self.subTest(contract=contract):
                 # Pass JSON literally so None can mean JSON null here.
-                command = shlex.join(["update_release_receipt", "write", "mcp_agent_mail",
-                                      json.dumps(contract), str(self.server), str(self.cli)])
+                command = shlex.join(["update_release_receipt", "write-verified", "mcp_agent_mail",
+                                      json.dumps(contract),
+                                      json.dumps(self.fixture_inventory([self.server, self.cli])),
+                                      str(self.server), str(self.cli)])
                 result = self.shell(command, code=None)
                 self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertFalse(self.receipt.exists())
+
+
+class VerifiedReleaseReceiptTests(IdempotencyFixture):
+    """Receipt publication must compare against independent release evidence."""
+
+    def expected_inventory(self):
+        return [{"path": str(path), "mode": 0o755,
+                 "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+                for path in (self.server, self.cli)]
+
+    def write_verified(self, expected, *, files=None, code=0):
+        files = [self.server, self.cli] if files is None else files
+        command = shlex.join([
+            "update_release_receipt", "write-verified", "mcp_agent_mail",
+            json.dumps(self.contract), json.dumps(expected),
+            *(str(path) for path in files),
+        ])
+        return self.shell(command, code=code)
+
+    def test_archive_bound_inventory_can_be_published_and_reused(self):
+        expected = self.expected_inventory()
+        self.write_verified(expected)
+        self.receipt_call("match")
+        self.assertEqual(json.loads(self.receipt.read_text())["files"], expected)
+
+    def test_unchecked_write_mode_is_not_an_available_receipt_api(self):
+        command = shlex.join(["update_release_receipt", "write", "mcp_agent_mail",
+                              json.dumps(self.contract), str(self.server), str(self.cli)])
+        result = self.shell(command, code=None)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse(self.receipt.exists())
+
+    def test_check_verified_requires_no_prior_receipt_and_does_not_publish_one(self):
+        expected = self.expected_inventory()
+        command = shlex.join([
+            "update_release_receipt", "check-verified", "mcp_agent_mail",
+            json.dumps(self.contract), json.dumps(expected), str(self.server), str(self.cli),
+        ])
+        self.shell(command)
+        self.assertFalse(self.receipt_dir.exists())
+        with self.cli.open("a") as stream:
+            stream.write("# changed before service reconciliation\n")
+        result = self.shell(command, code=None)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse(self.receipt_dir.exists())
+
+    def test_same_version_replacement_after_evidence_capture_cannot_be_blessed(self):
+        expected = self.expected_inventory()
+        with self.cli.open("a") as stream:
+            stream.write("# independently built binary with identical version output\n")
+        result = self.write_verified(expected, code=None)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse(self.receipt.exists())
+
+    def test_verified_inventory_requires_exact_digest_and_mode_for_every_path(self):
+        expected = self.expected_inventory()
+        variants = (
+            [expected[0] | {"sha256": "f" * 64}, expected[1]],
+            [expected[0] | {"mode": 0o700}, expected[1]],
+            [expected[0]],
+            [expected[0], expected[0]],
+            [expected[0], expected[1], expected[1]],
+            [expected[0] | {"path": str(self.install / "other")}, expected[1]],
+        )
+        for inventory in variants:
+            with self.subTest(inventory=inventory):
+                result = self.write_verified(inventory, code=None)
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertFalse(self.receipt.exists())
+
+    def test_invalid_expected_inventory_never_falls_back_to_observed_bytes(self):
+        expected = self.expected_inventory()
+        invalid = (
+            None, {}, [], "not an inventory", [None],
+            [expected[0] | {"mode": True}, expected[1]],
+            [expected[0] | {"mode": "755"}, expected[1]],
+            [expected[0] | {"sha256": "invalid"}, expected[1]],
+        )
+        for inventory in invalid:
+            with self.subTest(inventory=inventory):
+                result = self.write_verified(inventory, code=None)
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertFalse(self.receipt.exists())
+
+    def test_failed_verified_write_does_not_replace_existing_receipt(self):
+        expected = self.expected_inventory()
+        self.write_verified(expected)
+        previous = self.receipt.read_bytes()
+        with self.server.open("a") as stream:
+            stream.write("# changed after verified release inventory was calculated\n")
+        result = self.write_verified(expected, code=None)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.receipt.read_bytes(), previous)
+        self.assert_receipt_refused()
+
+
+class AgentMailLockTests(IdempotencyFixture):
+    """Coordinate with upstream's native lock without mocks or real services."""
+
+    def setUp(self):
+        super().setUp()
+        self.lock = self.install / f".mcp-agent-mail-install.lock.{os.geteuid()}.d"
+        self.env["TEST_LOCK_AUTHORITY"] = str(self.lock)
+
+    def test_acquisition_blocks_independent_flock_until_confirmed_release(self):
+        self.shell(r'''
+update_agent_mail_lock_acquire "$TEST_HOME" || exit 90
+update_agent_mail_lock_check || exit 91
+exec 7< "$TEST_LOCK_AUTHORITY"
+if flock -n -x 7; then exit 92; fi
+exec 7<&-
+update_agent_mail_lock_release || exit 93
+flock -n -x "$TEST_LOCK_AUTHORITY" /bin/true || exit 94
+[[ -z "${UPDATE_AGENT_MAIL_LOCK_PID:-}" && -z "${UPDATE_AGENT_MAIL_LOCK_READ_FD:-}" \
+   && -z "${UPDATE_AGENT_MAIL_LOCK_WRITE_FD:-}" && -z "${UPDATE_AGENT_MAIL_LOCK_HOME:-}" ]] || exit 95
+''')
+        self.assertEqual(stat.S_IMODE(self.lock.stat().st_mode), 0o700)
+
+    def test_competing_upstream_flock_returns_busy_without_stealing_authority(self):
+        self.lock.mkdir(mode=0o700)
+        identity = self.lock.stat().st_ino
+        fd = os.open(self.lock, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            self.shell('update_agent_mail_lock_acquire "$TEST_HOME"', code=75)
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
+        self.assertEqual(self.lock.stat().st_ino, identity)
+        self.assertEqual(stat.S_IMODE(self.lock.stat().st_mode), 0o700)
+
+    def test_missing_destination_is_distinct_from_current_or_unsafe_installation(self):
+        self.install.rename(self.home / "preserved-installation")
+        self.shell('update_agent_mail_lock_acquire "$TEST_HOME"', code=3)
+        self.assertFalse(self.install.exists())
+        self.assertFalse(self.receipt.exists())
+
+    def test_nonprivate_symlinked_or_non_directory_authority_is_refused(self):
+        target = self.install / "outside-authority"
+        target.mkdir(mode=0o700)
+        for kind in ("nonprivate", "writable", "symlink", "regular", "fifo"):
+            with self.subTest(authority=kind):
+                if kind in ("nonprivate", "writable"):
+                    self.lock.mkdir(mode=0o700)
+                    self.lock.chmod(0o755 if kind == "nonprivate" else 0o777)
+                elif kind == "symlink":
+                    self.lock.symlink_to(target, target_is_directory=True)
+                elif kind == "regular":
+                    self.lock.write_text("not a lock directory\n")
+                else:
+                    os.mkfifo(self.lock, 0o600)
+                self.shell('update_agent_mail_lock_acquire "$TEST_HOME"', code=1)
+                self.lock.rename(self.install / ("preserved-" + kind))
+        self.assertEqual(stat.S_IMODE(target.stat().st_mode), 0o700)
+        self.assertEqual(list(target.iterdir()), [])
+
+    def test_pending_regular_and_dangling_transaction_markers_are_reported_under_lock(self):
+        self.shell(r'''
+update_agent_mail_lock_acquire "$TEST_HOME" || exit 90
+transaction="$TEST_HOME/mcp_agent_mail/.mcp-agent-mail-install-transaction.active"
+printf 'pending\n' > "$transaction"
+status=0
+update_agent_mail_lock_check || status=$?
+[[ "$status" == 2 ]] || exit 91
+mv "$transaction" "$TEST_ROOT/preserved-transaction"
+update_agent_mail_lock_check || exit 92
+ln -s "$TEST_ROOT/missing-transaction" "$transaction"
+status=0
+update_agent_mail_lock_check || status=$?
+[[ "$status" == 2 ]] || exit 93
+update_agent_mail_lock_release || exit 94
+''')
+
+    def test_replaced_lock_inode_is_rejected_and_old_inode_is_unlocked(self):
+        self.shell(r'''
+update_agent_mail_lock_acquire "$TEST_HOME" || exit 90
+mv "$TEST_LOCK_AUTHORITY" "$TEST_ROOT/preserved-held-authority"
+mkdir -m 700 "$TEST_LOCK_AUTHORITY"
+status=0
+update_agent_mail_lock_check || status=$?
+[[ "$status" == 1 ]] || exit 91
+update_agent_mail_lock_release || true
+flock -n -x "$TEST_ROOT/preserved-held-authority" /bin/true || exit 92
+[[ -z "${UPDATE_AGENT_MAIL_LOCK_PID:-}" ]] || exit 93
+''')
+
+    def test_replaced_destination_is_rejected_without_locking_new_destination(self):
+        self.shell(r'''
+update_agent_mail_lock_acquire "$TEST_HOME" || exit 90
+mv "$TEST_HOME/mcp_agent_mail" "$TEST_HOME/preserved-held-installation"
+mkdir -m 755 "$TEST_HOME/mcp_agent_mail"
+status=0
+update_agent_mail_lock_check || status=$?
+[[ "$status" == 1 ]] || exit 91
+update_agent_mail_lock_release || true
+[[ ! -e "$TEST_LOCK_AUTHORITY" ]] || exit 92
+''')
+
+    def test_parent_exit_unlocks_even_while_a_spawned_child_remains_alive(self):
+        release = self.base / "background-child-release"
+        os.mkfifo(release, 0o600)
+        fd = None
+        try:
+            self.shell(r'''
+update_agent_mail_lock_acquire "$TEST_HOME" || exit 90
+/bin/bash --noprofile --norc -c 'read -r < "$1"' acfs-lock-child "$TEST_CHILD_RELEASE" \
+    >/dev/null 2>&1 &
+printf '%s\n' "$!" > "$TEST_ROOT/background-child-pid"
+# Deliberately exit without calling release. Only caller EOF can unlock.
+''', TEST_CHILD_RELEASE=str(release))
+            child_pid = int((self.base / "background-child-pid").read_text())
+            os.kill(child_pid, 0)
+            fd = os.open(self.lock, os.O_RDONLY | os.O_DIRECTORY)
+            deadline = time.monotonic() + 3
+            acquired = False
+            while time.monotonic() < deadline:
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    acquired = True
+                    break
+                except BlockingIOError:
+                    time.sleep(0.02)
+            self.assertTrue(acquired, "a background child retained the installer lock after updater exit")
+            os.kill(child_pid, 0)
+        finally:
+            if fd is not None:
+                os.close(fd)
+            # The intentionally long-lived fixture exits only after the test
+            # releases it. No timing assumption determines whether it is alive.
+            writer = os.open(release, os.O_RDWR | os.O_NONBLOCK)
+            try:
+                os.write(writer, b"release\n")
+            finally:
+                os.close(writer)
 
 
 class AgentMailUpdaterTests(IdempotencyFixture):
@@ -454,6 +749,7 @@ class AgentMailUpdaterTests(IdempotencyFixture):
         self.installer = self.base / "installer.sh"
         self.installer.write_text(FIXTURE_INSTALLER)
         self.installer.chmod(0o700)
+        self.archive = self.base / "release.tar.xz"
         self.write_release("0.3.40")
         (self.base / "running-image").write_bytes(self.server.read_bytes())
         (self.base / "healthy").touch()
@@ -464,26 +760,70 @@ class AgentMailUpdaterTests(IdempotencyFixture):
             path = self.release / name
             path.write_text(f'#!/bin/bash\nprintf "{name} {version}\\n"\n')
             path.chmod(0o755)
-        self.artifact_url = ("https://fixture.invalid/releases/" + self.release_tag
+        self.artifact_url = ("https://github.com/Dicklesworthstone/mcp_agent_mail_rust/releases/download/" + self.release_tag
                              + "/mcp-agent-mail-x86_64-unknown-linux-musl.tar.xz")
-        # A fixture identifier, not a claim that an artifact was downloaded or
-        # signature-verified. The resolver stub supplies this trusted contract.
-        self.archive_sha = hashlib.sha256(
-            (self.release / "am").read_bytes() + (self.release / "mcp-agent-mail").read_bytes()
-        ).hexdigest()
+        # The resolver stub supplies an authenticated contract. The updater
+        # still verifies these actual archive bytes and their member inventory.
+        self.write_archive()
+        self.archive_sha = hashlib.sha256(self.archive.read_bytes()).hexdigest()
+        self.manifest = self.base / "SHA256SUMS"
+        self.signature = self.base / "SHA256SUMS.minisig"
+        self.manifest.write_text(f"{self.archive_sha}  {self.artifact_url.rsplit('/', 1)[-1]}\n")
+        # This is not a cryptographic acceptance test: release resolution is
+        # stubbed above. Exact metadata transport/hash binding remains real.
+        self.signature.write_text(f"fixture signature bound to {self.release_tag}\n")
         self.release_contract = {
-            "adapter": "agent-mail-minisign-v1",
+            "adapter": "agent-mail-minisign-v2",
             "installer": {},
             "release": {"tag": self.release_tag, "artifact": self.artifact_url,
-                        "sha256": self.archive_sha, "manifest": "2" * 64,
-                        "signature": "3" * 64, "key": "fixture-only-key"},
+                        "sha256": self.archive_sha,
+                        "manifest": hashlib.sha256(self.manifest.read_bytes()).hexdigest(),
+                        "signature": hashlib.sha256(self.signature.read_bytes()).hexdigest(),
+                        "key": "fixture-only-key"},
             "platform": "Linux/x86_64",
-            "options": ["--yes", "--no-service", "--force", "AM_INSTALL_SKIP_MCP_SETUP=1", "AM_INSTALL_SKIP_REMOTE_HTTP_READINESS=1"],
+            "options": ["--yes", "--no-service", "--force", "--offline", "AM_INSTALL_SKIP_MCP_SETUP=1", "AM_INSTALL_SKIP_REMOTE_HTTP_READINESS=1"],
         }
         self.save_release_contract()
 
+    def write_archive(self, members=None):
+        if members is None:
+            members = []
+            for name in ("am", "mcp-agent-mail"):
+                payload = (self.release / name).read_bytes()
+                member = tarfile.TarInfo(name)
+                member.mode = 0o755
+                member.size = len(payload)
+                members.append((member, payload))
+        with tarfile.open(self.archive, "w:xz") as archive:
+            for member, payload in members:
+                archive.addfile(member, io.BytesIO(payload) if member.isfile() else None)
+
+    @property
+    def lock_authority(self):
+        return self.install / f".mcp-agent-mail-install.lock.{os.geteuid()}.d"
+
+    @contextmanager
+    def hold_upstream_lock(self):
+        """Use the same inode and native flock as the reviewed installer."""
+        fd = os.open(self.lock_authority, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            yield
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
+
     def save_release_contract(self):
         (self.base / "release-contract.json").write_text(json.dumps(self.release_contract))
+
+    def bind_archive_to_fixture_contract(self):
+        self.archive_sha = hashlib.sha256(self.archive.read_bytes()).hexdigest()
+        self.manifest.write_text(f"{self.archive_sha}  {self.artifact_url.rsplit('/', 1)[-1]}\n")
+        self.release_contract["release"]["sha256"] = self.archive_sha
+        self.release_contract["release"]["manifest"] = hashlib.sha256(
+            self.manifest.read_bytes()
+        ).hexdigest()
+        self.save_release_contract()
 
     def agent_mail(self, *, before="", **env):
         pin = hashlib.sha256(self.installer.read_bytes()).hexdigest()
@@ -513,6 +853,7 @@ printf 'COUNTS=%s,%s,%s,%s\n' "$SUCCESS_COUNT" "$SKIP_COUNT" "$FAIL_COUNT" "$HEL
         events = self.events()
         self.assertEqual(events.count("resolve-release"), 4)
         self.assertEqual(events.count("installer-download"), 1)
+        self.assertEqual(events.count("archive-download"), 1)
         self.assertEqual(events.count("install"), 1)
         self.assertEqual(events.count("reconcile-service"), 4)
         self.assertEqual(events.count("check-health"), 4)
@@ -521,15 +862,24 @@ printf 'COUNTS=%s,%s,%s,%s\n' "$SUCCESS_COUNT" "$SKIP_COUNT" "$FAIL_COUNT" "$HEL
     def test_first_install_is_bound_to_exact_resolved_release_and_artifact(self):
         self.agent_mail()
         arguments = (self.base / "installer-arguments").read_text().splitlines()
+        artifact = arguments[arguments.index("--artifact-url") + 1]
+        self.assertEqual(urlsplit(artifact).scheme, "file")
+        self.assertEqual(Path(unquote(urlsplit(artifact).path)).name,
+                         self.artifact_url.rsplit("/", 1)[-1])
         self.assertEqual(arguments, ["--dest", str(self.install), "--yes", "--no-service", "--force",
                                      "--version", self.release_tag,
-                                     "--artifact-url", self.artifact_url,
-                                     "--checksum", self.archive_sha])
+                                     "--artifact-url", artifact,
+                                     "--checksum", self.archive_sha, "--offline"])
         self.assertTrue(self.receipt.is_file())
 
     def test_changed_signed_manifest_reinstalls_same_reported_version(self):
         self.agent_mail()
-        self.release_contract["release"]["manifest"] = "5" * 64
+        # The authenticated manifest changes while the selected artifact stays
+        # identical. Its newly staged bytes must agree with the new contract.
+        self.manifest.write_bytes(self.manifest.read_bytes() + b"\n")
+        self.release_contract["release"]["manifest"] = hashlib.sha256(
+            self.manifest.read_bytes()
+        ).hexdigest()
         self.save_release_contract()
         self.agent_mail()
         self.agent_mail()
@@ -544,6 +894,18 @@ printf 'COUNTS=%s,%s,%s,%s\n' "$SUCCESS_COUNT" "$SKIP_COUNT" "$FAIL_COUNT" "$HEL
         self.agent_mail()
         self.agent_mail()
         self.assertEqual(self.events().count("install"), 2)
+
+    def test_old_receipt_without_archive_member_proof_cannot_authorize_no_op(self):
+        self.agent_mail()
+        previous = json.loads(self.receipt.read_text())
+        previous["contract"]["adapter"] = "agent-mail-minisign-v1"
+        self.receipt.write_text(json.dumps(previous))
+        self.agent_mail()
+        self.agent_mail()
+        self.assertEqual(self.events().count("install"), 2)
+        self.assertEqual(self.events().count("archive-download"), 2)
+        current = json.loads(self.receipt.read_text())
+        self.assertEqual(current["contract"]["adapter"], "agent-mail-minisign-v2")
 
     def test_changed_pin_during_verification_does_not_mint_old_contract_receipt(self):
         self.agent_mail()
@@ -629,6 +991,244 @@ printf 'COUNTS=%s,%s,%s,%s\n' "$SUCCESS_COUNT" "$SKIP_COUNT" "$FAIL_COUNT" "$HEL
         self.agent_mail()
         self.agent_mail()
         self.assertEqual(self.events().count("install"), 3)
+
+    def test_post_installer_same_version_replacement_is_not_receipted_or_executed(self):
+        result = self.agent_mail(before=r'''
+update_run_logged_passthrough() {
+    local status=0
+    "$@" || status=$?
+    if [[ "$status" == 0 ]]; then
+        for payload in am mcp-agent-mail; do
+            printf '\n# independently built same-version replacement\ntouch "$TEST_ROOT/untrusted-payload-executed"\n' \
+                >> "$TEST_HOME/mcp_agent_mail/$payload"
+        done
+    fi
+    return "$status"
+}
+''')
+        self.assertIn("COUNTS=0,0,1,0", result.stdout)
+        self.assertFalse(self.receipt.exists())
+        self.assertFalse((self.base / "untrusted-payload-executed").exists())
+        self.assertNotIn("repair-alias", self.events())
+        self.assertNotIn("reconcile-service", self.events())
+        self.assertNotIn("check-health", self.events())
+        self.agent_mail()
+        self.agent_mail()
+        self.assertEqual(self.events().count("install"), 2)
+        self.assertEqual(self.events().count("reconcile-service"), 2)
+        self.assertEqual(self.server.read_bytes(), (self.release / "mcp-agent-mail").read_bytes())
+
+    def test_upstream_directory_lock_blocks_no_op_and_service_actions(self):
+        self.agent_mail()
+        previous_events = self.events()
+        previous_receipt = self.receipt.read_bytes()
+        with self.hold_upstream_lock():
+            result = self.agent_mail()
+        self.assertIn("COUNTS=0,0,1,0", result.stdout)
+        during = self.events()[len(previous_events):]
+        for event in ("installer-download", "archive-download", "install", "repair-alias",
+                      "reconcile-service", "check-health"):
+            self.assertNotIn(event, during)
+        self.assertEqual(self.receipt.read_bytes(), previous_receipt)
+        recovered = self.agent_mail()
+        self.assertIn("COUNTS=0,1,0,0", recovered.stdout)
+        self.assertEqual(self.events().count("install"), 1)
+
+    def test_reconciliation_and_health_checks_hold_the_real_upstream_lock(self):
+        hook = r'''
+assert_destination_lock_held() {
+    local lock="$TEST_HOME/mcp_agent_mail/.mcp-agent-mail-install.lock.$(id -u).d"
+    exec 7< "$lock" || return 1
+    if flock -n -x 7; then
+        printf 'unlocked-service-action\n' >> "$TEST_ROOT/events"
+        exec 7<&-
+        return 1
+    fi
+    exec 7<&-
+}
+_stack_configure_agent_mail_service() {
+    assert_destination_lock_held || return 1
+    printf 'reconcile-service\n' >> "$TEST_ROOT/events"
+}
+_stack_wait_for_agent_mail_health() {
+    assert_destination_lock_held || return 1
+    printf 'check-health\n' >> "$TEST_ROOT/events"
+}
+'''
+        first = self.agent_mail(before=hook)
+        second = self.agent_mail(before=hook)
+        self.assertIn("COUNTS=1,0,0,0", first.stdout)
+        self.assertIn("COUNTS=0,1,0,0", second.stdout)
+        self.assertEqual(self.events().count("reconcile-service"), 2)
+        self.assertEqual(self.events().count("check-health"), 2)
+        self.assertNotIn("unlocked-service-action", self.events())
+
+    def test_writable_or_symlinked_lock_authority_stops_before_service(self):
+        self.agent_mail()
+        previous_events = self.events()
+        self.lock_authority.chmod(0o755)
+        bad_mode = self.agent_mail()
+        self.assertIn("COUNTS=0,0,1,0", bad_mode.stdout)
+        preserved = self.install / "preserved-lock-authority"
+        self.lock_authority.rename(preserved)
+        self.lock_authority.symlink_to(preserved, target_is_directory=True)
+        bad_link = self.agent_mail()
+        self.assertIn("COUNTS=0,0,1,0", bad_link.stdout)
+        during = self.events()[len(previous_events):]
+        for event in ("installer-download", "archive-download", "install", "repair-alias",
+                      "reconcile-service", "check-health"):
+            self.assertNotIn(event, during)
+        self.assertEqual(stat.S_IMODE(preserved.stat().st_mode), 0o755)
+        self.assertTrue(self.lock_authority.is_symlink())
+
+    def test_missing_kernel_lock_capability_cannot_turn_receipt_into_no_op(self):
+        self.agent_mail()
+        previous_events = self.events()
+        result = self.agent_mail(before=r'''
+eval "$(declare -f update_system_binary_path | sed '1s/update_system_binary_path/fixture_system_binary_path/')"
+update_system_binary_path() {
+    case "$1" in flock|python3) return 1 ;; esac
+    fixture_system_binary_path "$@"
+}
+''')
+        self.assertIn("COUNTS=0,0,1,0", result.stdout)
+        for event in ("install", "repair-alias", "reconcile-service", "check-health"):
+            self.assertNotIn(event, self.events()[len(previous_events):])
+
+    def test_transaction_appearing_after_installer_exit_blocks_receipt_and_service(self):
+        result = self.agent_mail(before=r'''
+update_run_logged_passthrough() {
+    local status=0
+    "$@" || status=$?
+    if [[ "$status" == 0 ]]; then
+        printf 'competing installation started a transaction\n' \
+            > "$TEST_HOME/mcp_agent_mail/.mcp-agent-mail-install-transaction.active"
+    fi
+    return "$status"
+}
+''')
+        self.assertIn("COUNTS=0,0,1,0", result.stdout)
+        self.assertFalse(self.receipt.exists())
+        self.assertNotIn("repair-alias", self.events())
+        self.assertNotIn("reconcile-service", self.events())
+        self.agent_mail()
+        self.agent_mail()
+        self.assertEqual(self.events().count("install"), 2)
+        self.assertTrue((self.install / "fixture-recovered-transaction").is_file())
+
+    def test_transaction_appearing_after_receipt_match_is_rechecked_before_service(self):
+        self.agent_mail()
+        before = self.events()
+        result = self.agent_mail(before=r'''
+eval "$(declare -f update_release_receipt | sed '1s/update_release_receipt/fixture_release_receipt/')"
+update_release_receipt() {
+    local status=0
+    fixture_release_receipt "$@" || status=$?
+    if [[ "$1" == match && "$status" == 0 ]]; then
+        printf 'transaction appeared before reconciliation\n' \
+            > "$TEST_HOME/mcp_agent_mail/.mcp-agent-mail-install-transaction.active"
+    fi
+    return "$status"
+}
+''')
+        self.assertIn("COUNTS=0,0,1,0", result.stdout)
+        for event in ("install", "repair-alias", "reconcile-service", "check-health"):
+            self.assertNotIn(event, self.events()[len(before):])
+        self.agent_mail()
+        self.agent_mail()
+        self.assertEqual(self.events().count("install"), 2)
+        self.assertTrue((self.install / "fixture-recovered-transaction").is_file())
+
+    def test_archive_bytes_must_match_authenticated_release_checksum(self):
+        self.archive.write_bytes(b"untrusted archive with a forged same-version payload\n")
+        result = self.agent_mail()
+        self.assertIn("COUNTS=0,0,1,0", result.stdout)
+        self.assertNotIn("install", self.events())
+        self.assertNotIn("reconcile-service", self.events())
+        self.assertFalse(self.receipt.exists())
+
+    def test_staged_archive_url_must_match_the_authenticated_release_contract(self):
+        self.release_contract["release"]["artifact"] = self.artifact_url.replace(
+            "/v0.3.40/", "/v0.3.39/"
+        )
+        self.save_release_contract()
+        result = self.agent_mail()
+        self.assertIn("COUNTS=0,0,1,0", result.stdout)
+        self.assertNotIn("install", self.events())
+        self.assertNotIn("reconcile-service", self.events())
+        self.assertFalse(self.receipt.exists())
+
+    def test_staged_manifest_and_signature_must_match_resolved_authentic_metadata(self):
+        for path in (self.manifest, self.signature):
+            with self.subTest(file=path.name):
+                original = path.read_bytes()
+                path.write_bytes(original + b"replacement between discovery and staging\n")
+                try:
+                    result = self.agent_mail()
+                    self.assertIn("COUNTS=0,0,1,0", result.stdout)
+                    self.assertNotIn("install", self.events())
+                    self.assertNotIn("reconcile-service", self.events())
+                    self.assertFalse(self.receipt.exists())
+                finally:
+                    path.write_bytes(original)
+
+    def test_archive_and_metadata_transport_failure_cannot_bless_installed_files(self):
+        for kind in ("archive", "manifest", "signature"):
+            with self.subTest(file=kind):
+                result = self.agent_mail(TEST_RELEASE_FILE_UNAVAILABLE=kind)
+                self.assertIn("COUNTS=0,0,1,0", result.stdout)
+                self.assertNotIn("install", self.events())
+                self.assertNotIn("reconcile-service", self.events())
+                self.assertFalse(self.receipt.exists())
+
+    def test_installed_payload_must_match_archive_members_not_only_version(self):
+        members = []
+        for name in ("am", "mcp-agent-mail"):
+            payload = (self.release / name).read_bytes() + b"# different legitimate archive build\n"
+            member = tarfile.TarInfo(name)
+            member.mode = 0o755
+            member.size = len(payload)
+            members.append((member, payload))
+        self.write_archive(members)
+        self.bind_archive_to_fixture_contract()
+        # The inert installer deliberately publishes the different release/
+        # bytes. Matching versions and successful exit cannot authorize them.
+        result = self.agent_mail()
+        self.assertIn("COUNTS=0,0,1,0", result.stdout)
+        self.assertEqual(self.events().count("install"), 1)
+        self.assertNotIn("repair-alias", self.events())
+        self.assertNotIn("reconcile-service", self.events())
+        self.assertFalse(self.receipt.exists())
+
+    def test_ambiguous_missing_or_unsafe_archive_members_are_rejected(self):
+        payloads = {name: (self.release / name).read_bytes() for name in ("am", "mcp-agent-mail")}
+
+        def member(name, payload=b"", kind=tarfile.REGTYPE, target=""):
+            info = tarfile.TarInfo(name)
+            info.mode = 0o755
+            info.type = kind
+            info.linkname = target
+            info.size = len(payload) if kind == tarfile.REGTYPE else 0
+            return info, payload
+
+        normal = [member(name, payload) for name, payload in payloads.items()]
+        variants = {
+            "duplicate": normal + [member("am", payloads["am"])],
+            "alias_duplicate": normal + [member("./am", payloads["am"])],
+            "missing_server": [normal[0]],
+            "traversal": normal + [member("../unexpected", b"outside installation\n")],
+            "symlink": [member("am", kind=tarfile.SYMTYPE, target="mcp-agent-mail"), normal[1]],
+            "hardlink": [member("am", kind=tarfile.LNKTYPE, target="mcp-agent-mail"), normal[1]],
+        }
+        for kind, entries in variants.items():
+            with self.subTest(archive=kind):
+                self.write_archive(entries)
+                self.bind_archive_to_fixture_contract()
+                result = self.agent_mail()
+                self.assertIn("COUNTS=0,0,1,0", result.stdout)
+                self.assertNotIn("install", self.events())
+                self.assertNotIn("reconcile-service", self.events())
+                self.assertFalse(self.receipt.exists())
 
     def test_pending_transaction_is_recovered_before_no_op_is_allowed(self):
         self.agent_mail()
@@ -725,6 +1325,63 @@ printf 'COUNTS=%s,%s,%s,%s\n' "$SUCCESS_COUNT" "$SKIP_COUNT" "$FAIL_COUNT" "$HEL
         self.assertIn("COUNTS=0,0,1,0", missing.stdout)
         self.assertEqual(self.events(), [])
         self.assertFalse(self.receipt.exists())
+
+    def test_missing_server_command_link_is_repaired_on_payload_no_op_without_restart(self):
+        self.agent_mail(before=REAL_AGENT_MAIL_COMMAND_LINKS)
+        server_link = self.home / ".local/bin/mcp-agent-mail"
+        self.assertTrue(server_link.is_symlink())
+        server_link.rename(self.base / "server-command-link-before-repair")
+        result = self.agent_mail(before=REAL_AGENT_MAIL_COMMAND_LINKS)
+        self.assertIn("COUNTS=0,1,0,0", result.stdout)
+        self.assertEqual(server_link.readlink(), self.server)
+        self.assertEqual(self.events().count("installer-download"), 1)
+        self.assertEqual(self.events().count("install"), 1)
+        self.assertEqual(self.events().count("reconcile-service"), 2)
+        self.assertNotIn("restart-service", self.events())
+
+    def test_changed_command_links_are_repaired_in_both_bin_directories_on_no_op(self):
+        configured = self.home / "operator command bin"
+        self.agent_mail(before=REAL_AGENT_MAIL_COMMAND_LINKS, ACFS_BIN_DIR=str(configured))
+        for index, directory in enumerate((configured, self.home / ".local/bin")):
+            for name in ("am", "mcp-agent-mail"):
+                link = directory / name
+                link.rename(self.base / f"previous-link-{index}-{name}")
+                # Cover an existing wrong target and a dangling target.
+                link.symlink_to(self.server if name == "am" else self.base / "absent-command")
+        result = self.agent_mail(before=REAL_AGENT_MAIL_COMMAND_LINKS, ACFS_BIN_DIR=str(configured))
+        self.assertIn("COUNTS=0,1,0,0", result.stdout)
+        for directory in (configured, self.home / ".local/bin"):
+            for name in ("am", "mcp-agent-mail"):
+                self.assertEqual((directory / name).readlink(), self.install / name)
+        self.assertEqual(self.events().count("installer-download"), 1)
+        self.assertEqual(self.events().count("install"), 1)
+        self.assertNotIn("restart-service", self.events())
+
+    def test_blocked_server_command_link_reports_failure_before_service_reconciliation(self):
+        self.agent_mail(before=REAL_AGENT_MAIL_COMMAND_LINKS)
+        server_link = self.home / ".local/bin/mcp-agent-mail"
+        server_link.rename(self.base / "server-command-link-before-obstruction")
+        server_link.mkdir()
+        sentinel = server_link / "operator-data"
+        sentinel.write_text("preserve this directory\n")
+        result = self.agent_mail(before=REAL_AGENT_MAIL_COMMAND_LINKS)
+        self.assertIn("COUNTS=0,0,1,0", result.stdout)
+        self.assertIn("command link repair failed", result.stdout)
+        self.assertIn("Unable to repair Agent Mail command link", result.stderr)
+        self.assertEqual(sentinel.read_text(), "preserve this directory\n")
+        self.assertFalse((server_link / "mcp-agent-mail").exists())
+        self.assertEqual(self.events().count("installer-download"), 1)
+        self.assertEqual(self.events().count("install"), 1)
+        self.assertEqual(self.events().count("reconcile-service"), 1)
+        self.assertNotIn("restart-service", self.events())
+        # Once the obstruction is removed, the same verified payload can be
+        # reconciled successfully without another archive or installer fetch.
+        server_link.rename(self.base / "preserved-obstructing-directory")
+        recovered = self.agent_mail(before=REAL_AGENT_MAIL_COMMAND_LINKS)
+        self.assertIn("COUNTS=0,1,0,0", recovered.stdout)
+        self.assertEqual(server_link.readlink(), self.server)
+        self.assertEqual(self.events().count("install"), 1)
+        self.assertEqual(self.events().count("reconcile-service"), 2)
 
 
 if __name__ == "__main__":
