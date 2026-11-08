@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-# Sandbox Harness: Agent Mail mask handling (issues #327/#328)
+# Sandbox Harness: Agent Mail service reconciliation (issues #327/#328/#505)
 #
 # Exercises _stack_configure_agent_mail_service against a fake
 # systemctl that faithfully reproduces the systemd behaviour from
@@ -21,6 +21,9 @@
 #     remediation commands on stderr; never a half-unmask
 #   - post-update assertion: LoadState must be 'loaded' and the unit
 #     active, else rc 1 with a loud message
+#   - repeated updates keep the same healthy process when executable
+#     content and managed unit definition are unchanged (issue #505)
+#   - changed binaries, managed units, or failed readiness still restart
 #
 # No real systemd, no real network, no real agent-mail.service is
 # touched: everything runs inside a mktemp sandbox with stubbed
@@ -196,6 +199,15 @@ case "$cmd" in
             echo "Failed to start agent-mail.service: Unit agent-mail.service is masked." >&2
             exit 1
         fi
+        # A successful restart replaces the running image with the installed
+        # one. Keep historical images so tests can distinguish a real restart
+        # from merely rechecking service health.
+        old_pid="$(cat "$state/main-pid" 2>/dev/null || echo 4241)"
+        [[ "$old_pid" =~ ^[1-9][0-9]*$ ]] || old_pid=4241
+        new_pid=$((old_pid + 1))
+        mkdir -p "$ACFS_AM_PROC_DIR/$new_pid"
+        cp "$HOME/mcp_agent_mail/am" "$ACFS_AM_PROC_DIR/$new_pid/exe"
+        printf '%s\n' "$new_pid" > "$state/main-pid"
         touch "$state/active"
         exit 0
         ;;
@@ -254,6 +266,7 @@ run_configure() {
         ACFS_BIN_DIR="$FAKE_HOME/.local/bin" \
         ACFS_AM_RUNTIME_DIR="$FAKE_RTD" \
         ACFS_AM_PROC_DIR="$SANDBOX/proc" \
+        ACFS_FORCE_AGENT_MAIL_UNIT="${ACFS_FORCE_AGENT_MAIL_UNIT:-0}" \
         FAKE_STATE_DIR="$FAKE_STATE_DIR" \
         FAKE_RTD="$FAKE_RTD" \
         ACFS_SKIP_AGENT_MAIL="${ACFS_SKIP_AGENT_MAIL:-0}" \
@@ -273,7 +286,9 @@ run_configure() {
             # Never probe a real Agent Mail on this machine: the service is
             # healthy and ready only when the test says so.
             _stack_agent_mail_healthy() { [[ -f "$FAKE_STATE_DIR/healthy" ]]; }
-            _stack_agent_mail_readiness() { [[ -f "$FAKE_STATE_DIR/healthy" ]]; }
+            _stack_agent_mail_readiness() {
+                [[ -f "$FAKE_STATE_DIR/healthy" && ! -f "$FAKE_STATE_DIR/not-ready" ]]
+            }
             _stack_configure_agent_mail_service
         ' 2> "$CONFIGURE_ERR_FILE"
     CONFIGURE_RC=$?
@@ -298,7 +313,7 @@ begin_test() {
     make_sandbox
 }
 
-echo "=== Agent Mail mask-recovery sandbox harness (issue #328) ==="
+echo "=== Agent Mail service-reconciliation sandbox harness (issues #327/#328/#505) ==="
 
 # ------------------------------------------------------------
 # Test 1: no mask at all -> normal path succeeds
@@ -440,7 +455,7 @@ check_not "unit file not written" test -e "$UNIT_FILE"
 check_not "service was never started" service_active
 
 # ------------------------------------------------------------
-# Tests 12-16: an update that changed nothing must not bounce the shared
+# Restart regression cases: an update that changed nothing must not bounce the shared
 # mail server. Every nightly and every manual `acfs update` used to restart
 # it; on 2026-10-13 a forced xf retry on one host restarted it mid-day.
 # ------------------------------------------------------------
@@ -458,9 +473,14 @@ settle_running_service() {
 
 begin_test "unchanged, healthy service: not restarted"
 settle_running_service
-run_configure
-check "rc is 0" test "$CONFIGURE_RC" -eq 0
+cp "$UNIT_FILE" "$SANDBOX/unchanged-unit"
+for nightly_run in 1 2 3; do
+    run_configure
+    check "identical update $nightly_run: rc is 0" test "$CONFIGURE_RC" -eq 0
+    check "identical update $nightly_run: main pid preserved" test "$(cat "$FAKE_STATE_DIR/main-pid")" = 4242
+done
 check_not "no restart issued" calls_match "restart agent-mail.service"
+check "unit definition is unchanged" cmp -s "$UNIT_FILE" "$SANDBOX/unchanged-unit"
 check "service is still active" service_active
 check "skip was announced" grep -q "not restarting" "$CONFIGURE_ERR_FILE"
 check "post-update assertion still ran" calls_match "show agent-mail.service -p LoadState"
@@ -471,6 +491,28 @@ printf '#!/usr/bin/env bash\necho "am 0.0.1-new"\n' > "$FAKE_HOME/mcp_agent_mail
 run_configure
 check "rc is 0" test "$CONFIGURE_RC" -eq 0
 check "restart issued" calls_match "restart agent-mail.service"
+check "upgraded process uses new binary" cmp -s "$SANDBOX/proc/$(cat "$FAKE_STATE_DIR/main-pid")/exe" "$FAKE_HOME/mcp_agent_mail/am"
+upgraded_pid="$(cat "$FAKE_STATE_DIR/main-pid")"
+: > "$FAKE_STATE_DIR/calls.log"
+run_configure
+check "repeated update after upgrade succeeds" test "$CONFIGURE_RC" -eq 0
+check_not "upgraded healthy process not restarted again" calls_match "restart agent-mail.service"
+check "upgraded pid preserved" test "$(cat "$FAKE_STATE_DIR/main-pid")" = "$upgraded_pid"
+
+begin_test "same-content binary replaced with a new inode: not restarted"
+settle_running_service
+cp "$FAKE_HOME/mcp_agent_mail/am" "$FAKE_HOME/mcp_agent_mail/am.next"
+mv "$FAKE_HOME/mcp_agent_mail/am.next" "$FAKE_HOME/mcp_agent_mail/am"
+run_configure
+check "rc is 0" test "$CONFIGURE_RC" -eq 0
+check_not "unchanged executable content causes no restart" calls_match "restart agent-mail.service"
+
+begin_test "binary content changed but version string unchanged: restarted"
+settle_running_service
+printf '\n# Same reported version, different installed executable bytes.\n' >> "$FAKE_HOME/mcp_agent_mail/am"
+run_configure
+check "rc is 0" test "$CONFIGURE_RC" -eq 0
+check "content change triggers restart" calls_match "restart agent-mail.service"
 
 begin_test "service not healthy or ready: restarted"
 settle_running_service
@@ -479,6 +521,13 @@ run_configure
 check "rc is 0" test "$CONFIGURE_RC" -eq 0
 check "restart issued" calls_match "restart agent-mail.service"
 
+begin_test "service alive but not ready: restarted"
+settle_running_service
+touch "$FAKE_STATE_DIR/not-ready"
+run_configure
+check "rc is 0" test "$CONFIGURE_RC" -eq 0
+check "failed readiness triggers restart" calls_match "restart agent-mail.service"
+
 begin_test "unit rewritten: restarted"
 settle_running_service
 rm -f "$UNIT_FILE"
@@ -486,6 +535,63 @@ run_configure
 check "rc is 0" test "$CONFIGURE_RC" -eq 0
 check "unit file written again" test -f "$UNIT_FILE"
 check "restart issued" calls_match "restart agent-mail.service"
+
+begin_test "managed unit definition changes: restarted once"
+settle_running_service
+mkdir -p "$FAKE_HOME/.config/mcp-agent-mail"
+printf 'HTTP_PATH=/api/\n' > "$FAKE_HOME/.config/mcp-agent-mail/config.env"
+run_configure
+check "rc is 0" test "$CONFIGURE_RC" -eq 0
+check "changed managed unit is regenerated" grep -q 'ACFS template changed' "$CONFIGURE_ERR_FILE"
+check "changed HTTP path is applied" grep -q -- '--path "/api/"' "$UNIT_FILE"
+check "unit change triggers restart" calls_match "restart agent-mail.service"
+: > "$FAKE_STATE_DIR/calls.log"
+run_configure
+check "repeat with changed unit succeeds" test "$CONFIGURE_RC" -eq 0
+check_not "current managed unit causes no second restart" calls_match "restart agent-mail.service"
+
+begin_test "operator unit edits: preserved without restarting healthy service"
+settle_running_service
+printf '\n[Service]\n# Operator hardening\nNoNewPrivileges=true\n' >> "$UNIT_FILE"
+cp "$UNIT_FILE" "$SANDBOX/operator-unit"
+run_configure
+check "rc is 0" test "$CONFIGURE_RC" -eq 0
+check "local unit preserved" cmp -s "$UNIT_FILE" "$SANDBOX/operator-unit"
+check "local modification notice printed" grep -q 'local modifications' "$CONFIGURE_ERR_FILE"
+check_not "local edits do not force a healthy service restart" calls_match "restart agent-mail.service"
+
+begin_test "explicit unit regeneration: backed up and restarted"
+settle_running_service
+printf '\n[Service]\nNoNewPrivileges=true\n' >> "$UNIT_FILE"
+cp "$UNIT_FILE" "$SANDBOX/operator-unit"
+ACFS_FORCE_AGENT_MAIL_UNIT=1 run_configure
+check "rc is 0" test "$CONFIGURE_RC" -eq 0
+check "operator unit backed up" cmp -s "$UNIT_FILE.acfs-bak" "$SANDBOX/operator-unit"
+check "explicit regeneration triggers restart" calls_match "restart agent-mail.service"
+
+begin_test "running executable missing: restarted"
+settle_running_service
+mv "$SANDBOX/proc/4242/exe" "$SANDBOX/proc/4242/exe.unavailable"
+run_configure
+check "rc is 0" test "$CONFIGURE_RC" -eq 0
+check "unverifiable running image triggers restart" calls_match "restart agent-mail.service"
+
+begin_test "installed executable missing: fails without touching running service"
+settle_running_service
+mv "$FAKE_HOME/mcp_agent_mail/am" "$FAKE_HOME/mcp_agent_mail/am.unavailable"
+run_configure
+check "rc is 1" test "$CONFIGURE_RC" -eq 1
+check_not "missing installed binary cannot stop a healthy process" calls_match "restart agent-mail.service"
+check "missing binary reported" grep -q 'am CLI missing after install' "$CONFIGURE_ERR_FILE"
+
+begin_test "operator disabled and stopped service: still respected"
+settle_running_service
+mv "$FAKE_STATE_DIR/enabled" "$FAKE_STATE_DIR/enabled.saved"
+mv "$FAKE_STATE_DIR/active" "$FAKE_STATE_DIR/active.saved"
+run_configure
+check "rc is 75" test "$CONFIGURE_RC" -eq 75
+check_not "disabled service not restarted" calls_match "restart agent-mail.service"
+check "admin disable reported" grep -q 'respecting admin disable' "$CONFIGURE_ERR_FILE"
 
 begin_test "service inactive or without a main pid: restarted"
 settle_running_service

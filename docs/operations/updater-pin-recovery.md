@@ -52,3 +52,126 @@ verification, inert shell execution, background and pipeline exit propagation,
 retry dispatch, and summaries use the production functions. They do not call
 public installer endpoints or install packages. Live fleet acceptance and the
 external automated setup checker are separate requirements.
+
+## Verified release no-op updates (#505)
+
+The updater can skip an unchanged Agent Mail or ASB installation without using
+a self-reported version as proof. The two adapters have different release
+contracts; the generic verified-installer wrapper does not skip other tools.
+
+### Agent Mail
+
+For the reviewed Linux release-archive installer, ACFS resolves the exact
+requested release (or the current release), fetches `SHA256SUMS` and its detached
+signature, and verifies minisign with the installer's pinned maintainer key.
+The authenticated comment must name `mcp_agent_mail_rust` and the exact release
+tag. The chosen archive must have one unambiguous checksum entry. A genuine
+signature from another tag does not satisfy this check.
+
+ACFS then compares this release contract with evidence from its last successful
+verified installation. That evidence binds:
+
+- The reviewed installer URL and actual installer SHA-256.
+- Release tag, platform, archive URL and SHA-256, signed manifest and signature
+  hashes, verification key, and installation options.
+- Both installed executables, `mcp_agent_mail/am` and
+  `mcp_agent_mail/mcp-agent-mail`, including their absolute paths, modes, and
+  SHA-256 digests.
+
+Receipts live in the selected account's
+`~/.local/state/acfs/verified-installs/mcp_agent_mail.json`. They are private JSON
+data, never sourced as shell. Reads and writes run as that account using an
+isolated system Python interpreter. The helper rejects unsafe ownership,
+writable shared directories, symlinks, nonregular files, hard links, duplicate
+JSON fields, oversized metadata, incomplete inventories, and payload changes
+during hashing. Publication uses an atomic rename with file and directory
+`fsync`. Missing Python or unusable evidence disables the optimization and
+retains the normal verified installation path.
+
+An installation that predates this evidence must complete one verified install;
+ACFS never blesses its existing files from their version output. The installer
+receives the exact selected version, archive URL, and checksum, so a concurrent
+change to `latest` cannot bind the wrong bytes to a receipt. Existing evidence is
+invalidated before executing an installer, and a failed installer cannot publish
+replacement evidence. Successful execution must also leave both required
+executables with the requested version before evidence is written.
+Once ACFS decides installation is necessary, it passes the upstream `--force`
+option to suppress informational probes of the old, potentially corrupted
+binaries. That upstream option does not disable release authentication.
+
+A repeated update with the same authenticated release and intact files skips
+the installer download and execution. It still fetches the small current release
+metadata and reads the installed binaries; this is not an offline or zero-I/O
+operation. A changed manifest, changed installer pin, missing or altered binary,
+unsafe receipt, or pending upstream installation transaction prevents a no-op.
+
+The receipt is evidence of a verified install followed by drift detection within
+the target account's trust boundary. It is not a signature over arbitrary local
+files and does not protect against an attacker who can rewrite that account's
+updater and receipts. Independent authentication of an arbitrary existing
+installation would require signed per-file digests or a separately protected
+archive/attestation.
+
+### Service reconciliation and operator intent
+
+Agent Mail service reconciliation runs even when installation is a no-op.
+`stack.sh` retains its existing conditional restart decision: an unchanged unit,
+healthy and active service, and identical running/installed executable content
+preserve the current process. An unhealthy service, changed managed unit, or
+actual executable upgrade still reaches the existing repair/restart path.
+ACFS passes `--no-service` to the upstream installer so service management stays
+with this conditional mechanism.
+
+`--force` bypasses the no-op and explicitly requests reinstallation; it does not
+bypass checksums or active tool holds. Tool holds suppress installation and
+service actions. Persistent service masks, operator-disabled units,
+`ACFS_SKIP_AGENT_MAIL`, and operator unit customizations retain their existing
+semantics. A service-only opt-out does not imply a tool hold.
+
+### ASB and the remaining installers
+
+ASB publishes the installed script itself plus `asb-checksums.txt`. Its adapter
+can therefore compare the installed script directly with the unique checksum
+for the exact current release, without a receipt or an installed-script version
+probe. It checks the default destination, selected command, regular-file type,
+ownership, executable mode, and runtime prerequisites. Installation remains
+pinned to the resolved `ASB_VERSION` when repair or upgrade is needed. Holds,
+rollback backoff, `--force`, and checksum refusal keep their existing behavior.
+
+Both adapters opt in only for a reviewed installer URL/pin. When a maintainer
+updates that pin, review the new installer's complete payload, options, and
+security contract before updating the adapter's reviewed pin. An unfamiliar
+installer continues through the existing verified path. Custom destinations,
+offline caches, alternate artifacts, and unsupported modes do not silently
+inherit a default adapter's no-op decision.
+
+The other tools reported in #505 remain on their independent installer paths:
+
+| Tool | Why a generic version or primary-binary skip is insufficient |
+| --- | --- |
+| APR | Defaults to mutable `main`; also manages Gum, Node, Oracle, and PATH. Release checksums are not mandatory in every mode. |
+| RCH | Installs multiple binaries and reconciles hooks, skills, daemon/watchdog services, and remote workers; target fallbacks and optional signature verification need their own contract. |
+| SRPS | Reconciles system settings, Ananicy, mutable rules, helpers, and services rather than one release payload. |
+| FrankenSearch | Linux lite already has an exact archive/checksum contract, but lite/full profiles and optional archive signatures must be bound before enabling reuse. |
+| SBH | The managed `scripts/install.sh` has archive, raw-file, and source paths, skills, distinct service binaries, and macOS signature requirements. |
+| PFR | Defaults to a mutable source tree and installs scripts, libraries, docs, and skills; a complete immutable tree identity is needed to avoid its download safely. |
+
+The reusable receipt helper is available to future reviewed adapters with a
+complete immutable payload inventory. It does not change these installers'
+security requirements or suppress their configuration and service work.
+
+### Focused validation
+
+```sh
+python3 -B tests/unit/test_update_idempotency.py
+python3 -B tests/unit/test_update_pin_failures.py
+bash tests/unit/test_stack_agent_mail_mask.sh
+bats --filter 'ASB current release' tests/unit/lib/test_update.bats
+```
+
+The signature fixtures use a real signed release manifest and real minisign.
+Set `ACFS_TEST_MINISIGN` to a local minisign binary if it is not on PATH; those
+cryptographic cases explicitly skip if the verifier is unavailable. The service
+harness uses controlled systemd and `/proc` fixtures. Live user-systemd behavior,
+stateful reservation-repair continuity, Docker installation, and the external
+setup checker require the corresponding host environment.

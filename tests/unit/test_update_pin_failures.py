@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import shlex
+import shutil
 import signal
 import subprocess
 import tempfile
@@ -990,11 +991,12 @@ fi
         output = self.shell()
         context = (self.base / "context").read_text().splitlines()
         self.assertEqual(context[:2], ["1", "1"])
-        self.assertEqual(context[3:], ["target", "755", "--dest", str(self.base / "mcp_agent_mail"), "--yes"])
+        self.assertEqual(context[3:], ["target", "755", "--dest", str(self.base / "mcp_agent_mail"),
+                                      "--yes", "--no-service", "--force"])
         self.assertFalse(Path(context[2]).exists())
         self.assertTrue(Path(context[2] + ".retained").is_dir())
         self.assertEqual(self.events(), ["download", "private-tmp", "execute", "stdin-closed",
-                                         "tmp-cleanup", "repair", "configure", "health", "script-cleanup", "apr"])
+                                         "script-cleanup", "tmp-cleanup", "repair", "configure", "health", "apr"])
         self.assertIn("FAILURES=0", output)
 
     def test_fractional_deadline_fails_without_service_changes_and_continues_stack(self):
@@ -1625,6 +1627,291 @@ printf 'ACTIVE=%s\n' "$(update_binary_path claude 2>/dev/null || true)"
         self.assert_original_works(home, active)
         self.assertFalse((base / "events").exists())
         self.assertEqual(list(home.glob(".acfs-claude-migration.*")), [])
+
+
+class AgentMailReleaseContractTests(unittest.TestCase):
+    """Verify actual release signatures with inert metadata transport.
+
+    These immutable bytes came from the v0.3.40 GitHub release's SHA256SUMS
+    and SHA256SUMS.minisig assets. No installer or release archive is fetched
+    or executed. Crypto tests use the production public key and real Minisign;
+    only the explicitly named manifest-syntax test bypasses signature checks.
+    Set ACFS_TEST_MINISIGN to a local Minisign executable when it is not on PATH.
+    """
+
+    INSTALLER_URL = (
+        "https://raw.githubusercontent.com/Dicklesworthstone/"
+        "mcp_agent_mail_rust/refs/heads/main/install.sh"
+    )
+    INSTALLER_SHA = "3de2d65db5405432e56e28eddfd5046226fc8d2bedf53b7fb56a003aa9e88454"
+    RELEASE_BASE = "https://github.com/Dicklesworthstone/mcp_agent_mail_rust/releases/download"
+    PUBLIC_KEY = "RWTQGPeLsnm9G7VFdFWkkcRi3wJK/PqsYxWC+oLNN74W9IjBxRU1Xu70"
+    MANIFEST = b"""4a2dfd568feffd235b7c2fe296138849e8c3c444561ec0d00f462b1a28fd6ef9  mcp-agent-mail-x86_64-pc-windows-msvc.zip
+f07fec3c5cbf1664f8ee0bef0a4913c48e6ff1bd9a970c468ebd3653228ec6ee  mcp-agent-mail-x86_64-unknown-linux-gnu.tar.xz
+f8381f01927805427b8f9f40b9033c7e4a2a68853b22bc258035a2b6392b9780  mcp-agent-mail-aarch64-unknown-linux-gnu.tar.xz
+cd7784066ced9e53f52d20cd5785f5c785c05cd5a2d214a3165348eb67703c56  mcp-agent-mail-x86_64-unknown-linux-musl.tar.xz
+9b410ac2ee38e25754efdf246cec69ea46ab9b88ea73aac01267ad38bf73a066  mcp-agent-mail-aarch64-apple-darwin.tar.xz
+62a869ddde88adb51c7b65bb8185095a8a5bf01d097c66d30d0f327e0a8247dd  mcp-agent-mail-x86_64-apple-darwin.tar.xz
+"""
+    SIGNATURE = b"""untrusted comment: signature from minisign secret key
+RUTQGPeLsnm9G40TN8B6XjKSQlqdAjqFXVp9Q7Rgi7POtAia3YyL9y230BuY37nh1sTqrarYVCMAkwwoVkBVp2wXK8UPYPrTCgU=
+trusted comment: mcp_agent_mail_rust v0.3.40 SHA256SUMS
+2o2SmHUoKOAoYJvU6w2yU7Arq7ltXAzBJIg7ReMbgAfH5Sn93HW3zVWHnOOfSSB8UbgUt82lLXLUPJ9a7AXKAA==
+"""
+    SHELL = r'''
+source "$UPDATE_TEST_LIBRARY"
+VERSION="$TEST_VERSION"
+UPDATE_LOG_FILE="$TEST_ROOT/update.log"
+update_system_binary_path() {
+    case "$1" in
+        minisign)
+            [[ "$TEST_MINISIGN_AVAILABLE" == true ]] || return 1
+            if [[ "$TEST_MANIFEST_SYNTAX_ONLY" == true ]]; then
+                printf '%s\n' "$TEST_ROOT/syntax-verifier"
+            else
+                printf '%s\n' "$TEST_MINISIGN"
+            fi
+            ;;
+        uname) printf '%s\n' "$TEST_ROOT/uname" ;;
+        *) _update_early_system_binary_path "$@" ;;
+    esac
+}
+update_create_target_readable_temp_file() {
+    mktemp "$TEST_ROOT/$1.XXXXXX"
+}
+update_tool_latest_release_tag() {
+    [[ "$1" == mcp_agent_mail ]] || return 1
+    printf 'latest\n' >> "$TEST_EVENTS"
+    printf '%s\n' "$TEST_LATEST"
+}
+update_curl() {
+    local url="${!#}"
+    printf '%s\n' "$url" >> "$TEST_EVENTS"
+    case "$url" in
+        https://github.com/Dicklesworthstone/mcp_agent_mail_rust/releases/download/*/SHA256SUMS)
+            [[ "$TEST_NETWORK_FAIL" != manifest ]] || return 7
+            cat -- "$TEST_MANIFEST"
+            ;;
+        https://github.com/Dicklesworthstone/mcp_agent_mail_rust/releases/download/*/SHA256SUMS.minisig)
+            [[ "$TEST_NETWORK_FAIL" != signature ]] || return 7
+            cat -- "$TEST_SIGNATURE"
+            ;;
+        *) return 64 ;;
+    esac
+}
+# Keep staged evidence without replacing crypto, hashing, or manifest parsing.
+rm() { :; }
+release=(stale-contract stale-tag stale-url stale-hash)
+rc=0
+update_agent_mail_release_contract release "$TEST_INSTALLER_URL" "$TEST_INSTALLER_SHA" || rc=$?
+printf 'RC=%s\nCOUNT=%s\n' "$rc" "${#release[@]}"
+if (( ${#release[@]} )); then printf '%s\n' "${release[@]}"; fi
+'''
+
+    @classmethod
+    def setUpClass(cls):
+        minisign = os.environ.get("ACFS_TEST_MINISIGN") or shutil.which("minisign")
+        if not minisign or not os.access(minisign, os.X_OK):
+            raise unittest.SkipTest("real Minisign required; set ACFS_TEST_MINISIGN")
+        cls.minisign = str(Path(minisign).resolve())
+
+    def setUp(self):
+        self.base = Path(tempfile.mkdtemp(prefix="acfs-agent-mail-contract-"))
+        self.calls = 0
+        (self.base / "SHA256SUMS").write_bytes(self.MANIFEST)
+        (self.base / "SHA256SUMS.minisig").write_bytes(self.SIGNATURE)
+        uname = self.base / "uname"
+        uname.write_text('#!/bin/bash\ncase "$1" in\n'
+                         '-s) printf "%s\\n" "$TEST_PLATFORM" ;;\n'
+                         '-m) printf "%s\\n" "$TEST_ARCH" ;;\n'
+                         '*) exit 1 ;;\nesac\n')
+        uname.chmod(0o755)
+        syntax_verifier = self.base / "syntax-verifier"
+        syntax_verifier.write_text("#!/bin/bash\n# Syntax test boundary only.\nexit 0\n")
+        syntax_verifier.chmod(0o755)
+        self.env = {
+            "PATH": "/usr/bin:/bin", "HOME": str(self.base),
+            "TARGET_HOME": str(self.base), "TEST_ROOT": str(self.base),
+            "UPDATE_TEST_LIBRARY": os.environ.get("ACFS_UPDATE_TEST_LIBRARY", str(ROOT / "scripts/lib/update.sh")),
+            "NO_COLOR": "1", "ACFS_INTERACTIVE": "false",
+            "TEST_INSTALLER_URL": self.INSTALLER_URL, "TEST_INSTALLER_SHA": self.INSTALLER_SHA,
+            "TEST_MANIFEST": str(self.base / "SHA256SUMS"),
+            "TEST_SIGNATURE": str(self.base / "SHA256SUMS.minisig"),
+            "TEST_VERSION": "v0.3.40", "TEST_LATEST": "v0.3.40",
+            "TEST_PLATFORM": "Linux", "TEST_ARCH": "x86_64",
+            "TEST_NETWORK_FAIL": "", "TEST_MINISIGN": self.minisign,
+            "TEST_MINISIGN_AVAILABLE": "true", "TEST_MANIFEST_SYNTAX_ONLY": "false",
+        }
+
+    def contract(self, **env):
+        self.calls += 1
+        events_path = self.base / f"events-{self.calls}"
+        result = subprocess.run(
+            ["/bin/bash", "--noprofile", "--norc", "-c", self.SHELL],
+            env=self.env | {"TEST_EVENTS": str(events_path)} | env,
+            text=True, capture_output=True, timeout=20,
+        )
+        (self.base / f"result-{self.calls}.log").write_text(result.stdout + result.stderr)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        lines = result.stdout.splitlines()
+        self.assertGreaterEqual(len(lines), 2, result.stdout + result.stderr)
+        self.assertTrue(lines[0].startswith("RC="), result.stdout)
+        self.assertTrue(lines[1].startswith("COUNT="), result.stdout)
+        status, count = int(lines[0][3:]), int(lines[1][6:])
+        values = lines[2:]
+        self.assertEqual(len(values), count, result.stdout)
+        events = events_path.read_text().splitlines() if events_path.exists() else []
+        if status:
+            # A failed lookup must clear an earlier caller-owned contract.
+            self.assertEqual(values, [], result.stdout)
+        else:
+            self.assertEqual(count, 4, result.stdout)
+        return status, values, events
+
+    def variant(self, name, content):
+        path = self.base / name
+        path.write_bytes(content)
+        return str(path)
+
+    def test_real_signed_release_binds_installer_platform_and_exact_metadata(self):
+        self.assertEqual(hashlib.sha256(self.MANIFEST).hexdigest(),
+                         "c9ee4661ed6618273d5e3eadb5e5c3f59bf206c0d4cdda7c3c7949452d6c738e")
+        self.assertEqual(hashlib.sha256(self.SIGNATURE).hexdigest(),
+                         "1b8b99469499d056caacaa4c9345e269041cc4089de4b8608f045d8c91ad68e3")
+        for arch, target, digest in (
+            ("x86_64", "x86_64-unknown-linux-musl", "cd7784066ced9e53f52d20cd5785f5c785c05cd5a2d214a3165348eb67703c56"),
+            ("aarch64", "aarch64-unknown-linux-gnu", "f8381f01927805427b8f9f40b9033c7e4a2a68853b22bc258035a2b6392b9780"),
+        ):
+            with self.subTest(arch=arch):
+                status, values, events = self.contract(TEST_ARCH=arch)
+                self.assertEqual(status, 0)
+                url = f"{self.RELEASE_BASE}/v0.3.40/mcp-agent-mail-{target}.tar.xz"
+                self.assertEqual(values[1:], ["v0.3.40", url, digest])
+                record = json.loads(values[0])
+                self.assertEqual(record["adapter"], "agent-mail-minisign-v1")
+                self.assertEqual(record["installer"], {"url": self.INSTALLER_URL, "sha256": self.INSTALLER_SHA})
+                self.assertEqual(record["release"], {
+                    "tag": "v0.3.40", "artifact": url, "sha256": digest,
+                    "manifest": hashlib.sha256(self.MANIFEST).hexdigest(),
+                    "signature": hashlib.sha256(self.SIGNATURE).hexdigest(), "key": self.PUBLIC_KEY,
+                })
+                self.assertEqual(record["platform"], f"Linux/{arch}")
+                self.assertEqual(record["options"], ["--yes", "--no-service", "--force", "AM_INSTALL_SKIP_MCP_SETUP=1",
+                                                     "AM_INSTALL_SKIP_REMOTE_HTTP_READINESS=1"])
+                self.assertEqual(events, [f"{self.RELEASE_BASE}/v0.3.40/SHA256SUMS",
+                                          f"{self.RELEASE_BASE}/v0.3.40/SHA256SUMS.minisig"])
+
+    def test_identical_signed_metadata_produces_identical_contract_on_repeated_runs(self):
+        first = self.contract()
+        second = self.contract()
+        self.assertEqual(first[0], 0)
+        self.assertEqual(second, first)
+
+    def test_version_without_prefix_and_latest_resolution_select_the_signed_tag(self):
+        for version in ("0.3.40", ""):
+            with self.subTest(version=version):
+                status, values, events = self.contract(TEST_VERSION=version)
+                self.assertEqual(status, 0)
+                self.assertEqual(values[1], "v0.3.40")
+                self.assertEqual(events.count("latest"), 0 if version else 1)
+
+    def test_real_verifier_rejects_changed_manifest_signature_and_trusted_comment(self):
+        variants = (
+            ("manifest", self.MANIFEST.replace(b"cd7784", b"ad7784", 1), "TEST_MANIFEST"),
+            ("signature", self.SIGNATURE.replace(b"2o2SmH", b"3o2SmH", 1), "TEST_SIGNATURE"),
+            ("truncated", b"\n".join(self.SIGNATURE.splitlines()[:3]) + b"\n", "TEST_SIGNATURE"),
+            ("other-product", self.SIGNATURE.replace(b"mcp_agent_mail_rust", b"other_product"), "TEST_SIGNATURE"),
+            ("changed-tag", self.SIGNATURE.replace(b"v0.3.40", b"v0.3.41"), "TEST_SIGNATURE"),
+        )
+        for name, content, selector in variants:
+            with self.subTest(name=name):
+                status, _, events = self.contract(**{selector: self.variant(name, content)})
+                self.assertNotEqual(status, 0)
+                self.assertEqual(len(events), 2)
+
+    def test_authentic_signature_cannot_be_replayed_as_another_requested_release(self):
+        for version in ("v0.3.41", "v0.4.0", "v0.3.40-rc.1"):
+            with self.subTest(version=version):
+                status, _, events = self.contract(TEST_VERSION=version)
+                self.assertNotEqual(status, 0)
+                self.assertEqual(events, [f"{self.RELEASE_BASE}/{version}/SHA256SUMS",
+                                          f"{self.RELEASE_BASE}/{version}/SHA256SUMS.minisig"])
+
+    def test_missing_empty_or_unavailable_metadata_never_returns_a_contract(self):
+        empty = self.variant("empty", b"")
+        for name, overrides, fetch_count in (
+            ("manifest-network", {"TEST_NETWORK_FAIL": "manifest"}, 1),
+            ("signature-network", {"TEST_NETWORK_FAIL": "signature"}, 2),
+            ("manifest-missing", {"TEST_MANIFEST": str(self.base / "missing-manifest")}, 1),
+            ("signature-missing", {"TEST_SIGNATURE": str(self.base / "missing-signature")}, 2),
+            ("manifest-empty", {"TEST_MANIFEST": empty}, 2),
+            ("signature-empty", {"TEST_SIGNATURE": empty}, 2),
+        ):
+            with self.subTest(name=name):
+                status, _, events = self.contract(**overrides)
+                self.assertNotEqual(status, 0)
+                self.assertEqual(len(events), fetch_count)
+
+    def test_unreviewed_pin_or_installer_url_declines_before_release_lookup(self):
+        for overrides in (
+            {"TEST_INSTALLER_SHA": ""}, {"TEST_INSTALLER_SHA": "f" * 64},
+            {"TEST_INSTALLER_URL": self.INSTALLER_URL.replace("/refs/heads/main/", "/main/")},
+            {"TEST_INSTALLER_URL": "https://example.invalid/installer.sh"},
+        ):
+            with self.subTest(overrides=overrides):
+                status, _, events = self.contract(TEST_VERSION="", **overrides)
+                self.assertNotEqual(status, 0)
+                self.assertEqual(events, [])
+
+    def test_offline_and_custom_installer_contracts_decline_before_metadata_fetch(self):
+        overrides = {
+            "OWNER": "other-owner", "REPO": "other-repository",
+            "ARTIFACT_URL": "https://example.invalid/archive", "CHECKSUM": "a" * 64,
+            "CHECKSUM_URL": "https://example.invalid/checksum",
+            "SIGSTORE_BUNDLE_URL": "https://example.invalid/bundle", "DEST": "/custom/dest",
+            "ACFS_VERIFIED_INSTALLER_CACHE": "/custom/cache", "AM_INSTALL_LOCK_FILE": "/custom/lock",
+            "AM_LINK_DIR": "/custom/bin", "PYTHON_MIGRATION_MARKER": "/custom/migrated",
+            "PYTHON_MIGRATION_SKIP_MARKER": "/custom/skipped", "AM_OFFLINE": "1",
+        }
+        for variable, value in overrides.items():
+            with self.subTest(variable=variable):
+                status, _, events = self.contract(TEST_VERSION="", **{variable: value})
+                self.assertNotEqual(status, 0)
+                self.assertEqual(events, [])
+
+    def test_legacy_or_malformed_release_versions_keep_the_upstream_verification_path(self):
+        for version in ("v0.3.30", "v0.2.99", "../../release", "v0.3.40/extra", "v0.3.40\n", "v1234567.1.1"):
+            with self.subTest(version=version):
+                status, _, events = self.contract(TEST_VERSION=version)
+                self.assertNotEqual(status, 0)
+                self.assertEqual(events, [])
+
+    def test_missing_minisign_or_unsupported_platform_declines_without_metadata(self):
+        for overrides in ({"TEST_MINISIGN_AVAILABLE": "false"},
+                          {"TEST_PLATFORM": "Darwin"}, {"TEST_ARCH": "riscv64"}):
+            with self.subTest(overrides=overrides):
+                status, _, events = self.contract(**overrides)
+                self.assertNotEqual(status, 0)
+                self.assertEqual(events, [])
+
+    def test_manifest_syntax_rejects_ambiguous_assets_with_explicit_verifier_stub(self):
+        """Parser coverage only; mutated manifests are not claimed authentic."""
+        asset = b"mcp-agent-mail-x86_64-unknown-linux-musl.tar.xz"
+        line = next(line for line in self.MANIFEST.splitlines() if line.endswith(asset))
+        malformed = (
+            self.MANIFEST + line + b"\n",
+            self.MANIFEST + line.replace(asset, b"./" + asset) + b"\n",
+            self.MANIFEST + line.replace(asset, b"*" + asset) + b"\n",
+            self.MANIFEST.replace(line, line + b" extra-field"),
+            self.MANIFEST.replace(line, b"g" * 64 + b"  " + asset),
+            self.MANIFEST.replace(line, b"a" * 63 + b"  " + asset),
+            b"a" * 64 + b"  unrelated-archive.tar.xz\n",
+        )
+        for index, content in enumerate(malformed):
+            with self.subTest(case=index):
+                status, _, _ = self.contract(TEST_MANIFEST_SYNTAX_ONLY="true",
+                                             TEST_MANIFEST=self.variant(f"syntax-{index}", content))
+                self.assertNotEqual(status, 0)
 
 
 if __name__ == "__main__":

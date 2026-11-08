@@ -12699,8 +12699,21 @@ SECURITY
     assert_success
 }
 
+# Inspect the real interpreter prefix rather than pretending the target runner
+# receives bare bash. A missing deadline or an untrusted interpreter must fail
+# these mocks before they accept an environment or a staged installer path.
+_assert_update_verified_installer_runner() {
+    [[ $# -ge 5 ]] || return 1
+    [[ "$1" == "$(update_system_binary_path timeout)" ]] || return 1
+    [[ "$2" == --signal=KILL ]] || return 1
+    [[ "$3" == "${UPDATE_CMD_TIMEOUT:-1800}" && "$3" =~ ^[1-9][0-9]*$ ]] || return 1
+    [[ "$4" == "$(update_system_binary_path bash)" ]] || return 1
+    [[ -f "$5" && -r "$5" && ! -L "$5" ]]
+}
+
 @test "update verified installer env assignment values are argv-safe data" {
     declare -gA KNOWN_INSTALLERS=([test_tool]="https://example.test/install.sh")
+    UPDATE_CMD_TIMEOUT=17
 
     update_require_security() { return 0; }
     # A well-formed digest: the updater refuses anything but 64 hex chars.
@@ -12710,21 +12723,34 @@ SECURITY
         printf '%s\n' 'exit 0'
     }
     update_run_in_target_context() {
-        printf 'env=%s\n' "$1"
-        printf 'cmd=%s\n' "$2"
-        printf 'script=%s\n' "$3"
-        printf 'arg=%s\n' "$4"
+        local env_assignment="$1"
+        shift
+        if [[ "$1" != "$(update_system_binary_path timeout)" ]]; then
+            "$@"
+            return $?
+        fi
+        _assert_update_verified_installer_runner "$@" || return 1
+        printf 'env=%s\n' "$env_assignment"
+        printf 'timeout=%s\n' "$1"
+        printf 'deadline=%s\n' "$3"
+        printf 'interpreter=%s\n' "$4"
+        shift 4
+        printf 'script=%s\n' "$1"
+        printf 'arg=%s\n' "$2"
     }
 
     run update_run_verified_installer_with_env "test_tool" "TEST_ENV=ok; touch /tmp/acfs pwned" "--flag"
     assert_success
     assert_output --partial "env=TEST_ENV=ok; touch /tmp/acfs pwned"
-    assert_output --partial "cmd=bash"
+    assert_output --partial "timeout=$(update_system_binary_path timeout)"
+    assert_output --partial "deadline=17"
+    assert_output --partial "interpreter=$(update_system_binary_path bash)"
     assert_output --partial "arg=--flag"
 }
 
 @test "update verified installer accepts multiple env assignments" {
     declare -gA KNOWN_INSTALLERS=([test_tool]="https://example.test/install.sh")
+    UPDATE_CMD_TIMEOUT=17
 
     update_require_security() { return 0; }
     get_checksum() { printf '%s\n' "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"; }
@@ -12733,15 +12759,30 @@ SECURITY
         printf '%s\n' 'exit 0'
     }
     update_run_in_target_context() {
-        printf 'env=%s\n' "$1"
-        printf 'cmd=%s\n' "$2"
+        local env_assignment="$1"
+        shift
+        if [[ "$1" != "$(update_system_binary_path timeout)" ]]; then
+            "$@"
+            return $?
+        fi
+        _assert_update_verified_installer_runner "$@" || return 1
+        printf 'env=%s\n' "$env_assignment"
+        printf 'timeout=%s\n' "$1"
+        printf 'deadline=%s\n' "$3"
+        printf 'interpreter=%s\n' "$4"
+        shift 4
+        printf 'script=%s\n' "$1"
+        printf 'arg=%s\n' "$2"
     }
 
     run update_run_verified_installer_with_env "test_tool" $'FIRST_ENV=one\nSECOND_ENV=two words' "--flag"
     assert_success
     assert_output --partial "env=FIRST_ENV=one"
     assert_output --partial "SECOND_ENV=two words"
-    assert_output --partial "cmd=bash"
+    assert_output --partial "timeout=$(update_system_binary_path timeout)"
+    assert_output --partial "deadline=17"
+    assert_output --partial "interpreter=$(update_system_binary_path bash)"
+    assert_output --partial "arg=--flag"
 }
 
 @test "update verified installer rejects invalid env assignment names" {
@@ -12760,6 +12801,7 @@ SECURITY
     local path_file="$BATS_TEST_TMPDIR/verified-installer-path"
     local private_tmp="$BATS_TEST_TMPDIR/private-tmp"
     declare -gA KNOWN_INSTALLERS=([test_tool]="https://example.test/install.sh")
+    UPDATE_CMD_TIMEOUT=17
     mkdir -p "$private_tmp"
     export TMPDIR="$private_tmp"
 
@@ -12776,10 +12818,13 @@ SECURITY
                 [[ "${4:-}" != "$private_tmp/"* ]]
                 return $?
                 ;;
-            bash)
-                printf '%s\n' "${3:-}" > "$path_file"
-                stat -c '%a' "${3:-}" > "$mode_file"
-                [[ -r "${3:-}" ]]
+            "$(update_system_binary_path timeout)")
+                shift
+                _assert_update_verified_installer_runner "$@" || return 1
+                shift 4
+                printf '%s\n' "$1" > "$path_file"
+                stat -c '%a' "$1" > "$mode_file"
+                [[ -r "$1" ]]
                 return $?
                 ;;
         esac
@@ -12803,6 +12848,7 @@ SECURITY
     local private_tmp="$BATS_TEST_TMPDIR/private-tmp"
     local override_tmp="$BATS_TEST_TMPDIR/override-tmp"
     declare -gA KNOWN_INSTALLERS=([test_tool]="https://example.test/install.sh")
+    UPDATE_CMD_TIMEOUT=17
     mkdir -p "$private_tmp" "$override_tmp"
     export TMPDIR="$private_tmp"
     export ACFS_UPDATE_TMPDIR="$override_tmp"
@@ -12820,9 +12866,12 @@ SECURITY
                 [[ "${4:-}" == /tmp/acfs-update-test_tool.* || "${4:-}" == /var/tmp/acfs-update-test_tool.* ]]
                 return $?
                 ;;
-            bash)
-                printf '%s\n' "${3:-}" > "$path_file"
-                [[ "${3:-}" == /tmp/acfs-update-test_tool.* || "${3:-}" == /var/tmp/acfs-update-test_tool.* ]]
+            "$(update_system_binary_path timeout)")
+                shift
+                _assert_update_verified_installer_runner "$@" || return 1
+                shift 4
+                printf '%s\n' "$1" > "$path_file"
+                [[ "$1" == /tmp/acfs-update-test_tool.* || "$1" == /var/tmp/acfs-update-test_tool.* ]]
                 return $?
                 ;;
         esac
@@ -12926,6 +12975,7 @@ _setup_verified_installer_private_tmpdir() {
     TEST_TARGET_HOME="$BATS_TEST_TMPDIR/private-tmp-home"
     TEST_INSTALLER_ENV="$BATS_TEST_TMPDIR/installer-env"
     TEST_INSTALLER_STATUS=0
+    UPDATE_CMD_TIMEOUT=17
     mkdir -p "$TEST_TARGET_HOME"
     declare -gA KNOWN_INSTALLERS=([test_tool]="https://example.test/install.sh")
 
@@ -12939,7 +12989,10 @@ _setup_verified_installer_private_tmpdir() {
     update_run_in_target_context() {
         local env_assignment="$1"
         shift
-        if [[ "$1" == bash ]]; then
+        if [[ "$1" == "$(update_system_binary_path timeout)" ]]; then
+            _assert_update_verified_installer_runner "$@" || return 1
+            shift 4
+            [[ "${2:-}" == --flag ]] || return 1
             printf '%s\n' "$env_assignment" > "$TEST_INSTALLER_ENV"
             # Leave scratch behind, as installers with broken cleanup do.
             local tmpdir=""
@@ -17288,4 +17341,370 @@ _provenance_fixture() {
     run grep -A1 '^Version: v0.10.0+abc1234$' "$UPDATE_LOG_FILE"
     assert_success
     assert_output --partial "Runtime: $PROV_DEPLOYED (deployed copy; update.sh differs from that commit"
+}
+
+# Release metadata and installer execution are fixtures. Hashing, target-user
+# command execution, pathname checks and the no-op decision use real code.
+_asb_current_fixture() {
+    unset DEST ASB_SYSTEM ASB_VERSION ASB_UNSAFE_MAIN ACFS_VERIFIED_INSTALLER_CACHE
+    FORCE_MODE=false
+    DRY_RUN=false
+    ASB_TEST_TAG=v1.2.3
+    ASB_TEST_PAGE=""
+    ASB_TEST_PIN=9069cd335b79bab7047271bbabb2ba018423a3a4fb95916c4ee9d5f11582bd94
+    ASB_TEST_MANIFEST_RC=0
+    ASB_TEST_SECURITY_RC=0
+    ASB_TEST_INSTALL_RC=0
+    ASB_TEST_PUBLISH=false
+    ASB_TEST_HELD=false
+    ASB_TEST_BACKOFF=false
+    mkdir -p "$HOME/.local/bin"
+    printf '#!/usr/bin/env bash\nprintf executed >> "$HOME/asb-payload-ran"\nprintf "asb 1.2.3\\n"\n' > "$HOME/asb-release"
+    chmod 0755 "$HOME/asb-release"
+    cp "$HOME/asb-release" "$HOME/.local/bin/asb"
+    _asb_current_manifest
+    : > "$HOME/asb-requests"
+    : > "$HOME/asb-installs"
+    : > "$HOME/asb-security"
+    declare -gA KNOWN_INSTALLERS=([asb]="https://raw.githubusercontent.com/Dicklesworthstone/agent_settings_backup_script/main/install.sh")
+    # Keep all filesystem operations confined even when Bats is run as root.
+    update_target_home() { printf '%s\n' "$HOME"; }
+    update_require_security() {
+        printf 'security\n' >> "$HOME/asb-security"
+        return "$ASB_TEST_SECURITY_RC"
+    }
+    get_checksum() { printf '%s\n' "$ASB_TEST_PIN"; }
+    update_tool_hold_details() {
+        [[ "$ASB_TEST_HELD" == true ]] || return 1
+        UPDATE_LAST_HOLD_TOOL=asb
+        UPDATE_LAST_HOLD_DETAILS="owner=operator reason=maintenance"
+    }
+    update_rollback_state_lookup() { return 1; }
+    update_tool_rollback_backoff_details() {
+        [[ "$ASB_TEST_BACKOFF" == true ]] || return 1
+        UPDATE_LAST_BACKOFF_DETAILS="recent failed installation"
+    }
+    update_curl() {
+        local url="${*: -1}"
+        printf '%s\n' "$url" >> "$HOME/asb-requests"
+        case "$url" in
+            'https://github.com/Dicklesworthstone/agent_settings_backup_script/releases/latest')
+                printf '%s\n' "${ASB_TEST_PAGE:-https://github.com/Dicklesworthstone/agent_settings_backup_script/releases/tag/$ASB_TEST_TAG}"
+                ;;
+            "https://github.com/Dicklesworthstone/agent_settings_backup_script/releases/download/$ASB_TEST_TAG/asb-checksums.txt")
+                cat "$HOME/asb-manifest"
+                return "$ASB_TEST_MANIFEST_RC"
+                ;;
+            *) return 22 ;;
+        esac
+    }
+    update_run_verified_installer() {
+        printf 'legacy' >> "$HOME/asb-installs"
+        printf ' <%s>' "$@" >> "$HOME/asb-installs"
+        printf '\n' >> "$HOME/asb-installs"
+        return "$ASB_TEST_INSTALL_RC"
+    }
+    update_run_verified_installer_with_env() {
+        printf 'pinned' >> "$HOME/asb-installs"
+        printf ' <%s>' "$@" >> "$HOME/asb-installs"
+        printf '\n' >> "$HOME/asb-installs"
+        if [[ "$ASB_TEST_PUBLISH" == true && "$ASB_TEST_INSTALL_RC" == 0 ]]; then
+            cp "$HOME/asb-release" "$HOME/.local/bin/asb"
+            chmod 0755 "$HOME/.local/bin/asb"
+        fi
+        return "$ASB_TEST_INSTALL_RC"
+    }
+    log_to_file() { printf '%s\n' "$*" >> "$HOME/asb-log"; }
+}
+
+_asb_current_manifest() {
+    local digest=""
+    digest="$(sha256sum < "$HOME/asb-release")"
+    printf '%s  asb\n' "${digest%% *}" > "$HOME/asb-manifest"
+}
+
+@test "ASB current release: repeated identical updates fetch only metadata and never execute the script" {
+    _asb_current_fixture
+    local before="" iteration=""
+    before="$(stat -c '%i:%Y:%s' "$HOME/.local/bin/asb")"
+    for iteration in 1 2 3; do
+        update_run_asb_installer
+        [[ "$UPDATE_LAST_CURRENT_DETAILS" == "already v1.2.3; installed release checksum verified" ]]
+    done
+    [[ ! -s "$HOME/asb-installs" && ! -e "$HOME/asb-payload-ran" ]]
+    [[ "$(stat -c '%i:%Y:%s' "$HOME/.local/bin/asb")" == "$before" ]]
+    [[ "$(wc -l < "$HOME/asb-requests")" -eq 6 ]]
+}
+
+@test "ASB current release: missing installation is installed once and then verified without installation" {
+    _asb_current_fixture
+    mv "$HOME/.local/bin/asb" "$HOME/asb-missing-retained"
+    ASB_TEST_PUBLISH=true
+    update_run_asb_installer
+    [[ -z "$UPDATE_LAST_CURRENT_DETAILS" ]]
+    update_run_asb_installer
+    [[ -n "$UPDATE_LAST_CURRENT_DETAILS" ]]
+    [[ "$(cat "$HOME/asb-installs")" == 'pinned <asb> <ASB_VERSION=v1.2.3>' ]]
+    [[ ! -e "$HOME/asb-payload-ran" ]]
+}
+
+@test "ASB current release: altered script reporting the same version is repaired before execution" {
+    _asb_current_fixture
+    printf '# altered after installation\n' >> "$HOME/.local/bin/asb"
+    ASB_TEST_PUBLISH=true
+    update_run_asb_installer
+    [[ -z "$UPDATE_LAST_CURRENT_DETAILS" ]]
+    [[ ! -e "$HOME/asb-payload-ran" ]]
+    cmp "$HOME/asb-release" "$HOME/.local/bin/asb"
+    update_run_asb_installer
+    [[ -n "$UPDATE_LAST_CURRENT_DETAILS" ]]
+    [[ "$(wc -l < "$HOME/asb-installs")" -eq 1 ]]
+}
+
+@test "ASB current release: changed release manifest at the same tag invalidates the no-op" {
+    _asb_current_fixture
+    printf '# republished release payload\n' >> "$HOME/asb-release"
+    _asb_current_manifest
+    ASB_TEST_PUBLISH=true
+    update_run_asb_installer
+    [[ -z "$UPDATE_LAST_CURRENT_DETAILS" ]]
+    cmp "$HOME/asb-release" "$HOME/.local/bin/asb"
+    update_run_asb_installer
+    [[ -n "$UPDATE_LAST_CURRENT_DETAILS" ]]
+    [[ "$(wc -l < "$HOME/asb-installs")" -eq 1 ]]
+}
+
+@test "ASB current release: actual upgrade installs the freshly resolved exact tag" {
+    _asb_current_fixture
+    ASB_TEST_TAG=v1.2.4
+    printf '#!/usr/bin/env bash\nprintf "asb 1.2.4\\n"\n' > "$HOME/asb-release"
+    _asb_current_manifest
+    ASB_TEST_PUBLISH=true
+    update_run_asb_installer
+    [[ "$(cat "$HOME/asb-installs")" == 'pinned <asb> <ASB_VERSION=v1.2.4>' ]]
+    update_run_asb_installer
+    [[ "$UPDATE_LAST_CURRENT_DETAILS" == "already v1.2.4; installed release checksum verified" ]]
+    [[ "$(wc -l < "$HOME/asb-installs")" -eq 1 ]]
+}
+
+@test "ASB current release: malformed duplicate or missing manifest entries never authorize a skip" {
+    _asb_current_fixture
+    ASB_TEST_INSTALL_RC=37
+    local valid="" entry=""
+    valid="$(cat "$HOME/asb-manifest")"
+    for entry in "$valid"$'\n'"$valid" "bad  asb" "${valid/asb/other-tool}" "$valid extra-field" ""; do
+        printf '%s\n' "$entry" > "$HOME/asb-manifest"
+        run update_run_asb_installer
+        [[ "$status" -eq 37 ]]
+    done
+    [[ "$(wc -l < "$HOME/asb-installs")" -eq 5 ]]
+    [[ ! -e "$HOME/asb-payload-ran" ]]
+}
+
+@test "ASB current release: failed metadata transfer cannot accept a valid partial response" {
+    _asb_current_fixture
+    ASB_TEST_MANIFEST_RC=22
+    ASB_TEST_INSTALL_RC=37
+    run update_run_asb_installer
+    [[ "$status" -eq 37 ]]
+    [[ "$(cat "$HOME/asb-installs")" == 'pinned <asb> <ASB_VERSION=v1.2.3>' ]]
+}
+
+@test "ASB current release: release redirect must identify a valid tag in the canonical repository" {
+    _asb_current_fixture
+    ASB_TEST_INSTALL_RC=37
+    local page=""
+    for page in \
+        'https://github.com/other/asb/releases/tag/v1.2.3' \
+        'https://github.com/Dicklesworthstone/agent_settings_backup_script/releases/tag/v1.2.3/extra' \
+        'https://github.com/Dicklesworthstone/agent_settings_backup_script/releases/tag/main'; do
+        ASB_TEST_PAGE="$page"
+        run update_run_asb_installer
+        [[ "$status" -eq 37 ]]
+    done
+    [[ "$(wc -l < "$HOME/asb-requests")" -eq 3 ]]
+    [[ "$(wc -l < "$HOME/asb-installs")" -eq 3 ]]
+    [[ "$(head -1 "$HOME/asb-installs")" == 'legacy <asb>' ]]
+}
+
+@test "ASB current release: explicit version selects its manifest and survives a real install" {
+    _asb_current_fixture
+    ASB_VERSION=1.2.3
+    update_run_asb_installer
+    [[ -n "$UPDATE_LAST_CURRENT_DETAILS" && ! -s "$HOME/asb-installs" ]]
+    [[ "$(wc -l < "$HOME/asb-requests")" -eq 1 ]]
+    printf '# corrupt\n' >> "$HOME/.local/bin/asb"
+    update_run_asb_installer
+    [[ -z "$UPDATE_LAST_CURRENT_DETAILS" ]]
+    [[ "$(cat "$HOME/asb-installs")" == 'pinned <asb> <ASB_VERSION=v1.2.3>' ]]
+}
+
+@test "ASB current release: force reinstalls identical bytes and dry-run is side effect free" {
+    _asb_current_fixture
+    FORCE_MODE=true
+    update_run_asb_installer
+    [[ -z "$UPDATE_LAST_CURRENT_DETAILS" ]]
+    [[ "$(cat "$HOME/asb-installs")" == 'pinned <asb> <ASB_VERSION=v1.2.3>' ]]
+    [[ "$(wc -l < "$HOME/asb-requests")" -eq 1 ]]
+    DRY_RUN=true
+    UPDATE_LAST_CURRENT_DETAILS="stale earlier result"
+    update_run_asb_installer
+    [[ -z "$UPDATE_LAST_CURRENT_DETAILS" ]]
+    [[ "$(wc -l < "$HOME/asb-installs")" -eq 1 ]]
+    [[ "$(wc -l < "$HOME/asb-requests")" -eq 1 ]]
+    [[ "$(wc -l < "$HOME/asb-security")" -eq 1 ]]
+}
+
+@test "ASB current release: holds including forced runs and rollback backoff precede release requests" {
+    _asb_current_fixture
+    ASB_TEST_HELD=true
+    FORCE_MODE=true
+    run update_run_asb_installer
+    [[ "$status" -eq "$UPDATE_EXIT_HELD" ]]
+    assert_output --partial "owner=operator reason=maintenance"
+    ASB_TEST_HELD=false
+    FORCE_MODE=false
+    ASB_TEST_BACKOFF=true
+    run update_run_asb_installer
+    [[ "$status" -eq "$UPDATE_EXIT_ROLLBACK_BACKOFF" ]]
+    [[ ! -s "$HOME/asb-requests" && ! -s "$HOME/asb-installs" && ! -s "$HOME/asb-security" ]]
+}
+
+@test "ASB current release: unavailable security and malformed installer pins remain failures" {
+    _asb_current_fixture
+    ASB_TEST_SECURITY_RC=1
+    run update_run_asb_installer
+    [[ "$status" -eq 1 ]]
+    ASB_TEST_SECURITY_RC=0
+    local pin=""
+    for pin in "" 'malformed'; do
+        ASB_TEST_PIN="$pin"
+        run update_run_asb_installer
+        [[ "$status" -eq "$UPDATE_EXIT_CHECKSUM" ]]
+    done
+    [[ ! -s "$HOME/asb-requests" && ! -s "$HOME/asb-installs" ]]
+}
+
+@test "ASB current release: an unreviewed installer pin or URL always uses the verified installer" {
+    _asb_current_fixture
+    ASB_TEST_INSTALL_RC=37
+    local reviewed="$ASB_TEST_PIN"
+    ASB_TEST_PIN="$(printf 'a%.0s' {1..64})"
+    run update_run_asb_installer
+    [[ "$status" -eq 37 ]]
+    ASB_TEST_PIN="$reviewed"
+    KNOWN_INSTALLERS[asb]='https://example.invalid/asb/install.sh'
+    run update_run_asb_installer
+    [[ "$status" -eq 37 ]]
+    [[ ! -s "$HOME/asb-requests" && "$(wc -l < "$HOME/asb-installs")" -eq 2 ]]
+}
+
+@test "ASB current release: custom unsafe offline and unknown requests retain the original installer path" {
+    _asb_current_fixture
+    ASB_TEST_INSTALL_RC=37
+    local name=""
+    for name in DEST ASB_SYSTEM ASB_UNSAFE_MAIN ACFS_VERIFIED_INSTALLER_CACHE; do
+        printf -v "$name" '%s' 1
+        run update_run_asb_installer
+        [[ "$status" -eq 37 ]]
+        unset "$name"
+    done
+    run update_run_asb_installer --force
+    [[ "$status" -eq 37 ]]
+    [[ ! -s "$HOME/asb-requests" && "$(wc -l < "$HOME/asb-installs")" -eq 5 ]]
+    [[ "$(tail -1 "$HOME/asb-installs")" == 'legacy <asb> <--force>' ]]
+}
+
+@test "ASB current release: mode drift and symlink destinations are delegated for repair or refusal" {
+    _asb_current_fixture
+    local mode=""
+    for mode in 0644 0700 0775; do
+        chmod "$mode" "$HOME/.local/bin/asb"
+        update_run_asb_installer
+        [[ -z "$UPDATE_LAST_CURRENT_DETAILS" ]]
+    done
+    chmod 0755 "$HOME/.local/bin/asb"
+    mv "$HOME/.local/bin/asb" "$HOME/asb-symlink-retained"
+    ln -s "$HOME/asb-symlink-retained" "$HOME/.local/bin/asb"
+    update_run_asb_installer
+    [[ -z "$UPDATE_LAST_CURRENT_DETAILS" ]]
+    [[ "$(wc -l < "$HOME/asb-installs")" -eq 4 ]]
+    [[ -L "$HOME/.local/bin/asb" && ! -e "$HOME/asb-payload-ran" ]]
+}
+
+@test "ASB current release: writable and symlink parents do not authorize a no-op" {
+    _asb_current_fixture
+    chmod 0777 "$HOME/.local/bin"
+    update_run_asb_installer
+    [[ -z "$UPDATE_LAST_CURRENT_DETAILS" ]]
+    chmod 0755 "$HOME/.local/bin"
+    mv "$HOME/.local" "$HOME/local-retained"
+    ln -s "$HOME/local-retained" "$HOME/.local"
+    update_run_asb_installer
+    [[ -z "$UPDATE_LAST_CURRENT_DETAILS" && "$(wc -l < "$HOME/asb-installs")" -eq 2 ]]
+}
+
+@test "ASB current release: missing runtime prerequisites cannot become a successful skip" {
+    _asb_current_fixture
+    mkdir -p "$HOME/asb-runtime"
+    ln -s /bin/bash "$HOME/asb-runtime/bash"
+    update_target_path() { printf '%s\n' "$HOME/.local/bin:$HOME/asb-runtime"; }
+    ASB_TEST_INSTALL_RC=37
+    run update_run_asb_installer
+    [[ "$status" -eq 37 ]]
+    [[ ! -e "$HOME/asb-payload-ran" ]]
+}
+
+@test "ASB current release: payload format and FIFO destinations retain upstream refusal" {
+    _asb_current_fixture
+    ASB_TEST_INSTALL_RC=37
+    printf '#!/bin/sh\nexit 0\n' > "$HOME/asb-release"
+    cp "$HOME/asb-release" "$HOME/.local/bin/asb"
+    _asb_current_manifest
+    run update_run_asb_installer
+    [[ "$status" -eq 37 ]]
+    mv "$HOME/.local/bin/asb" "$HOME/asb-fifo-retained"
+    mkfifo -m 0755 "$HOME/.local/bin/asb"
+    run update_run_asb_installer
+    [[ "$status" -eq 37 ]]
+    [[ "$(wc -l < "$HOME/asb-installs")" -eq 2 && -p "$HOME/.local/bin/asb" ]]
+}
+
+@test "ASB current release: no-op can inspect payload directories that prohibit writes" {
+    _asb_current_fixture
+    chmod 0555 "$HOME/.local" "$HOME/.local/bin"
+    update_run_asb_installer
+    chmod 0755 "$HOME/.local" "$HOME/.local/bin"
+    [[ -n "$UPDATE_LAST_CURRENT_DETAILS" && ! -s "$HOME/asb-installs" ]]
+}
+
+@test "ASB current release: an untrusted target PATH Bash is never executed for a no-op" {
+    _asb_current_fixture
+    printf '#!/bin/sh\nprintf executed >> "$HOME/asb-untrusted-bash-ran"\nprintf 5\n' > "$HOME/.local/bin/bash"
+    chmod 0755 "$HOME/.local/bin/bash"
+    update_run_asb_installer
+    [[ -z "$UPDATE_LAST_CURRENT_DETAILS" && ! -e "$HOME/asb-untrusted-bash-ran" ]]
+    [[ "$(wc -l < "$HOME/asb-installs")" -eq 1 ]]
+}
+
+@test "ASB current release: the trusted Bash probe does not source caller startup hooks" {
+    _asb_current_fixture
+    printf 'printf executed >> "$HOME/asb-bash-startup-ran"\n' > "$HOME/asb-bash-startup"
+    export BASH_ENV="$HOME/asb-bash-startup"
+    update_run_asb_installer
+    unset BASH_ENV
+    [[ -n "$UPDATE_LAST_CURRENT_DETAILS" && ! -s "$HOME/asb-installs" ]]
+    [[ ! -e "$HOME/asb-bash-startup-ran" ]]
+}
+
+@test "ASB current release: run_cmd counts verified no-ops as skipped and clears stale results" {
+    _asb_current_fixture
+    QUIET=true
+    SUCCESS_COUNT=0
+    SKIP_COUNT=0
+    FAIL_COUNT=0
+    run_cmd "ASB" update_run_asb_installer
+    [[ "$SUCCESS_COUNT" -eq 0 && "$SKIP_COUNT" -eq 1 && "$FAIL_COUNT" -eq 0 ]]
+    run_cmd "Ordinary success" true
+    [[ "$SUCCESS_COUNT" -eq 1 && "$SKIP_COUNT" -eq 1 && "$FAIL_COUNT" -eq 0 ]]
 }

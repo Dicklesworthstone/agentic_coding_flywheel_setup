@@ -398,6 +398,8 @@ UPDATE_PIN_FAILURES=()
 UPDATE_LAST_HOLD_DETAILS=""
 UPDATE_LAST_HOLD_TOOL=""
 UPDATE_LAST_BACKOFF_DETAILS=""
+# Only an in-process release adapter can attest a verified installation no-op.
+UPDATE_LAST_CURRENT_DETAILS=""
 # Post-install smoke verdict (issue #378): healthy | unsupported | broken.
 UPDATE_LAST_SMOKE_VERDICT=""
 UPDATE_LAST_SMOKE_DETAIL=""
@@ -1369,7 +1371,7 @@ update_is_pin_failure() {
     case "${2:-}" in
         update_run_verified_installer|update_run_verified_installer_with_env) return 0 ;;
         update_run_verified_installer_with_target_tmpdir|_run_claude_installer_with_timeout) return 0 ;;
-        update_run_pcr_installer_and_verify|update_run_slb_verified_install|update_migrate_bun_claude) return 0 ;;
+        update_run_pcr_installer_and_verify|update_run_slb_verified_install|update_migrate_bun_claude|update_run_asb_installer) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -1977,6 +1979,7 @@ run_cmd() {
     UPDATE_LAST_HOLD_DETAILS=""
     UPDATE_LAST_HOLD_TOOL=""
     UPDATE_LAST_BACKOFF_DETAILS=""
+    UPDATE_LAST_CURRENT_DETAILS=""
 
     log_to_file "Running: $cmd_display"
 
@@ -2045,6 +2048,10 @@ run_cmd() {
     fi
 
     if [[ $exit_code -eq 0 ]]; then
+        if [[ -n "$UPDATE_LAST_CURRENT_DETAILS" ]]; then
+            update_finish_cmd_skip "$desc" "$UPDATE_LAST_CURRENT_DETAILS"
+            return 0
+        fi
         # Move cursor up and overwrite (only in non-verbose, non-quiet mode)
         if [[ "$QUIET" != "true" ]] && [[ "$VERBOSE" != "true" ]]; then
             printf "\033[1A\033[2K  ${GREEN}[ok]${NC} %s\n" "$desc"
@@ -4868,6 +4875,190 @@ update_resolve_fsfs_artifact_contract() {
     done
 
     return 1
+}
+
+# ASB publishes the installed script itself, so its release checksum can prove
+# installed bytes directly without a version probe or a local install receipt.
+# Keep the adapter restricted to the reviewed installer contract: other tools
+# ship archives, source trees, or separately managed service/configuration files.
+update_resolve_asb_release_tag() {
+    local tag="${ASB_VERSION:-}" release_page=""
+    local release_prefix="https://github.com/Dicklesworthstone/agent_settings_backup_script/releases/tag/"
+    if [[ -n "$tag" ]]; then
+        tag="v${tag#v}"
+    else
+        release_page="$(update_curl --head --max-redirs 5 \
+            -A 'agentic_coding_flywheel_setup-agent (+https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup)' \
+            -o /dev/null -w '%{url_effective}' \
+            'https://github.com/Dicklesworthstone/agent_settings_backup_script/releases/latest')" || return 1
+        [[ "$release_page" == "$release_prefix"* ]] || return 1
+        tag="${release_page#"$release_prefix"}"
+    fi
+    [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)*$ ]] || return 1
+    printf '%s\n' "$tag"
+}
+
+update_asb_release_checksum() {
+    local tag="${1:-}" awk_bin=""
+    [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)*$ ]] || return 1
+    awk_bin="$(update_system_binary_path awk)" || return 1
+    # Match the pinned installer's exact, unique manifest-entry rule. A nearby
+    # digest, an ambiguous duplicate, or a missing manifest is never evidence.
+    update_curl --max-filesize 1048576 --max-redirs 5 \
+        -A 'agentic_coding_flywheel_setup-agent (+https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup)' \
+        "https://github.com/Dicklesworthstone/agent_settings_backup_script/releases/download/$tag/asb-checksums.txt" \
+        | "$awk_bin" '
+            { sub(/\r$/, "") }
+            $2 == "asb" || $2 == "*asb" {
+                count++
+                if (NF != 2 || length($1) != 64 || $1 ~ /[^0-9a-fA-F]/) bad = 1
+                digest = tolower($1)
+            }
+            END { if (count != 1 || bad) exit 1; print digest }
+        '
+}
+
+update_asb_installed_release_matches() {
+    local target_home="${1:-}" expected="${2:-}" python_bin="" bash_bin=""
+    [[ "$target_home" == /* && "$target_home" != / ]] || return 1
+    [[ "$expected" =~ ^[[:xdigit:]]{64}$ ]] || return 1
+    python_bin="$(update_system_binary_path python3)" || return 1
+    bash_bin="$(update_system_binary_path bash)" || return 1
+    # Inspect target-owned bytes as that account, never as a privileged caller.
+    # Isolated Python ignores PYTHONPATH/startup injection; no installed ASB code
+    # runs to establish its authenticity. Unusual layouts use the real installer.
+    UPDATE_CMD_TIMEOUT=10 update_run_bounded_in_target_context "$python_bin" -I -c '
+import hashlib
+import os
+import shutil
+import stat
+import subprocess
+import sys
+
+def check():
+    home, expected, system_bash = sys.argv[1:]
+    if home != os.environ.get("HOME") or home != os.path.normpath(home):
+        return False
+    path = os.path.join(home, ".local", "bin", "asb")
+    if shutil.which("asb") != path:
+        return False
+    parents = []
+    parent = None
+    try:
+        for part, directory in ((home, home), (".local", os.path.join(home, ".local")),
+                                ("bin", os.path.dirname(path))):
+            fd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+            metadata = os.fstat(fd)
+            parents.append((fd, directory, metadata))
+            if metadata.st_uid != os.geteuid() or metadata.st_mode & 0o022:
+                return False
+            parent = fd
+        fd = os.open("asb", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+        with os.fdopen(fd, "rb") as installed:
+            before = os.fstat(installed.fileno())
+            if (not stat.S_ISREG(before.st_mode) or before.st_uid != os.geteuid()
+                    or stat.S_IMODE(before.st_mode) != 0o755 or before.st_nlink != 1):
+                return False
+            digest = hashlib.sha256()
+            first_line = installed.readline(4097)
+            if first_line.rstrip(b"\n") != b"#!/usr/bin/env bash":
+                return False
+            digest.update(first_line)
+            for chunk in iter(lambda: installed.read(65536), b""):
+                digest.update(chunk)
+            after = os.fstat(installed.fileno())
+            current = os.stat("asb", dir_fd=parent, follow_symlinks=False)
+            fields = ("st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_size",
+                      "st_mtime_ns", "st_ctime_ns", "st_nlink")
+            if any(getattr(before, key) != getattr(after, key)
+                   or getattr(after, key) != getattr(current, key) for key in fields):
+                return False
+            if digest.hexdigest() != expected.lower():
+                return False
+        for _, directory, before in parents:
+            current = os.lstat(directory)
+            if any(getattr(before, key) != getattr(current, key)
+                   for key in ("st_dev", "st_ino", "st_mode", "st_uid", "st_gid")):
+                return False
+    finally:
+        for fd, _, _ in parents:
+            os.close(fd)
+    # Retain the upstream prerequisite checks even when no publication is
+    # needed. A target-owned PATH shim must not run to prove its own identity.
+    # Custom Bash installations keep the original verified-installer path.
+    bash = shutil.which("bash")
+    if (not bash or not os.path.samefile(bash, system_bash)
+            or not shutil.which("git") or not shutil.which("perl")):
+        return False
+    major = subprocess.run([system_bash, "--noprofile", "--norc", "-c", "printf %s \"${BASH_VERSINFO[0]}\""],
+                           stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                           stderr=subprocess.DEVNULL, timeout=5, check=True,
+                           env={"HOME": home, "PATH": "/usr/bin:/bin", "LC_ALL": "C"}).stdout
+    return major.isdigit() and int(major) >= 4
+
+try:
+    sys.exit(0 if check() else 1)
+except (OSError, ValueError, subprocess.SubprocessError):
+    sys.exit(1)
+' "$target_home" "$expected" "$bash_bin"
+}
+
+# shellcheck disable=SC2317,SC2329  # invoked indirectly via run_cmd()
+update_run_asb_installer() {
+    UPDATE_LAST_CURRENT_DETAILS=""
+    [[ "${DRY_RUN:-false}" != true ]] || return 0
+
+    if update_tool_hold_details asb; then
+        echo "SKIPPED (hold): asb $UPDATE_LAST_HOLD_DETAILS" >&2
+        log_to_file "Hold honored for asb: $UPDATE_LAST_HOLD_DETAILS"
+        return "$UPDATE_EXIT_HELD"
+    fi
+    local installer_sha=""
+    if update_rollback_state_lookup asb >/dev/null 2>&1 \
+        && update_require_security >/dev/null 2>&1; then
+        installer_sha="$(get_checksum asb)"
+    fi
+    if update_tool_rollback_backoff_details asb "$installer_sha"; then
+        echo "SKIPPED (rollback backoff): asb -- $UPDATE_LAST_BACKOFF_DETAILS" >&2
+        log_to_file "Rollback backoff honored for asb: $UPDATE_LAST_BACKOFF_DETAILS"
+        return "$UPDATE_EXIT_ROLLBACK_BACKOFF"
+    fi
+    update_require_security || return 1
+    installer_sha="$(get_checksum asb)"
+    if [[ -z "${KNOWN_INSTALLERS[asb]:-}" || ! "$installer_sha" =~ ^[[:xdigit:]]{64}$ ]]; then
+        echo "Missing or invalid checksum entry for asb in checksums.yaml" >&2
+        return "$UPDATE_EXIT_CHECKSUM"
+    fi
+
+    # A changed pin requires review of the new installer's payload contract.
+    # Do not optimize alternate destinations, unsafe main, or unknown options.
+    if [[ "$installer_sha" != 9069cd335b79bab7047271bbabb2ba018423a3a4fb95916c4ee9d5f11582bd94 \
+        || "${KNOWN_INSTALLERS[asb]}" != 'https://raw.githubusercontent.com/Dicklesworthstone/agent_settings_backup_script/main/install.sh' \
+        || -n "${DEST:-}${ASB_SYSTEM:-}${ASB_UNSAFE_MAIN:-}${ACFS_VERIFIED_INSTALLER_CACHE:-}" || $# -ne 0 ]]; then
+        update_run_verified_installer asb "$@"
+        return $?
+    fi
+
+    local release_tag="" release_checksum="" target_user="" target_home=""
+    if ! release_tag="$(update_resolve_asb_release_tag)"; then
+        update_run_verified_installer asb "$@"
+        return $?
+    fi
+    if [[ "${FORCE_MODE:-false}" != true ]]; then
+        release_checksum="$(update_asb_release_checksum "$release_tag")" || release_checksum=""
+        target_user="$(update_target_user)" || target_user=""
+        target_home="$(update_target_home "$target_user" 2>/dev/null)" || target_home=""
+        if [[ -n "$release_checksum" ]] \
+            && update_asb_installed_release_matches "$target_home" "$release_checksum"; then
+            UPDATE_LAST_CURRENT_DETAILS="already $release_tag; installed release checksum verified"
+            log_to_file "ASB $UPDATE_LAST_CURRENT_DETAILS"
+            return 0
+        fi
+    fi
+
+    # Keep the actual install tied to the exact release just examined. This
+    # explicit assignment also survives sudo's cross-account env filtering.
+    update_run_verified_installer_with_env asb "ASB_VERSION=$release_tag" "$@"
 }
 
 update_run_fsfs_installer() {
@@ -8184,6 +8375,427 @@ update_go() {
     log_to_file "Go version: $go_version (path: $go_path)"
 }
 
+# Evidence of a completed, verified installation, never a version-string cache.
+# The adapter supplies its complete release/installer/options contract and ALL
+# immutable payload paths. Only that adapter may write after verified success.
+# Receipts are data, read and atomically published as the target account. A
+# missing interpreter, unsafe path, malformed receipt, or drift is a cache miss.
+# This detects drift since an authenticated install within the account's trust
+# boundary; it cannot authenticate arbitrary pre-existing files or defend
+# against an attacker who can rewrite that account's updater and receipts.
+update_release_receipt() {
+    local receipt_mode="${1:-}" receipt_tool="${2:-}" receipt_contract="${3:-}"
+    [[ $# -ge 3 ]] || return 1
+    shift 3
+    case "$receipt_mode" in match|write|invalidate) ;; *) return 1 ;; esac
+    [[ "$receipt_tool" =~ ^[a-z][a-z0-9_]{0,63}$ ]] || return 1
+    local receipt_home="" receipt_python="" receipt_timeout=""
+    receipt_home="$(update_target_home "$(update_target_user)")" || return 1
+    receipt_python="$(update_system_binary_path python3)" || return 1
+    receipt_timeout="$(update_system_binary_path timeout)" || return 1
+    update_run_in_target_context "" "$receipt_timeout" --signal=KILL 30 \
+        "$receipt_python" -I -c '
+import hashlib, json, os, secrets, stat, sys
+
+def reject_duplicates(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate field")
+        result[key] = value
+    return result
+
+def decode(raw):
+    if len(raw) > 65536:
+        raise ValueError("oversized receipt")
+    return json.loads(raw, object_pairs_hook=reject_duplicates)
+
+def safe_directory(path, parent=None, create=False, private=False):
+    if create:
+        try:
+            os.mkdir(path, 0o700, dir_fd=parent)
+        except FileExistsError:
+            pass
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+    info = os.fstat(fd)
+    if info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) & 0o022:
+        os.close(fd)
+        raise ValueError("unsafe directory owner/mode")
+    if private and stat.S_IMODE(info.st_mode) != 0o700:
+        os.close(fd)
+        raise ValueError("receipt directory must be private")
+    return fd
+
+def regular_file(name, parent, private=False):
+    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+    info = os.fstat(fd)
+    mode = stat.S_IMODE(info.st_mode)
+    if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or
+            info.st_uid != os.geteuid() or mode & 0o022 or
+            (private and (mode != 0o600 or info.st_size > 65536))):
+        os.close(fd)
+        raise ValueError("unsafe file type/owner/mode")
+    return fd, info
+
+def inventory(home_fd, home, paths):
+    if not paths or len(paths) != len(set(paths)):
+        raise ValueError("missing or duplicate inventory")
+    result = []
+    for path in paths:
+        if not path.startswith(home + "/"):
+            raise ValueError("payload outside target home")
+        parts = path[len(home) + 1:].split("/")
+        if any(part in ("", ".", "..") for part in parts):
+            raise ValueError("noncanonical payload path")
+        parent = os.dup(home_fd)
+        try:
+            for part in parts[:-1]:
+                child = safe_directory(part, parent)
+                os.close(parent)
+                parent = child
+            fd, before = regular_file(parts[-1], parent)
+            with os.fdopen(fd, "rb") as stream:
+                if not stat.S_IMODE(before.st_mode) & 0o111:
+                    raise ValueError("payload is not executable")
+                digest = hashlib.sha256()
+                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                    digest.update(chunk)
+                after = os.fstat(stream.fileno())
+            named = os.stat(parts[-1], dir_fd=parent, follow_symlinks=False)
+            identity = lambda s: (s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns, s.st_ctime_ns)
+            if identity(before) != identity(after) or identity(after) != identity(named):
+                raise ValueError("payload changed during verification")
+            result.append({"path": path, "mode": stat.S_IMODE(after.st_mode),
+                           "sha256": digest.hexdigest()})
+        finally:
+            os.close(parent)
+    return result
+
+try:
+    mode, tool, home, contract_text, *paths = sys.argv[1:]
+    if (not home.startswith("/") or home == "/" or os.path.normpath(home) != home
+            or home != os.environ.get("HOME")):
+        raise ValueError("invalid target home")
+    contract = decode(contract_text)
+    if not isinstance(contract, dict) or (mode != "invalidate" and not contract):
+        raise ValueError("missing contract")
+    home_fd = safe_directory(home)
+    parent = os.dup(home_fd)
+    try:
+        for part in (".local", "state", "acfs", "verified-installs"):
+            child = safe_directory(part, parent, create=(mode == "write"),
+                                   private=(part == "verified-installs"))
+            os.close(parent)
+            parent = child
+        name = tool + ".json"
+        previous = None
+        try:
+            fd, _ = regular_file(name, parent, private=True)
+        except FileNotFoundError:
+            if mode == "match":
+                raise
+        else:
+            with os.fdopen(fd, "rb") as stream:
+                raw = stream.read(65537)
+            if mode == "match":
+                previous = decode(raw)
+        if mode == "invalidate":
+            payload = {"schema": 1, "invalidated": True}
+        else:
+            payload = {"schema": 1, "contract": contract,
+                       "files": inventory(home_fd, home, paths)}
+        if mode == "match":
+            if (not isinstance(previous, dict) or type(previous.get("schema")) is not int
+                    or previous != payload):
+                raise ValueError("installation evidence differs")
+        else:
+            temporary = "." + tool + "." + secrets.token_hex(16)
+            fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                         0o600, dir_fd=parent)
+            try:
+                with os.fdopen(fd, "w") as stream:
+                    json.dump(payload, stream, sort_keys=True, separators=(",", ":"))
+                    stream.write("\n")
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                os.replace(temporary, name, src_dir_fd=parent, dst_dir_fd=parent)
+                os.fsync(parent)
+            finally:
+                try:
+                    os.unlink(temporary, dir_fd=parent)
+                except FileNotFoundError:
+                    pass
+    finally:
+        os.close(parent)
+        os.close(home_fd)
+except FileNotFoundError:
+    sys.exit(0 if sys.argv[1] == "invalidate" else 1)
+except (OSError, ValueError, TypeError, KeyError):
+    sys.exit(1)
+' "$receipt_mode" "$receipt_tool" "$receipt_home" "$receipt_contract" "$@"
+}
+
+# Opt in only for the reviewed release-archive contract. A new installer pin
+# requires a fresh adapter review, not an assumption that its security or
+# configuration requirements stayed the same. Legacy Sigstore, custom sources,
+# and offline installs keep the upstream installer's independent checks.
+update_agent_mail_release_contract() {
+    local -n am_contract_result="$1"
+    local installer_url="$2" installer_sha="$3"
+    am_contract_result=()
+    [[ "$installer_url" == https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail_rust/refs/heads/main/install.sh ]] || return 1
+    [[ "$installer_sha" == 3de2d65db5405432e56e28eddfd5046226fc8d2bedf53b7fb56a003aa9e88454 ]] || return 1
+    local override=""
+    for override in OWNER REPO ARTIFACT_URL CHECKSUM CHECKSUM_URL SIGSTORE_BUNDLE_URL DEST \
+        ACFS_VERIFIED_INSTALLER_CACHE AM_INSTALL_LOCK_FILE AM_LINK_DIR \
+        PYTHON_MIGRATION_MARKER PYTHON_MIGRATION_SKIP_MARKER; do
+        [[ -z "${!override:-}" ]] || return 1
+    done
+    [[ "${AM_OFFLINE:-0}" == 0 ]] || return 1
+
+    local tag="${VERSION:-}" major="" minor="" patch=""
+    [[ -n "$tag" ]] || tag="$(update_tool_latest_release_tag mcp_agent_mail)" || return 1
+    [[ "$tag" =~ ^v?([0-9]{1,6})\.([0-9]{1,6})\.([0-9]{1,6})(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]] || return 1
+    major="${BASH_REMATCH[1]}" minor="${BASH_REMATCH[2]}" patch="${BASH_REMATCH[3]}"
+    ((10#$major > 0 || 10#$minor > 3 || (10#$minor == 3 && 10#$patch >= 31))) || return 1
+    tag="v${tag#v}"
+
+    local uname_bin="" minisign_bin="" timeout_bin="" jq_bin="" awk_bin="" sed_bin=""
+    uname_bin="$(update_system_binary_path uname)" || return 1
+    minisign_bin="$(update_system_binary_path minisign)" || return 1
+    timeout_bin="$(update_system_binary_path timeout)" || return 1
+    jq_bin="$(update_system_binary_path jq)" || return 1
+    awk_bin="$(update_system_binary_path awk)" || return 1
+    sed_bin="$(update_system_binary_path sed)" || return 1
+    local platform="" arch="" target="" candidate="" artifact="" artifact_sha=""
+    platform="$("$uname_bin" -s)" || return 1
+    arch="$("$uname_bin" -m)" || return 1
+    local -a targets=() candidates=()
+    case "$platform/$arch" in
+        Linux/x86_64|Linux/amd64) targets=(x86_64-unknown-linux-musl x86_64-unknown-linux-gnu) ;;
+        Linux/aarch64|Linux/arm64) targets=(aarch64-unknown-linux-gnu) ;;
+        *) return 1 ;;
+    esac
+    for target in "${targets[@]}"; do
+        candidates+=("mcp-agent-mail-$target.tar.xz" "mcp-agent-mail-$target.tar.gz")
+    done
+
+    local manifest="" signature="" status=0 manifest_sha="" signature_sha="" contract=""
+    local release_base="https://github.com/Dicklesworthstone/mcp_agent_mail_rust/releases/download/$tag"
+    local public_key='RWTQGPeLsnm9G7VFdFWkkcRi3wJK/PqsYxWC+oLNN74W9IjBxRU1Xu70'
+    manifest="$(update_create_target_readable_temp_file acfs-am-manifest)" || return 1
+    signature="$(update_create_target_readable_temp_file acfs-am-signature)" || {
+        rm -f -- "$manifest"
+        return 1
+    }
+    local -a fetch_args=(--connect-timeout 5 --max-time 15 --max-filesize 1048576
+        -A 'agentic_coding_flywheel_setup-agent (+https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup)')
+    if ! update_curl "${fetch_args[@]}" "$release_base/SHA256SUMS" > "$manifest" \
+        || ! update_curl "${fetch_args[@]}" "$release_base/SHA256SUMS.minisig" > "$signature" \
+        || ! "$timeout_bin" --signal=KILL 15 "$minisign_bin" -Vm "$manifest" -x "$signature" -P "$public_key" >/dev/null 2>&1; then
+        status=1
+    fi
+    # Minisign authenticates line 3 with its global signature. Match the exact
+    # product/tag and the upstream contract's accepted source-commit forms.
+    local comment="" signed_metadata="" signed_commit="" prefix=""
+    if [[ "$status" -eq 0 ]]; then
+        comment="$("$sed_bin" -n '3p' "$signature")"
+        comment="${comment%$'\r'}"
+        prefix="trusted comment: mcp_agent_mail_rust $tag "
+        if [[ "$comment" != "$prefix"* ]]; then
+            status=1
+        else
+            signed_metadata="${comment#"$prefix"}"
+            signed_commit="$signed_metadata"
+            case "$signed_metadata" in
+                source\ *\ SHA256SUMS)
+                    signed_commit="${signed_metadata#source }"
+                    signed_commit="${signed_commit% SHA256SUMS}"
+                    ;;
+            esac
+            if [[ "$signed_metadata" != SHA256SUMS && ! "$signed_commit" =~ ^[0-9a-fA-F]{40}$ ]]; then
+                status=1
+            fi
+        fi
+    fi
+    if [[ "$status" -eq 0 ]]; then
+        for candidate in "${candidates[@]}"; do
+            # Exactly one well-formed entry, never the first of duplicates.
+            if artifact_sha="$("$awk_bin" -v asset="$candidate" '
+                $2 == asset || $2 == ("./" asset) || $2 == ("*" asset) {
+                    count++; hash=$1; if (NF != 2) bad=1
+                }
+                END {
+                    if (count == 0) exit 1
+                    if (count != 1 || bad || length(hash) != 64 || hash ~ /[^0-9A-Fa-f]/) exit 2
+                    print tolower(hash)
+                }
+                ' "$manifest")"; then
+                artifact="$candidate"
+                break
+            elif [[ "$?" -ne 1 ]]; then
+                status=1
+                break
+            fi
+        done
+        [[ -n "$artifact" ]] || status=1
+    fi
+    if [[ "$status" -eq 0 ]]; then
+        manifest_sha="$(update_sha256_file "$manifest")" || status=1
+        signature_sha="$(update_sha256_file "$signature")" || status=1
+        contract="$("$jq_bin" -cn --arg url "$installer_url" --arg pin "$installer_sha" \
+            --arg tag "$tag" --arg artifact "$release_base/$artifact" --arg hash "$artifact_sha" \
+            --arg manifest "$manifest_sha" --arg signature "$signature_sha" --arg key "$public_key" \
+            --arg platform "$platform/$arch" \
+            '{adapter:"agent-mail-minisign-v1",installer:{url:$url,sha256:$pin},release:{tag:$tag,artifact:$artifact,sha256:$hash,manifest:$manifest,signature:$signature,key:$key},platform:$platform,options:["--yes","--no-service","--force","AM_INSTALL_SKIP_MCP_SETUP=1","AM_INSTALL_SKIP_REMOTE_HTTP_READINESS=1"]}')" || status=1
+    fi
+    rm -f -- "$manifest" "$signature"
+    [[ "$status" -eq 0 ]] || return 1
+    am_contract_result=("$contract" "$tag" "$release_base/$artifact" "$artifact_sha")
+}
+
+# Installer and service idempotency are deliberately separate. Even a verified
+# payload no-op must reconcile a changed unit or repair an unhealthy service.
+update_agent_mail() {
+    local minisign_ready="${1:-false}" tool=mcp_agent_mail
+    local url="${KNOWN_INSTALLERS[$tool]:-}" expected_sha256=""
+    expected_sha256="$(get_checksum "$tool")"
+    local -a am_installer_runner=()
+    if [[ "$DRY_RUN" == true ]]; then
+        log_item skip "MCP Agent Mail" "dry-run: verify release/install evidence + reconcile service"
+        return 0
+    elif update_tool_hold_details "$tool"; then
+        log_item skip "MCP Agent Mail" "HELD: $UPDATE_LAST_HOLD_DETAILS"
+        update_note_held_tool "$tool"
+        return 0
+    elif [[ "$minisign_ready" != true ]]; then
+        log_item fail "MCP Agent Mail" "$(update_minisign_missing_details)"
+        return 0
+    elif ! update_verified_installer_runner am_installer_runner; then
+        log_item fail "MCP Agent Mail" "cannot enforce verified installer deadline"
+        return 0
+    elif [[ -z "$url" || -z "$expected_sha256" ]]; then
+        log_item fail "MCP Agent Mail" "unknown installer URL/checksum"
+        return 0
+    fi
+
+    local target_user="" target_home="" target_context_error=""
+    target_user="$(update_target_user 2>/dev/null || true)"
+    if [[ -z "$target_user" ]]; then
+        target_context_error="unable to resolve target user"
+    else
+        target_home="$(update_target_home "$target_user" 2>/dev/null || true)"
+        if [[ -z "$target_home" || "$target_home" != /* || "$target_home" == / ]]; then
+            target_context_error="unable to resolve target home for '$target_user'"
+        fi
+    fi
+    if [[ -n "$target_context_error" ]]; then
+        update_finish_cmd_fail "MCP Agent Mail" "$target_context_error"
+        return 0
+    fi
+
+    local -a am_release=() am_release_args=()
+    local -a am_files=("$target_home/mcp_agent_mail/am" "$target_home/mcp_agent_mail/mcp-agent-mail")
+    local am_current=false
+    if update_agent_mail_release_contract am_release "$url" "$expected_sha256"; then
+        # Resolve once and constrain the upstream installer to those exact
+        # archive bytes; a latest-release race cannot mint a false receipt.
+        am_release_args=(--version "${am_release[1]}" --artifact-url "${am_release[2]}" --checksum "${am_release[3]}")
+        # An interrupted upstream binary transaction must be recovered under
+        # its own lock, even if today's payload hashes happen to match.
+        local am_test_shell="" am_transaction_clear=false
+        am_test_shell="$(update_system_binary_path sh 2>/dev/null || true)"
+        if [[ -n "$am_test_shell" ]] && update_run_in_target_context "" "$am_test_shell" -c \
+            'test ! -e "$1" && test ! -L "$1"' acfs-am-transaction \
+            "$target_home/mcp_agent_mail/.mcp-agent-mail-install-transaction.active"; then
+            am_transaction_clear=true
+        fi
+        if [[ "$FORCE_MODE" != true && "$am_transaction_clear" == true ]] \
+            && update_release_receipt match "$tool" "${am_release[0]}" "${am_files[@]}"; then
+            am_current=true
+            log_to_file "MCP Agent Mail installation already verified at ${am_release[1]}; skipping installer download and execution"
+        fi
+    fi
+    if [[ "$am_current" != true ]]; then
+        local tmp_install="" installer_chmod_bin="" am_installer_sha=""
+        tmp_install="$(update_create_target_readable_temp_file "acfs-install-am" 2>/dev/null)" || tmp_install=""
+        if [[ -z "$tmp_install" ]]; then
+            log_item fail "MCP Agent Mail" "failed to create target-readable temp file for verified installer"
+            return 0
+        fi
+        if ! verify_checksum "$url" "$expected_sha256" "$tool" > "$tmp_install"; then
+            rm -f -- "$tmp_install"
+            log_item fail "MCP Agent Mail" "verification failed"
+            return 0
+        fi
+        installer_chmod_bin="$(update_system_binary_path chmod 2>/dev/null || true)"
+        if [[ -z "$installer_chmod_bin" ]] || ! "$installer_chmod_bin" 0755 "$tmp_install"; then
+            rm -f -- "$tmp_install"
+            update_finish_cmd_fail "MCP Agent Mail" "failed to make verified installer executable"
+            return 0
+        fi
+        # Verification may refresh the approved pin. Bind evidence only to the
+        # exact reviewed bytes actually executed, never a stale expected SHA.
+        am_installer_sha="$(update_sha256_file "$tmp_install" 2>/dev/null || true)"
+        update_release_receipt invalidate "$tool" '{}' >/dev/null 2>&1 || true
+        log_item run "MCP Agent Mail"
+        local am_installer_env=$'AM_INSTALL_SKIP_MCP_SETUP=1\nAM_INSTALL_SKIP_REMOTE_HTTP_READINESS=1'
+        local am_installer_tmpdir="" am_installer_rc=0
+        am_installer_tmpdir="$(update_private_installer_tmpdir "$tool" "$am_installer_env")"
+        [[ -z "$am_installer_tmpdir" ]] || am_installer_env+=$'\n'"TMPDIR=$am_installer_tmpdir"
+        # We already decided to install. Upstream --force suppresses its
+        # informational probes of the old binaries, which may be corrupted;
+        # it never disables release checksum/signature verification.
+        update_run_logged_passthrough update_run_in_target_context "$am_installer_env" \
+            "${am_installer_runner[@]}" "$tmp_install" --dest "$target_home/mcp_agent_mail" --yes --no-service --force \
+            "${am_release_args[@]}" </dev/null || am_installer_rc=$?
+        rm -f -- "$tmp_install"
+        if [[ -n "$am_installer_tmpdir" ]]; then
+            update_remove_target_installer_tmpdir "$tool" "$am_installer_tmpdir" || true
+        fi
+        if [[ "$am_installer_rc" -ne 0 ]]; then
+            log_item fail "MCP Agent Mail" "installer failed (exit $am_installer_rc)"
+            return 0
+        fi
+        if [[ ${#am_release[@]} -gt 0 && "$am_installer_sha" == "$expected_sha256" \
+              && "${KNOWN_INSTALLERS[$tool]:-}" == "$url" && "$(get_checksum "$tool")" == "$expected_sha256" ]]; then
+            local cli_version="" server_version=""
+            if cli_version="$(update_run_smoke_probe "${am_files[0]}" --version)" \
+                && server_version="$(update_run_smoke_probe "${am_files[1]}" --version)" \
+                && [[ "$cli_version" == "am ${am_release[1]#v}" \
+                   && "$server_version" == "mcp-agent-mail ${am_release[1]#v}" ]] \
+                && update_release_receipt write "$tool" "${am_release[0]}" "${am_files[@]}"; then
+                log_to_file "Recorded verified Agent Mail release/install evidence for ${am_release[1]}"
+            else
+                log_to_file "Agent Mail install evidence unavailable; next update will reverify through the installer"
+            fi
+        fi
+    fi
+
+    local am_service_rc=1
+    if update_source_stack_lib; then
+        ACFS_STACK_TRUST_TARGET_HOME=true TARGET_USER="$target_user" TARGET_HOME="$target_home" \
+            _stack_repair_agent_mail_cli_symlink >/dev/null 2>&1 || true
+        am_service_rc=0
+        ACFS_STACK_TRUST_TARGET_HOME=true TARGET_USER="$target_user" TARGET_HOME="$target_home" \
+            _stack_configure_agent_mail_service || am_service_rc=$?
+    fi
+    if [[ "$am_service_rc" -eq 75 ]]; then
+        # Explicit local service opt-out remains a success, including on a
+        # payload no-op. A per-tool hold above suppresses BOTH operations.
+        update_finish_cmd_ok "MCP Agent Mail" "service skipped: local opt-out"
+    elif [[ "$am_service_rc" -eq 0 ]] && \
+        ACFS_STACK_TRUST_TARGET_HOME=true TARGET_USER="$target_user" TARGET_HOME="$target_home" _stack_wait_for_agent_mail_health; then
+        if [[ "$am_current" == true ]]; then
+            log_item skip "MCP Agent Mail" "already ${am_release[1]}; signed release and installed payload verified; service reconciled"
+        else
+            update_finish_cmd_ok "MCP Agent Mail"
+        fi
+    else
+        update_finish_cmd_fail "MCP Agent Mail" "service setup/readiness failed"
+    fi
+}
+
 update_stack() {
     if [[ "$UPDATE_STACK" != "true" ]]; then
         return 0
@@ -8218,126 +8830,9 @@ update_stack() {
     local minisign_ready=true
     update_ensure_minisign || minisign_ready=false
 
-    # MCP Agent Mail - always install/update via non-blocking installer mode,
-    # then enable the managed user service on port 8765.
-    local tool="mcp_agent_mail"
-    local url="${KNOWN_INSTALLERS[$tool]:-}"
-    local expected_sha256
-    expected_sha256="$(get_checksum "$tool")"
-    local -a am_installer_runner=()
-
-    if [[ "$DRY_RUN" == "true" ]]; then
-        log_item "skip" "MCP Agent Mail" "dry-run: verified install + service refresh"
-    elif update_tool_hold_details "$tool"; then
-        # Per-tool hold (issues #357, #377): this custom path bypasses the
-        # shared verified-installer wrapper, so honor the hold here, before
-        # any download or service action, and count it as a deliberate skip.
-        log_item "skip" "MCP Agent Mail" "HELD: $UPDATE_LAST_HOLD_DETAILS"
-        update_note_held_tool "$tool"
-    elif [[ "$minisign_ready" != "true" ]]; then
-        log_item "fail" "MCP Agent Mail" "$(update_minisign_missing_details)"
-    elif ! update_verified_installer_runner am_installer_runner; then
-        log_item "fail" "MCP Agent Mail" "cannot enforce verified installer deadline"
-    elif [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
-        local tmp_install
-        tmp_install="$(update_create_target_readable_temp_file "acfs-install-am" 2>/dev/null)" || tmp_install=""
-        if [[ -z "$tmp_install" ]]; then
-            log_item "fail" "MCP Agent Mail" "failed to create target-readable temp file for verified installer"
-        else
-            if verify_checksum "$url" "$expected_sha256" "$tool" > "$tmp_install"; then
-                local installer_chmod_bin=""
-                installer_chmod_bin="$(update_system_binary_path chmod 2>/dev/null || true)"
-                if [[ -z "$installer_chmod_bin" ]] || ! "$installer_chmod_bin" 0755 "$tmp_install"; then
-                    rm -f "$tmp_install" 2>/dev/null || true
-                    tmp_install=""
-                    update_finish_cmd_fail "MCP Agent Mail" "failed to make verified installer executable"
-                else
-                    log_item "run" "MCP Agent Mail"
-
-                    # Use --dest and exact target dir just like the manifest
-                    local target_user=""
-                    local target_home=""
-                    local target_context_error=""
-                    target_user="$(update_target_user 2>/dev/null || true)"
-                    if [[ -z "$target_user" ]]; then
-                        target_context_error="unable to resolve target user"
-                    else
-                        target_home="$(update_target_home "$target_user" 2>/dev/null || true)"
-                        if [[ -z "$target_home" || "$target_home" != /* || "$target_home" == "/" ]]; then
-                            target_context_error="unable to resolve target home for '$target_user'"
-                        fi
-                    fi
-
-                    # Like every verified installer, Agent Mail's gets a private
-                    # TMPDIR that is removed once it returns (#451).
-                    local am_installer_env=$'AM_INSTALL_SKIP_MCP_SETUP=1\nAM_INSTALL_SKIP_REMOTE_HTTP_READINESS=1'
-                    local am_installer_tmpdir=""
-                    local am_installer_rc=0
-                    if [[ -z "$target_context_error" ]]; then
-                        am_installer_tmpdir="$(update_private_installer_tmpdir "$tool" "$am_installer_env")"
-                        [[ -z "$am_installer_tmpdir" ]] || am_installer_env+=$'\n'"TMPDIR=$am_installer_tmpdir"
-                        update_run_logged_passthrough update_run_in_target_context "$am_installer_env" \
-                            "${am_installer_runner[@]}" "$tmp_install" --dest "$target_home/mcp_agent_mail" --yes </dev/null || am_installer_rc=$?
-                        if [[ -n "$am_installer_tmpdir" ]]; then
-                            update_remove_target_installer_tmpdir "$tool" "$am_installer_tmpdir" || true
-                        fi
-                    fi
-
-                    if [[ -n "$target_context_error" ]]; then
-                        rm -f "$tmp_install" 2>/dev/null || true
-                        tmp_install=""
-                        update_finish_cmd_fail "MCP Agent Mail" "$target_context_error"
-                    elif [[ "$am_installer_rc" -eq 0 ]]; then
-                        if update_source_stack_lib; then
-                            ACFS_STACK_TRUST_TARGET_HOME=true TARGET_USER="$target_user" TARGET_HOME="$target_home" _stack_repair_agent_mail_cli_symlink >/dev/null 2>&1 || true
-                        fi
-                        am_service_rc=1
-                        if update_source_stack_lib; then
-                            am_service_rc=0
-                            ACFS_STACK_TRUST_TARGET_HOME=true TARGET_USER="$target_user" TARGET_HOME="$target_home" _stack_configure_agent_mail_service || am_service_rc=$?
-                        fi
-                        if [[ "$am_service_rc" -eq 75 ]]; then
-                            # Local opt-out (masked/disabled unit or ACFS_SKIP_AGENT_MAIL):
-                            # intentionally skipped, not a failure (#327).
-                            if [[ "$QUIET" != "true" ]] && [[ "$VERBOSE" != "true" ]]; then
-                                printf "\033[1A\033[2K  ${GREEN}[ok]${NC} %s\n" "MCP Agent Mail (service skipped: local opt-out)"
-                            elif [[ "$QUIET" != "true" ]]; then
-                                printf "  ${GREEN}[ok]${NC} %s\n" "MCP Agent Mail (service skipped: local opt-out)"
-                            fi
-                            log_to_file "Success: MCP Agent Mail (service skipped: local opt-out)"
-                            ((SUCCESS_COUNT += 1))
-                        elif [[ "$am_service_rc" -eq 0 ]] && \
-                           ACFS_STACK_TRUST_TARGET_HOME=true TARGET_USER="$target_user" TARGET_HOME="$target_home" _stack_wait_for_agent_mail_health; then
-                            if [[ "$QUIET" != "true" ]] && [[ "$VERBOSE" != "true" ]]; then
-                                printf "\033[1A\033[2K  ${GREEN}[ok]${NC} %s\n" "MCP Agent Mail"
-                            elif [[ "$QUIET" != "true" ]]; then
-                                printf "  ${GREEN}[ok]${NC} %s\n" "MCP Agent Mail"
-                            fi
-                            log_to_file "Success: MCP Agent Mail"
-                            ((SUCCESS_COUNT += 1))
-                        else
-                            rm -f "$tmp_install" 2>/dev/null || true
-                            tmp_install=""
-                            update_finish_cmd_fail "MCP Agent Mail" "service setup/readiness failed"
-                        fi
-                    else
-                        # Failure reporting may exit for --abort-on-failure;
-                        # release the downloaded script before that boundary.
-                        rm -f "$tmp_install" 2>/dev/null || true
-                        tmp_install=""
-                        log_item "fail" "MCP Agent Mail" "installer failed (exit $am_installer_rc)"
-                    fi
-                fi
-
-                [[ -n "$tmp_install" ]] && rm -f "$tmp_install" 2>/dev/null || true
-            else
-                rm -f "$tmp_install"
-                log_item "fail" "MCP Agent Mail" "verification failed"
-            fi
-        fi
-    else
-        log_item "fail" "MCP Agent Mail" "unknown installer URL/checksum"
-    fi
+    # Verify release/install evidence before downloading an unchanged Agent
+    # Mail installer; always reconcile its managed service after a payload no-op.
+    update_agent_mail "$minisign_ready"
 
     # Meta Skill (ms) - always install/update (installer is idempotent)
     update_run_verified_installer_or_existing_on_transient "Meta Skill" ms ms ms --easy-mode || true
@@ -8480,13 +8975,7 @@ update_stack() {
 
     # Agent Settings Backup (asb) - update when installed, or install with --force
     if update_binary_exists asb || [[ "$FORCE_MODE" == "true" ]]; then
-        capture_version_before "asb"
-        run_cmd "ASB" update_run_verified_installer asb
-        if capture_version_after "asb"; then
-            update_say "       ${DIM}%s → %s${NC}\n" "${VERSION_BEFORE[asb]}" "${VERSION_AFTER[asb]}"
-        else
-            log_to_file "ASB already up to date: ${VERSION_AFTER[asb]:-${VERSION_BEFORE[asb]:-unknown}}"
-        fi
+        run_cmd "ASB" update_run_asb_installer
     fi
 
     # Post-Compact Reminder (pcr) - only update when Claude Code is installed
