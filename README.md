@@ -3099,6 +3099,27 @@ scripts/templates/acfs-checksum-monitor.* # timer + service templates
 4. **Build and validate offline**: Uses the complete first observation to construct the candidate, without downloading installers a second time. Selects trusted-owner mismatches and exactly the authorized external tools; every deferred external pin stays unchanged. The validator checks the exact selected mismatch set, unchanged URLs and unchanged unselected pins. Its default, without explicit selection, still requires all observed mismatches. A changing external endpoint therefore cannot invalidate trusted publication through a second fetch. If issue delivery fails, the bound evidence stays in local state with a warning; approved external changes still require recorded review before mutation.
 5. **Generate and publish**: Places the validated candidate, regenerates its installer ledger and web metadata, checks the complete generated contract, and commits only the declared publication paths. Rechecks retained evidence and selected authorization after remote probes, immediately before commit and push, and before accepting remote readback. Pushes both compatibility refs atomically and reads them back before recording the result. Pending external review reports `result=deferred state=DEFERRED`, including after an approved subset publishes, and leaves the deferred review open. An accepted run with no pending review records `HEALTHY`. Authorization is consumed only after accepted external publication.
 
+#### Canonical service bootstrap
+
+Before launching the monitor, the installed service checks tracked and staged
+cleanliness and fetches canonical `main` using the explicit repository URL.
+Local `HEAD` must be an ancestor of the fetched commit before the existing
+hook-disabled, fast-forward-only merge. A second check requires `HEAD` to equal
+the fetched commit exactly after the merge; either failed commit lookup stops
+execution. These checks run through fixed system executables without calling
+a helper from the rejected checkout.
+
+The ancestry check matters because `git merge --ff-only` alone succeeds when a
+clean local checkout is already ahead of canonical `main`. Exact and behind
+histories remain usable; local-ahead, divergent, and tracked-dirty histories
+stop before the monitor starts, preserving their checkout and evidence.
+
+The service template is installed separately from the monitor checkout.
+Updating this repository does not replace an existing user unit: the operator
+must install the reviewed template and reload the user service manager to adopt
+the bootstrap checks. This does not repair an unsafe state directory or bypass
+the monitor's verification and authorization requirements.
+
 #### Interrupted runs and failure accounting
 
 After acquiring the monitor lock, the process accounts for unhandled exits and

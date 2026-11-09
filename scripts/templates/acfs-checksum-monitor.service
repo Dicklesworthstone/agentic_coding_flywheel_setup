@@ -23,7 +23,12 @@ Environment=PATH=%h/.bun/bin:%h/.local/bin:%h/.cargo/bin:/usr/local/bin:/usr/bin
 ExecStartPre=/usr/bin/git -C %h/acfs-monitor diff --quiet --exit-code --
 ExecStartPre=/usr/bin/git -C %h/acfs-monitor diff --cached --quiet --exit-code --
 ExecStartPre=/usr/bin/git -C %h/acfs-monitor fetch --quiet --no-tags --recurse-submodules=no https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup.git +refs/heads/main:refs/remotes/acfs-bootstrap/main
+# --ff-only alone accepts an already-ahead local history. Refuse local commits
+# before executing checkout code, then require the merged HEAD to be the exact
+# fetched commit. The second check also catches changes between these steps.
+ExecStartPre=/usr/bin/git -C %h/acfs-monitor merge-base --is-ancestor HEAD refs/remotes/acfs-bootstrap/main
 ExecStartPre=/usr/bin/git -C %h/acfs-monitor -c core.hooksPath=/dev/null merge --ff-only --quiet refs/remotes/acfs-bootstrap/main
+ExecStartPre=/usr/bin/env -i HOME=%h PATH=/usr/bin:/bin /usr/bin/bash --noprofile --norc -c 'set -eu; bootstrap_head=$$(/usr/bin/git -C "$$1" rev-parse --verify HEAD^{commit}); bootstrap_expected=$$(/usr/bin/git -C "$$1" rev-parse --verify refs/remotes/acfs-bootstrap/main^{commit}); test "$$bootstrap_head" = "$$bootstrap_expected"' acfs-bootstrap %h/acfs-monitor
 ExecStart=%h/acfs-monitor/scripts/checksum-monitor-local.sh
 
 # A full verify + regenerate cycle is minutes, not hours.
