@@ -11,7 +11,7 @@ ACFS_INTERNAL_CHECKSUMS_SCHEMA=1
 
 declare -gA ACFS_INTERNAL_CHECKSUMS=(
   [install.sh]="4c5bf2400fdc9dc0cb31d35170ebcb315ce78c1f165e6da25b53a9c8b4f1c1d9"
-  [checksums.yaml]="b118406be6d35ecf431b0110d0f335bb0661ef1670315b3d7f90eb493136e0a4"
+  [checksums.yaml]="1456a14dd4dd548a59ce665ce147021dbfb6260d0558da5c081a206eace0b861"
   [scripts/preflight.sh]="76e6768d16238317e67f7c0ba38abf5e7440b9d4f76bfd28b5c07b7f007d247e"
   [scripts/lib/security.sh]="808f9123087b2449b2376198cd05338b5ebf168be673bf05e09a0c772b7a546e"
   [scripts/lib/holds.sh]="8f303cd51b5bfd75059ab1d01448e1c01bd31d3005dd6bb4352fc96dc3c29377"
