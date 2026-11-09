@@ -12,9 +12,9 @@
 # are identical. Verification is bound to the exact checksums.yaml bytes it
 # observed. Candidates are built offline from that report and security.sh
 # proves they apply exactly the selected observations. External-owner changes
-# additionally require a human authorization digest before repository bytes
-# are mutated; until then they stay at their current pins (deferred) while
-# trusted-owner changes still publish. Publication is a closed-path commit
+# and owner URLs without proven direct transport require human authorization
+# before repository bytes are mutated; until then they stay at their current
+# pins (deferred) while proven trusted-owner changes publish. Publication is a closed-path commit
 # pushed to both refs in one atomic transaction and re-read from the remote
 # before health is recorded.
 # Every observation retains its decoded body, original content-coded response
@@ -1463,6 +1463,161 @@ is_trusted_installer_url() {
     esac
 }
 
+# Automatic owner trust also needs a complete, direct HTTP observation. A
+# retained redirect chain does not inherit the original URL owner, and a
+# reason phrase cannot prove a proxy CONNECT exchange. Unsupported intact
+# response syntax requires human review; damaged evidence remains an error.
+retained_header_transport_reason() {
+    local headers="$1" expected_size="$2"
+    local -a pipeline_status=(0 0)
+    [[ "$expected_size" =~ ^[0-9]+$ ]] && (( expected_size > 0 && expected_size <= 1048576 )) || return 2
+    # Bound the actual read, including a concurrently growing file. Capture
+    # both statuses so a reader failure cannot become reviewable syntax.
+    if head -c 1048577 -- "$headers" | LC_ALL=C awk -v expected_size="$expected_size" '
+        BEGIN { RS = sprintf("%c", 0); invalid = 0; redirected = 0 }
+        {
+            # The supplied byte count detects a NUL separator, including a
+            # final NUL, without passing response bytes through shell strings.
+            if (NR != 1 || length($0) != expected_size) { invalid = 1; next }
+            raw = $0
+            if (substr(raw, length(raw) - 3) != "\r\n\r\n" &&
+                substr(raw, length(raw) - 1) != "\n\n") { invalid = 1; next }
+            count = split(raw, lines, "\n")
+            in_block = 0; blocks = 0; final_response = 0
+            for (i = 1; i < count; i++) {
+                line = lines[i]
+                sub(/\r$/, "", line)
+                if (length(line) > 16384 || index(line, "\r") ||
+                    line ~ /[\001-\010\013\014\016-\037\177]/) {
+                    invalid = 1
+                    continue
+                }
+                if (!in_block) {
+                    if (line !~ /^HTTP\/(1\.[01]|2|3) [0-9][0-9][0-9]( .*)?$/) {
+                        invalid = 1
+                        continue
+                    }
+                    split(line, status_parts, " ")
+                    code = status_parts[2] + 0
+                    blocks++
+                    if (blocks > 64) invalid = 1
+                    proxy_shaped = (tolower(line) == "http/1.0 200 connection established" ||
+                                    tolower(line) == "http/1.1 200 connection established")
+                    if (code >= 300 && code <= 399) {
+                        redirected = 1
+                    } else if (code == 100 || code == 102 || code == 103) {
+                        if (final_response) invalid = 1
+                    } else if (code == 200) {
+                        if (final_response) invalid = 1
+                        final_response++
+                        if (proxy_shaped) invalid = 1
+                    } else {
+                        invalid = 1
+                    }
+                    in_block = 1
+                } else if (line == "") {
+                    in_block = 0
+                } else if (line !~ /^[!#$%&\047*+.^_`|~0-9A-Za-z-]+:/) {
+                    # Folds and ambiguous fields cannot prove direct transport.
+                    invalid = 1
+                }
+            }
+            if (in_block || final_response != 1) invalid = 1
+        }
+        END {
+            if (NR != 1) invalid = 1
+            if (redirected) { print "redirected_response"; exit 1 }
+            if (invalid) { print "unproven_response"; exit 1 }
+            print "direct_response"
+        }
+    '; then
+        pipeline_status=("${PIPESTATUS[@]}")
+    else
+        pipeline_status=("${PIPESTATUS[@]}")
+    fi
+    [[ "${#pipeline_status[@]}" == 2 && "${pipeline_status[0]}" == 0 ]] || return 2
+    case "${pipeline_status[1]}" in
+        0|1) return "${pipeline_status[1]}" ;;
+        *) return 2 ;;
+    esac
+}
+
+# Return 0 for proven direct transport, 1 for intact evidence requiring
+# aggregate review, or 2 for missing, unsafe, changed or unreadable evidence.
+# No filename comes from a sidecar: policy names select fixed private paths.
+trusted_observation_transport_reason() {
+    local name="$1" url="$2" observation="" headers="" header_digest=""
+    local index_before="" index_after="" header_before="" header_after="" header_size=""
+    local snapshot="" snapshot_before="" snapshot_after="" reason="" parser_status=0
+    [[ "$name" =~ ^[a-z][a-z0-9_]*$ && "$DOWNLOAD_EVIDENCE_INDEX_SHA256" =~ ^[0-9a-f]{64}$ ]] || return 2
+    is_trusted_installer_url "$url" || return 2
+    [[ "$DOWNLOAD_EVIDENCE_ROOT" == "$DOWNLOAD_EVIDENCE_RUN_DIR"/acfs-observations.* &&
+       "${DOWNLOAD_EVIDENCE_ROOT#"$DOWNLOAD_EVIDENCE_RUN_DIR"/}" != */* &&
+       "$DOWNLOAD_EVIDENCE_INDEX_FILE" == "$DOWNLOAD_EVIDENCE_RUN_DIR"/evidence-index.*.json &&
+       "${DOWNLOAD_EVIDENCE_INDEX_FILE#"$DOWNLOAD_EVIDENCE_RUN_DIR"/}" != */* ]] || return 2
+    observation="$DOWNLOAD_EVIDENCE_ROOT/$name"
+    headers="$observation/body.headers"
+    private_download_evidence_path "$DOWNLOAD_EVIDENCE_RUN_DIR" directory &&
+        private_download_evidence_path "$DOWNLOAD_EVIDENCE_ROOT" directory &&
+        private_download_evidence_path "$observation" directory &&
+        private_download_evidence_path "$DOWNLOAD_EVIDENCE_INDEX_FILE" file 1048576 &&
+        private_download_evidence_path "$headers" file 1048576 || return 2
+    index_before="$(stat -c '%s:%u:%a:%h:%d:%i:%y:%z' -- "$DOWNLOAD_EVIDENCE_INDEX_FILE" 2>/dev/null)" || return 2
+    [[ "$(sha256_file "$DOWNLOAD_EVIDENCE_INDEX_FILE")" == "$DOWNLOAD_EVIDENCE_INDEX_SHA256" ]] || return 2
+    header_digest="$(jq -er --arg name "$name" --arg url "$url" \
+        --arg report "$VERIFICATION_REPORT_SHA256" --arg policy "$CURRENT_CHECKSUMS_SHA256" '
+        select(.schema == "acfs.installer-download-evidence-index.v1" and
+               .verificationReportSha256 == $report and .checksumsYamlSha256 == $policy)
+        | [.observations[] | select(.name == $name and .url == $url)]
+        | select(length == 1) | .[0].headersSha256
+        | select(type == "string" and test("^[0-9a-f]{64}$"))
+    ' "$DOWNLOAD_EVIDENCE_INDEX_FILE" 2>/dev/null)" || return 2
+    [[ "$header_digest" =~ ^[0-9a-f]{64}$ ]] || return 2
+    header_before="$(stat -c '%s:%u:%a:%h:%d:%i:%y:%z' -- "$headers" 2>/dev/null)" || return 2
+    header_size="${header_before%%:*}"
+    [[ "$(sha256_file "$headers")" == "$header_digest" ]] || return 2
+    snapshot="$(mktemp "$DOWNLOAD_EVIDENCE_RUN_DIR/transport-headers-$name.XXXXXX")" || return 2
+    head -c 1048577 -- "$headers" > "$snapshot" || return 2
+    private_download_evidence_path "$snapshot" file 1048576 &&
+        [[ "$(sha256_file "$snapshot")" == "$header_digest" ]] || return 2
+    snapshot_before="$(stat -c '%s:%u:%a:%h:%d:%i:%y:%z' -- "$snapshot" 2>/dev/null)" || return 2
+    [[ "${snapshot_before%%:*}" == "$header_size" ]] || return 2
+    if reason="$(retained_header_transport_reason "$snapshot" "$header_size")"; then
+        parser_status=0
+    else
+        parser_status=$?
+    fi
+    private_download_evidence_path "$DOWNLOAD_EVIDENCE_RUN_DIR" directory &&
+        private_download_evidence_path "$DOWNLOAD_EVIDENCE_ROOT" directory &&
+        private_download_evidence_path "$observation" directory &&
+        private_download_evidence_path "$DOWNLOAD_EVIDENCE_INDEX_FILE" file 1048576 &&
+        private_download_evidence_path "$headers" file 1048576 &&
+        private_download_evidence_path "$snapshot" file 1048576 || return 2
+    [[ "$(sha256_file "$headers")" == "$header_digest" &&
+       "$(sha256_file "$snapshot")" == "$header_digest" &&
+       "$(sha256_file "$DOWNLOAD_EVIDENCE_INDEX_FILE")" == "$DOWNLOAD_EVIDENCE_INDEX_SHA256" ]] || return 2
+    header_after="$(stat -c '%s:%u:%a:%h:%d:%i:%y:%z' -- "$headers" 2>/dev/null)" || return 2
+    index_after="$(stat -c '%s:%u:%a:%h:%d:%i:%y:%z' -- "$DOWNLOAD_EVIDENCE_INDEX_FILE" 2>/dev/null)" || return 2
+    snapshot_after="$(stat -c '%s:%u:%a:%h:%d:%i:%y:%z' -- "$snapshot" 2>/dev/null)" || return 2
+    [[ "$header_before" == "$header_after" && "$index_before" == "$index_after" &&
+       "$snapshot_before" == "$snapshot_after" ]] || return 2
+    case "$parser_status:$reason" in
+        0:direct_response|1:redirected_response|1:unproven_response) ;;
+        *) return 2 ;;
+    esac
+    # curl expands these characters before HTTP and can normalize an expanded
+    # dot segment outside the owner path without emitting a redirect block.
+    # Demote only after binding checks: ambiguous URLs do not excuse lost evidence.
+    case "$url" in
+        *'{'*|*'}'*|*'['*|*']'*) printf '%s\n' ambiguous_request_url; return 1 ;;
+    esac
+    printf '%s\n' "$reason"
+    return "$parser_status"
+}
+
+declare -a TRANSPORT_REVIEW_CHANGED=()
+declare -A TRANSPORT_REVIEW_REASONS=()
+
 # sha256 of the external mismatch evidence (name, url, expected, actual) only.
 # Trusted repins and unrelated commits leave a pending authorization valid;
 # changes to the external bytes themselves yield a new digest.
@@ -1595,7 +1750,7 @@ require_selected_external_authorization() {
 
 record_external_review() {
     local report="$1" digest="$2" authorization_status="$3"
-    local body_file="" existing="" external_names_json="[]" external_evidence="" repo_slug=""
+    local body_file="" existing="" external_names_json="[]" external_evidence="" repo_slug="" name=""
     local review_scope="aggregate" issue_candidates=""
     if [[ "${authorization_mode:-aggregate}" == subset ]]; then
         review_scope="subset"
@@ -1610,7 +1765,7 @@ record_external_review() {
     ' "$report")" || return 1
     {
         printf '## External installer checksum authorization\n\n'
-        printf 'This monitor observed installer bytes outside the exact trusted owner boundary.\n\n'
+        printf 'This monitor observed installer bytes that require human authorization.\n\n'
         printf -- '- Authorization digest: `%s`\n' "$digest"
         printf -- '- Authorization status: `%s`\n' "$authorization_status"
         printf -- '- Authorization scope: `%s`\n' "$review_scope"
@@ -1625,6 +1780,14 @@ record_external_review() {
         printf 'Exact first-observation bodies, raw responses and redirect headers are retained privately on the monitor host.\n\n'
         printf '### First-observation evidence\n\n'
         printf '%s\n' "$external_evidence"
+        if (( ${#TRANSPORT_REVIEW_CHANGED[@]} > 0 )); then
+            printf '\n### Owner-URL observations requiring aggregate review\n\n'
+            for name in "${TRANSPORT_REVIEW_CHANGED[@]}"; do
+                printf -- '- `%s`: `%s`\n' "$name" "${TRANSPORT_REVIEW_REASONS[$name]}"
+            done
+            printf '\nThese original-owner URLs did not prove a direct trusted observation. Redirect targets and proxy identity are not inferred from response text.\n\n'
+            printf 'The subset review command intentionally rejects original-owner names. To authorize these observations, review the entire pending external set and use aggregate digest `%s`; ordinary external subsets leave these tools deferred.\n' "$aggregate_authorization_digest"
+        fi
         printf '\n### Human authorization\n\n'
         printf 'After reviewing the upstream bytes, place exactly this line in `%s` as an owner-only, non-symlink file:\n\n' "$(public_text "$AUTHORIZATION_FILE")"
         if [[ "${authorization_mode:-aggregate}" == subset ]]; then
@@ -1687,18 +1850,34 @@ record_external_review() {
 # Called only after the complete report is validated against the clean base.
 # Keep its original mismatch partition intact while selecting what may publish.
 prepare_checksum_candidate() {
-    local report="$1" mismatch_rows="" name="" url=""
+    local report="$1" mismatch_rows="" name="" url="" transport_reason="" transport_status=0
     local -a deferred_names=()
     local -A selected_names=()
     TRUSTED_CHANGED=()
     EXTERNAL_CHANGED=()
     SELECTED_EXTERNAL_CHANGED=()
+    TRANSPORT_REVIEW_CHANGED=()
+    TRANSPORT_REVIEW_REASONS=()
     mismatch_rows="$(jq -r '.mismatches[] | [.name, .url] | @tsv' "$report")" \
         || fail_closed "could not classify validated checksum mismatches"
     while IFS=$'\t' read -r name url; do
         [[ -n "$name" ]] || continue
         if is_trusted_installer_url "$url"; then
-            TRUSTED_CHANGED+=("$name")
+            if transport_reason="$(trusted_observation_transport_reason "$name" "$url")"; then
+                TRUSTED_CHANGED+=("$name")
+            else
+                transport_status=$?
+                [[ "$transport_status" == 1 ]] \
+                    || fail_closed "trusted-owner transport evidence is missing, unsafe, changed, or unreadable"
+                case "$transport_reason" in
+                    redirected_response|unproven_response|ambiguous_request_url) ;;
+                    *) fail_closed "trusted-owner transport classification violated its fixed result contract" ;;
+                esac
+                EXTERNAL_CHANGED+=("$name")
+                TRANSPORT_REVIEW_CHANGED+=("$name")
+                TRANSPORT_REVIEW_REASONS["$name"]="$transport_reason"
+                log "trusted-owner transport requires aggregate review: tool=$name reason=$transport_reason"
+            fi
         else
             EXTERNAL_CHANGED+=("$name")
         fi

@@ -3058,6 +3058,24 @@ printf 'PASS: checksum monitor accepts newer same-major Bun and deduplicates fai
         mismatches:[.[] | select(.actual != .expected)], errors:[], skipped:[]
     }' "$STATE_DIR/observations.jsonl" > "$report"
     VERIFICATION_REPORT_SHA256="$(sha256_file "$report")"
+    # This selector fixture supplies the bound direct header proof it uses.
+    # Complete producer/body/index validation is exercised separately by the
+    # transport regression fixtures below; these pins remain digest fixtures.
+    DOWNLOAD_EVIDENCE_RUN_DIR="$(mktemp -d "$STATE_DIR/selector-downloads.XXXXXX")"
+    DOWNLOAD_EVIDENCE_ROOT="$(mktemp -d "$DOWNLOAD_EVIDENCE_RUN_DIR/acfs-observations.XXXXXX")"
+    mkdir -m 700 "$DOWNLOAD_EVIDENCE_ROOT/br"
+    ( umask 077; printf 'HTTP/2 200\r\nContent-Type: text/plain\r\n\r\n' > "$DOWNLOAD_EVIDENCE_ROOT/br/body.headers" )
+    selector_headers_sha="$(sha256_file "$DOWNLOAD_EVIDENCE_ROOT/br/body.headers")"
+    DOWNLOAD_EVIDENCE_INDEX_FILE="$(mktemp "$DOWNLOAD_EVIDENCE_RUN_DIR/evidence-index.XXXXXX.json")"
+    jq -c --arg policy "$CURRENT_CHECKSUMS_SHA256" --arg report "$VERIFICATION_REPORT_SHA256" \
+        --arg headers "$selector_headers_sha" '
+        {schema:"acfs.installer-download-evidence-index.v1",verificationReportSha256:$report,
+         checksumsYamlSha256:$policy,observations:
+          (([.matches[] | {name,url,expected:.checksum,actual:.checksum}] + .mismatches) |
+           sort_by(.name) | map(. + {schema:"acfs.installer-download-evidence.v1",status:"observed",
+                                   bodySha256:.actual,wireSha256:.actual,headersSha256:$headers}))}
+    ' "$report" > "$DOWNLOAD_EVIDENCE_INDEX_FILE"
+    DOWNLOAD_EVIDENCE_INDEX_SHA256="$(sha256_file "$DOWNLOAD_EVIDENCE_INDEX_FILE")"
     mismatches=2
     external_deferred=false
     authorization_consumed=false
@@ -3222,3 +3240,297 @@ printf 'PASS: checksum monitor accepts newer same-major Bun and deduplicates fai
     fi
 ) || exit 1
 [[ "$numeric_failures" == 0 ]] || exit 1
+
+# BEGIN MONITOR_TRANSPORT_REGRESSIONS
+# Parser fixtures are bounded inert bytes. The selection cases below reuse
+# two actual complete producer reports, with only network transport replaced.
+(
+    set -euo pipefail
+    export ACFS_MONITOR_STATE="$STATE_TMP/transport-parser-state"
+    export ACFS_MONITOR_REPO="$STATE_TMP/transport-unused"
+    unset ACFS_NTFY_TOPIC
+    ACFS_MONITOR_LIBRARY_ONLY=1
+    # shellcheck source=../checksum-monitor-local.sh
+    source "$MONITOR"
+    transport_root="$STATE_TMP/transport"
+    mkdir -m 700 "$transport_root"
+    header_case() {
+        local name="$1" expected_status="$2" expected_reason="$3" content="$4" status=0 result="" file=""
+        file="$transport_root/$name.headers"
+        ( umask 077; printf '%b' "$content" > "$file" )
+        if result="$(retained_header_transport_reason "$file" "$(stat -c '%s' "$file")")"; then status=0; else status=$?; fi
+        [[ "$status" == "$expected_status" && "$result" == "$expected_reason" ]] \
+            || fail "unexpected transport parser result: $name status=$status reason=$result"
+    }
+    direct_headers='HTTP/2 200\r\nContent-Type: text/plain\r\n\r\n'
+    header_case direct-h2 0 direct_response "$direct_headers"
+    header_case direct-h1 0 direct_response 'HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n'
+    header_case direct-h3-lf 0 direct_response 'HTTP/3 200\nContent-Type: text/plain\n\n'
+    header_case informational 0 direct_response 'HTTP/2 100\r\n\r\nHTTP/2 102\r\n\r\nHTTP/2 103\r\nLink: </fixture>\r\n\r\nHTTP/2 200\r\n\r\n'
+    header_case direct-location-field 0 direct_response 'HTTP/2 200\r\nLocation: https://example.invalid/unused\r\n\r\n'
+    header_case external-redirect 1 redirected_response 'HTTP/2 302\r\nLocation: https://example.invalid/private-target\r\n\r\nHTTP/2 200\r\n\r\n'
+    header_case same-owner-redirect 1 redirected_response 'HTTP/2 301\r\nLocation: https://raw.githubusercontent.com/Dicklesworthstone/other/main/install.sh\r\n\r\nHTTP/2 200\r\n\r\n'
+    header_case relative-redirect 1 redirected_response 'HTTP/2 307\r\nLocation: /other/body\r\n\r\nHTTP/2 200\r\n\r\n'
+    header_case proxy-shaped 1 unproven_response 'HTTP/1.1 200 Connection established\r\n\r\nHTTP/2 200\r\n\r\n'
+    header_case proxy-only 1 unproven_response 'HTTP/1.1 200 Connection established\r\n\r\n'
+    header_case repeated-final 1 unproven_response "$direct_headers$direct_headers"
+    header_case partial-response 1 unproven_response 'HTTP/2 206\r\n\r\n'
+    header_case switching-protocols 1 unproven_response 'HTTP/1.1 101 Switching Protocols\r\n\r\nHTTP/2 200\r\n\r\n'
+    header_case late-informational 1 unproven_response 'HTTP/2 200\r\n\r\nHTTP/2 103\r\n\r\n'
+    header_case missing-terminator 1 unproven_response 'HTTP/2 200\r\nContent-Type: text/plain\r\n'
+    header_case missing-final-lf 1 unproven_response 'HTTP/2 200\r\n\r'
+    header_case trailing-body 1 unproven_response 'HTTP/2 200\r\n\r\nnot a header\r\n\r\n'
+    header_case nul-tail 1 unproven_response 'HTTP/2 200\r\n\r\n\000'
+    header_case nul-field 1 unproven_response 'HTTP/2 200\r\nX-Value: before\000after\r\n\r\n'
+    header_case folded-field 1 unproven_response 'HTTP/2 200\r\nX-Value: value\r\n continuation\r\n\r\n'
+    header_case status-in-field 1 unproven_response 'HTTP/2 200\r\nHTTP/2 302\r\n\r\n'
+    header_case bare-cr 1 unproven_response 'HTTP/2 200\r\nX-Value: before\rafter\r\n\r\n'
+    header_case empty 2 '' ''
+    (
+        set +o pipefail
+        head() { command head "$@"; return 71; }
+        status=0
+        retained_header_transport_reason "$transport_root/direct-h2.headers" \
+            "$(stat -c '%s' "$transport_root/direct-h2.headers")" > "$transport_root/failed-reader-output" || status=$?
+        [[ "$status" == 2 ]] || fail 'valid-looking bytes hid a failing bounded reader'
+    )
+    (
+        awk() { command cat >/dev/null; printf '%s\n' direct_response; return 72; }
+        status=0
+        retained_header_transport_reason "$transport_root/direct-h2.headers" \
+            "$(stat -c '%s' "$transport_root/direct-h2.headers")" > "$transport_root/failed-parser-output" || status=$?
+        [[ "$status" == 2 ]] || fail 'abnormal parser status became reviewable transport'
+    )
+    printf 'PASS: bounded HTTP transport parser, ambiguous chains and explicit reader/parser failures\n'
+
+    transport_seed() (
+        set -euo pipefail
+        seed_kind="$1"
+        seed="$transport_root/seed-$seed_kind"
+        mkdir -m 700 "$seed" "$seed/home" "$seed/downloads" "$seed/repo"
+        mkdir -p "$seed/repo/scripts/lib"
+        export HOME="$seed/home" TMPDIR="$seed/downloads"
+        export ACFS_MONITOR_STATE="$seed/state" ACFS_MONITOR_REPO="$seed/repo"
+        umask 077
+        printf '#!/bin/sh\n# retained match fixture; never executed\n' > "$seed/matching-body"
+        printf '#!/bin/sh\n# retained changed fixture; never executed\n' > "$seed/changed-body"
+        old_hash="$(sha256_file "$seed/matching-body")"
+        glob_url=''
+        if [[ "$seed_kind" == glob ]]; then
+            glob_url='https://raw.githubusercontent.com/Dicklesworthstone/{..}/external_fixture_owner/ntm/main/install.sh'
+        fi
+        awk -v hash="$old_hash" -v glob_url="$glob_url" '
+            /^  [a-z][a-z0-9_]*:$/ { tool = substr($0, 3, length($0) - 3) }
+            tool == "ntm" && /^    url:/ && glob_url != "" { print "    url: \"" glob_url "\""; next }
+            /^    sha256:/ { print "    sha256: \"" hash "\""; next }
+            { print }
+        ' "$REPO_ROOT/checksums.yaml" > "$seed/repo/checksums.yaml"
+        command cp "$REPO_ROOT/scripts/lib/security.sh" "$seed/repo/scripts/lib/security.sh"
+        cd "$seed/repo"
+        git -c init.templateDir= init --quiet --initial-branch=main
+        git add -- checksums.yaml scripts/lib/security.sh
+        git -c core.hooksPath=/dev/null -c user.name='Transport Fixture' \
+            -c user.email=fixture@example.invalid -c commit.gpgsign=false commit --quiet -m 'Retained transport fixture'
+        # shellcheck source=../lib/security.sh
+        source "$REPO_ROOT/scripts/lib/security.sh"
+        export ACFS_SECURITY_RETAIN_TEMP_FILES=true
+        declare -A fixture_urls=() fixture_hashes=()
+        acfs_load_checksums_strict checksums.yaml fixture_urls fixture_hashes
+        acfs_curl() {
+            local output='' headers='' url='' arg=''
+            while (( $# )); do
+                arg="$1"; shift
+                case "$arg" in
+                    -o) output="$1"; shift ;;
+                    -D) headers="$1"; shift ;;
+                    https://*) url="$arg" ;;
+                esac
+            done
+            [[ -n "$output" && -n "$headers" && -n "$url" ]] || return 2
+            if [[ "$url" == "${fixture_urls[br]}" || "$url" == "${fixture_urls[ntm]}" || "$url" == "${fixture_urls[omp]}" ]]; then
+                command cat "$seed/changed-body" > "$output" || return 2
+            else
+                command cat "$seed/matching-body" > "$output" || return 2
+            fi
+            if [[ "$url" == "${fixture_urls[ntm]}" && "$seed_kind" == redirect ]]; then
+                printf 'HTTP/2 302\r\nLocation: https://example.invalid/body?private-transport-token\r\nSet-Cookie: private-transport-cookie\r\n\r\nHTTP/2 200\r\nContent-Type: text/plain\r\n\r\n' > "$headers"
+            else
+                printf 'HTTP/2 200\r\nContent-Type: text/plain\r\n\r\n' > "$headers"
+            fi
+        }
+        report="$seed/report.json"
+        producer_status=0
+        acfs_verify_all_installers_json_from_file "$seed/repo/checksums.yaml" > "$report" || producer_status=$?
+        [[ "$producer_status" == 1 ]] || fail 'transport seed did not produce actual mismatch evidence'
+        jq -e '(.mismatches | map(.name) | sort) == ["br","ntm","omp"] and (.errors|length) == 0 and (.skipped|length) == 0' \
+            "$report" >/dev/null
+        ACFS_MONITOR_LIBRARY_ONLY=1
+        source "$MONITOR"
+        CURRENT_CHECKSUMS_SHA256="$(sha256_file checksums.yaml)"
+        VERIFICATION_REPORT_SHA256="$(sha256_file "$report")"
+        DOWNLOAD_EVIDENCE_RUN_DIR="$seed/downloads"
+        validate_verification_report "$report" "$CURRENT_CHECKSUMS_SHA256"
+        validate_download_evidence "$report" "$DOWNLOAD_EVIDENCE_RUN_DIR"
+        require_clean_tree
+    )
+    # Keep setup and positive controls unconditional, so errexit is effective.
+    transport_seed redirect > "$transport_root/seed-redirect.log" 2>&1
+    transport_seed glob > "$transport_root/seed-glob.log" 2>&1
+
+    transport_selection_case() (
+        set -euo pipefail
+        case_name="$1"
+        seed_kind=redirect
+        [[ "$case_name" != glob-* ]] || seed_kind=glob
+        case_root="$transport_root/$case_name"
+        mkdir -m 700 "$case_root" "$case_root/home"
+        command cp -a "$transport_root/seed-$seed_kind/repo" "$case_root/repo"
+        command cp -a "$transport_root/seed-$seed_kind/downloads" "$case_root/downloads"
+        command cp "$transport_root/seed-$seed_kind/report.json" "$case_root/report.json"
+        export HOME="$case_root/home" ACFS_MONITOR_STATE="$case_root/state" ACFS_MONITOR_REPO="$case_root/repo"
+        ACFS_MONITOR_LIBRARY_ONLY=1
+        source "$MONITOR"
+        cd "$case_root/repo"
+        # No issue or notification can leave the fixture. The real review
+        # formatter still writes its private proposed body for inspection.
+        run_bounded() {
+            shift
+            case "$*" in
+                'gh issue list '*) printf '[]\n' ;;
+                'gh issue create '*|'gh issue comment '*) printf '%s\n' "$*" >> "$case_root/issue-calls" ;;
+                *) fail 'unexpected transport fixture command' ;;
+            esac
+        }
+        run_clean_bounded() { shift; "$@" --retain-temp-files; }
+        _alert_fail_closed_streak() { return 0; }
+        report="$case_root/report.json"
+        verify_json="$report"
+        BASE_HEAD="$(git rev-parse HEAD)"
+        CURRENT_CHECKSUMS_SHA256="$(sha256_file checksums.yaml)"
+        VERIFICATION_REPORT_SHA256="$(sha256_file "$report")"
+        DOWNLOAD_EVIDENCE_RUN_DIR="$case_root/downloads"
+        roots=("$DOWNLOAD_EVIDENCE_RUN_DIR"/acfs-observations.*)
+        indexes=("$DOWNLOAD_EVIDENCE_RUN_DIR"/evidence-index.*.json)
+        [[ "${#roots[@]}" == 1 && "${#indexes[@]}" == 1 ]]
+        DOWNLOAD_EVIDENCE_ROOT="${roots[0]}"
+        DOWNLOAD_EVIDENCE_INDEX_FILE="${indexes[0]}"
+        DOWNLOAD_EVIDENCE_INDEX_SHA256="$(sha256_file "$DOWNLOAD_EVIDENCE_INDEX_FILE")"
+        mismatches=3
+        STATE=OBSERVED
+        ntm_url="$(jq -r '.mismatches[] | select(.name == "ntm") | .url' "$report")"
+        ntm_headers="$DOWNLOAD_EVIDENCE_ROOT/ntm/body.headers"
+        case "$case_name" in
+            redirect-subset)
+                bash scripts/lib/security.sh --review-checksum-subset checksums.yaml "$report" omp --retain-temp-files \
+                    > "$case_root/proposal.json"
+                jq -er '.authorization_line' "$case_root/proposal.json" > "$AUTHORIZATION_FILE"
+                chmod 600 "$AUTHORIZATION_FILE"
+                ;;
+            redirect-owner-subset)
+                proposal_status=0
+                bash scripts/lib/security.sh --review-checksum-subset checksums.yaml "$report" ntm --retain-temp-files \
+                    > "$case_root/rejected-proposal.json" 2> "$case_root/rejected-proposal.log" || proposal_status=$?
+                [[ "$proposal_status" != 0 ]] || fail 'subset helper authorized an original-owner name'
+                printf 'authorize-subset:%s:ntm\n' "$(external_authorization_digest "$report" ntm)" > "$AUTHORIZATION_FILE"
+                chmod 600 "$AUTHORIZATION_FILE"
+                ;;
+            redirect-old-aggregate)
+                printf 'authorize:%s\n' "$(external_authorization_digest "$report" omp)" > "$AUTHORIZATION_FILE"
+                chmod 600 "$AUTHORIZATION_FILE"
+                ;;
+            redirect-aggregate)
+                printf 'authorize:%s\n' "$(external_authorization_digest "$report" ntm omp)" > "$AUTHORIZATION_FILE"
+                chmod 600 "$AUTHORIZATION_FILE"
+                ;;
+            redirect-header-tamper|glob-header-tamper)
+                printf 'changed after binding\n' >> "$ntm_headers"
+                ;;
+            redirect-index-tamper) printf 'changed after binding\n' >> "$DOWNLOAD_EVIDENCE_INDEX_FILE" ;;
+            redirect-parser-read-failure)
+                head() {
+                    command head "$@"
+                    [[ "${*: -1}" != */transport-headers-* ]] || return 71
+                }
+                ;;
+            redirect-snapshot-tamper)
+                retained_header_transport_reason() { printf 'changed snapshot\n' >> "$1"; printf '%s\n' direct_response; }
+                ;;
+            redirect-header-replaced)
+                retained_header_transport_reason() {
+                    command mv "$ntm_headers" "$case_root/original-headers"
+                    command cp "$case_root/original-headers" "$ntm_headers"
+                    chmod 600 "$ntm_headers"
+                    printf '%s\n' direct_response
+                }
+                ;;
+            redirect-pending|glob-pending) ;;
+            *) fail 'unknown transport fixture case' ;;
+        esac
+        if [[ "$case_name" == *tamper || "$case_name" == *failure || "$case_name" == *replaced ]]; then
+            status=0
+            trusted_observation_transport_reason ntm "$ntm_url" > "$case_root/classification" || status=$?
+            [[ "$status" == 2 ]] || fail "$case_name softened damaged evidence into review"
+            if [[ "$case_name" == glob-header-tamper ]]; then
+                candidate_status=0
+                ( prepare_checksum_candidate "$report" ) > "$case_root/refusal-output" 2>&1 || candidate_status=$?
+                [[ "$candidate_status" != 0 ]] || fail 'glob demotion bypassed damaged evidence'
+                grep -q 'trusted-owner transport evidence is missing, unsafe, changed, or unreadable' "$case_root/refusal-output" \
+                    || fail 'damaged glob evidence did not fail closed for the expected reason'
+            fi
+            [[ "$(sha256_file checksums.yaml)" == "$CURRENT_CHECKSUMS_SHA256" ]]
+            [[ ! -e "$AUTHORIZATION_FILE" ]] || fail 'evidence failure created an authorization'
+            return 0
+        fi
+        original_authorization=''
+        [[ ! -e "$AUTHORIZATION_FILE" ]] || original_authorization="$(cat "$AUTHORIZATION_FILE")"
+        prepare_checksum_candidate "$report"
+        require_download_evidence_current
+        [[ "$STATE" == AUTHORIZED && "$trusted_changed" == br && "$external_changed" == ntm,omp ]]
+        [[ "${TRANSPORT_REVIEW_CHANGED[*]}" == ntm ]]
+        expected_reason=redirected_response
+        [[ "$seed_kind" != glob ]] || expected_reason=ambiguous_request_url
+        [[ "${TRANSPORT_REVIEW_REASONS[ntm]}" == "$expected_reason" ]]
+        case "$case_name" in
+            redirect-aggregate)
+                [[ "$applicable_changed" == "$changed_tools" && "$external_deferred" == false && "$authorization_mode" == aggregate ]]
+                require_selected_external_authorization
+                ;;
+            redirect-subset)
+                [[ "$applicable_changed" == br,omp && "$deferred_changed" == ntm && "$authorization_mode" == subset ]]
+                require_selected_external_authorization
+                ;;
+            *) [[ "$applicable_changed" == br && "$deferred_changed" == ntm,omp && "$authorization_consumed" == false ]] ;;
+        esac
+        # The actual offline validators must preserve every unselected pin.
+        for tool in br ntm omp; do
+            expected="$(jq -r --arg name "$tool" '.mismatches[] | select(.name == $name) | .expected' "$report")"
+            case ",$applicable_changed," in
+                *,"$tool",*) expected="$(jq -r --arg name "$tool" '.mismatches[] | select(.name == $name) | .actual' "$report")" ;;
+            esac
+            actual="$(awk -v tool="$tool" '$0 == "  " tool ":" { selected=1; next } selected && /^    sha256:/ { gsub(/\"/, "", $2); print $2; exit }' "$validated_candidate")"
+            [[ "$actual" == "$expected" ]] || fail 'transport selection changed an unapproved pin'
+        done
+        if [[ -n "$original_authorization" ]]; then
+            [[ "$(cat "$AUTHORIZATION_FILE")" == "$original_authorization" ]] || fail 'selection consumed or changed human authorization'
+        else
+            [[ ! -e "$AUTHORIZATION_FILE" ]] || fail 'pending transport review created authorization'
+        fi
+        review_bodies=("$STATE_DIR"/external-review-*.md)
+        [[ "${#review_bodies[@]}" == 1 && -f "${review_bodies[0]}" ]]
+        grep -q 'subset review command intentionally rejects original-owner names' "${review_bodies[0]}"
+        ! grep -Eq 'private-transport-token|private-transport-cookie|example.invalid/body' "${review_bodies[0]}" \
+            || fail 'private response evidence leaked into the proposed issue body'
+        snapshots=("$DOWNLOAD_EVIDENCE_RUN_DIR"/transport-headers-ntm.*)
+        [[ "${#snapshots[@]}" -ge 1 && -f "${snapshots[0]}" ]]
+        cmp -s "${snapshots[0]}" "$ntm_headers"
+        [[ "$(sha256_file checksums.yaml)" == "$CURRENT_CHECKSUMS_SHA256" ]]
+        require_clean_tree
+    )
+    for transport_case in redirect-pending redirect-subset redirect-owner-subset redirect-old-aggregate \
+        redirect-aggregate glob-pending redirect-header-tamper glob-header-tamper redirect-index-tamper \
+        redirect-parser-read-failure redirect-snapshot-tamper redirect-header-replaced; do
+        transport_selection_case "$transport_case" > "$transport_root/$transport_case.log" 2>&1
+        printf 'PASS: bound transport selection: %s\n' "$transport_case"
+    done
+)
+# END MONITOR_TRANSPORT_REGRESSIONS

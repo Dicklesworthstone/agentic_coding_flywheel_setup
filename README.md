@@ -3095,9 +3095,39 @@ scripts/templates/acfs-checksum-monitor.* # timer + service templates
 
 1. **Bind a clean base**: Requires a clean `main` checkout matching both remote compatibility refs. Installs manifest dependencies with `--frozen-lockfile --ignore-scripts` and checks generated artifacts with `scripts/check-manifest-drift.sh --json`. Existing drift stops the run and must be repaired separately.
 2. **Observe the complete installer set**: Downloads every required installer and binds its URL and SHA256 to the exact existing `checksums.yaml`. Any fetch error, skipped entry, malformed report, or repository change stops publication.
-3. **Select prior authorization**: For changed URLs outside the canonical `https://raw.githubusercontent.com/Dicklesworthstone/` owner path, records review evidence in a GitHub issue. A human must review the upstream bytes and authorize either the complete external digest with `authorize:<digest>` or an explicitly reviewed subset using the command below. Digests bind external tool names, URLs, expected pins and observed hashes; unrelated commits and trusted changes do not invalidate them. The authorization file must be owner-only, regular, single-link, and non-symlink. A missing, malformed, stale, or unsafe record grants no external authority.
-4. **Build and validate offline**: Uses the complete first observation to construct the candidate, without downloading installers a second time. Selects trusted-owner mismatches and exactly the authorized external tools; every deferred external pin stays unchanged. The validator checks the exact selected mismatch set, unchanged URLs and unchanged unselected pins. Its default, without explicit selection, still requires all observed mismatches. A changing external endpoint therefore cannot invalidate trusted publication through a second fetch. If issue delivery fails, the bound evidence stays in local state with a warning; approved external changes still require recorded review before mutation.
+3. **Select prior authorization**: Automatic selection requires a canonical trusted-owner URL and bound transport evidence establishing a direct response, as described below. Other mismatches require recorded review evidence. A human must review the upstream bytes and authorize either the complete review digest with `authorize:<digest>` or an eligible external subset using the command below. Digests bind tool names, URLs, expected pins and observed hashes; unrelated commits and trusted changes do not invalidate them. The authorization file must be owner-only, regular, single-link, and non-symlink. A missing, malformed, stale, or unsafe record grants no additional authority.
+4. **Build and validate offline**: Uses the complete first observation to construct the candidate, without downloading installers a second time. Selects eligible trusted-owner mismatches and exactly the authorized tools; every deferred pin stays unchanged. The validator checks the exact selected mismatch set, unchanged URLs and unchanged unselected pins. Its default, without explicit selection, still requires all observed mismatches. A changing external endpoint therefore cannot invalidate trusted publication through a second fetch. If issue delivery fails, the bound evidence stays in local state with a warning; changes requiring authorization still require recorded review before mutation.
 5. **Generate and publish**: Places the validated candidate, regenerates its installer ledger and web metadata, checks the complete generated contract, and commits only the declared publication paths. Rechecks retained evidence and selected authorization after remote probes, immediately before commit and push, and before accepting remote readback. Pushes both compatibility refs atomically and reads them back before recording the result. Pending external review reports `result=deferred state=DEFERRED`, including after an approved subset publishes, and leaves the deferred review open. An accepted run with no pending review records `HEALTHY`. Authorization is consumed only after accepted external publication.
+
+#### Require transport evidence for automatic trust
+
+An original URL under `https://raw.githubusercontent.com/Dicklesworthstone/`
+does not by itself establish where the observed installer came from. Automatic
+selection also requires a complete, digest-bound response-header observation
+showing one direct HTTP 200 response, with only supported informational responses
+before it. URLs containing curl's literal glob characters (`{}`, `[]`) require
+review because expansion can change the requested path before a response arrives.
+
+Any redirect, including a redirect within the same owner, requires human review.
+Intact but ambiguous or incomplete header traces also require review. Multiple
+HTTP 200 blocks are ambiguous, including a trace that resembles a proxy CONNECT
+exchange: the retained evidence does not independently identify proxy responses.
+The monitor does not infer a trusted destination from a `Location` value or a
+status reason phrase.
+
+The provenance check reads a bounded private snapshot of the retained headers and
+binds those exact bytes to the existing evidence index. Missing, unsafe, altered,
+or unreadable evidence stops the run. It cannot become an ordinary pending-review
+case. Snapshots and original observations remain private and retained; review
+messages expose fixed reason codes and tool names rather than raw header values.
+
+For a configured trusted-owner URL deferred by these checks, review the retained
+bytes and transport evidence, then use the complete aggregate authorization
+digest if approval is warranted. The existing subset command deliberately rejects
+trusted-owner URLs and cannot authorize these entries. An eligible ordinary
+external subset can still publish while redirected or ambiguous trusted-owner
+entries remain pinned. Deferred observations never gain authority merely because
+their content hashes are reproducible.
 
 #### Bind published objects to validated bytes
 
@@ -3462,9 +3492,10 @@ with `used-subset:<digest>:<sorted-tools>:<commit>`. Legacy aggregate records
 retain their existing format and checks.
 
 The strict policy loader rejects raw `.` and `..` URL path components. Trusted
-raw-owner paths must also use literal, unencoded path spelling, so prefix
-classification cannot grant automatic authority to a path with obscured owner
-boundaries. Query and fragment values do not participate in this path rule.
+raw-owner paths must also use literal, unencoded path spelling. Query and
+fragment values do not participate in this path rule. The monitor's additional
+glob and retained-transport checks above determine eligibility for automatic
+selection; a trusted prefix alone is insufficient.
 
 The drift check combines `bun run generate:diff` with semantic checks across `scripts/generated/doctor_checks.sh`, `apps/web/lib/generated`, `acfs/onboard/lessons`, README snippets, and installer checksum coverage.
 
@@ -3475,7 +3506,7 @@ membership, and verifies regular non-symlink files before sourcing them. This
 is an internal consistency boundary, not an independent signature or archive
 provenance claim.
 
-First-party changes can publish automatically after these checks. External changes require review **before publication**, rather than a post-publication alert. Repeated failures are logged and escalated through deduplicated GitHub issues and optional `ACFS_NTFY_TOPIC` notifications. Check the deployed timer's logs for its current health; the existence of workflow or timer files does not prove that monitoring is running.
+First-party changes with eligible direct-response evidence can publish automatically after these checks. Other changes require review **before publication**. Repeated failures are logged and escalated through deduplicated GitHub issues and optional `ACFS_NTFY_TOPIC` notifications. Check the deployed timer's logs for its current health; the existence of workflow or timer files does not prove that monitoring is running.
 
 Alerts begin after three consecutive failures and normally repeat after 24 hours
 for an unchanged reason, with separate cooldowns for GitHub and push delivery.
