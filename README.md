@@ -3226,6 +3226,89 @@ Failed verification can stop before an evidence index is created. The diagnostic
 command can inspect that failure; the strict evidence verifier and exporter
 below still require complete, error-free observations and independent anchors.
 
+#### Inspect rejected monitor state without running it
+
+When a state-directory refusal prevents normal logging or historical diagnosis,
+inspect the current filesystem metadata as the monitor's service account:
+
+```bash
+bash "$HOME/acfs-monitor/scripts/checksum-monitor-local.sh" --check-state
+```
+
+Use the reviewed monitor version that implements this option. Older versions
+that predate diagnostic argument handling must not be invoked with unfamiliar
+options: they may start a normal monitor run. `ACFS_MONITOR_STATE` selects an
+existing alternate state directory, as it does for normal monitoring.
+
+The command checks a fixed set of entries: the state and log directories, lock,
+failure counter, both notification cooldown records, and pending recovery
+record. It does not create missing entries, open record contents, enumerate
+historical runs, acquire a lock, test writes, change permissions, contact a
+service, or execute verification or publication. Its work does not grow with
+the amount of retained evidence. Missing optional records remain `absent`.
+
+For example, a state directory with mode `0775` reports:
+
+```json
+{
+  "result": "refused",
+  "checks": {
+    "state_directory": {
+      "status": "refused",
+      "reason": "group_or_world_writable",
+      "metadata": {"type": "directory", "mode": "0775", "owner_matches": true, "links": 2}
+    },
+    "lock_file": {"status": "blocked", "blocked_by": "state_directory"}
+  }
+}
+```
+
+This is an abbreviated example. A blocked child has **not** been inspected;
+its parent failure does not establish a fault in that child. If the state
+directory is missing, the result is `incomplete`, with its children blocked.
+
+The schema is `acfs.checksum-monitor-state-inspection.v1`. Every response is
+diagnostic only, grants no publication authority, and leaves current health
+unknown. Exit `0` means a structured inspection result was produced, including
+`refused` and `incomplete` results. Exit `2` means invalid arguments, a required
+capability is unavailable, an inspection limit was reached, or metadata changed
+during inspection. `no_refusal_observed` means only that the checked metadata
+did not exhibit a refusal; it proves neither that a later open/write will work
+nor that monitoring has recovered or retained contents are authentic.
+
+The inspector uses native filesystem metadata and the monitor's distinct mode
+policies: lock files require owner read/write access; ordinary counter and
+cooldown records require owner read access; pending recovery requires exact
+`0600`. It preserves the production directory policy, including special bits
+that do not themselves grant group/other write access. It does not run the
+host's `stat`, `id`, or other utilities and cannot diagnose their failures.
+
+Path components are held through no-follow directory descriptors and checked
+again before returning. An unsafe ancestor stops traversal and is reported
+separately as `checks.state_path` with `scope: "diagnostic_traversal"`; this is
+an inspection restriction, not a claimed production failure. Ancestors must
+belong to root or the inspecting account and must not be group/world writable,
+except for root-owned sticky shared directories such as `/tmp`. That exception
+never applies to the monitor's state directory itself.
+
+Default output includes file type, octal mode, link count, and whether ownership
+matches. For local investigation, explicit private output also includes paths,
+UID/GID, device/inode, and metadata timestamps:
+
+```bash
+bash "$HOME/acfs-monitor/scripts/checksum-monitor-local.sh" \
+  --check-state --include-private-details
+```
+
+For `state_directory.group_or_world_writable`, confirm the service account and
+configured directory, preserve its metadata and existing records, and review
+its ownership, group access, and ACLs before removing unintended write access
+on the host. Keep the directory inode and retained evidence intact; do not
+replace state, recursively rewrite permissions, reset failure counts, or remove
+the lock. Correcting permissions does not establish that previously writable
+verification or authorization records are trustworthy. Their existing evidence
+and authorization checks remain mandatory before publication.
+
 #### Verify retained download evidence offline
 
 Before reviewing changed installers, obtain the original verification report,

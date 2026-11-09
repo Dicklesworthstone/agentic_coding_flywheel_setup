@@ -60,6 +60,7 @@ import sys
 import time
 
 SCHEMA = "acfs.checksum-monitor-diagnostics.v1"
+STATE_SCHEMA = "acfs.checksum-monitor-state-inspection.v1"
 LOG_LIMIT = 8 * 1024 * 1024
 REPORT_LIMIT = 1024 * 1024
 MATCH_LIMIT = 32
@@ -197,6 +198,199 @@ class Reader:
             os.close(fd)
         for directory in reversed(list(self.directories.values())):
             os.close(directory["fd"])
+
+
+class StateInspector:
+    """Observe fixed metadata without opening records or entering unsafe state.
+
+    O_PATH descriptors pin directories without reading their contents. Ancestor
+    restrictions protect this diagnostic traversal; leaf predicates describe
+    the monitor's filesystem policy, not historical Reader's stricter policy.
+    """
+    COMPONENTS = (("log_directory", "logs"), ("lock_file", "monitor.lock"),
+                  ("failure_counter", "fail_closed_streak"),
+                  ("github_cooldown", "fail_closed_alert"),
+                  ("private_cooldown", "fail_closed_push_alert"),
+                  ("recovery_pending", "fail_closed_recovery_pending"))
+
+    def __init__(self, private):
+        require(all(hasattr(os, key) for key in
+                    ("O_PATH", "O_DIRECTORY", "O_NOFOLLOW", "O_CLOEXEC")), "unavailable")
+        self.flags = os.O_PATH | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+        self.private = private
+        self.uid = os.geteuid()
+        self.directories = []
+        self.observations = []
+        self.checks = {}
+
+    @staticmethod
+    def metadata_identity(info):
+        if info is None:
+            return None
+        # Directory link counts and timestamps change when unrelated entries
+        # are created. Fence the path identity and the actual safety predicate.
+        return identity(info) + (() if stat.S_ISDIR(info.st_mode) else (info.st_nlink,))
+
+    def describe(self, info, path):
+        kinds = ((stat.S_ISDIR, "directory"), (stat.S_ISREG, "regular_file"),
+                 (stat.S_ISLNK, "symlink"), (stat.S_ISFIFO, "fifo"),
+                 (stat.S_ISSOCK, "socket"), (stat.S_ISCHR, "character_device"),
+                 (stat.S_ISBLK, "block_device"))
+        metadata = {"type": next((name for predicate, name in kinds if predicate(info.st_mode)), "other"),
+                    "mode": format(stat.S_IMODE(info.st_mode), "04o"),
+                    "owner_matches": info.st_uid == self.uid, "links": info.st_nlink}
+        if self.private:
+            metadata.update(path=path, uid=info.st_uid, gid=info.st_gid,
+                            device=info.st_dev, inode=info.st_ino,
+                            mtime_ns=info.st_mtime_ns, ctime_ns=info.st_ctime_ns)
+        return metadata
+
+    def refusal(self, info, component):
+        mode = stat.S_IMODE(info.st_mode)
+        directory = component in ("state_directory", "log_directory", "state_path")
+        if stat.S_ISLNK(info.st_mode):
+            return "symlink"
+        if not (stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode)):
+            return "wrong_type"
+        if component == "state_path":
+            if info.st_uid not in (0, self.uid):
+                return "owner_mismatch"
+            # A root-owned sticky shared ancestor (such as /tmp) protects the
+            # owned child entry. Never extend this exception to the state dir.
+            if mode & 0o022 and not (info.st_uid == 0 and mode & stat.S_ISVTX):
+                return "group_or_world_writable"
+            return None
+        if info.st_uid != self.uid:
+            return "owner_mismatch"
+        if not directory and info.st_nlink != 1:
+            return "identity_changed" if info.st_nlink == 0 else "multiple_links"
+        if mode & 0o022:
+            return "group_or_world_writable"
+        required = 0o700 if directory else (0o600 if component == "lock_file" else 0o400)
+        if mode & required != required:
+            return "owner_permissions"
+        if component == "recovery_pending" and mode != 0o600:
+            return "private_mode_required"
+        return None
+
+    def observe(self, parent, name, path, component):
+        check_deadline()
+        try:
+            info = os.stat(name, dir_fd=parent, follow_symlinks=False)
+        except FileNotFoundError:
+            info = None
+        except OSError:
+            return {"status": "unavailable", "reason": "metadata_unavailable"}, None
+        self.observations.append((parent, name, info))
+        if info is None:
+            return {"status": "absent"}, None
+        result = {"status": "metadata_acceptable", "metadata": self.describe(info, path)}
+        reason = self.refusal(info, component)
+        if reason:
+            result.update(status="refused", reason=reason)
+        return result, info
+
+    def open_directory(self, parent, name, initial, result):
+        check_deadline()
+        try:
+            fd = os.open(name, self.flags, dir_fd=parent)
+        except OSError:
+            # An entry replaced between stat and open is a changed snapshot,
+            # not an invented permission or device diagnosis.
+            self.fence()
+            result.update(status="unavailable", reason="io_failure")
+            return None
+        self.directories.append((fd, initial))
+        require(self.metadata_identity(os.fstat(fd)) == self.metadata_identity(initial), "changed_input")
+        return fd
+
+    def block_children(self, component):
+        for child, _ in self.COMPONENTS:
+            self.checks[child] = {"status": "blocked", "blocked_by": component}
+
+    def inspect(self, state_path):
+        parts = [part for part in state_path.split("/") if part]
+        require(len(parts) <= 128 and len(os.fsencode(state_path)) <= 4096, "limit_exceeded")
+        # The root is itself observed and fenced, so even an unusual mount
+        # replacement cannot silently redirect a later relative observation.
+        root = os.stat("/", follow_symlinks=False)
+        root_result = {"status": "metadata_acceptable", "metadata": self.describe(root, "/")}
+        component = "state_path" if parts else "state_directory"
+        reason = self.refusal(root, component)
+        if reason:
+            root_result.update(status="refused", reason=reason)
+        self.observations.append((None, "/", root))
+        current = None
+        if root_result["status"] == "metadata_acceptable":
+            current = self.open_directory(None, "/", root, root_result)
+        if parts and current is None:
+            root_result.update(scope="diagnostic_traversal", component_index=0)
+            self.checks["state_path"] = root_result
+            self.checks["state_directory"] = {"status": "blocked", "blocked_by": "state_path"}
+            self.block_children("state_path")
+            return self.output()
+        path = ""
+        for index, name in enumerate(parts):
+            path += "/" + name
+            final = index == len(parts) - 1
+            component = "state_directory" if final else "state_path"
+            result, info = self.observe(current, name, path, component)
+            opened = None
+            if result["status"] == "metadata_acceptable":
+                opened = self.open_directory(current, name, info, result)
+            if final:
+                self.checks["state_directory"] = result
+            elif opened is None:
+                result.update(scope="diagnostic_traversal", component_index=index + 1)
+                self.checks["state_path"] = result
+                self.checks["state_directory"] = {"status": "blocked", "blocked_by": "state_path"}
+            if opened is None:
+                self.block_children(component)
+                return self.output()
+            current = opened
+        if not parts:
+            self.checks["state_directory"] = root_result
+            if current is None:
+                self.block_children("state_directory")
+                return self.output()
+        for component, name in self.COMPONENTS:
+            result, _ = self.observe(current, name, os.path.join(state_path, name), component)
+            self.checks[component] = result
+        return self.output()
+
+    def output(self):
+        self.fence()
+        statuses = {item["status"] for item in self.checks.values()}
+        result = ("refused" if "refused" in statuses else
+                  "incomplete" if statuses & {"blocked", "unavailable"} else "no_refusal_observed")
+        return {"schema": STATE_SCHEMA, "diagnostic_only": True, "publication_authorized": False,
+                "current_health": "unknown", "scope": "filesystem_metadata", "result": result,
+                "checks": self.checks}
+
+    def fence(self):
+        for parent, name, initial in self.observations:
+            check_deadline()
+            try:
+                current = os.stat(name, dir_fd=parent, follow_symlinks=False)
+            except FileNotFoundError:
+                current = None
+            except OSError:
+                raise DiagnosticError("changed_input") from None
+            require(self.metadata_identity(current) == self.metadata_identity(initial), "changed_input")
+        for fd, initial in self.directories:
+            require(self.metadata_identity(os.fstat(fd)) == self.metadata_identity(initial), "changed_input")
+
+    def close(self):
+        for fd, _ in reversed(self.directories):
+            os.close(fd)
+
+
+def inspect_state(state_path, private):
+    inspector = StateInspector(private)
+    try:
+        return inspector.inspect(state_path)
+    finally:
+        inspector.close()
 
 
 def unique_object(pairs):
@@ -436,29 +630,41 @@ def inspect(state_path, run_id, private):
         reader.close()
 
 
+state_inspection = len(sys.argv) > 2 and sys.argv[2] == "--check-state"
 try:
-    require(len(sys.argv) in (3, 4), "invalid_arguments")
-    state_path, run_id = sys.argv[1:3]
-    require(re.fullmatch(r"[0-9]{8}T[0-9]{6}Z", run_id), "invalid_arguments")
-    try:
-        datetime.datetime.strptime(run_id, "%Y%m%dT%H%M%SZ")
-    except ValueError:
-        raise DiagnosticError("invalid_arguments") from None
-    require(len(sys.argv) == 3 or sys.argv[3] == "--include-private-details", "invalid_arguments")
+    require(len(sys.argv) >= 3 and sys.argv[2] in ("--diagnose", "--check-state"), "invalid_arguments")
+    state_path, arguments = sys.argv[1], sys.argv[3:]
+    if state_inspection:
+        require(arguments in ([], ["--include-private-details"]), "invalid_arguments")
+        private = bool(arguments)
+    else:
+        require(len(arguments) in (1, 2), "invalid_arguments")
+        run_id = arguments[0]
+        require(len(arguments) == 1 or arguments[1] == "--include-private-details", "invalid_arguments")
+        private = len(arguments) == 2
     require(state_path and ".." not in state_path.split("/")
             and not any(ord(char) < 32 for char in state_path), "invalid_arguments")
-    output = inspect(os.path.abspath(state_path), run_id, len(sys.argv) == 4)
+    if state_inspection:
+        output = inspect_state(os.path.abspath(state_path), private)
+    else:
+        require(re.fullmatch(r"[0-9]{8}T[0-9]{6}Z", run_id), "invalid_arguments")
+        try:
+            datetime.datetime.strptime(run_id, "%Y%m%dT%H%M%SZ")
+        except ValueError:
+            raise DiagnosticError("invalid_arguments") from None
+        output = inspect(os.path.abspath(state_path), run_id, private)
     print(json.dumps(output, ensure_ascii=True, separators=(",", ":")))
 except (DiagnosticError, OSError, ValueError, TypeError, RecursionError) as error:
     code = error.code if isinstance(error, DiagnosticError) else "unsafe_input"
     if isinstance(error, OSError) and error.errno in (errno.ENOENT, errno.EACCES, errno.EPERM):
         code = "unavailable"
-    messages = {"invalid_arguments": "Expected a valid UTC run ID and optional --include-private-details.",
+    messages = {"invalid_arguments": "Expected a valid UTC run ID or --check-state, with optional --include-private-details.",
                 "unsafe_input": "A diagnostic input is unsafe or unsupported.",
                 "changed_input": "Diagnostic inputs changed during inspection; retry after the run finishes.",
                 "limit_exceeded": "A diagnostic input exceeded its bounded inspection limit.",
                 "unavailable": "The requested run state or a required input is unavailable."}
-    print(json.dumps({"schema": SCHEMA, "diagnostic_only": True, "publication_authorized": False,
+    print(json.dumps({"schema": STATE_SCHEMA if state_inspection else SCHEMA,
+                      "diagnostic_only": True, "publication_authorized": False, "current_health": "unknown",
                       "error": {"code": code, "message": messages.get(code, messages["unsafe_input"])}},
                      ensure_ascii=True, separators=(",", ":")))
     sys.exit(2)
@@ -467,25 +673,26 @@ ACFS_MONITOR_DIAGNOSTICS_PY
 
 if [[ "${BASH_SOURCE[0]}" == "$0" && "$#" -gt 0 ]]; then
     case "$1" in
-        --diagnose)
-            shift
+        --diagnose|--check-state)
             diagnose_monitor_run "$@"
             exit "$?"
             ;;
         --help|-h)
             if [[ "$#" -ne 1 ]]; then
-                printf '%s\n' '{"schema":"acfs.checksum-monitor-diagnostics.v1","diagnostic_only":true,"publication_authorized":false,"error":{"code":"invalid_arguments","message":"Expected --diagnose RUN_ID [--include-private-details] or --help."}}'
+                printf '%s\n' '{"schema":"acfs.checksum-monitor-diagnostics.v1","diagnostic_only":true,"publication_authorized":false,"error":{"code":"invalid_arguments","message":"Expected --diagnose RUN_ID, --check-state, or --help."}}'
                 exit 2
             fi
             printf '%s\n' \
                 'Usage: checksum-monitor-local.sh [--diagnose RUN_ID [--include-private-details]]' \
+                '       checksum-monitor-local.sh --check-state [--include-private-details]' \
                 'RUN_ID is an explicit UTC timestamp such as 20261108T110101Z.' \
                 'Diagnostics read existing state and emit JSON without running the monitor.' \
+                'State inspection checks fixed filesystem metadata without reading state records.' \
                 'Private details may contain credentials or host information; keep that output private.'
             exit 0
             ;;
         *)
-            printf '%s\n' '{"schema":"acfs.checksum-monitor-diagnostics.v1","diagnostic_only":true,"publication_authorized":false,"error":{"code":"invalid_arguments","message":"Expected --diagnose RUN_ID [--include-private-details] or --help."}}'
+            printf '%s\n' '{"schema":"acfs.checksum-monitor-diagnostics.v1","diagnostic_only":true,"publication_authorized":false,"error":{"code":"invalid_arguments","message":"Expected --diagnose RUN_ID, --check-state, or --help."}}'
             exit 2
             ;;
     esac

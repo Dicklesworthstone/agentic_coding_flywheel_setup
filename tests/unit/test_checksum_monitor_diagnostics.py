@@ -7,6 +7,7 @@ inspection; no installer body or retained shell fragment is ever executed.
 
 import copy
 import errno
+import fcntl
 import hashlib
 import json
 import os
@@ -237,6 +238,300 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertNotIn("counts", document.get("verification", {}))
         return document
 
+    def state_inspected(self, fx, **kwargs):
+        result, trace = self.invoke(fx, ["--check-state"], **kwargs)
+        self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace")[-2000:])
+        self.assertEqual(len(result.stdout.splitlines()), 1, "state inspection must emit one JSON document")
+        document = json.loads(result.stdout)
+        self.assertEqual(document["schema"], "acfs.checksum-monitor-state-inspection.v1")
+        self.assertIs(document["diagnostic_only"], True)
+        self.assertIs(document["publication_authorized"], False)
+        self.assertEqual(document["current_health"], "unknown")
+        self.assertEqual(document["scope"], "filesystem_metadata")
+        self.assertIn(document["result"], ("refused", "no_refusal_observed", "incomplete"))
+        self.assertIsInstance(document["checks"], dict)
+        self.assertTrue({"state_directory", "log_directory", "lock_file", "failure_counter",
+                         "github_cooldown", "private_cooldown", "recovery_pending"}
+                        <= set(document["checks"]))
+        self.assertNotIn("verification", document)
+        self.assertNotIn("authorization_line", document)
+        self.assertNotIn(b"authorize:", result.stdout)
+        self.assertNotIn(b"authorize-subset:", result.stdout)
+        # Even the private mode is strictly metadata-only. Explicit consent to
+        # paths and identities must not turn into consent to read record bytes.
+        for secret in SECRETS:
+            self.assertNotIn(secret.encode(), result.stdout + result.stderr)
+        return document, trace
+
+    def test_state_inspection_safe_layout_is_not_a_health_or_content_check(self):
+        fx = self.fixture()
+        lock = fx.state / "monitor.lock"
+        private_file(lock, b"held lock bytes\n", 0o600)
+        private_file(fx.state / "fail_closed_push_alert", b"not a valid cooldown\x00\xff\n", 0o400)
+        private_file(fx.state / "fail_closed_streak", b"not a numeric counter\x00\xff\n", 0o400)
+        private_file(fx.state / "fail_closed_recovery_pending", b"not a pending notice\x00\xff\n")
+        with lock.open("rb") as held_lock:
+            fcntl.flock(held_lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            data, _ = self.state_inspected(fx)
+        self.assertEqual(data["result"], "no_refusal_observed")
+        for component in ("state_directory", "log_directory", "lock_file", "failure_counter",
+                          "github_cooldown", "private_cooldown", "recovery_pending"):
+            self.assertEqual(data["checks"][component]["status"], "metadata_acceptable", component)
+        self.assertEqual(data["checks"]["state_directory"]["metadata"]["mode"], "0700")
+        self.assertEqual(data["checks"]["failure_counter"]["metadata"]["mode"], "0400")
+
+    def test_state_inspection_missing_state_does_not_create_or_initialize_it(self):
+        fx = self.fixture(state=False)
+        data, _ = self.state_inspected(fx)
+        self.assertEqual(data["result"], "incomplete")
+        self.assertEqual(data["checks"]["state_directory"]["status"], "absent")
+        for component, check in data["checks"].items():
+            if component == "state_directory":
+                continue
+            self.assertEqual(check["status"], "blocked", component)
+            self.assertEqual(check["blocked_by"], "state_directory", component)
+            self.assertNotIn("metadata", check)
+        self.assertFalse(fx.state.exists())
+
+    def test_state_inspection_absent_optional_paths_remain_absent(self):
+        fx = self.fixture(state=False)
+        fx.state.mkdir(mode=0o700)
+        data, _ = self.state_inspected(fx)
+        self.assertEqual(data["result"], "no_refusal_observed")
+        self.assertEqual(data["checks"]["state_directory"]["status"], "metadata_acceptable")
+        for component, check in data["checks"].items():
+            if component != "state_directory":
+                self.assertEqual(check["status"], "absent", component)
+                self.assertNotIn("metadata", check)
+        self.assertEqual(list(fx.state.iterdir()), [])
+
+    def test_state_inspection_reports_the_observed_directory_refusal_without_descending(self):
+        for mode, reason in ((0o775, "group_or_world_writable"),
+                             (0o707, "group_or_world_writable"),
+                             (0o1777, "group_or_world_writable"),
+                             (0o500, "owner_permissions")):
+            with self.subTest(mode=oct(mode)):
+                fx = self.fixture()
+                # Descendants deliberately have different metadata problems.
+                # An unsafe parent must block those checks, not guess them.
+                private_file(fx.state / "monitor.lock", b"private lock\n", 0o666)
+                fx.log.parent.chmod(0o777)
+                fx.state.chmod(mode)
+                data, _ = self.state_inspected(fx)
+                self.assertEqual(data["result"], "refused")
+                state = data["checks"]["state_directory"]
+                self.assertEqual(state["status"], "refused")
+                self.assertEqual(state["reason"], reason)
+                self.assertEqual(state["metadata"]["mode"], f"{mode:04o}")
+                self.assertIs(state["metadata"]["owner_matches"], True)
+                for component, check in data["checks"].items():
+                    if component != "state_directory":
+                        self.assertEqual(check["status"], "blocked", component)
+                        self.assertEqual(check["blocked_by"], "state_directory", component)
+                        self.assertNotIn("reason", check)
+                        self.assertNotIn("metadata", check)
+
+    def test_state_inspection_directory_policy_matches_runtime_special_bits(self):
+        for mode in (0o700, 0o755, 0o1700, 0o2700, 0o4700):
+            with self.subTest(mode=oct(mode)):
+                fx = self.fixture()
+                fx.state.chmod(mode)
+                fx.log.parent.chmod(mode)
+                data, _ = self.state_inspected(fx)
+                self.assertEqual(data["result"], "no_refusal_observed")
+                for component in ("state_directory", "log_directory"):
+                    self.assertEqual(data["checks"][component]["status"], "metadata_acceptable")
+                    self.assertEqual(data["checks"][component]["metadata"]["mode"], f"{mode:04o}")
+
+    def test_state_inspection_lock_and_notice_permission_policies_remain_distinct(self):
+        cases = (("lock_file", "monitor.lock", 0o400, "owner_permissions"),
+                 ("lock_file", "monitor.lock", 0o600, None),
+                 ("lock_file", "monitor.lock", 0o644, None),
+                 ("failure_counter", "fail_closed_streak", 0o400, None),
+                 ("failure_counter", "fail_closed_streak", 0o200, "owner_permissions"),
+                 ("github_cooldown", "fail_closed_alert", 0o644, None),
+                 ("private_cooldown", "fail_closed_push_alert", 0o660, "group_or_world_writable"),
+                 ("recovery_pending", "fail_closed_recovery_pending", 0o600, None),
+                 ("recovery_pending", "fail_closed_recovery_pending", 0o400, "private_mode_required"),
+                 ("recovery_pending", "fail_closed_recovery_pending", 0o4600, "private_mode_required"))
+        for component, name, mode, reason in cases:
+            with self.subTest(component=component, mode=oct(mode)):
+                fx = self.fixture()
+                private_file(fx.state / name, b"metadata is independent of these bytes\n", mode)
+                if not mode & 0o400:
+                    try:
+                        (fx.state / name).read_bytes()
+                    except PermissionError:
+                        self.skipTest("host permissions prevent preserving an unreadable fixture snapshot")
+                data, _ = self.state_inspected(fx)
+                check = data["checks"][component]
+                self.assertEqual(check["metadata"]["mode"], f"{mode:04o}")
+                self.assertEqual(check["status"], "refused" if reason else "metadata_acceptable")
+                if reason:
+                    self.assertEqual(check["reason"], reason)
+                    self.assertEqual(data["result"], "refused")
+                else:
+                    self.assertEqual(data["result"], "no_refusal_observed")
+
+    def test_state_inspection_leaf_links_and_special_files_are_metadata_only(self):
+        cases = (("lock_file", "monitor.lock", "symlink", "symlink"),
+                 ("lock_file", "monitor.lock", "hardlink", "multiple_links"),
+                 ("lock_file", "monitor.lock", "fifo", "wrong_type"),
+                 ("failure_counter", "fail_closed_streak", "directory", "wrong_type"),
+                 ("github_cooldown", "fail_closed_alert", "symlink", "symlink"),
+                 ("private_cooldown", "fail_closed_push_alert", "fifo", "wrong_type"),
+                 ("recovery_pending", "fail_closed_recovery_pending", "hardlink", "multiple_links"))
+        for component, name, kind, reason in cases:
+            with self.subTest(component=component, kind=kind):
+                fx = self.fixture()
+                path = fx.state / name
+                original = fx.unsafe / "retained-record"
+                if path.exists():
+                    path.rename(original)
+                else:
+                    private_file(original, AUTH_SECRET + "\n")
+                if kind == "symlink":
+                    path.symlink_to(original)
+                elif kind == "hardlink":
+                    os.link(original, path)
+                elif kind == "fifo":
+                    os.mkfifo(path, 0o600)
+                else:
+                    path.mkdir(mode=0o700)
+                data, _ = self.state_inspected(fx)
+                self.assertEqual(data["result"], "refused")
+                self.assertEqual(data["checks"][component]["status"], "refused")
+                self.assertEqual(data["checks"][component]["reason"], reason)
+
+    def test_state_inspection_directory_links_types_and_ancestor_boundary(self):
+        for kind in ("state-link", "state-file", "logs-link", "logs-fifo", "ancestor-link", "ancestor-mode"):
+            with self.subTest(kind=kind):
+                fx = self.fixture()
+                state = None
+                if kind.startswith("state-"):
+                    original = fx.unsafe / "retained-state"
+                    fx.state.rename(original)
+                    if kind == "state-link":
+                        fx.state.symlink_to(original, target_is_directory=True)
+                    else:
+                        private_file(fx.state, AUTH_SECRET + "\n")
+                    component = "state_directory"
+                    reason = "symlink" if kind == "state-link" else "wrong_type"
+                elif kind.startswith("logs-"):
+                    original = fx.unsafe / "retained-logs"
+                    fx.log.parent.rename(original)
+                    if kind == "logs-link":
+                        fx.log.parent.symlink_to(original, target_is_directory=True)
+                    else:
+                        os.mkfifo(fx.log.parent, 0o600)
+                    component = "log_directory"
+                    reason = "symlink" if kind == "logs-link" else "wrong_type"
+                else:
+                    if kind == "ancestor-link":
+                        link = fx.unsafe / "linked-home"
+                        link.symlink_to(fx.home, target_is_directory=True)
+                        state = link / fx.state.name
+                    else:
+                        fx.home.chmod(0o777)
+                    component = "state_path"
+                    reason = "symlink" if kind == "ancestor-link" else "group_or_world_writable"
+                data, _ = self.state_inspected(fx, state=state)
+                self.assertEqual(data["result"], "refused")
+                self.assertEqual(data["checks"][component]["status"], "refused")
+                self.assertEqual(data["checks"][component]["reason"], reason)
+                if component == "state_path":
+                    self.assertEqual(data["checks"][component]["scope"], "diagnostic_traversal")
+                    self.assertIsInstance(data["checks"][component]["component_index"], int)
+                if component in ("state_directory", "state_path"):
+                    for other, check in data["checks"].items():
+                        if other != component:
+                            self.assertEqual(check["status"], "blocked", other)
+                            self.assertEqual(check["blocked_by"], component, other)
+                            self.assertNotIn("metadata", check)
+                else:
+                    self.assertEqual(data["checks"]["failure_counter"]["status"], "metadata_acceptable")
+
+    def test_state_inspection_private_metadata_never_includes_record_contents(self):
+        fx = self.fixture()
+        data, _ = self.state_inspected(fx)
+        metadata = data["checks"]["state_directory"]["metadata"]
+        self.assertEqual(metadata["type"], "directory")
+        for key in ("path", "uid", "gid", "device", "inode", "mtime_ns", "ctime_ns"):
+            self.assertNotIn(key, metadata)
+        private, _ = self.state_inspected(fx, private=True)
+        actual = fx.state.lstat()
+        details = private["checks"]["state_directory"]["metadata"]
+        self.assertEqual(details["path"], str(fx.state))
+        self.assertEqual(details["uid"], actual.st_uid)
+        self.assertEqual(details["gid"], actual.st_gid)
+        self.assertEqual(details["device"], actual.st_dev)
+        self.assertEqual(details["inode"], actual.st_ino)
+        self.assertEqual(details["mtime_ns"], actual.st_mtime_ns)
+        self.assertEqual(details["ctime_ns"], actual.st_ctime_ns)
+        for component in data["checks"]:
+            self.assertEqual(data["checks"][component]["status"], private["checks"][component]["status"])
+
+    def test_state_inspection_ignores_evidence_and_authorization_contents(self):
+        fx = self.fixture()
+        for path in (fx.state / "authorized-checksum-change", fx.report, fx.log):
+            path.rename(fx.unsafe / (path.name + ".retained"))
+            os.mkfifo(path, 0o600)
+        for number in range(40):
+            os.mkfifo(fx.state / f"verify-{RUN}.{number:06d}.json", 0o600)
+        (fx.state / "unrelated-link").symlink_to(fx.unsafe)
+        data, _ = self.state_inspected(fx, private=True)
+        self.assertEqual(data["result"], "no_refusal_observed")
+        self.assertEqual(len(data["checks"]), 7)
+        self.assertNotIn("authorized-checksum-change", json.dumps(data))
+        self.assertNotIn("verify-", json.dumps(data))
+        self.assertNotIn("downloads-", json.dumps(data))
+
+    def test_state_inspection_ignores_ambient_python_and_command_hooks(self):
+        fx = self.fixture()
+        private_file(fx.unsafe / "sitecustomize.py", "from pathlib import Path\nPath("
+                     + repr(str(fx.executed)) + ").write_text('unexpected Python hook')\n")
+        private_file(fx.unsafe / "json.py", "raise RuntimeError('ambient module loaded')\n")
+        for executable in ("python3", "stat", "id", "git", "gh", "curl", "bun", "flock"):
+            private_file(fx.unsafe / executable,
+                         "#!/bin/sh\nprintf 'unexpected command' > '" + str(fx.executed) + "'\nexit 90\n", 0o700)
+        data, _ = self.state_inspected(fx, environment={"PYTHONPATH": str(fx.unsafe),
+                                                     "PYTHONHOME": str(fx.unsafe),
+                                                     "PYTHONSTARTUP": str(fx.unsafe / "sitecustomize.py"),
+                                                     "PATH": str(fx.unsafe) + ":/usr/bin:/bin"})
+        self.assertEqual(data["result"], "no_refusal_observed")
+
+    def test_state_inspection_rejects_arguments_before_initialization(self):
+        for arguments in (["--check-state", "extra"], ["--check-state", RUN],
+                          ["--check-state", "--include-private-details", "extra"],
+                          ["--check-state", "--diagnose", RUN],
+                          ["--check-state", "--include-private-details", "--include-private-details"]):
+            with self.subTest(arguments=arguments):
+                fx = self.fixture(state=False)
+                data = self.refused(fx, args=arguments, code="invalid_arguments")
+                self.assertEqual(data["schema"], "acfs.checksum-monitor-state-inspection.v1")
+                self.assertFalse(fx.state.exists())
+
+    def test_state_inspection_foreign_owners_are_rejected_when_constructible(self):
+        if os.geteuid() != 0:
+            self.skipTest("foreign-owner fixture requires root")
+        for component, name in (("state_directory", None), ("log_directory", "logs"),
+                                ("lock_file", "monitor.lock"), ("failure_counter", "fail_closed_streak")):
+            with self.subTest(component=component):
+                fx = self.fixture()
+                path = fx.state if name is None else fx.state / name
+                if not path.exists():
+                    private_file(path, b"foreign-owned record\n")
+                try:
+                    os.chown(path, 1, -1)
+                except OSError as error:
+                    if error.errno in (errno.EPERM, errno.EACCES, errno.EINVAL):
+                        self.skipTest("host UID mapping or permissions forbid a foreign-owner fixture")
+                    raise
+                data, _ = self.state_inspected(fx)
+                self.assertEqual(data["checks"][component]["status"], "refused")
+                self.assertEqual(data["checks"][component]["reason"], "owner_mismatch")
+                self.assertIs(data["checks"][component]["metadata"]["owner_matches"], False)
+
     def test_partial_failure_keeps_errors_distinct_from_checksum_changes(self):
         fx = self.fixture()
         data, _ = self.inspected(fx)
@@ -429,6 +724,7 @@ class DiagnosticsTests(unittest.TestCase):
             ["--diagnose", "20260230T110101Z"], ["--diagnose", "20261108T250101Z"],
             ["--diagnose", RUN, "--unknown"], ["--diagnose", RUN, "--include-private-details", "extra"],
             ["--include-private-details"], ["--dry-run"], ["--diagnose", RUN, "--diagnose", RUN],
+            ["--diagnose", "--check-state"], ["--diagnose", "--check-state", "--include-private-details"],
         ]
         for arguments in cases:
             with self.subTest(arguments=arguments):
@@ -441,6 +737,7 @@ class DiagnosticsTests(unittest.TestCase):
         result, _ = self.invoke(fx, ["--help"])
         self.assertEqual(result.returncode, 0)
         self.assertIn(b"--diagnose", result.stdout)
+        self.assertIn(b"--check-state", result.stdout)
         self.assertFalse(fx.state.exists())
 
     def test_multiple_reports_are_ambiguous_instead_of_selected_by_timestamp(self):
