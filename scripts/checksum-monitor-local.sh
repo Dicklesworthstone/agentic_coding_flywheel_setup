@@ -496,6 +496,9 @@ DOWNLOAD_EVIDENCE_RUN_DIR=""
 DOWNLOAD_EVIDENCE_ROOT=""
 DOWNLOAD_EVIDENCE_INDEX_FILE=""
 DOWNLOAD_EVIDENCE_INDEX_SHA256=""
+MONITOR_LOG_FD=2
+MONITOR_LOG_PATH=""
+MONITOR_LOCK_IDENTITY=""
 
 # Exact files the monitor may publish. Directory pathspecs and extension
 # globs are intentionally absent: a newly generated filename must first be
@@ -533,11 +536,157 @@ for publication_path in "${PUBLICATION_PATHS[@]}"; do
     PUBLICATION_PATH_SET["$publication_path"]=1
 done
 
-/usr/bin/mkdir -p "$LOG_DIR"
+_monitor_owned_directory() {
+    local directory="$1" metadata="" owner="" mode="" mode_value=0
+    [[ -d "$directory" && ! -L "$directory" ]] || return 1
+    metadata="$(stat -c '%u:%a' -- "$directory" 2>/dev/null)" || return 1
+    IFS=: read -r owner mode <<< "$metadata"
+    [[ "$owner" == "$EUID" && "$mode" =~ ^[0-7]{3,4}$ ]] || return 1
+    mode_value=$((8#$mode))
+    (( (mode_value & 0700) == 0700 && (mode_value & 022) == 0 ))
+}
+
+_monitor_file_metadata_identity() {
+    local metadata="$1" device="" inode="" owner="" mode="" links="" mode_value=0
+    IFS=: read -r device inode owner mode links <<< "$metadata"
+    [[ "$device" =~ ^[0-9]+$ && "$inode" =~ ^[0-9]+$ && "$owner" == "$EUID" \
+        && "$links" == 1 && "$mode" =~ ^[0-7]{3,4}$ ]] || return 1
+    mode_value=$((8#$mode))
+    (( (mode_value & 0600) == 0600 && (mode_value & 022) == 0 )) || return 1
+    printf '%s:%s\n' "$device" "$inode"
+}
+
+_monitor_named_file_identity() {
+    local path="$1" metadata=""
+    [[ -f "$path" && ! -L "$path" ]] || return 1
+    metadata="$(stat -c '%d:%i:%u:%a:%h' -- "$path" 2>/dev/null)" || return 1
+    _monitor_file_metadata_identity "$metadata"
+}
+
+_monitor_descriptor_identity() {
+    local descriptor="$1" descriptor_path="" metadata=""
+    [[ "$descriptor" =~ ^[0-9]{1,9}$ ]] || return 1
+    descriptor_path="/proc/self/fd/$descriptor"
+    [[ -f "$descriptor_path" ]] || return 1
+    metadata="$(stat -Lc '%d:%i:%u:%a:%h' -- "$descriptor_path" 2>/dev/null)" || return 1
+    _monitor_file_metadata_identity "$metadata"
+}
+
+_initialize_monitor_log_directories() {
+    if [[ ! -e "$STATE_DIR" && ! -L "$STATE_DIR" ]]; then
+        ( umask 077; /usr/bin/mkdir -p -- "$STATE_DIR" ) || return 1
+    fi
+    _monitor_owned_directory "$STATE_DIR" || return 1
+    if [[ ! -e "$LOG_DIR" && ! -L "$LOG_DIR" ]]; then
+        ( umask 077; /usr/bin/mkdir -- "$LOG_DIR" ) || return 1
+    fi
+    _monitor_owned_directory "$LOG_DIR"
+}
+
+# Sourcing retains its directory setup, but never follows an unsafe directory
+# to create children and never opens a lock or log descriptor. Main reports a
+# rejected layout through the ordinary fail-closed path and service journal.
+_initialize_monitor_log_directories || true
+
+_close_monitor_log() {
+    local previous_fd="$MONITOR_LOG_FD"
+    MONITOR_LOG_FD=2
+    MONITOR_LOG_PATH=""
+    if [[ "$previous_fd" =~ ^[0-9]{1,9}$ && "$previous_fd" != 2 ]]; then
+        { exec {previous_fd}>&-; } 2>/dev/null || true
+    fi
+}
+
+_prepare_monitor_log() {
+    local before="" current="" opened="" opened_fd="" previous_umask="" open_status=0
+    if [[ "$MONITOR_LOG_FD" != 2 ]]; then
+        if [[ "$MONITOR_LOG_PATH" == "$LOG_FILE" ]] \
+            && _monitor_owned_directory "$STATE_DIR" \
+            && _monitor_owned_directory "$LOG_DIR" \
+            && [[ "${LOG_FILE%/*}" == "$LOG_DIR" ]] \
+            && current="$(_monitor_named_file_identity "$LOG_FILE")" \
+            && opened="$(_monitor_descriptor_identity "$MONITOR_LOG_FD")" \
+            && [[ "$current" == "$opened" ]]; then
+            return 0
+        fi
+        # A changed or unsafe name must not silently keep writing the old log.
+        _close_monitor_log
+    fi
+    _monitor_owned_directory "$STATE_DIR" || return 1
+    _monitor_owned_directory "$LOG_DIR" || return 1
+    [[ "${LOG_FILE%/*}" == "$LOG_DIR" ]] || return 1
+    if [[ -e "$LOG_FILE" || -L "$LOG_FILE" ]]; then
+        before="$(_monitor_named_file_identity "$LOG_FILE")" || return 1
+    fi
+    previous_umask="$(umask)"
+    umask 077
+    { exec {opened_fd}>>"$LOG_FILE"; } 2>/dev/null || open_status=$?
+    umask "$previous_umask"
+    (( open_status == 0 )) || return 1
+    if ! _monitor_owned_directory "$STATE_DIR" \
+        || ! _monitor_owned_directory "$LOG_DIR" \
+        || ! current="$(_monitor_named_file_identity "$LOG_FILE")" \
+        || ! opened="$(_monitor_descriptor_identity "$opened_fd")" \
+        || [[ "$current" != "$opened" || ( -n "$before" && "$current" != "$before" ) ]]; then
+        { exec {opened_fd}>&-; } 2>/dev/null || true
+        return 1
+    fi
+    MONITOR_LOG_FD="$opened_fd"
+    MONITOR_LOG_PATH="$LOG_FILE"
+}
+
+_open_monitor_lock() {
+    local before="" current="" opened="" previous_umask="" open_status=0
+    [[ "$LOCK_FILE" == "$STATE_DIR/monitor.lock" ]] || return 1
+    _monitor_owned_directory "$STATE_DIR" || return 1
+    if [[ -e "$LOCK_FILE" || -L "$LOCK_FILE" ]]; then
+        before="$(_monitor_named_file_identity "$LOCK_FILE")" || return 1
+    fi
+    previous_umask="$(umask)"
+    umask 077
+    # Read/write opening creates an absent lock without truncating an existing
+    # inode. Replacing or unlinking a live lock would break mutual exclusion.
+    { exec 9<>"$LOCK_FILE"; } 2>/dev/null || open_status=$?
+    umask "$previous_umask"
+    (( open_status == 0 )) || return 1
+    if ! _monitor_owned_directory "$STATE_DIR" \
+        || ! current="$(_monitor_named_file_identity "$LOCK_FILE")" \
+        || ! opened="$(_monitor_descriptor_identity 9)" \
+        || [[ "$current" != "$opened" || ( -n "$before" && "$current" != "$before" ) ]]; then
+        exec 9>&-
+        return 1
+    fi
+    MONITOR_LOCK_IDENTITY="$opened"
+}
+
+_monitor_lock_is_current() {
+    local current="" opened=""
+    [[ "$LOCK_FILE" == "$STATE_DIR/monitor.lock" && -n "$MONITOR_LOCK_IDENTITY" ]] || return 1
+    _monitor_owned_directory "$STATE_DIR" || return 1
+    current="$(_monitor_named_file_identity "$LOCK_FILE")" || return 1
+    opened="$(_monitor_descriptor_identity 9)" || return 1
+    [[ "$current" == "$MONITOR_LOCK_IDENTITY" && "$opened" == "$MONITOR_LOCK_IDENTITY" ]]
+}
 
 log() {
-    printf '[%s] %s\n' "$(/usr/bin/date -u +%H:%M:%S)" "$*" \
-        | /usr/bin/tee -a "$LOG_FILE" >&2
+    local message="" status=0
+    printf -v message '[%s] %s\n' "$(/usr/bin/date -u +%H:%M:%S)" "$*"
+    if _prepare_monitor_log; then
+        printf '%s' "$message" >&"$MONITOR_LOG_FD" || status=1
+    else
+        status=1
+    fi
+    printf '%s' "$message" >&2 || status=1
+    return "$status"
+}
+
+monitor_log_stream() {
+    if ! _prepare_monitor_log; then
+        /usr/bin/cat >&2
+        return 1
+    fi
+    # This names the already validated descriptor, never the mutable log path.
+    /usr/bin/tee -a "/proc/self/fd/$MONITOR_LOG_FD" >&2
 }
 
 advance_state() {
@@ -651,7 +800,7 @@ REMOTE_MAIN_HEAD=""
 REMOTE_MASTER_HEAD=""
 read_remote_heads() {
     local refs="" main_count="" mirror_count=""
-    refs="$(run_bounded 45 git ls-remote --heads origin refs/heads/main refs/heads/master 2>>"$LOG_FILE")" \
+    refs="$(run_bounded 45 git ls-remote --heads origin refs/heads/main refs/heads/master 2>&"$MONITOR_LOG_FD")" \
         || return 1
     main_count="$(awk '$2 == "refs/heads/main" { count += 1 } END { print count + 0 }' <<< "$refs")"
     mirror_count="$(awk '$2 == "refs/heads/master" { count += 1 } END { print count + 0 }' <<< "$refs")"
@@ -664,7 +813,7 @@ read_remote_heads() {
 
 require_clean_tree() {
     local status_output=""
-    status_output="$(git status --porcelain=v1 --untracked-files=all 2>>"$LOG_FILE")" \
+    status_output="$(git status --porcelain=v1 --untracked-files=all 2>&"$MONITOR_LOG_FD")" \
         || return 1
     [[ -z "$status_output" ]] || return 1
     git diff --quiet --exit-code -- \
@@ -940,7 +1089,7 @@ select_external_subset_authorization() {
     digest="${digest%%:*}"
     requested_json="$(printf '%s\n' "${requested[@]}" | jq -R . | jq -s .)" || return 1
     proposal="$(run_clean_bounded 30 bash scripts/lib/security.sh \
-        --review-checksum-subset checksums.yaml "$report" "${requested[@]}" 2>>"$LOG_FILE")" || return 1
+        --review-checksum-subset checksums.yaml "$report" "${requested[@]}" 2>&"$MONITOR_LOG_FD")" || return 1
     proposed_record="$(printf '%s\n' "$proposal" | jq -er \
         --arg policy "$CURRENT_CHECKSUMS_SHA256" --arg report "$VERIFICATION_REPORT_SHA256" \
         --arg digest "$digest" --argjson requested "$requested_json" '
@@ -1025,7 +1174,7 @@ record_external_review() {
     issue_candidates="$(run_bounded 45 gh issue list --repo "$repo_slug" --state all \
         --label security --label checksum-update \
         --search "$digest" --json number,body \
-        2>>"$LOG_FILE")" || return 1
+        2>&"$MONITOR_LOG_FD")" || return 1
     existing="$(printf '%s\n' "$issue_candidates" | jq -ers \
         --arg digest "$digest" --arg scope "$review_scope" '
         if length != 1 or (.[0] | type) != "array" then
@@ -1055,18 +1204,18 @@ record_external_review() {
             return 0
         fi
         run_bounded 45 gh issue comment "$existing" --repo "$repo_slug" \
-            --body-file "$body_file" >>"$LOG_FILE" 2>&1
+            --body-file "$body_file" >&"$MONITOR_LOG_FD" 2>&1
         return
     fi
     if run_bounded 45 gh issue create --repo "$repo_slug" \
         --title "External installer checksum authorization ${digest:0:12}" \
         --label security --label checksum-update \
-        --body-file "$body_file" >>"$LOG_FILE" 2>&1; then
+        --body-file "$body_file" >&"$MONITOR_LOG_FD" 2>&1; then
         return 0
     fi
     run_bounded 45 gh issue create --repo "$repo_slug" \
         --title "External installer checksum authorization ${digest:0:12}" \
-        --body-file "$body_file" >>"$LOG_FILE" 2>&1
+        --body-file "$body_file" >&"$MONITOR_LOG_FD" 2>&1
 }
 
 # Called only after the complete report is validated against the clean base.
@@ -1164,11 +1313,11 @@ prepare_checksum_candidate() {
             || fail_closed "could not allocate validated candidate evidence file"
         run_clean_bounded 60 bash scripts/lib/security.sh \
             --build-checksum-candidate checksums.yaml "$report" "${deferred_names[@]}" \
-            >"$raw_candidate" 2>>"$LOG_FILE" \
+            >"$raw_candidate" 2>&"$MONITOR_LOG_FD" \
             || fail_closed "offline checksum candidate generation failed"
         run_clean_bounded 60 bash scripts/lib/security.sh \
             --validate-checksum-candidate checksums.yaml "$raw_candidate" "$report" "${deferred_names[@]}" \
-            >"$validated_candidate" 2>>"$LOG_FILE" \
+            >"$validated_candidate" 2>&"$MONITOR_LOG_FD" \
             || fail_closed "candidate is not exactly implied by the selected first observations"
         cmp -s -- "$raw_candidate" "$validated_candidate" \
             || fail_closed "candidate validator did not reproduce the exact reviewed candidate bytes"
@@ -1193,11 +1342,11 @@ assert_closed_publication_worktree() {
     # Capture each producer's status before inspecting output. Git's default
     # C quoting keeps pathnames containing newlines on one line; force it so a
     # hostile filename cannot be split into an apparently allowed suffix.
-    tracked_paths="$(git -c core.quotePath=true diff --name-only -- 2>>"$LOG_FILE")" \
+    tracked_paths="$(git -c core.quotePath=true diff --name-only -- 2>&"$MONITOR_LOG_FD")" \
         || return 1
-    untracked_paths="$(git -c core.quotePath=true ls-files --others --exclude-standard -- 2>>"$LOG_FILE")" \
+    untracked_paths="$(git -c core.quotePath=true ls-files --others --exclude-standard -- 2>&"$MONITOR_LOG_FD")" \
         || return 1
-    deleted_paths="$(git -c core.quotePath=true diff --name-only --diff-filter=D -- 2>>"$LOG_FILE")" \
+    deleted_paths="$(git -c core.quotePath=true diff --name-only --diff-filter=D -- 2>&"$MONITOR_LOG_FD")" \
         || return 1
     while IFS= read -r path; do
         [[ -n "$path" ]] || continue
@@ -1511,8 +1660,8 @@ _alert_fail_closed_streak() {
     # Keep diagnostics in the ordinary log when possible, otherwise stderr is
     # retained by the service journal. Never open a known link or special file.
     local notification_fd=""
-    if [[ ! -L "$LOG_FILE" && ( ! -e "$LOG_FILE" || -f "$LOG_FILE" ) ]] \
-        && { exec {notification_fd}>>"$LOG_FILE"; } 2>/dev/null; then
+    if _prepare_monitor_log \
+        && { exec {notification_fd}>&"$MONITOR_LOG_FD"; } 2>/dev/null; then
         :
     else
         exec {notification_fd}>&2 || return 0
@@ -1658,13 +1807,16 @@ _announce_recovery() {
     esac
     recorded_streak="$(_monitor_decimal "$recorded_streak")" || return 1
     (( recorded_streak >= FAIL_ALERT_MIN_STREAK && recorded_streak <= FAIL_STREAK_MAX )) || return 0
+    # Library callers may not have prepared a run log. Refresh a changed name
+    # before any delivery diagnostics; rejected logs leave the safe stderr sink.
+    _prepare_monitor_log || true
     local repo_slug="Dicklesworthstone/agentic_coding_flywheel_setup"
     local existing=""
     local msg="ACFS checksum monitor completed an accepted run. Previously recorded fail-closed streak: $recorded_streak. Run: $RUN_TS. $status_text"
     if ! existing="$(run_failure_bounded gh issue list --repo "$repo_slug" --state open \
         --label monitoring \
         --search "Checksum monitor failing closed" \
-        --json number -q '.[0].number' 2>>"$LOG_FILE")"; then
+        --json number -q '.[0].number' 2>&"$MONITOR_LOG_FD")"; then
         log "WARNING: recovery issue lookup failed; notification remains pending"
         return 1
     fi
@@ -1674,7 +1826,7 @@ _announce_recovery() {
             return 1
         }
         if ! run_failure_bounded gh issue comment "$existing" --repo "$repo_slug" \
-            --body "$msg" >>"$LOG_FILE" 2>&1; then
+            --body "$msg" >&"$MONITOR_LOG_FD" 2>&1; then
             log "WARNING: recovery notification delivery failed; notification remains pending"
             return 1
         fi
@@ -1765,10 +1917,9 @@ _record_monitor_failure() {
 }
 
 _monitor_failure_log() {
-    if [[ ! -L "$LOG_FILE" && ( ! -e "$LOG_FILE" || -f "$LOG_FILE" ) ]] && log "$*"; then
-        return 0
-    fi
-    printf 'ACFS checksum monitor: %s\n' "$*" >&2 || true
+    # log always mirrors to stderr, including when a named log is rejected.
+    # Do not emit a second terminal summary to the journal on that failure.
+    log "$*" || true
 }
 
 fail_closed() {
@@ -1813,8 +1964,8 @@ arm_monitor_exit_handlers() {
 
 checksum_monitor_main() {
 # ---- single-instance lock (timer overlap is a silent no-op) ----
-if ! exec 9>"$LOCK_FILE"; then
-    fail_closed "could not open monitor lock file"
+if ! _open_monitor_lock; then
+    fail_closed "could not open a safe monitor lock file"
 fi
 local lock_status=0
 if flock -n -E 200 9; then
@@ -1829,7 +1980,11 @@ else
     fi
     fail_closed "could not acquire monitor lock (flock exit=$lock_status)"
 fi
+_monitor_lock_is_current \
+    || fail_closed "monitor lock path changed or became unsafe while acquiring it"
 arm_monitor_exit_handlers
+
+_prepare_monitor_log || fail_closed "could not open a safe monitor log file"
 
 advance_state INIT LOCKED
 
@@ -1919,13 +2074,13 @@ esac
     || fail_closed "monitor clone must already be on main"
 require_clean_tree \
     || fail_closed "monitor clone has local tracked, staged, or untracked changes"
-run_bounded 60 git fetch --quiet origin main master 2>>"$LOG_FILE" \
+run_bounded 60 git fetch --quiet origin main master 2>&"$MONITOR_LOG_FD" \
     || fail_closed "fetch of main and legacy mirror failed"
 read_remote_heads || fail_closed "could not resolve exactly one remote main and mirror ref"
 [[ "$REMOTE_MAIN_HEAD" == "$REMOTE_MASTER_HEAD" ]] \
     || fail_closed "remote main and legacy mirror differ before observation"
 if ! git -c core.hooksPath=/dev/null merge --ff-only --quiet \
-    refs/remotes/origin/main 2>>"$LOG_FILE"; then
+    refs/remotes/origin/main 2>&"$MONITOR_LOG_FD"; then
     fail_closed "local main is not an exact fast-forward of origin/main"
 fi
 BASE_HEAD="$(git rev-parse HEAD 2>/dev/null || true)"
@@ -1933,12 +2088,12 @@ BASE_HEAD="$(git rev-parse HEAD 2>/dev/null || true)"
     || fail_closed "local HEAD is not the fetched remote base"
 require_clean_tree || fail_closed "clone is not clean after synchronization"
 
-actual_bun_version="$(run_bun_clean --version 2>>"$LOG_FILE" || true)"
+actual_bun_version="$(run_bun_clean --version 2>&"$MONITOR_LOG_FD" || true)"
 bun_version_is_acceptable "$actual_bun_version" "$MINIMUM_BUN_VERSION" \
     || fail_closed "Bun version unacceptable: need $MINIMUM_BUN_VERSION or a newer ${MINIMUM_BUN_VERSION%%.*}.x release, found ${actual_bun_version:-unavailable}"
 log "bun $actual_bun_version accepted (floor $MINIMUM_BUN_VERSION)"
 ( cd packages/manifest \
-    && run_bun_clean_bounded 90 install --frozen-lockfile --ignore-scripts --silent >>"$LOG_FILE" 2>&1 ) \
+    && run_bun_clean_bounded 90 install --frozen-lockfile --ignore-scripts --silent >&"$MONITOR_LOG_FD" 2>&1 ) \
     || fail_closed "frozen, lifecycle-disabled Bun install failed in packages/manifest"
 require_clean_tree || fail_closed "dependency preparation changed tracked or untracked repository state"
 advance_state LOCKED CLEAN_BASE
@@ -1948,7 +2103,7 @@ log "clean base pinned to $BASE_HEAD"
 drift_json="$(mktemp "$STATE_DIR/drift-$RUN_TS.XXXXXX.json")" \
     || fail_closed "could not allocate drift evidence file"
 set +e
-run_clean_bounded 120 bash scripts/check-manifest-drift.sh --json >"$drift_json" 2>>"$LOG_FILE"
+run_clean_bounded 120 bash scripts/check-manifest-drift.sh --json >"$drift_json" 2>&"$MONITOR_LOG_FD"
 drift_exit=$?
 set -e
 validate_drift_report "$drift_json" \
@@ -1959,7 +2114,7 @@ if [[ "$drift_exit" -eq 0 && "$drift_detected" == "false" ]]; then
     log "generated artifacts are clean"
 elif [[ "$drift_exit" -eq 1 && "$drift_detected" == "true" ]]; then
     log "generated artifact drift detected:"
-    jq -r '.reasons[] | "  - \(.)"' "$drift_json" | tee -a "$LOG_FILE" >&2
+    jq -r '.reasons[] | "  - \(.)"' "$drift_json" | monitor_log_stream
     fail_closed "pinned base already contains generated drift; repair it independently before checksum publication"
 else
     fail_closed "drift checker exit/result mismatch (exit $drift_exit, drift=$drift_detected)"
@@ -1973,7 +2128,7 @@ DOWNLOAD_EVIDENCE_RUN_DIR="$(mktemp -d "$STATE_DIR/downloads-$RUN_TS.XXXXXX")" \
     || fail_closed "could not allocate private first-observation download evidence"
 set +e
 run_clean_bounded 300 env TMPDIR="$DOWNLOAD_EVIDENCE_RUN_DIR" \
-    bash scripts/lib/security.sh --verify --json --retain-temp-files >"$verify_json" 2>>"$LOG_FILE"
+    bash scripts/lib/security.sh --verify --json --retain-temp-files >"$verify_json" 2>&"$MONITOR_LOG_FD"
 verify_exit=$?
 set -e
 # Keep locators and the producer exit even when the report contract fails.
@@ -1990,8 +2145,8 @@ errors="$(jq '.errors | length' "$verify_json")"
 skipped="$(jq '.skipped | length' "$verify_json")"
 
 if [[ "$errors" -gt 0 || "$skipped" -gt 0 ]]; then
-    jq -r '.errors[]?  | "  error: \(.name) -> \(.error)"'    "$verify_json" | tee -a "$LOG_FILE" >&2
-    jq -r '.skipped[]? | "  skipped: \(.name) -> \(.reason)"' "$verify_json" | tee -a "$LOG_FILE" >&2
+    jq -r '.errors[]?  | "  error: \(.name) -> \(.error)"'    "$verify_json" | monitor_log_stream
+    jq -r '.skipped[]? | "  skipped: \(.name) -> \(.reason)"' "$verify_json" | monitor_log_stream
     fail_closed "verification returned $errors error(s) / $skipped skip(s); refusing to auto-update checksums.yaml"
 fi
 if [[ "$mismatches" -eq 0 && "$verify_exit" -ne 0 ]]; then
@@ -2020,7 +2175,7 @@ if [[ -n "$applicable_changed" ]]; then
     [[ "$(sha256_file checksums.yaml)" == "$CANDIDATE_SHA256" ]] \
         || fail_closed "placed checksums.yaml does not match the validated candidate"
     ( cd packages/manifest \
-        && run_bun_clean_bounded 120 run generate >>"$LOG_FILE" 2>&1 ) \
+        && run_bun_clean_bounded 120 run generate >&"$MONITOR_LOG_FD" 2>&1 ) \
         || fail_closed "generation from the validated checksum candidate failed"
     assert_closed_publication_worktree \
         || fail_closed "generation escaped the closed publication path set"
@@ -2029,7 +2184,7 @@ if [[ -n "$applicable_changed" ]]; then
         || fail_closed "could not allocate post-generation evidence file"
     set +e
     run_clean_bounded 120 bash scripts/check-manifest-drift.sh --json \
-        >"$post_drift_json" 2>>"$LOG_FILE"
+        >"$post_drift_json" 2>&"$MONITOR_LOG_FD"
     post_drift_exit=$?
     set -e
     validate_drift_report "$post_drift_json" \
@@ -2055,14 +2210,14 @@ if [[ "$publication_required" == "true" ]]; then
         || fail_closed "worktree contains bytes outside the closed publication set"
     git add -- "${PUBLICATION_PATHS[@]}" \
         || fail_closed "could not stage the closed publication set"
-    staged_paths="$(git -c core.quotePath=true diff --cached --name-only -- 2>>"$LOG_FILE")" \
+    staged_paths="$(git -c core.quotePath=true diff --cached --name-only -- 2>&"$MONITOR_LOG_FD")" \
         || fail_closed "could not enumerate the staged publication"
     while IFS= read -r staged_path; do
         [[ -n "$staged_path" ]] || continue
         [[ -n "${PUBLICATION_PATH_SET[$staged_path]+present}" ]] \
             || fail_closed "unexpected staged publication path: $staged_path"
     done <<< "$staged_paths"
-    staged_deletions="$(git -c core.quotePath=true diff --cached --name-only --diff-filter=D -- 2>>"$LOG_FILE")" \
+    staged_deletions="$(git -c core.quotePath=true diff --cached --name-only --diff-filter=D -- 2>&"$MONITOR_LOG_FD")" \
         || fail_closed "could not enumerate staged deletions"
     [[ -z "$staged_deletions" ]] \
         || fail_closed "refusing to stage a file deletion"
@@ -2109,7 +2264,7 @@ if [[ "$publication_required" == "true" ]]; then
     [[ "$PUBLISH_HEAD" =~ ^[0-9a-f]{40}$ ]] \
         && [[ "$(git rev-parse "${PUBLISH_HEAD}^" 2>/dev/null || true)" == "$BASE_HEAD" ]] \
         || fail_closed "publication commit is not the direct child of the observed base"
-    committed_paths="$(git -c core.quotePath=true diff-tree --no-commit-id --name-only -r "$PUBLISH_HEAD" 2>>"$LOG_FILE")" \
+    committed_paths="$(git -c core.quotePath=true diff-tree --no-commit-id --name-only -r "$PUBLISH_HEAD" 2>&"$MONITOR_LOG_FD")" \
         || fail_closed "could not enumerate the publication commit"
     while IFS= read -r committed_path; do
         [[ -n "$committed_path" ]] || continue
@@ -2138,7 +2293,7 @@ if [[ "$publication_required" == "true" ]]; then
     set +e
     run_bounded 90 git -c core.hooksPath=/dev/null push --atomic --quiet origin \
         "$PUBLISH_HEAD:refs/heads/main" \
-        "$PUBLISH_HEAD:refs/heads/master" >>"$LOG_FILE" 2>&1
+        "$PUBLISH_HEAD:refs/heads/master" >&"$MONITOR_LOG_FD" 2>&1
     push_exit=$?
     set -e
     printf 'push-exit\t%s\n' "$push_exit" >> "$publication_journal" \

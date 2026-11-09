@@ -174,7 +174,7 @@ printf 'Retaining checksum monitor test fixtures: %s\n' "$STATE_TMP" >&2
         return 0
     }
     hostname() { printf 'test-host\n'; }
-    LOG_FILE="$STATE_TMP/log"
+    LOG_FILE="$LOG_DIR/fixture.log"
     accept_recovery() {
         printf '%s\n' "$1" > "$FAIL_STREAK_FILE"
         STATE=REMOTE_VERIFIED
@@ -1645,6 +1645,333 @@ for state_record_scenario in failure-symlink failure-hardlink accepted-symlink a
 done
 [[ "$state_record_failures" == 0 ]] || exit 1
 # END MONITOR_STATE_RECORD_REGRESSIONS
+
+# Lock acquisition and log output must retain the inode they validated, rather
+# than truncating a linked record or reopening an aliased pathname. Exercise
+# the real main entry before its first transition, real flock contention, and
+# actual log/notification/remote-read helpers with inert evidence sentinels.
+# BEGIN MONITOR_DESCRIPTOR_REGRESSIONS
+descriptor_runner="$STATE_TMP/descriptor-runner.sh"
+cat > "$descriptor_runner" <<'DESCRIPTOR_RUNNER'
+#!/usr/bin/env bash
+set -euo pipefail
+monitor="$1"
+fixture_root="$2"
+scenario="$3"
+export HOME="$fixture_root/home"
+export ACFS_MONITOR_STATE="$HOME/state"
+export ACFS_MONITOR_REPO="$fixture_root/no-live-repository"
+export ACFS_MONITOR_LIBRARY_ONLY=1
+unset ACFS_NTFY_TOPIC
+if [[ "$scenario" == source-no-open ]]; then
+    trap ':' EXIT HUP INT TERM
+    original_traps="$(trap -p EXIT HUP INT TERM)"
+fi
+# shellcheck source=../checksum-monitor-local.sh
+source "$monitor"
+LOG_FILE="$LOG_DIR/descriptor-fixture.log"
+fail() { printf 'FAIL: %s\n' "$*" >&2; exit 97; }
+if [[ "$scenario" == source-no-open ]]; then
+    [[ "$(trap -p EXIT HUP INT TERM)" == "$original_traps" ]] || fail 'library sourcing changed the caller traps'
+    [[ ! -e "$LOCK_FILE" && ! -e /proc/self/fd/9 ]] || fail 'library sourcing opened the monitor lock'
+    shopt -s nullglob
+    log_entries=("$LOG_DIR"/*)
+    [[ "${#log_entries[@]}" == 0 ]] || fail 'library sourcing opened a log or created evidence'
+    exit 0
+fi
+calls="$fixture_root/transport-attempts"
+comments="$fixture_root/public-comments"
+: > "$calls"
+: > "$comments"
+hostname() { printf 'private-descriptor-host\n'; }
+date() { printf '1000060\n'; }
+run_failure_bounded() {
+    case "$*" in
+        'gh issue list '*)
+            printf 'lookup\n' >> "$calls"
+            printf 'private lookup diagnostic\n' >&2
+            printf '457\n'
+            ;;
+        'gh issue comment '*)
+            printf 'comment\n' >> "$calls"
+            printf '%s\n' "$*" >> "$comments"
+            printf 'private comment stdout\n'
+            printf 'private comment diagnostic\n' >&2
+            ;;
+        *) fail 'descriptor fixture reached an unexpected notification command' ;;
+    esac
+}
+curl() {
+    printf 'push\n' >> "$calls"
+    printf 'private push stdout\n'
+    printf 'private push diagnostic\n' >&2
+}
+git() { fail 'descriptor fixture reached repository publication'; }
+gh() { fail 'descriptor fixture bypassed the bounded notification runner'; }
+run_bounded() {
+    [[ "$*" == '45 git ls-remote --heads origin refs/heads/main refs/heads/master' ]] \
+        || fail 'descriptor fixture reached an unexpected repository command'
+    printf 'private remote transport diagnostic\n' >&2
+    printf '%040d\trefs/heads/main\n%040d\trefs/heads/master\n' 1 1
+}
+flock() {
+    printf 'flock\n' >> "$fixture_root/flock-attempts"
+    if [[ "$scenario" == lock-flock-error ]]; then return 64; fi
+    if [[ "$scenario" == lock-replaced ]]; then
+        mv "$LOCK_FILE" "$fixture_root/retained-lock"
+        ln "$fixture_root/original-evidence" "$LOCK_FILE"
+    fi
+    command flock "$@"
+}
+advance_state() {
+    [[ "$1:$2" == INIT:LOCKED ]] || fail 'descriptor fixture passed the first state transition'
+    printf 'lock accepted\n' > "$fixture_root/first-transition"
+    stat -Lc '%d:%i' /proc/self/fd/9 > "$fixture_root/opened-lock-identity"
+    exit 73
+}
+case "$scenario" in
+    lock-*|main-log-*)
+        # Keep main outside if/|| so the real errexit and EXIT trap apply.
+        checksum_monitor_main
+        ;;
+    failure-log-*) _monitor_failure_log 'descriptor failure marker' ;;
+    alert-log-*)
+        export ACFS_NTFY_TOPIC=fixture-never-sent
+        _alert_fail_closed_streak 3 'descriptor alert marker'
+        ;;
+    recovery-log-*)
+        STATE=HEALTHY
+        _write_monitor_notice_record "$RECOVERY_PENDING_FILE" $'3\n'
+        _announce_recovery 3 ok || fail 'safe recovery notification fallback failed'
+        [[ ! -s "$RECOVERY_PENDING_FILE" ]] || fail 'delivered recovery retained an unacknowledged notice'
+        ;;
+    log-existing|log-new) log 'descriptor ordinary marker' ;;
+    log-replaced|transport-log-replaced)
+        log 'descriptor initial marker'
+        mv "$LOG_FILE" "$fixture_root/retained-log"
+        ln "$fixture_root/original-evidence" "$LOG_FILE"
+        if [[ "$scenario" == log-replaced ]]; then
+            # Either safely retaining the open inode or refusing it with a
+            # journal fallback protects the aliased evidence pathname.
+            log 'descriptor replacement marker' || true
+        else
+            read_remote_heads || fail 'held log descriptor broke remote-ref parsing'
+            [[ "$REMOTE_MAIN_HEAD" == 0000000000000000000000000000000000000001 \
+                && "$REMOTE_MASTER_HEAD" == "$REMOTE_MAIN_HEAD" ]] || fail 'log output contaminated remote refs'
+        fi
+        ;;
+    log-*)
+        status=0
+        log 'descriptor rejected sink marker' || status=$?
+        [[ "$status" == 1 ]] || fail 'unsafe log sink was reported as durable log output'
+        ;;
+    *) fail "unknown descriptor scenario $scenario" ;;
+esac
+DESCRIPTOR_RUNNER
+
+descriptor_case() (
+    scenario="$1"
+    fixture_root="$(mktemp -d "$STATE_TMP/descriptor-$scenario.XXXXXX")"
+    descriptor_state="$fixture_root/home/state"
+    descriptor_logs="$descriptor_state/logs"
+    descriptor_lock="$descriptor_state/monitor.lock"
+    descriptor_log="$descriptor_logs/descriptor-fixture.log"
+    mkdir -p "$descriptor_logs"
+    chmod 0755 "$descriptor_state" "$descriptor_logs"
+    printf '2\n' > "$descriptor_state/fail_closed_streak"
+    printf 'private-authorization-sentinel\n' > "$descriptor_state/authorized-checksum-change"
+    printf 'private-original-evidence-sentinel\n' > "$fixture_root/original-evidence"
+    chmod 0600 "$descriptor_state/authorized-checksum-change" "$fixture_root/original-evidence"
+    case "$scenario" in
+        lock-symlink) ln -s "$descriptor_state/authorized-checksum-change" "$descriptor_lock" ;;
+        lock-hardlink) ln "$descriptor_state/authorized-checksum-change" "$descriptor_lock" ;;
+        lock-directory) mkdir "$descriptor_lock" ;;
+        lock-fifo) mkfifo -m 0600 "$descriptor_lock" ;;
+        lock-new|source-no-open) ;;
+        lock-*) printf 'retained lock bytes\n' > "$descriptor_lock"; chmod 0644 "$descriptor_lock" ;;
+    esac
+    case "$scenario" in
+        log-symlink|failure-log-symlink|alert-log-symlink|recovery-log-symlink|main-log-symlink)
+            ln -s "$fixture_root/original-evidence" "$descriptor_log" ;;
+        log-hardlink|failure-log-hardlink|alert-log-hardlink|recovery-log-hardlink|main-log-hardlink)
+            ln "$fixture_root/original-evidence" "$descriptor_log" ;;
+        log-directory) mkdir "$descriptor_log" ;;
+        log-fifo) mkfifo -m 0600 "$descriptor_log" ;;
+        log-new|source-no-open) ;;
+        *) printf 'retained log prefix\n' > "$descriptor_log"; chmod 0644 "$descriptor_log" ;;
+    esac
+    case "$scenario" in
+        lock-mode-readonly) chmod 0400 "$descriptor_lock" ;;
+        lock-mode-writable) chmod 0666 "$descriptor_lock" ;;
+        log-mode-readonly) chmod 0400 "$descriptor_log" ;;
+        log-mode-writable) chmod 0666 "$descriptor_log" ;;
+        lock-parent-readonly) chmod 0555 "$descriptor_state" ;;
+        lock-parent-writable) chmod 0775 "$descriptor_state" ;;
+        log-parent-readonly) chmod 0555 "$descriptor_logs" ;;
+        log-parent-writable) chmod 0775 "$descriptor_logs" ;;
+        lock-parent-symlink)
+            mv "$descriptor_state" "$fixture_root/retained-state-directory"
+            ln -s "$fixture_root/retained-state-directory" "$descriptor_state"
+            ;;
+        log-parent-symlink)
+            mv "$descriptor_logs" "$fixture_root/retained-log-directory"
+            ln -s "$fixture_root/retained-log-directory" "$descriptor_logs"
+            ;;
+        lock-owner|log-owner)
+            record="$descriptor_lock"
+            [[ "$scenario" != log-owner ]] || record="$descriptor_log"
+            other_uid=65534
+            [[ "$(id -u)" != "$other_uid" ]] || other_uid=65533
+            if ! chown "$other_uid" "$record" 2> "$fixture_root/chown-error"; then
+                printf 'SKIP: descriptor %s requires a mapped second uid\n' "$scenario"
+                return 77
+            fi
+            ;;
+    esac
+    protected_before="$(sha256sum "$descriptor_state/authorized-checksum-change" "$fixture_root/original-evidence")"
+    protected_metadata="$(stat -c '%a:%h:%i:%u' "$descriptor_state/authorized-checksum-change" "$fixture_root/original-evidence")"
+    protected_identity="$(stat -c '%a:%i:%u' "$descriptor_state/authorized-checksum-change" "$fixture_root/original-evidence")"
+    record="$descriptor_log"
+    [[ "$scenario" != lock-* ]] || record="$descriptor_lock"
+    record_metadata=""
+    record_digest=""
+    if [[ -e "$record" || -L "$record" ]]; then
+        record_metadata="$(stat -c '%F:%a:%h:%i:%u' "$record")"
+        if [[ -f "$record" ]]; then record_digest="$(sha256sum "$record" | awk '{print $1}')"; fi
+    fi
+    held_fd=""
+    if [[ "$scenario" == lock-contended ]]; then
+        exec {held_fd}<>"$descriptor_lock"
+        command flock -n "$held_fd" || fail 'could not establish real descriptor contention'
+    fi
+    status=0
+    timeout --signal=TERM --kill-after=2 10 bash "$descriptor_runner" "$MONITOR" \
+        "$fixture_root" "$scenario" > "$fixture_root/stdout" 2> "$fixture_root/stderr" || status=$?
+    if [[ -n "$held_fd" ]]; then exec {held_fd}>&-; fi
+    printf '%s\n' "$status" > "$fixture_root/exit-status"
+    [[ "$(sha256sum "$descriptor_state/authorized-checksum-change" "$fixture_root/original-evidence")" == "$protected_before" ]] \
+        || fail "$scenario modified authorization or retained evidence bytes ($fixture_root)"
+    [[ "$(stat -c '%a:%i:%u' "$descriptor_state/authorized-checksum-change" "$fixture_root/original-evidence")" == "$protected_identity" ]] \
+        || fail "$scenario changed protected evidence identity, ownership or permissions"
+    if [[ "$scenario" == lock-replaced || "$scenario" == log-replaced || "$scenario" == transport-log-replaced ]]; then
+        # The fixture intentionally adds one evidence alias after a safe open;
+        # its bytes, inode, ownership and mode must still remain unchanged.
+        [[ "$(stat -c '%h' "$fixture_root/original-evidence")" == 2 \
+            && "$(stat -c '%h' "$descriptor_state/authorized-checksum-change")" == 1 ]] \
+            || fail "$scenario changed the rebound evidence target metadata"
+    else
+        [[ "$(stat -c '%a:%h:%i:%u' "$descriptor_state/authorized-checksum-change" "$fixture_root/original-evidence")" == "$protected_metadata" ]] \
+            || fail "$scenario changed protected evidence metadata"
+    fi
+    expected_status=0
+    case "$scenario" in
+        lock-existing|lock-new) expected_status=73 ;;
+        lock-contended) ;;
+        lock-*|main-log-*) expected_status=1 ;;
+    esac
+    [[ "$status" == "$expected_status" ]] || fail "$scenario returned $status instead of $expected_status ($fixture_root)"
+    case "$scenario" in
+        lock-existing|lock-new)
+            [[ -s "$fixture_root/first-transition" && "$(cat "$descriptor_state/fail_closed_streak")" == 3 ]] \
+                || fail "$scenario did not acquire exactly one lock before the injected failure"
+            [[ "$(cat "$fixture_root/opened-lock-identity")" == "$(stat -c '%d:%i' "$descriptor_lock")" ]] \
+                || fail "$scenario locked a different inode from the retained path"
+            ;;
+        lock-contended)
+            [[ ! -e "$fixture_root/first-transition" && "$(cat "$descriptor_state/fail_closed_streak")" == 2 \
+                && ! -s "$fixture_root/transport-attempts" ]] || fail 'real lock contention was counted or allowed overlapping work'
+            ;;
+        lock-flock-error|lock-replaced|main-log-*)
+            [[ ! -e "$fixture_root/first-transition" && "$(cat "$descriptor_state/fail_closed_streak")" == 3 ]] \
+                || fail "$scenario bypassed fail-closed lock/log initialization"
+            [[ "$(grep -c '^flock$' "$fixture_root/flock-attempts")" == 1 ]] \
+                || fail "$scenario failed before exercising its required descriptor boundary"
+            case "$scenario" in
+                lock-flock-error) expected_reason='could not acquire monitor lock (flock exit=64)' ;;
+                lock-replaced) expected_reason='monitor lock path changed or became unsafe while acquiring it' ;;
+                main-log-*) expected_reason='could not open a safe monitor log file' ;;
+            esac
+            grep -qF "$expected_reason" "$fixture_root/stderr" || fail "$scenario lost its specific descriptor failure reason"
+            ;;
+        lock-*)
+            [[ ! -e "$fixture_root/flock-attempts" && ! -e "$fixture_root/first-transition" ]] \
+                || fail "$scenario reached flock or publication before validation"
+            ;;
+    esac
+    case "$scenario" in
+        lock-new|log-new)
+            [[ "$(stat -c '%a:%h:%u' "$record")" == "600:1:$(id -u)" ]] || fail "$scenario created an unsafe descriptor record"
+            ;;
+        lock-replaced)
+            [[ "$(cat "$fixture_root/retained-lock")" == 'retained lock bytes' ]] || fail 'lock replacement lost the original held inode bytes'
+            ;;
+        log-replaced|transport-log-replaced)
+            grep -q 'descriptor initial marker' "$fixture_root/retained-log" || fail 'rebound log lost its original evidence'
+            ;;
+        source-no-open) ;;
+        *)
+            [[ "$(stat -c '%F:%a:%h:%i:%u' "$record")" == "$record_metadata" ]] \
+                || fail "$scenario replaced or changed the existing descriptor inode"
+            case "$scenario" in
+                lock-*|log-symlink|log-hardlink|log-mode-*|log-owner|log-parent-*|failure-log-*|alert-log-*|recovery-log-*|main-log-*)
+                    if [[ -n "$record_digest" ]]; then
+                        [[ "$(sha256sum "$record" | awk '{print $1}')" == "$record_digest" ]] || fail "$scenario appended to a rejected sink"
+                    fi
+                    ;;
+            esac
+            ;;
+    esac
+    case "$scenario" in
+        log-existing|log-new)
+            grep -q 'descriptor ordinary marker' "$descriptor_log" || fail 'ordinary log output was not retained'
+            grep -q 'descriptor ordinary marker' "$fixture_root/stderr" || fail 'ordinary log output lost its journal copy'
+            ;;
+        log-replaced)
+            grep -q 'descriptor replacement marker' "$fixture_root/stderr" || fail 'rebound log lost its journal fallback'
+            ;;
+        transport-log-replaced)
+            grep -q 'private remote transport diagnostic' "$fixture_root/retained-log" \
+                || grep -q 'private remote transport diagnostic' "$fixture_root/stderr" \
+                || fail 'remote transport lost both retained log and journal diagnostic'
+            ;;
+        log-*) grep -q 'descriptor rejected sink marker' "$fixture_root/stderr" || fail 'rejected log lost its journal fallback' ;;
+        failure-log-*)
+            [[ "$(grep -c 'descriptor failure marker' "$fixture_root/stderr")" == 1 ]] || fail 'failure log fallback was lost or duplicated'
+            ;;
+        alert-log-*|recovery-log-*)
+            [[ "$(grep -c '^lookup$' "$fixture_root/transport-attempts")" == 1 \
+                && "$(grep -c '^comment$' "$fixture_root/transport-attempts")" == 1 ]] || fail 'unsafe log prevented or duplicated notification delivery'
+            grep -q 'private comment stdout' "$fixture_root/stderr" || fail 'notification stdout was lost instead of reaching the journal'
+            grep -q 'private comment diagnostic' "$fixture_root/stderr" || fail 'notification stderr was lost instead of reaching the journal'
+            if [[ "$scenario" == alert-log-* ]]; then
+                [[ "$(grep -c '^push$' "$fixture_root/transport-attempts")" == 1 \
+                    && -s "$descriptor_state/fail_closed_alert" && -s "$descriptor_state/fail_closed_push_alert" ]] \
+                    || fail 'unsafe log lost independent delivery cooldowns'
+            fi
+            ! grep -qE 'private-original-evidence|private-authorization|private-descriptor-host|private comment diagnostic' "$fixture_root/public-comments" \
+                || fail 'notification disclosed private evidence in its public text'
+            ;;
+    esac
+)
+descriptor_failures=0
+for descriptor_scenario in lock-symlink lock-hardlink lock-directory lock-fifo lock-mode-readonly lock-mode-writable \
+    lock-owner lock-parent-readonly lock-parent-writable lock-parent-symlink lock-new lock-existing lock-contended \
+    lock-flock-error lock-replaced main-log-symlink main-log-hardlink \
+    log-symlink log-hardlink failure-log-symlink failure-log-hardlink alert-log-symlink alert-log-hardlink \
+    recovery-log-symlink recovery-log-hardlink log-directory log-fifo log-mode-readonly log-mode-writable \
+    log-owner log-parent-readonly log-parent-writable log-parent-symlink log-new log-existing log-replaced \
+    transport-log-replaced source-no-open; do
+    descriptor_status=0
+    descriptor_case "$descriptor_scenario" || descriptor_status=$?
+    if [[ "$descriptor_status" == 0 ]]; then
+        printf 'PASS: monitor descriptor %s\n' "$descriptor_scenario"
+    elif [[ "$descriptor_status" != 77 ]]; then
+        descriptor_failures=$((descriptor_failures + 1))
+        printf 'FAIL: monitor descriptor %s\n' "$descriptor_scenario" >&2
+    fi
+done
+[[ "$descriptor_failures" == 0 ]] || exit 1
+# END MONITOR_DESCRIPTOR_REGRESSIONS
 
 # Opt-in full state-machine qualification uses an immutable source archive.
 # Git's real SSH transport protocol is redirected to disposable bare fixtures;

@@ -3107,6 +3107,18 @@ path as explicit verification failures. An early `exit 0` without an accepted
 outcome becomes a failure. Genuine lock contention remains a quiet skip;
 failure to open the lock or run the lock command is an error.
 
+The lock is opened without truncation and stays on the same inode while held.
+The monitor checks its metadata and the opened descriptor before locking and
+again after acquisition. Unsafe links, special files, ownership or permissions
+stop the run; the monitor does not replace or remove the lock to recover.
+
+Run logs use a validated append descriptor. The state directory, log directory,
+log file, and opened descriptor must pass their ownership, type, permissions,
+link-count, and identity checks before output is written. Command diagnostics
+reuse the held descriptor instead of reopening the log pathname. An unsafe
+initial log stops normal execution before verification or publication, while
+failure reporting and alert delivery can still use the service journal.
+
 Failure accounting does not depend on successfully writing the normal log.
 If that log is unavailable, the terminal failure record falls back to standard
 error for the service journal, and notification attempts use a fallback output
