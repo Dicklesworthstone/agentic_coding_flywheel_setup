@@ -3099,6 +3099,30 @@ scripts/templates/acfs-checksum-monitor.* # timer + service templates
 4. **Build and validate offline**: Uses the complete first observation to construct the candidate, without downloading installers a second time. Selects trusted-owner mismatches and exactly the authorized external tools; every deferred external pin stays unchanged. The validator checks the exact selected mismatch set, unchanged URLs and unchanged unselected pins. Its default, without explicit selection, still requires all observed mismatches. A changing external endpoint therefore cannot invalidate trusted publication through a second fetch. If issue delivery fails, the bound evidence stays in local state with a warning; approved external changes still require recorded review before mutation.
 5. **Generate and publish**: Places the validated candidate, regenerates its installer ledger and web metadata, checks the complete generated contract, and commits only the declared publication paths. Rechecks retained evidence and selected authorization after remote probes, immediately before commit and push, and before accepting remote readback. Pushes both compatibility refs atomically and reads them back before recording the result. Pending external review reports `result=deferred state=DEFERRED`, including after an approved subset publishes, and leaves the deferred review open. An accepted run with no pending review records `HEALTHY`. Authorization is consumed only after accepted external publication.
 
+#### Bind published objects to validated bytes
+
+Git cleanliness alone is insufficient: configured clean or smudge filters can
+make a worktree appear clean while its raw bytes differ from the committed
+objects. The monitor therefore binds every declared publication path to its
+raw Git blob ID, independent SHA256 and executable mode. The initial checkout
+must match the raw fetched base tree before verification. After generation,
+the candidate snapshot is captured before generated-artifact validation and
+must remain unchanged afterward.
+
+Before committing, the actual index tree must contain exactly those bound
+files and preserve every path outside the declared publication set. The new
+commit must contain that exact tree and have the observed base as its single
+parent. These checks read raw Git objects with replacement refs disabled and
+repeat after blocking authority and remote probes, immediately before push,
+and before accepting remote readback. Filters, mode changes, index changes or
+different commit contents cannot silently substitute bytes that did not pass
+validation.
+
+Private `publication-snapshot-<run>.*.tsv` records remain in monitor state for
+investigation; their SHA256 and validated tree ID are recorded in the local
+log and publication commit. A binding mismatch stops publication and preserves the
+checkout, snapshots and other evidence for review.
+
 #### Canonical service bootstrap
 
 Before launching the monitor, the installed service checks tracked and staged

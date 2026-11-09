@@ -2297,6 +2297,222 @@ done
 )
 printf 'PASS: monitor refusal codec boundaries\n'
 
+# Raw Git publication binding uses real local repositories. No network, Bun,
+# installer execution, or publication transport is needed to prove that clean
+# filters, replacement refs, and index-only changes cannot substitute bytes.
+(
+    set -euo pipefail
+    export ACFS_MONITOR_STATE="$STATE_TMP/raw-publication-state"
+    export ACFS_MONITOR_REPO="$STATE_TMP/raw-publication-unused"
+    unset ACFS_NTFY_TOPIC
+    ACFS_MONITOR_LIBRARY_ONLY=1
+    # shellcheck source=../checksum-monitor-local.sh
+    source "$MONITOR"
+    for binding_helper in capture_publication_snapshot publication_tree_matches_snapshot \
+        publication_snapshot_is_current publication_index_tree validated_publication_index_is_current \
+        publication_commit_matches_snapshot; do
+        [[ "$(type -t "$binding_helper")" == function ]] || fail "missing raw publication guard: $binding_helper"
+    done
+    publication_root="$STATE_TMP/raw-publication"
+    mkdir -p "$publication_root"
+    printf '%s\n' 'Retaining real-Git raw publication fixtures under:' "$publication_root"
+
+    publication_case() (
+        set -euo pipefail
+        case_name="$1"
+        case_root="$publication_root/$case_name"
+        mkdir -p "$case_root/repo" "$case_root/home" "$case_root/state"
+        HOME="$case_root/home"
+        STATE_DIR="$case_root/state"
+        MONITOR_LOG_FD=2
+        PUBLICATION_SNAPSHOT_FILE=""
+        PUBLICATION_SNAPSHOT_SHA256=""
+        VALIDATED_PUBLICATION_TREE=""
+        cd "$case_root/repo"
+        git -c init.templateDir= init --quiet --initial-branch=main
+        mkdir -p .git/info
+        git config user.name 'Publication Fixture'
+        git config user.email fixture@example.invalid
+        git config core.hooksPath /dev/null
+        git config commit.gpgsign false
+        git config core.fileMode true
+        for path in "${PUBLICATION_PATHS[@]}"; do
+            mkdir -p "$(dirname "$path")"
+            printf 'original fixture bytes: %s\n' "$path" > "$path"
+            case "$path" in *.sh) chmod 755 "$path" ;; *) chmod 644 "$path" ;; esac
+        done
+        printf '%s\n' 'original outside-contract bytes' > outside-contract.txt
+        printf 'installers:\n  fixture:\n    url: "https://example.invalid/install.sh"\n    sha256: "%064d"\n' 1 > checksums.yaml
+        git add -- .
+        git commit --quiet -m 'Observed base'
+        BASE_HEAD="$(git rev-parse HEAD)"
+        BASE_TREE="$(git --no-replace-objects rev-parse "${BASE_HEAD}^{tree}")"
+        CURRENT_CHECKSUMS_SHA256="$(sha256_file checksums.yaml)"
+        capture_publication_snapshot "$CURRENT_CHECKSUMS_SHA256"
+        publication_tree_matches_snapshot "$BASE_TREE"
+        publication_snapshot_is_current
+        VALIDATED_PUBLICATION_TREE="$(publication_index_tree)"
+        publication_commit_matches_snapshot "$BASE_HEAD"
+        require_clean_tree
+
+        if [[ "$case_name" == no-op ]]; then
+            [[ "$VALIDATED_PUBLICATION_TREE" == "$BASE_TREE" ]]
+            return 0
+        fi
+        if [[ "$case_name" == smudge-base ]]; then
+            cat > "$case_root/smudge.py" <<'SMUDGE'
+import sys
+sys.stdout.buffer.write(sys.stdin.buffer.read().replace(b'0' * 63 + b'1', b'0' * 63 + b'3'))
+SMUDGE
+            cat > "$case_root/clean.py" <<'CLEAN_BASE'
+import sys
+sys.stdout.buffer.write(sys.stdin.buffer.read().replace(b'0' * 63 + b'3', b'0' * 63 + b'1'))
+CLEAN_BASE
+            git config filter.fixture.smudge "/usr/bin/python3 $case_root/smudge.py"
+            git config filter.fixture.clean "/usr/bin/python3 $case_root/clean.py"
+            git config filter.fixture.required true
+            printf 'checksums.yaml filter=fixture\n' > .git/info/attributes
+            # A new output path forces materialization through smudge rather
+            # than allowing Git's up-to-date stat cache to skip the checkout.
+            mkdir -p "$case_root/smudged"
+            git checkout-index --prefix="$case_root/smudged/" -- checksums.yaml
+            cp -- "$case_root/smudged/checksums.yaml" checksums.yaml
+            require_clean_tree
+            [[ "$(sha256_file checksums.yaml)" != "$CURRENT_CHECKSUMS_SHA256" ]]
+            capture_publication_snapshot "$(sha256_file checksums.yaml)"
+            ! publication_tree_matches_snapshot "$BASE_TREE" || fail 'smudged clean base passed raw binding'
+            return 0
+        fi
+
+        printf 'installers:\n  fixture:\n    url: "https://example.invalid/install.sh"\n    sha256: "%064d"\n' 2 > checksums.yaml
+        printf '%s\n' '# generated from the approved candidate' >> scripts/generated/install_all.sh
+        CANDIDATE_SHA256="$(sha256_file checksums.yaml)"
+        capture_publication_snapshot "$CANDIDATE_SHA256"
+        if [[ "$case_name" == changed-during-validation ]]; then
+            printf '%s\n' '# changed after the generated snapshot' >> scripts/generated/install_all.sh
+            ! publication_snapshot_is_current || fail 'post-generation validation mutation was accepted'
+            return 0
+        fi
+        if [[ "$case_name" == clean-filter ]]; then
+            cat > "$case_root/clean.py" <<'CLEAN_CANDIDATE'
+import sys
+sys.stdout.buffer.write(sys.stdin.buffer.read().replace(b'0' * 63 + b'2', b'0' * 63 + b'3'))
+CLEAN_CANDIDATE
+            git config filter.fixture.clean "/usr/bin/python3 $case_root/clean.py"
+            git config filter.fixture.required true
+            printf 'checksums.yaml filter=fixture\n' > .git/info/attributes
+            git add -- "${PUBLICATION_PATHS[@]}"
+            git diff --quiet --exit-code --
+            ! publication_index_tree > "$case_root/rejected-tree" || fail 'clean-filter policy substitution passed raw binding'
+            return 0
+        fi
+        git add -- "${PUBLICATION_PATHS[@]}"
+        publication_snapshot_is_current
+        VALIDATED_PUBLICATION_TREE="$(publication_index_tree)"
+        validated_publication_index_is_current
+        case "$case_name" in
+            approved)
+                git commit --quiet -m 'Approved candidate'
+                publication_commit_matches_snapshot "$(git rev-parse HEAD)" "$BASE_HEAD"
+                require_clean_tree
+                ;;
+            changed-index|unexpected-index-path|symlink-index|gitlink-index|mode-index)
+                case "$case_name" in
+                    changed-index)
+                        wrong_blob="$(printf '%s\n' 'unapproved policy bytes' | git hash-object -w --stdin)"
+                        git update-index --cacheinfo "100644,$wrong_blob,checksums.yaml"
+                        git update-index --skip-worktree checksums.yaml
+                        ;;
+                    unexpected-index-path)
+                        printf '%s\n' 'unapproved outside-contract bytes' > outside-contract.txt
+                        git add -- outside-contract.txt
+                        ;;
+                    symlink-index)
+                        wrong_blob="$(printf '%s' '../outside-contract.txt' | git hash-object -w --stdin)"
+                        git update-index --cacheinfo "120000,$wrong_blob,checksums.yaml"
+                        ;;
+                    gitlink-index)
+                        git update-index --cacheinfo "160000,$BASE_HEAD,checksums.yaml"
+                        ;;
+                    mode-index)
+                        git config core.fileMode false
+                        git update-index --chmod=-x scripts/generated/install_all.sh
+                        git diff --quiet --exit-code --
+                        ;;
+                esac
+                ! validated_publication_index_is_current || fail "$case_name passed the staged tree binding"
+                ;;
+            conflicted-index)
+                original_blob="$(git rev-parse "$BASE_HEAD:checksums.yaml")"
+                printf '0 %040d\tchecksums.yaml\n100644 %s 1\tchecksums.yaml\n100644 %s 2\tchecksums.yaml\n' \
+                    0 "$original_blob" "${PUBLICATION_EXPECTED_BLOBS[checksums.yaml]}" | git update-index --index-info
+                ! publication_index_tree > "$case_root/rejected-tree" || fail 'conflicted index passed publication binding'
+                ;;
+            changed-worktree)
+                printf '%s\n' '# late worktree change' >> scripts/generated/install_all.sh
+                ! publication_snapshot_is_current || fail 'late worktree mutation was accepted'
+                ;;
+            changed-snapshot)
+                cp -- "$PUBLICATION_SNAPSHOT_FILE" "$case_root/original-snapshot.tsv"
+                printf '%s\n' 'modified evidence' >> "$PUBLICATION_SNAPSHOT_FILE"
+                ! publication_snapshot_is_current || fail 'modified snapshot was accepted'
+                ! publication_tree_matches_snapshot "$VALIDATED_PUBLICATION_TREE" || fail 'modified snapshot authorized a tree'
+                ;;
+            replaced-commit)
+                wrong_blob="$(printf '%s\n' 'unapproved policy bytes' | git hash-object -w --stdin)"
+                git update-index --cacheinfo "100644,$wrong_blob,checksums.yaml"
+                wrong_tree="$(git write-tree)"
+                wrong_commit="$(printf '%s\n' bad | git commit-tree "$wrong_tree" -p "$BASE_HEAD")"
+                good_commit="$(printf '%s\n' good | git commit-tree "$VALIDATED_PUBLICATION_TREE" -p "$BASE_HEAD")"
+                git replace "$wrong_commit" "$good_commit"
+                [[ "$(git rev-parse "${wrong_commit}^{tree}")" == "$VALIDATED_PUBLICATION_TREE" ]]
+                ! publication_commit_matches_snapshot "$wrong_commit" "$BASE_HEAD" || fail 'replacement commit hid unapproved bytes'
+                ;;
+            replaced-blob)
+                wrong_blob="$(printf '%s\n' 'replacement bytes' | git hash-object -w --stdin)"
+                git replace "${PUBLICATION_EXPECTED_BLOBS[checksums.yaml]}" "$wrong_blob"
+                # Push transfers the actual object, so a replacement ref must
+                # neither authorize wrong bytes nor substitute inspection data.
+                publication_tree_matches_snapshot "$VALIDATED_PUBLICATION_TREE"
+                ;;
+            wrong-parent|extra-parent)
+                other_parent="$(printf '%s\n' other | git commit-tree "$BASE_TREE")"
+                if [[ "$case_name" == wrong-parent ]]; then
+                    wrong_commit="$(printf '%s\n' candidate | git commit-tree "$VALIDATED_PUBLICATION_TREE" -p "$other_parent")"
+                else
+                    wrong_commit="$(printf '%s\n' candidate | git commit-tree "$VALIDATED_PUBLICATION_TREE" -p "$BASE_HEAD" -p "$other_parent")"
+                fi
+                ! publication_commit_matches_snapshot "$wrong_commit" "$BASE_HEAD" || fail "$case_name passed raw parent binding"
+                ;;
+            object-read-error)
+                git() {
+                    if [[ "${1:-}:${2:-}:${3:-}" == --no-replace-objects:cat-file:blob ]]; then return 71; fi
+                    command git "$@"
+                }
+                ! publication_tree_matches_snapshot "$VALIDATED_PUBLICATION_TREE" || fail 'raw object read failure was ignored'
+                ;;
+            *) fail "unknown raw publication case: $case_name" ;;
+        esac
+    )
+    for publication_case_name in no-op approved smudge-base clean-filter changed-during-validation \
+        changed-index unexpected-index-path symlink-index gitlink-index mode-index conflicted-index \
+        changed-worktree changed-snapshot replaced-commit replaced-blob wrong-parent extra-parent object-read-error; do
+        # Keep the actual case unconditional: wrapping a shell function in an
+        # OR-list would disable errexit inside it and hide failed controls.
+        publication_case "$publication_case_name" > "$publication_root/$publication_case_name.log" 2>&1
+        printf 'PASS: raw publication binding: %s\n' "$publication_case_name"
+    done
+    # The generated snapshot must precede the blocking drift producer, and
+    # a post-validation fence must run before staging can begin.
+    declare -f checksum_monitor_main | awk '
+        /capture_publication_snapshot "\$CANDIDATE_SHA256"/ { capture = NR }
+        /post_drift_json=/ { producer = NR }
+        /generated publication bytes or modes changed during validation/ { fence = NR }
+        /advance_state AUTHORIZED GENERATED/ { generated = NR }
+        END { exit !(capture && producer && fence && generated && capture < producer && producer < fence && fence < generated) }
+    ' || fail 'generated snapshot is not bound across post-generation validation'
+)
+
 # Opt-in full state-machine qualification uses an immutable source archive.
 # Git's real SSH transport protocol is redirected to disposable bare fixtures;
 # dependencies, cleanliness, strict validators, generation, atomic pushes and
