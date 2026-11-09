@@ -1215,6 +1215,11 @@ FIX_MODE=false
 DRY_RUN_MODE=false
 # Options forwarded verbatim to run_doctor_fix (--yes, --prompt, --only ...).
 declare -ga FIX_ARGS=()
+declare -ga DOCTOR_FIX_OBSERVED_IDS=()
+declare -ga DOCTOR_FIX_PENDING_IDS=()
+declare -ga DOCTOR_FIX_PENDING_STATUSES=()
+declare -ga DOCTOR_FIX_PENDING_HINTS=()
+DOCTOR_FIX_SCOPED=false
 
 # Caching for deep checks - skip slow operations that recently passed
 # Related: agentic_coding_flywheel_setup-lz1
@@ -1991,6 +1996,9 @@ check_with_timeout_status() {
     if [[ "$status" == "timeout" ]]; then
         # Timeouts count as warnings for stats (unknown state, not failed)
         ((WARN_COUNT += 1))
+        if [[ "$FIX_MODE" == "true" && "$DOCTOR_FIX_SCOPED" == "true" ]]; then
+            DOCTOR_FIX_OBSERVED_IDS+=("$id")
+        fi
 
         if [[ "$JSON_MODE" == "true" ]]; then
             local fix_json="null"
@@ -2093,30 +2101,45 @@ check() {
         esac
     fi
 
+    # A scoped repair validates the entire selection against actual findings
+    # before changing anything. Keep passing/skipped IDs too: selecting an
+    # already healthy check is a valid no-op.
+    if [[ "$FIX_MODE" == "true" && "$DOCTOR_FIX_SCOPED" == "true" ]]; then
+        DOCTOR_FIX_OBSERVED_IDS+=("$id")
+        if [[ "$status" != "pass" && "$status" != "skip" ]]; then
+            DOCTOR_FIX_PENDING_IDS+=("$id")
+            DOCTOR_FIX_PENDING_STATUSES+=("$status")
+            DOCTOR_FIX_PENDING_HINTS+=("$fix")
+        fi
+        return 0
+    fi
+
     # Dispatch fix if --fix mode is enabled
     if [[ "$FIX_MODE" == "true" ]] && [[ "$status" != "pass" ]]; then
-        if type -t dispatch_fix &>/dev/null; then
-            local failures_before="${FIX_FAILED:-0}"
-            local repair_status=0
-            # Output format must not disable repairs. Keep the dispatcher in
-            # this shell so its counters and undo records survive, and send
-            # all installer output to stderr when stdout is structured data.
-            if [[ "$JSON_MODE" == "true" ]]; then
-                dispatch_fix "$id" "$status" "$fix" >&2 || repair_status=$?
-            else
-                dispatch_fix "$id" "$status" "$fix" || repair_status=$?
-            fi
-            # Some fixers return before recording a failure (for example, a
-            # missing prerequisite). Count those too, without double counting
-            # fixers that already reported their own failure.
-            if [[ "$repair_status" -ne 0 && "${FIX_FAILED:-0}" -eq "$failures_before" ]]; then
-                FIX_FAILED=$((failures_before + 1))
-                printf 'Error: repair failed for %s (exit %s)\n' "$id" "$repair_status" >&2
-            fi
-        fi
+        doctor_dispatch_fix "$id" "$status" "$fix"
     fi
     # A failed repair is reported in FIX_FAILED; continue diagnostics and
     # finalize the undo session even when the caller has errexit enabled.
+    return 0
+}
+
+doctor_dispatch_fix() {
+    local id="$1" status="$2" fix="${3:-}"
+    if type -t dispatch_fix &>/dev/null; then
+        local failures_before="${FIX_FAILED:-0}"
+        local repair_status=0
+        # Keep the dispatcher in this shell so counters and undo records
+        # survive. Structured stdout must contain only the final report.
+        if [[ "$JSON_MODE" == "true" ]]; then
+            dispatch_fix "$id" "$status" "$fix" >&2 || repair_status=$?
+        else
+            dispatch_fix "$id" "$status" "$fix" || repair_status=$?
+        fi
+        if [[ "$repair_status" -ne 0 && "${FIX_FAILED:-0}" -eq "$failures_before" ]]; then
+            FIX_FAILED=$((failures_before + 1))
+            printf 'Error: repair failed for %s (exit %s)\n' "$id" "$repair_status" >&2
+        fi
+    fi
     return 0
 }
 
@@ -4301,6 +4324,9 @@ check_skipped() {
     local reason="${3:-user choice}"
 
     ((SKIP_COUNT += 1))
+    if [[ "$FIX_MODE" == "true" && "$DOCTOR_FIX_SCOPED" == "true" ]]; then
+        DOCTOR_FIX_OBSERVED_IDS+=("$id")
+    fi
 
     if [[ "$JSON_MODE" == "true" ]]; then
         JSON_CHECKS+=("{\"id\":\"$(json_escape "$id")\",\"label\":\"$(json_escape "$label")\",\"status\":\"skip\",\"details\":\"$(json_escape "$reason")\",\"fix\":null}")
@@ -5652,6 +5678,19 @@ print_json() {
   \"deep_summary\": {\"pass\": $DEEP_PASS_COUNT, \"warn\": $DEEP_WARN_COUNT, \"fail\": $DEEP_FAIL_COUNT, \"total\": $deep_total, \"elapsed_seconds\": ${DEEP_CHECK_ELAPSED:-0}}"
     fi
 
+    local fixes_json=""
+    if [[ "$FIX_MODE" == "true" ]]; then
+        local selectors_json="" selector=""
+        for selector in "${DOCTOR_FIX_ONLY_SELECTORS[@]}"; do
+            [[ -z "$selectors_json" ]] || selectors_json+=","
+            selectors_json+="\"$(json_escape "$selector")\""
+        done
+        local selection_valid=true
+        [[ "${1:-0}" -eq 0 ]] || selection_valid=false
+        fixes_json=",
+  \"fixes\": {\"dry_run\": $DRY_RUN_MODE, \"warning_fixes_enabled\": ${DOCTOR_FIX_YES:-false}, \"selectors\": [$selectors_json], \"selection_valid\": $selection_valid, \"applied\": ${FIX_APPLIED:-0}, \"planned\": ${#FIXES_DRY_RUN[@]}, \"filtered\": ${FIX_FILTERED:-0}, \"skipped\": ${FIX_SKIPPED:-0}, \"failed\": ${FIX_FAILED:-0}, \"manual\": ${FIX_MANUAL:-0}, \"finalized\": ${DOCTOR_FIX_FINALIZED:-false}}"
+    fi
+
     local json_output
     json_output=$(cat << EOF
 {
@@ -5662,7 +5701,7 @@ print_json() {
   "user": "$(json_escape "$(_acfs_doctor_resolve_current_user 2>/dev/null || true)")",
   "os": {"id": "$(json_escape "$os_id")", "version": "$(json_escape "$os_version")"},
   "checks": [$checks_json],
-  "summary": {"pass": $PASS_COUNT, "skip": $SKIP_COUNT, "warn": $WARN_COUNT, "fail": $FAIL_COUNT}$deep_summary_json
+  "summary": {"pass": $PASS_COUNT, "skip": $SKIP_COUNT, "warn": $WARN_COUNT, "fail": $FAIL_COUNT}$deep_summary_json$fixes_json
 }
 EOF
 )
@@ -6545,6 +6584,7 @@ main() {
     esac
 
     # Parse args
+    local fix_scope_requested=false
     while [[ $# -gt 0 ]]; do
         case $1 in
             --json)
@@ -6608,15 +6648,26 @@ main() {
                 FIX_ARGS+=("--yes")
                 shift
                 ;;
-            # run_doctor_fix does not implement per-fix prompting or category
-            # scoping yet. Accepting these flags made `--fix --yes --only X`
-            # apply every fix, so refuse them until they do what they say.
-            --prompt|--only|--only=*)
+            --only)
+                if [[ -z "${2:-}" || "$2" == -* ]]; then
+                    echo "Error: --only requires a check ID or category" >&2
+                    return 2
+                fi
+                FIX_ARGS+=("--only" "$2")
+                fix_scope_requested=true
+                shift 2
+                ;;
+            --only=*)
+                FIX_ARGS+=("$1")
+                fix_scope_requested=true
+                shift
+                ;;
+            --prompt)
                 echo "Error: acfs doctor ${1%%=*} is not supported yet; use --fix --dry-run to preview every fix first" >&2
                 return 2
                 ;;
             --help|-h)
-                echo "Usage: acfs doctor [--json] [--format <fmt>] [--stats] [--deep] [--no-cache] [--fix] [--dry-run] [--yes]"
+                echo "Usage: acfs doctor [--json] [--format <fmt>] [--stats] [--deep] [--no-cache] [--fix] [--dry-run] [--yes] [--only <selectors>]"
                 echo ""
                 echo "Options:"
                 echo "  --json           Output results as JSON"
@@ -6628,6 +6679,7 @@ main() {
                 echo "  --fix       Automatically apply safe fixes for failed checks"
                 echo "  --dry-run   Preview fixes without applying (use with --fix)"
                 echo "  --yes, -y   Also apply fixes for warning-level checks (use with --fix)"
+                echo "  --only <selectors>  Repair only comma-separated categories or exact check IDs (requires --fix)"
                 echo "  --quiet, -q Exit code only (0=healthy, 1=issues); suppresses all output"
                 echo ""
                 echo "By default, doctor runs quick existence checks only."
@@ -6645,6 +6697,9 @@ main() {
                 echo "  - Missing symlinks for tools"
                 echo "  - Missing zsh plugins"
                 echo "Use --dry-run to preview fixes before applying."
+                echo "With --only, all checks still run; every selector must match before any repair."
+                echo "Bare categories match their checks (path); dotted IDs match exactly (path.ordering)."
+                echo "Repeat --only to combine selections. Use --deep to select deep-check IDs."
                 echo ""
                 echo "Examples:"
                 echo "  acfs doctor                   # Quick health check"
@@ -6654,6 +6709,8 @@ main() {
                 echo "  acfs doctor --fix             # Apply safe fixes"
                 echo "  acfs doctor --fix --dry-run   # Preview fixes"
                 echo "  acfs doctor --fix --yes       # Also apply warning-level fixes"
+                echo "  acfs doctor --fix --yes --only path,config --dry-run"
+                echo "  acfs doctor --fix --only stack.ntm --json"
                 echo "  acfs undo --list              # List changes recorded by --fix"
                 echo "  acfs undo --all               # Undo the most recent fix session"
                 exit 0
@@ -6666,6 +6723,17 @@ main() {
                 ;;
         esac
     done
+
+    if [[ "$fix_scope_requested" == "true" && "$FIX_MODE" != "true" ]]; then
+        echo "Error: --only requires --fix; it selects repairs, not diagnostic checks" >&2
+        return 2
+    fi
+    if [[ "$fix_scope_requested" == "true" ]] &&
+       { ! declare -F doctor_fix_check_selected >/dev/null ||
+         ! declare -F doctor_fix_validate_selection >/dev/null; }; then
+        echo "Error: targeted repairs are unavailable in this doctor_fix.sh; update the ACFS runtime" >&2
+        return 2
+    fi
 
     # --quiet: exit code only. This must precede the banner below, not just
     # the checks — the first cut redirected right before check_identity and
@@ -6722,6 +6790,19 @@ $(gum style --foreground "$ACFS_MUTED" "OS:") $(gum style --foreground "$ACFS_TE
             # Never repair without the session lock and undo journal that
             # initialization establishes, including on partial failures.
             [[ "$fix_init_status" -eq 0 ]] || return "$fix_init_status"
+            if [[ "$fix_scope_requested" == "true" && ${#DOCTOR_FIX_ONLY_SELECTORS[@]} -eq 0 ]]; then
+                echo "Error: repair selection was not initialized; no diagnostics or repairs were run" >&2
+                finalize_doctor_fix >&2 || true
+                return 2
+            fi
+            DOCTOR_FIX_OBSERVED_IDS=()
+            DOCTOR_FIX_PENDING_IDS=()
+            DOCTOR_FIX_PENDING_STATUSES=()
+            DOCTOR_FIX_PENDING_HINTS=()
+            DOCTOR_FIX_SCOPED=false
+            if [[ ${#DOCTOR_FIX_ONLY_SELECTORS[@]} -gt 0 ]]; then
+                DOCTOR_FIX_SCOPED=true
+            fi
         else
             echo "Error: doctor_fix.sh not fully loaded, --fix unavailable" >&2
             return 1
@@ -6748,9 +6829,22 @@ $(gum style --foreground "$ACFS_MUTED" "OS:") $(gum style --foreground "$ACFS_TE
         run_deep_checks
     fi
 
-    if [[ "$JSON_MODE" == "true" ]]; then
-        print_json
-    else
+    local fix_selection_status=0
+    if [[ "$FIX_MODE" == "true" && "$DOCTOR_FIX_SCOPED" == "true" ]]; then
+        doctor_fix_validate_selection "${DOCTOR_FIX_OBSERVED_IDS[@]}" || fix_selection_status=$?
+        if [[ "$fix_selection_status" -eq 0 ]]; then
+            local repair_index=0
+            for ((repair_index = 0; repair_index < ${#DOCTOR_FIX_PENDING_IDS[@]}; repair_index++)); do
+                doctor_dispatch_fix "${DOCTOR_FIX_PENDING_IDS[$repair_index]}" \
+                    "${DOCTOR_FIX_PENDING_STATUSES[$repair_index]}" \
+                    "${DOCTOR_FIX_PENDING_HINTS[$repair_index]}"
+            done
+        else
+            echo "Error: no repairs applied because the selection did not match this diagnostic run" >&2
+        fi
+    fi
+
+    if [[ "$JSON_MODE" != "true" ]]; then
         print_summary
     fi
 
@@ -6770,6 +6864,12 @@ $(gum style --foreground "$ACFS_MUTED" "OS:") $(gum style --foreground "$ACFS_TE
             fix_finalize_status=1
         fi
     fi
+
+    if [[ "$JSON_MODE" == "true" ]]; then
+        print_json "$fix_selection_status"
+    fi
+
+    [[ "$fix_selection_status" -eq 0 ]] || return "$fix_selection_status"
 
     # Exit with appropriate code. A --fix run whose fixes failed is not a
     # clean run either, even when no check reported FAIL.

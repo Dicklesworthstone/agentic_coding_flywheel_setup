@@ -2004,7 +2004,24 @@ The `--fix` flag automatically applies safe, deterministic fixes for common issu
 ```bash
 acfs doctor --fix             # Apply safe fixes
 acfs doctor --fix --dry-run   # Preview fixes without applying
+acfs doctor --fix --yes --only path,config --dry-run  # Preview selected categories
+acfs doctor --fix --only stack.ntm --json            # Repair one exact check
 ```
+
+`--only` accepts comma-separated categories or exact check IDs from `acfs doctor
+--json`. A bare category such as `path` selects its checks; a dotted ID such as
+`stack.ntm` selects only that exact check. Repeat `--only` to combine selections.
+All diagnostics still run, and every selector must match a check before any
+repair is applied. A misspelled or unavailable check rejects the entire selection
+with exit code 2; use `--deep` when selecting deep checks. Passing, intentionally
+skipped, and timed-out checks are valid selections that do not trigger repairs.
+Warnings still require `--yes`.
+
+JSON fix runs include a `fixes` object with the selectors, selection validity,
+planned/applied/filtered/manual/failed counts, and session finalization status.
+The `checks` and `summary` fields retain the original diagnostic findings,
+including unrelated failures. Applied repairs do not turn those findings into
+unverified passes: run `acfs doctor` again to check the resulting state.
 
 #### Safe Auto-Fixers
 

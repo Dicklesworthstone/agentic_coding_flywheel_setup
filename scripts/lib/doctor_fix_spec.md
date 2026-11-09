@@ -360,7 +360,25 @@ acfs doctor --fix --json
 
 # Fix specific category only
 acfs doctor --fix --only path,config
+
+# Preview warning-level repairs for one exact check
+acfs doctor --fix --yes --only path.ordering --dry-run --json
 ```
+
+`--only` selects repairs, not diagnostics, and requires `--fix`. Comma-separated
+and repeated options form a deduplicated union. A bare category matches only
+check IDs beginning with that category and a dot; a dotted selector matches one
+exact check ID. Shell patterns are not accepted. All selectors are validated
+against the checks actually reported in the complete diagnostic run before any
+selected repair is dispatched. Unknown selectors reject the whole selection
+with exit code 2. Deep check IDs require `--deep`; passing, skipped, and timed-out
+checks are valid no-op selections. The existing warning-level `--yes` gate and
+undo requirements remain in force.
+
+Structured fix output adds `fixes` selection, execution counters, and finalization
+status after the undo session has been finalized. Diagnostic findings remain the
+pre-repair results, so an unselected failed check still causes exit code 1. A
+separate doctor run verifies the post-repair state.
 
 ---
 

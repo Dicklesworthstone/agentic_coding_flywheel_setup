@@ -48,23 +48,29 @@ load_doctor_functions() {
     assert_output --partial "unknown option '--yess'"
 }
 
-@test "doctor refuses --only and --prompt until run_doctor_fix implements them" {
-    # Accepting them made `--fix --yes --only path` apply every fix.
-    for args in "--only path" "--only=path" "--prompt"; do
-        # shellcheck disable=SC2086
-        run bash "$DOCTOR_SH" --fix --dry-run $args
-        assert_failure 2
-        assert_output --partial "is not supported yet"
-    done
+@test "doctor still refuses unimplemented prompting" {
+    run bash "$DOCTOR_SH" --fix --dry-run --prompt
+    assert_failure 2
+    assert_output --partial "is not supported yet"
 }
 
-@test "doctor --help documents --yes but not unimplemented scoping flags" {
+@test "doctor --help documents targeted repairs and warning opt-in" {
     run bash "$DOCTOR_SH" --help
     assert_success
     assert_output --partial "--yes, -y"
     refute_output --partial "--prompt"
-    refute_output --partial "--only <c>"
+    assert_output --partial "--only <selectors>"
+    assert_output --partial "dotted IDs match exactly"
     assert_output --partial "acfs doctor --fix --yes"
+}
+
+@test "doctor refuses --only without fix mode and missing selector values" {
+    run bash "$DOCTOR_SH" --only path --json
+    assert_failure 2
+    assert_output --partial "--only requires --fix"
+    run bash "$DOCTOR_SH" --fix --only --json
+    assert_failure 2
+    assert_output --partial "--only requires a check ID or category"
 }
 
 @test "doctor --fix --yes forwards --yes to run_doctor_fix" {
@@ -144,6 +150,7 @@ run_isolated_doctor_repair() {
     check_updates_health() { :; }
     check_manifest_supplemental() { :; }
     show_skipped_tools() { :; }
+    run_deep_checks() { :; }
     case "$scenario" in
         init-failure)
             start_autofix_session() { printf 'session locked\n' >&2; return 73; }
@@ -154,11 +161,33 @@ run_isolated_doctor_repair() {
         missing-helper)
             unset -f run_doctor_fix
             ;;
+        missing-selection-helper)
+            unset -f doctor_fix_validate_selection
+            ;;
         repair-failure)
             fix_path_ordering() { printf 'repair failed\n'; return 75; }
             ;;
         counted-repair-failure)
             fix_path_ordering() { FIX_FAILED=$((FIX_FAILED + 1)); return 75; }
+            ;;
+        scoped-findings)
+            check_shell() {
+                check path.local_bin "Local PATH" warn "missing PATH entries"
+                check path.local_binary "Similar check ID" fail "must remain untouched" "manual PATH inspection"
+                check shell.ohmyzsh "Unrelated shell failure" fail "missing shell prerequisite" "manual shell inspection"
+            }
+            ;;
+        scoped-timeout)
+            run_deep_checks() {
+                check_with_timeout_status deep.cloud.vercel_auth "Vercel auth" timeout "probe timed out" "retry later"
+            }
+            ;;
+        healthy-selection)
+            check_shell() {
+                check path.local_bin "Local PATH" pass
+                check_skipped path.optional "Optional PATH" "intentionally skipped"
+                check shell.fixture_missing "Unrelated warning" warn "missing shell prerequisite" "manual shell inspection"
+            }
             ;;
     esac
     main doctor --fix "$@" > "$HOME/result.out" 2> "$HOME/result.err"
@@ -247,7 +276,7 @@ run_isolated_doctor_repair() {
 @test "doctor records repair failure and keeps structured output valid" {
     run run_isolated_doctor_repair repair-failure --yes --json
     assert_failure
-    run jq -e '.summary.fail == 0 and (.checks | length == 2)' "$HOME/result.out"
+    run jq -e '.summary.fail == 0 and (.checks | length == 2) and .fixes.failed == 1 and .fixes.finalized' "$HOME/result.out"
     assert_success
     run grep -F 'repair failed' "$HOME/result.err"
     assert_success
@@ -261,6 +290,96 @@ run_isolated_doctor_repair() {
     run jq -e '.summary.fail == 0' "$HOME/result.out"
     assert_success
     run grep -F 'Failed:  1' "$HOME/result.err"
+    assert_success
+}
+
+@test "scoped JSON repair changes only the exact check and retains unrelated failures" {
+    printf '# targeted repair\n' > "$HOME/.zshrc"
+    run run_isolated_doctor_repair scoped-findings --yes --only path.local_bin --json
+    assert_failure 1
+    run grep -F '# ACFS PATH ordering (added by doctor --fix)' "$HOME/.zshrc"
+    assert_success
+    run jq -e '.summary.fail == 2 and (.checks | length == 4) and .fixes.selectors == ["path.local_bin"] and .fixes.applied == 1 and .fixes.filtered == 2 and .fixes.manual == 0 and .fixes.selection_valid and .fixes.finalized' "$HOME/result.out"
+    assert_success
+    run jq -se 'length == 1' "$HOME/.acfs/autofix/changes.jsonl"
+    assert_success
+}
+
+@test "scoped category preview selects its findings without changing files" {
+    printf '# preview remains read-only\n' > "$HOME/.zshrc"
+    run run_isolated_doctor_repair scoped-findings --yes --only=path --dry-run --json
+    assert_failure 1
+    run cat "$HOME/.zshrc"
+    assert_output '# preview remains read-only'
+    run jq -e '.summary.fail == 2 and .fixes.dry_run and .fixes.planned == 2 and .fixes.filtered == 1 and .fixes.applied == 0' "$HOME/result.out"
+    assert_success
+    [[ ! -e "$HOME/.acfs/autofix/changes.jsonl" ]]
+}
+
+@test "scoped repeated selectors union and deduplicate before repair" {
+    run run_isolated_doctor_repair scoped-findings --yes --only path.local_bin --only=shell,path.local_bin --dry-run --json
+    assert_failure 1
+    run jq -e '.fixes.selectors == ["path.local_bin", "shell"] and .fixes.planned == 1 and .fixes.manual == 1 and .fixes.filtered == 1' "$HOME/result.out"
+    assert_success
+}
+
+@test "mixed known and unknown selectors prevent every repair" {
+    printf '# preserve on selection error\n' > "$HOME/.zshrc"
+    run run_isolated_doctor_repair scoped-findings --yes --only path.local_bin,path.typo --json
+    assert_failure 2
+    run cat "$HOME/.zshrc"
+    assert_output '# preserve on selection error'
+    run jq -e '.fixes.selection_valid == false and .fixes.applied == 0 and .fixes.planned == 0 and .summary.fail == 2' "$HOME/result.out"
+    assert_success
+    [[ ! -s "$HOME/.acfs/autofix/changes.jsonl" ]]
+    run grep -F 'no repairs applied' "$HOME/result.err"
+    assert_success
+}
+
+@test "malformed selector lists abort before diagnostics or repair sessions" {
+    run run_isolated_doctor_repair normal --yes --only 'path,,shell' --json
+    assert_failure 2
+    [[ ! -e "$HOME/checks-ran" ]]
+    [[ ! -e "$HOME/.acfs/autofix/changes.jsonl" ]]
+}
+
+@test "targeted repairs fail closed when the installed fixer lacks selection support" {
+    run run_isolated_doctor_repair missing-selection-helper --yes --only path --json
+    assert_failure 2
+    [[ ! -e "$HOME/checks-ran" ]]
+    [[ ! -e "$HOME/.acfs/autofix/changes.jsonl" ]]
+    run grep -F 'targeted repairs are unavailable' "$HOME/result.err"
+    assert_success
+}
+
+@test "targeted warning repairs still require yes" {
+    printf '# warning is advisory\n' > "$HOME/.zshrc"
+    run run_isolated_doctor_repair normal --only path.local_bin --json
+    assert_success
+    run cat "$HOME/.zshrc"
+    assert_output '# warning is advisory'
+    run jq -e '.fixes.selection_valid and .fixes.applied == 0 and .fixes.warning_fixes_enabled == false and .summary.warn == 1' "$HOME/result.out"
+    assert_success
+}
+
+@test "healthy and intentionally skipped selected checks are valid no-ops" {
+    run run_isolated_doctor_repair healthy-selection --yes --only path.local_bin,path.optional --dry-run --json
+    assert_success
+    run jq -e '.fixes.selection_valid and .fixes.planned == 0 and .fixes.filtered == 1 and .summary.skip == 1' "$HOME/result.out"
+    assert_success
+}
+
+@test "timed out deep checks are selectable but never repaired" {
+    run run_isolated_doctor_repair scoped-timeout --deep --yes --only deep.cloud.vercel_auth --dry-run --json
+    assert_success
+    run jq -e '.fixes.selection_valid and .fixes.planned == 0 and .fixes.manual == 0 and (.checks | any(.id == "deep.cloud.vercel_auth" and .status == "timeout"))' "$HOME/result.out"
+    assert_success
+}
+
+@test "JSON fix report includes journal finalization failure" {
+    run run_isolated_doctor_repair finalization-failure --only path --json
+    assert_failure 1
+    run jq -e '.fixes.selection_valid and .fixes.finalized == false' "$HOME/result.out"
     assert_success
 }
 

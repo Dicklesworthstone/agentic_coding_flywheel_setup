@@ -590,12 +590,19 @@ DOCTOR_FIX_LOG="${DOCTOR_FIX_LOG:-}"
 DOCTOR_FIX_DRY_RUN=false
 DOCTOR_FIX_YES=false
 DOCTOR_FIX_PROMPT=false
+DOCTOR_FIX_FINALIZED=false
 
 # Counters for fix summary
 declare -g FIX_APPLIED=0
 declare -g FIX_SKIPPED=0
 declare -g FIX_FAILED=0
 declare -g FIX_MANUAL=0
+declare -g FIX_FILTERED=0
+
+# A bare category selects that category's checks; dotted selectors name one
+# exact check. doctor.sh validates these against the completed diagnostic
+# results before dispatching any scoped repairs.
+declare -ga DOCTOR_FIX_ONLY_SELECTORS=()
 
 # Arrays to track fixes for summary
 declare -ga FIXES_APPLIED=()
@@ -1684,6 +1691,52 @@ fix_acfs_sourcing() {
 # Fix Dispatcher
 # ============================================================
 
+# Pure selection helpers: neither validation nor membership may start an undo
+# session, write logs, or run a fixer. Keep matching literal so a selector can
+# never widen into a shell glob or accidentally select a similarly named tool.
+doctor_fix_check_selected() {
+    local check_id="${1:-}"
+    local selector=""
+
+    [[ ${#DOCTOR_FIX_ONLY_SELECTORS[@]} -gt 0 ]] || return 0
+    for selector in "${DOCTOR_FIX_ONLY_SELECTORS[@]}"; do
+        if [[ "$selector" == *.* ]]; then
+            [[ "$check_id" == "$selector" ]] && return 0
+        elif [[ "$check_id" == "$selector".* ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Validate against every observed check, including healthy and skipped checks.
+# No match is a typo or a check unavailable in this diagnostic mode, not
+# permission to fall back to repairing the entire installation.
+doctor_fix_validate_selection() {
+    local selector=""
+    local check_id=""
+    local matched=false
+    local validation_status=0
+
+    for selector in "${DOCTOR_FIX_ONLY_SELECTORS[@]}"; do
+        matched=false
+        for check_id in "$@"; do
+            if [[ "$selector" == *.* ]]; then
+                [[ "$check_id" == "$selector" ]] || continue
+            else
+                [[ "$check_id" == "$selector".* ]] || continue
+            fi
+            matched=true
+            break
+        done
+        if [[ "$matched" != true ]]; then
+            printf 'Error: --only selector %s did not match any doctor check; use an exact check ID or category from this run (deep checks require --deep).\n' "$selector" >&2
+            validation_status=2
+        fi
+    done
+    return "$validation_status"
+}
+
 # Dispatch a fix based on check ID
 # Returns 0 if fix was applied or not needed, 1 if fix failed
 dispatch_fix() {
@@ -1697,13 +1750,23 @@ dispatch_fix() {
         skip) return 0 ;;
     esac
 
+    if ! doctor_fix_check_selected "$check_id"; then
+        FIX_FILTERED=$((FIX_FILTERED + 1))
+        return 0
+    fi
+
     # A WARN is advisory ("optional tool not installed", "service not
     # running", "ssh keepalive not set"). Several of the fixers behind those
     # ids run curl|bash installers, repair the Agent Mail database, or edit
     # sshd_config with sudo — far more than the config-level fixes the docs
     # promise for a bare --fix. Apply them only when the caller opted in.
     if [[ "$check_status" == "warn" ]] && [[ "${DOCTOR_FIX_YES:-false}" != "true" ]]; then
-        doctor_fix_log INFO "$check_id: warning left as-is (run 'acfs doctor --fix --yes' to apply warning-level fixes)"
+        local warning_retry="acfs doctor --fix --yes"
+        local warning_selector=""
+        for warning_selector in "${DOCTOR_FIX_ONLY_SELECTORS[@]}"; do
+            warning_retry+=" --only $warning_selector"
+        done
+        doctor_fix_log INFO "$check_id: warning left as-is (run '$warning_retry' to apply warning-level fixes)"
         return 0
     fi
 
@@ -3367,6 +3430,8 @@ print_fix_summary() {
                 echo "      File: $file"
                 echo "      Command: $cmd"
             done
+        elif [[ ${#DOCTOR_FIX_ONLY_SELECTORS[@]} -gt 0 ]]; then
+            echo "  No automatic fixes planned for this selection."
         else
             echo "  No fixes needed."
         fi
@@ -3384,6 +3449,12 @@ print_fix_summary() {
                 echo "    [$id] $desc"
             done
         fi
+    fi
+
+    if [[ ${#DOCTOR_FIX_ONLY_SELECTORS[@]} -gt 0 ]]; then
+        echo ""
+        printf '  Selected: %s\n' "${DOCTOR_FIX_ONLY_SELECTORS[*]}"
+        echo "  Outside selection: $FIX_FILTERED (findings remain unchanged)"
     fi
 
     if [[ ${#FIXES_MANUAL[@]} -gt 0 ]]; then
@@ -3412,26 +3483,74 @@ print_fix_summary() {
 # ============================================================
 
 # Run doctor --fix
-# Usage: run_doctor_fix [--dry-run] [--yes] [--only <categories>]
+# Usage: run_doctor_fix [--dry-run] [--yes] [--only <category|check-id>[,...]]
 run_doctor_fix() {
-    local only_categories=""
+    local dry_run=false
+    local yes_mode=false
+    local selection_value=""
+    local selector=""
+    local existing_selector=""
+    local duplicate=false
+    local -a selection_values=()
+    local -a parsed_selectors=()
+    local -a value_selectors=()
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --dry-run) DOCTOR_FIX_DRY_RUN=true; shift ;;
-            --yes) DOCTOR_FIX_YES=true; shift ;;
-            --prompt) DOCTOR_FIX_PROMPT=true; shift ;;
+            --dry-run) dry_run=true; shift ;;
+            --yes|-y) yes_mode=true; shift ;;
             --only)
                 if [[ -z "${2:-}" || "$2" == -* ]]; then
-                    echo "Error: --only requires a category value" >&2
-                    return 1
+                    echo "Error: --only requires a category or exact check ID" >&2
+                    return 2
                 fi
-                only_categories="$2"
+                selection_values+=("$2")
                 shift 2
                 ;;
-            *) shift ;;
+            --only=*) selection_values+=("${1#*=}"); shift ;;
+            --prompt)
+                echo "Error: --prompt is not supported; use --dry-run to preview fixes first" >&2
+                return 2
+                ;;
+            *)
+                printf "Error: unknown doctor fix option '%s'\n" "$1" >&2
+                return 2
+                ;;
         esac
     done
+
+    # Validate the complete request before logging or starting the undo session.
+    # Repeated --only options form a union; duplicates do not repeat repairs.
+    for selection_value in "${selection_values[@]}"; do
+        if [[ ! "$selection_value" =~ ^[A-Za-z0-9_.,+-]+$ || "$selection_value" == ,* || "$selection_value" == *, || "$selection_value" == *,,* ]]; then
+            echo "Error: --only requires a nonempty comma-separated list of categories or exact check IDs" >&2
+            return 2
+        fi
+        IFS=',' read -r -a value_selectors <<< "$selection_value"
+        for selector in "${value_selectors[@]}"; do
+            # Dynamic hold/rollback IDs include validated tool names, which
+            # may contain uppercase letters, plus signs, hyphens and dots.
+            # Treat the dotted tail literally; observed-ID validation below
+            # the diagnostic pass establishes whether the complete ID exists.
+            if [[ ! "$selector" =~ ^[a-z][a-z0-9_]*(\.[A-Za-z0-9_+-][A-Za-z0-9._+-]*)?$ ]]; then
+                printf 'Error: invalid --only selector %q; use a category or exact check ID without spaces or wildcards\n' "$selector" >&2
+                return 2
+            fi
+            duplicate=false
+            for existing_selector in "${parsed_selectors[@]}"; do
+                if [[ "$existing_selector" == "$selector" ]]; then
+                    duplicate=true
+                    break
+                fi
+            done
+            [[ "$duplicate" == true ]] || parsed_selectors+=("$selector")
+        done
+    done
+    DOCTOR_FIX_DRY_RUN="$dry_run"
+    DOCTOR_FIX_YES="$yes_mode"
+    DOCTOR_FIX_PROMPT=false
+    DOCTOR_FIX_FINALIZED=false
+    DOCTOR_FIX_ONLY_SELECTORS=("${parsed_selectors[@]}")
 
     # Say which tier of fixes this run may apply, so a `--fix --yes` that did
     # not reach here is visible in the log instead of indistinguishable from
@@ -3470,6 +3589,7 @@ run_doctor_fix() {
     FIX_SKIPPED=0
     FIX_FAILED=0
     FIX_MANUAL=0
+    FIX_FILTERED=0
     FIXES_APPLIED=()
     FIXES_DRY_RUN=()
     FIXES_MANUAL=()
@@ -3498,6 +3618,7 @@ run_doctor_fix() {
 
 # Finalize doctor --fix
 finalize_doctor_fix() {
+    DOCTOR_FIX_FINALIZED=false
     # Print summary
     print_fix_summary
 
@@ -3513,6 +3634,10 @@ finalize_doctor_fix() {
             print_undo_summary
         fi
     fi
+
+    # Session closure is independent of repair success. A failed repair can
+    # still leave a completely finalized undo journal that callers can trust.
+    DOCTOR_FIX_FINALIZED=true
 
     # Return failure if any fixes failed
     if [[ $FIX_FAILED -gt 0 ]]; then

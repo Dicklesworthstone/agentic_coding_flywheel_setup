@@ -33,6 +33,8 @@ _acfs() {
                         '--no-cache[Skip cache, run all checks fresh]' \
                         '--fix[Automatically apply safe fixes for failed checks]' \
                         '--dry-run[Preview fixes without applying (use with --fix)]' \
+                        '--yes[Also repair warning-level checks (use with --fix)]' \
+                        '*--only[Repair selected categories or exact check IDs]:selectors:' \
                         '-h[Show help message]' \
                         '--help[Show help message]'
                     ;;

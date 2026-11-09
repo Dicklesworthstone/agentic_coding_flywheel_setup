@@ -4598,6 +4598,184 @@ test_run_doctor_fix_dry_run_flag() {
     return 0
 }
 
+test_run_doctor_fix_selection_unions_and_resets() {
+    setup_test_env
+
+    if ! run_doctor_fix --dry-run --yes --only path,stack.ntm --only=config.tmux,path --only=updates.holds.My-Tool+debug..v1 >/dev/null 2>&1; then
+        echo "  Valid repeated selectors should initialize fix mode"
+        cleanup_test_env
+        return 1
+    fi
+    if [[ "${DOCTOR_FIX_ONLY_SELECTORS[*]}" != "path stack.ntm config.tmux updates.holds.My-Tool+debug..v1" ]]; then
+        echo "  Selectors were not unioned and deduplicated in request order"
+        cleanup_test_env
+        return 1
+    fi
+    if ! doctor_fix_validate_selection path.ordering stack.ntm config.tmux updates.holds.My-Tool+debug..v1; then
+        echo "  Observed selected checks should validate"
+        cleanup_test_env
+        return 1
+    fi
+    FIX_FILTERED=7
+    if ! run_doctor_fix --dry-run >/dev/null 2>&1 ||
+        [[ ${#DOCTOR_FIX_ONLY_SELECTORS[@]} -ne 0 || "$DOCTOR_FIX_YES" != false || "$FIX_FILTERED" -ne 0 ]]; then
+        echo "  A subsequent ordinary run must not inherit selection, approval, or counters"
+        cleanup_test_env
+        return 1
+    fi
+
+    cleanup_test_env
+    return 0
+}
+
+test_run_doctor_fix_rejects_invalid_selection_before_side_effects() (
+    local side_effects=0
+    local invalid=""
+    local result=0
+    doctor_fix_log() { side_effects=$((side_effects + 1)); }
+    start_autofix_session() { side_effects=$((side_effects + 1)); }
+
+    for invalid in "" ",path" "path," "path,,stack" "path, stack" "path.*" ".path" "path..ordering" "path." "PATH" \
+        "path;id" "path/ordering" 'path,$(id)' $'path\nstack' $'path\r' $'path\t'; do
+        result=0
+        run_doctor_fix --yes --only path --only="$invalid" >/dev/null 2>&1 || result=$?
+        if [[ "$result" -ne 2 || "$side_effects" -ne 0 ]]; then
+            printf '  Invalid selection %q was accepted or caused side effects (exit %s)\n' "$invalid" "$result"
+            return 1
+        fi
+    done
+    for invalid in --only --unknown --prompt; do
+        result=0
+        run_doctor_fix "$invalid" >/dev/null 2>&1 || result=$?
+        if [[ "$result" -ne 2 || "$side_effects" -ne 0 ]]; then
+            printf '  Invalid fix option %q was accepted or caused side effects\n' "$invalid"
+            return 1
+        fi
+    done
+)
+
+test_doctor_fix_selection_uses_literal_boundaries() (
+    DOCTOR_FIX_ONLY_SELECTORS=(path stack.cm config.tmux updates.holds.My-Tool+debug..v1)
+    local check_id=""
+    for check_id in path.ordering path.extra.nested stack.cm config.tmux updates.holds.My-Tool+debug..v1; do
+        if ! doctor_fix_check_selected "$check_id"; then
+            echo "  Expected selected check: $check_id"
+            return 1
+        fi
+    done
+    for check_id in path paths.ordering path_ordering stack.cm.health stack.cmem config.tmux.extra config.tmux_backup updates.holds.my-tool+debug..v1 updates.holds.My-Tool+debug..v1.extra; do
+        if doctor_fix_check_selected "$check_id"; then
+            echo "  Selector escaped its exact/category boundary: $check_id"
+            return 1
+        fi
+    done
+    DOCTOR_FIX_ONLY_SELECTORS=()
+    doctor_fix_check_selected unknown.check || return 1
+)
+
+test_doctor_fix_selection_validates_all_observed_checks() (
+    local result=0
+    local output=""
+    DOCTOR_FIX_ONLY_SELECTORS=(path stack.cm)
+    doctor_fix_validate_selection path.ordering stack.cm shell.ohmyzsh || return 1
+    DOCTOR_FIX_ONLY_SELECTORS=(path stack.cm.missing)
+    output="$(doctor_fix_validate_selection path.ordering stack.cm 2>&1)" || result=$?
+    if [[ "$result" -ne 2 || "$output" != *"stack.cm.missing did not match"* ]]; then
+        echo "  Unknown exact check must fail with its selector in the diagnostic"
+        return 1
+    fi
+    DOCTOR_FIX_ONLY_SELECTORS=(paths)
+    result=0
+    doctor_fix_validate_selection path.ordering >/dev/null 2>&1 || result=$?
+    [[ "$result" -eq 2 ]] || return 1
+    DOCTOR_FIX_ONLY_SELECTORS=(stack.cm)
+    result=0
+    doctor_fix_validate_selection stack.cm.health >/dev/null 2>&1 || result=$?
+    [[ "$result" -eq 2 ]] || return 1
+    result=0
+    doctor_fix_validate_selection >/dev/null 2>&1 || result=$?
+    [[ "$result" -eq 2 ]] || return 1
+    DOCTOR_FIX_ONLY_SELECTORS=()
+    doctor_fix_validate_selection
+)
+
+test_dispatch_fix_selection_applies_only_requested_repairs() {
+    setup_test_env
+    printf '# User shell configuration\n' > "$HOME/.zshrc"
+
+    if ! run_doctor_fix --yes --only path >/dev/null 2>&1 ||
+        ! doctor_fix_validate_selection path.ordering config.tmux ||
+        ! dispatch_fix config.tmux fail >/dev/null 2>&1 ||
+        ! dispatch_fix path.ordering fail >/dev/null 2>&1; then
+        echo "  Selected real PATH repair should succeed"
+        cleanup_test_env
+        return 1
+    fi
+    if [[ -e "$HOME/.acfs/tmux/tmux.conf" || "$FIX_APPLIED" -ne 1 || "$FIX_FILTERED" -ne 1 ]]; then
+        echo "  Unselected config was changed or repair counts are inaccurate"
+        cleanup_test_env
+        return 1
+    fi
+    if ! grep -qF '.local/bin' "$HOME/.zshrc" ||
+        ! jq -e 'select(.category == "path" and .reversible == true and (.backups | length) == 1)' "$ACFS_CHANGES_FILE" >/dev/null 2>&1; then
+        echo "  Selected PATH repair did not persist its shell change and undo record"
+        cleanup_test_env
+        return 1
+    fi
+    if ! end_autofix_session >/dev/null 2>&1; then
+        echo "  Selected repair session could not be finalized"
+        cleanup_test_env
+        return 1
+    fi
+    cleanup_test_env
+    return 0
+}
+
+test_dispatch_fix_exact_selection_preserves_warning_opt_in() {
+    setup_test_env
+    if ! run_doctor_fix --dry-run --only stack.cm >/dev/null 2>&1; then
+        cleanup_test_env
+        return 1
+    fi
+    dispatch_fix stack.cm.health fail >/dev/null 2>&1 || {
+        cleanup_test_env
+        return 1
+    }
+    dispatch_fix stack.cm warn >/dev/null 2>&1 || {
+        cleanup_test_env
+        return 1
+    }
+    if [[ ${#FIXES_DRY_RUN[@]} -ne 0 || "$FIX_FILTERED" -ne 1 ]]; then
+        echo "  Exact selection widened to descendants or enabled warning repairs without --yes"
+        cleanup_test_env
+        return 1
+    fi
+    if ! grep -qF 'acfs doctor --fix --yes --only stack.cm' "$DOCTOR_FIX_LOG"; then
+        echo "  Warning repair guidance must preserve the requested selection"
+        cleanup_test_env
+        return 1
+    fi
+    DOCTOR_FIX_YES=true
+    dispatch_fix stack.cm warn >/dev/null 2>&1 || {
+        cleanup_test_env
+        return 1
+    }
+    if [[ ${#FIXES_DRY_RUN[@]} -ne 1 || "$FIX_APPLIED" -ne 0 || -e "$HOME/.local/bin/cm" ]]; then
+        echo "  Opted-in dry run must plan exactly one selected repair without installing"
+        cleanup_test_env
+        return 1
+    fi
+    local summary=""
+    summary="$(print_fix_summary)"
+    if [[ "$summary" != *"Selected: stack.cm"* || "$summary" != *"Outside selection: 1"* ]]; then
+        echo "  Dry-run summary omitted selected scope or unchanged findings"
+        cleanup_test_env
+        return 1
+    fi
+    cleanup_test_env
+    return 0
+}
+
 # ============================================================
 # Run all tests
 # ============================================================
@@ -5168,6 +5346,12 @@ main() {
     # run_doctor_fix tests
     run_test test_run_doctor_fix_init
     run_test test_run_doctor_fix_dry_run_flag
+    run_test test_run_doctor_fix_selection_unions_and_resets
+    run_test test_run_doctor_fix_rejects_invalid_selection_before_side_effects
+    run_test test_doctor_fix_selection_uses_literal_boundaries
+    run_test test_doctor_fix_selection_validates_all_observed_checks
+    run_test test_dispatch_fix_selection_applies_only_requested_repairs
+    run_test test_dispatch_fix_exact_selection_preserves_warning_opt_in
 
     # Summary
     echo ""
