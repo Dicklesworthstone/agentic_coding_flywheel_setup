@@ -1436,6 +1436,29 @@ update_run_logged_passthrough() {
     fi
 }
 
+# Capture one attempt without a pipe that a background child can keep open.
+# Run in the caller's shell so verified-installer hold/backoff details survive.
+# External commands receive the same deadline and detached stdin as run_cmd;
+# shell functions keep their existing target-context/installer deadlines.
+update_capture_command() {
+    local capture_tmp="" exit_code=0
+    UPDATE_LAST_COMMAND_OUTPUT=""
+
+    if ! capture_tmp="$(mktemp "${TMPDIR:-/tmp}/acfs-capture.XXXXXX")"; then
+        printf 'Unable to allocate update command capture; command was not run.\n' >&2
+        return 1
+    fi
+
+    _run_bounded "$@" >"$capture_tmp" 2>&1 || exit_code=$?
+    if ! UPDATE_LAST_COMMAND_OUTPUT="$(cat -- "$capture_tmp")"; then
+        UPDATE_LAST_COMMAND_OUTPUT=""
+        printf 'Unable to read update command output; refusing to report success.\n' >&2
+        [[ "$exit_code" -ne 0 ]] || exit_code=1
+    fi
+    rm -f -- "$capture_tmp" 2>/dev/null || true
+    return "$exit_code"
+}
+
 update_run_command_capture_with_retry() {
     local desc="$1"
     shift
@@ -1451,23 +1474,10 @@ update_run_command_capture_with_retry() {
 
     log_to_file "Running (captured with retry): $cmd_display"
 
-    # Capture through a temp file rather than $(...): command substitution
-    # blocks until the pipe reaches EOF, which never happens when an installer
-    # leaves a background daemon holding the inherited stdout (the exact hang
-    # run_cmd was rewritten to fix). A file capture returns as soon as the
-    # foreground child exits.
-    local capture_tmp=""
     while [[ $attempt -le $max_attempts ]]; do
         exit_code=0
-        capture_tmp="$(mktemp "${TMPDIR:-/tmp}/acfs-capture.XXXXXX" 2>/dev/null || true)"
-        if [[ -n "$capture_tmp" ]]; then
-            "$@" >"$capture_tmp" 2>&1 || exit_code=$?
-            output="$(<"$capture_tmp")"
-            rm -f "$capture_tmp" 2>/dev/null || true
-        else
-            output=$("$@" 2>&1) || exit_code=$?
-        fi
-        UPDATE_LAST_COMMAND_OUTPUT="$output"
+        update_capture_command "$@" || exit_code=$?
+        output="$UPDATE_LAST_COMMAND_OUTPUT"
         [[ -n "$output" ]] && log_to_file "Output: $output"
         [[ "$VERBOSE" == "true" && "$QUIET" != "true" && -n "$output" ]] && printf "%s\n" "$output"
 
@@ -2119,27 +2129,21 @@ run_cmd_bun_with_retry() {
         exit_code=0
         output=""
 
-        if [[ "$VERBOSE" == "true" ]]; then
-            if [[ -n "${UPDATE_LOG_FILE:-}" ]]; then
-                # Separate commands in the log for readability.
-                {
-                    echo ""
-                    echo "----- COMMAND (attempt $attempt/$max_attempts): $cmd_display"
-                } >> "$UPDATE_LOG_FILE"
-            fi
-
-            if [[ "$QUIET" != "true" ]] && [[ -n "${UPDATE_LOG_FILE:-}" ]]; then
-                output=$("$@" 2>&1 | tee -a "$UPDATE_LOG_FILE") || exit_code=${PIPESTATUS[0]}
-            elif [[ -n "${UPDATE_LOG_FILE:-}" ]]; then
-                output=$("$@" 2>&1) || exit_code=$?
-                [[ -n "$output" ]] && echo "$output" >> "$UPDATE_LOG_FILE"
-            else
-                output=$("$@" 2>&1) || exit_code=$?
-            fi
+        if [[ "$VERBOSE" == "true" && -n "${UPDATE_LOG_FILE:-}" ]]; then
+            # Separate commands in the log for readability.
+            {
+                echo ""
+                echo "----- COMMAND (attempt $attempt/$max_attempts): $cmd_display"
+            } >> "$UPDATE_LOG_FILE"
+        fi
+        update_capture_command "$@" || exit_code=$?
+        output="$UPDATE_LAST_COMMAND_OUTPUT"
+        if [[ "$VERBOSE" == "true" && -n "${UPDATE_LOG_FILE:-}" ]]; then
+            [[ -n "$output" ]] && printf '%s\n' "$output" >> "$UPDATE_LOG_FILE"
         else
-            output=$("$@" 2>&1) || exit_code=$?
             [[ -n "$output" ]] && log_to_file "Output: $output"
         fi
+        [[ "$VERBOSE" == "true" && "$QUIET" != "true" && -n "$output" ]] && printf '%s\n' "$output"
 
         if [[ $exit_code -eq 0 ]]; then
             # Move cursor up and overwrite (only in non-verbose, non-quiet mode)
@@ -2321,26 +2325,20 @@ _run_cmd_with_retry_internal() {
         exit_code=0
         output=""
 
-        if [[ "$VERBOSE" == "true" ]]; then
-            if [[ -n "${UPDATE_LOG_FILE:-}" ]]; then
-                {
-                    echo ""
-                    echo "----- COMMAND (attempt $attempt/$max_attempts): $cmd_display"
-                } >> "$UPDATE_LOG_FILE"
-            fi
-
-            if [[ "$QUIET" != "true" ]] && [[ -n "${UPDATE_LOG_FILE:-}" ]]; then
-                output=$("$@" 2>&1 | tee -a "$UPDATE_LOG_FILE") || exit_code=${PIPESTATUS[0]}
-            elif [[ -n "${UPDATE_LOG_FILE:-}" ]]; then
-                output=$("$@" 2>&1) || exit_code=$?
-                [[ -n "$output" ]] && echo "$output" >> "$UPDATE_LOG_FILE"
-            else
-                output=$("$@" 2>&1) || exit_code=$?
-            fi
+        if [[ "$VERBOSE" == "true" && -n "${UPDATE_LOG_FILE:-}" ]]; then
+            {
+                echo ""
+                echo "----- COMMAND (attempt $attempt/$max_attempts): $cmd_display"
+            } >> "$UPDATE_LOG_FILE"
+        fi
+        update_capture_command "$@" || exit_code=$?
+        output="$UPDATE_LAST_COMMAND_OUTPUT"
+        if [[ "$VERBOSE" == "true" && -n "${UPDATE_LOG_FILE:-}" ]]; then
+            [[ -n "$output" ]] && printf '%s\n' "$output" >> "$UPDATE_LOG_FILE"
         else
-            output=$("$@" 2>&1) || exit_code=$?
             [[ -n "$output" ]] && log_to_file "Output: $output"
         fi
+        [[ "$VERBOSE" == "true" && "$QUIET" != "true" && -n "$output" ]] && printf '%s\n' "$output"
 
         if [[ $exit_code -eq 0 ]]; then
             if [[ "$QUIET" != "true" ]] && [[ "$VERBOSE" != "true" ]]; then

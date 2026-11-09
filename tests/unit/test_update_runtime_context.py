@@ -10,6 +10,7 @@ from pathlib import Path
 import pwd
 import shlex
 import shutil
+import signal
 import subprocess
 import tempfile
 import unittest
@@ -1431,6 +1432,169 @@ printf 'COUNTS=%s,%s,%s\n' "$SUCCESS_COUNT" "$SKIP_COUNT" "$FAIL_COUNT"
                          [("gh", "extension list")])
         self.assertFalse((self.home / "bun-native-attempts").exists())
         self.assertEqual(list(self.caller.iterdir()), [])
+
+
+class RetryCommandExecutionTests(unittest.TestCase):
+    """Real retry execution must finish without waiting for orphaned writers."""
+
+    wrappers = (
+        "run_cmd_with_retry_status",
+        "run_cmd_attempt_with_retry",
+        "run_cmd_bun_with_retry",
+        "update_run_command_capture_with_retry",
+    )
+
+    def setUp(self):
+        self.base = Path(tempfile.mkdtemp(prefix="acfs-update-retry-"))
+
+    def execute(self, wrapper, body, *, verbose=False, quiet=True, setup="", stdin="",
+                invocation='"$TEST_ROOT/command"'):
+        case = Path(tempfile.mkdtemp(prefix="case-", dir=self.base))
+        command = case / "command"
+        command.write_text("#!/bin/bash\nset -euo pipefail\n" + body + "\n")
+        command.chmod(0o700)
+        env = {
+            "PATH": "/usr/bin:/bin", "HOME": str(case), "TARGET_HOME": str(case),
+            "TMPDIR": str(case), "TEST_ROOT": str(case), "NO_COLOR": "1",
+            "UPDATE_TEST_LIBRARY": str(SOURCE),
+            "TEST_VERBOSE": str(verbose).lower(), "TEST_QUIET": str(quiet).lower(),
+        }
+        script = r'''
+source "$UPDATE_TEST_LIBRARY"
+QUIET="$TEST_QUIET" VERBOSE="$TEST_VERBOSE" DRY_RUN=false ABORT_ON_FAILURE=false
+UPDATE_LOG_FILE="$TEST_ROOT/update.log"
+UPDATE_CMD_TIMEOUT=0.2
+ACFS_UPDATE_RETRY_MAX_ATTEMPTS=2
+ACFS_UPDATE_RETRY_SLEEP_SECONDS=0
+# Retain captures and all fixture files for failure diagnosis.
+rm() { :; }
+''' + setup + "\nrc=0\n" + wrapper + ' "fixture" ' + invocation + r''' || rc=$?
+printf 'RESULT=%s COUNTS=%s,%s,%s\n' "$rc" "$SUCCESS_COUNT" "$SKIP_COUNT" "$FAIL_COUNT"
+printf 'CAPTURE=%s\n' "$UPDATE_LAST_COMMAND_OUTPUT"
+printf 'STATE=%s\n' "$UPDATE_LAST_HOLD_DETAILS"
+'''
+        process = subprocess.Popen(["/bin/bash", "--noprofile", "--norc", "-c", script],
+                                   env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, text=True, start_new_session=True)
+        try:
+            stdout, stderr = process.communicate(stdin, timeout=3)
+            self.assertEqual(process.returncode, 0, stdout + stderr)
+            return case, stdout, stderr
+        finally:
+            # Terminate only the fixture processes created by this invocation.
+            # GNU timeout may put the command in its own process group.
+            background = case / "background-pid"
+            if background.exists():
+                try:
+                    os.kill(int(background.read_text()), signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.communicate(timeout=3)
+
+    def test_retry_external_commands_obey_existing_deadline_in_all_output_modes(self):
+        for wrapper in self.wrappers:
+            for verbose, quiet in ((False, True), (False, False), (True, True), (True, False)):
+                with self.subTest(wrapper=wrapper, verbose=verbose, quiet=quiet):
+                    case, stdout, _ = self.execute(wrapper,
+                        'printf "attempt\\n" >> "$TEST_ROOT/attempts"\n'
+                        'printf "before deadline\\n"\nprintf "diagnostic\\n" >&2\n'
+                        'sleep 30\nprintf "must not finish\\n"', verbose=verbose, quiet=quiet)
+                    expected_status = 0 if wrapper == "run_cmd_bun_with_retry" else 124
+                    expected_failures = int(wrapper in ("run_cmd_with_retry_status", "run_cmd_bun_with_retry"))
+                    self.assertIn(f"RESULT={expected_status} COUNTS=0,0,{expected_failures}", stdout)
+                    self.assertEqual((case / "attempts").read_text(), "attempt\n")
+                    log = (case / "update.log").read_text()
+                    self.assertIn("before deadline\ndiagnostic", log)
+                    self.assertNotIn("must not finish", log)
+
+    def test_background_writer_does_not_delay_completed_retry_command(self):
+        for wrapper in self.wrappers:
+            for verbose, quiet in ((False, True), (False, False), (True, True), (True, False)):
+                with self.subTest(wrapper=wrapper, verbose=verbose, quiet=quiet):
+                    case, stdout, _ = self.execute(wrapper,
+                        'sleep 30 &\nprintf "%s\\n" "$!" > "$TEST_ROOT/background-pid"\n'
+                        'printf "foreground stdout\\n"\nprintf "foreground stderr\\n" >&2',
+                        verbose=verbose, quiet=quiet)
+                    expected_successes = int(wrapper != "update_run_command_capture_with_retry")
+                    self.assertIn(f"RESULT=0 COUNTS={expected_successes},0,0", stdout)
+                    log = (case / "update.log").read_text()
+                    self.assertIn("foreground stdout\nforeground stderr", log)
+                    self.assertIn("CAPTURE=foreground stdout\nforeground stderr", stdout)
+                    if verbose and not quiet:
+                        self.assertEqual(stdout.count("foreground stdout"), 2)
+
+    def test_stdin_is_detached_and_permanent_failure_is_not_retried(self):
+        for wrapper in self.wrappers:
+            with self.subTest(wrapper=wrapper):
+                case, stdout, _ = self.execute(wrapper,
+                    'printf "attempt\\n" >> "$TEST_ROOT/attempts"\n'
+                    'if IFS= read -r line; then printf "unexpected stdin\\n"; exit 70; fi\n'
+                    'printf "ordinary failure\\n" >&2\nexit 7', stdin="sensitive caller input\n")
+                expected_status = 0 if wrapper == "run_cmd_bun_with_retry" else 7
+                self.assertIn(f"RESULT={expected_status} ", stdout)
+                self.assertEqual((case / "attempts").read_text(), "attempt\n")
+                self.assertIn("CAPTURE=ordinary failure", stdout)
+                self.assertNotIn("sensitive caller input", stdout + (case / "update.log").read_text())
+
+    def test_transient_retry_keeps_both_attempt_logs_and_final_status(self):
+        for wrapper in self.wrappers:
+            with self.subTest(wrapper=wrapper):
+                case, stdout, _ = self.execute(wrapper,
+                    'if [[ ! -f "$TEST_ROOT/attempted" ]]; then\n'
+                    '  printf "first\\n" > "$TEST_ROOT/attempted"\n'
+                    '  printf "connection reset by peer\\n" >&2\n  exit 7\nfi\n'
+                    'printf "second\\n" >> "$TEST_ROOT/attempted"\nprintf "recovered\\n"')
+                self.assertIn("RESULT=0 ", stdout)
+                self.assertEqual((case / "attempted").read_text(), "first\nsecond\n")
+                log = (case / "update.log").read_text()
+                self.assertIn("connection reset by peer", log)
+                self.assertIn("recovered", log)
+                self.assertIn("CAPTURE=recovered", stdout)
+
+    def test_capture_allocation_failure_never_runs_the_command(self):
+        for wrapper in self.wrappers:
+            with self.subTest(wrapper=wrapper):
+                case, stdout, stderr = self.execute(wrapper,
+                    'printf "executed\\n" > "$TEST_ROOT/unexpected"',
+                    setup='mktemp() { return 1; }')
+                self.assertFalse((case / "unexpected").exists())
+                self.assertIn("command was not run", stderr)
+                expected_status = 0 if wrapper == "run_cmd_bun_with_retry" else 1
+                self.assertIn(f"RESULT={expected_status} COUNTS=0,0,", stdout)
+
+    def test_capture_read_failure_does_not_report_success_or_retry_the_command(self):
+        for wrapper in self.wrappers:
+            for command_status in (0, 7):
+                with self.subTest(wrapper=wrapper, command_status=command_status):
+                    case, stdout, stderr = self.execute(wrapper,
+                        'printf "attempt\\n" >> "$TEST_ROOT/attempts"\n'
+                        f'exit {command_status}',
+                        setup="cat() { printf 'connection reset partial capture\\n'; return 1; }")
+                    self.assertEqual((case / "attempts").read_text(), "attempt\n")
+                    self.assertIn("Unable to read update command output", stderr)
+                    expected_status = 0 if wrapper == "run_cmd_bun_with_retry" else command_status or 1
+                    self.assertIn(f"RESULT={expected_status} COUNTS=0,0,", stdout)
+                    self.assertIn("CAPTURE=\n", stdout)
+                    self.assertNotIn("Success:", (case / "update.log").read_text())
+
+    def test_captured_function_state_and_exact_failure_survive(self):
+        for wrapper in self.wrappers:
+            with self.subTest(wrapper=wrapper):
+                _, stdout, _ = self.execute(wrapper, "exit 0", setup=r'''
+fixture_function() {
+    UPDATE_LAST_HOLD_DETAILS="held fixture"
+    printf 'function output\n'
+    return 93
+}
+''', invocation="fixture_function")
+                expected_status = 0 if wrapper == "run_cmd_bun_with_retry" else 93
+                self.assertIn(f"RESULT={expected_status} ", stdout)
+                self.assertIn("STATE=held fixture", stdout)
+                self.assertIn("CAPTURE=function output", stdout)
 
 
 if __name__ == "__main__":
