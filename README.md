@@ -3099,6 +3099,36 @@ scripts/templates/acfs-checksum-monitor.* # timer + service templates
 4. **Build and validate offline**: Uses the complete first observation to construct the candidate, without downloading installers a second time. Selects trusted-owner mismatches and exactly the authorized external tools; every deferred external pin stays unchanged. The validator checks the exact selected mismatch set, unchanged URLs and unchanged unselected pins. Its default, without explicit selection, still requires all observed mismatches. A changing external endpoint therefore cannot invalidate trusted publication through a second fetch. If issue delivery fails, the bound evidence stays in local state with a warning; approved external changes still require recorded review before mutation.
 5. **Generate and publish**: Places the validated candidate, regenerates its installer ledger and web metadata, checks the complete generated contract, and commits only the declared publication paths. Rechecks retained evidence and selected authorization after remote probes, immediately before commit and push, and before accepting remote readback. Pushes both compatibility refs atomically and reads them back before recording the result. Pending external review reports `result=deferred state=DEFERRED`, including after an approved subset publishes, and leaves the deferred review open. An accepted run with no pending review records `HEALTHY`. Authorization is consumed only after accepted external publication.
 
+#### Interrupted runs and failure accounting
+
+After acquiring the monitor lock, the process accounts for unhandled exits and
+catchable termination signals through the same fail-closed streak and alert
+path as explicit verification failures. An early `exit 0` without an accepted
+outcome becomes a failure. Genuine lock contention remains a quiet skip;
+failure to open the lock or run the lock command is an error.
+
+Failure accounting does not depend on successfully writing the normal log.
+If that log is unavailable, the terminal failure record falls back to standard
+error for the service journal, and notification attempts use a fallback output
+sink. The original nonzero exit or signal status remains nonzero. Interrupted
+runs retain their partial checkout, authorization records, download evidence,
+and publication journal for investigation; exit handling does not roll back,
+retry publication, or grant authority.
+
+An accepted publication is recorded before best-effort recovery notification
+delivery. Interruption during that delivery preserves the pending notice
+without turning the already accepted outcome into a new checksum outage.
+
+In-process handling cannot account for `SIGKILL`, host loss, or a service
+bootstrap failure before the monitor starts. Check the service journal for
+those cases; a failure-streak counter alone is not proof that every scheduled
+execution completed:
+
+```bash
+journalctl --user --unit acfs-checksum-monitor.service \
+  --since '1 hour ago' --output short-iso --no-pager
+```
+
 #### Diagnose a failed monitor run
 
 Run the diagnostic command on the monitor host as the monitor account. Select

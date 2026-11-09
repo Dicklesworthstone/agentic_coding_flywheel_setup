@@ -1324,6 +1324,12 @@ FAIL_ALERT_REPEAT_SECONDS=86400
 FAIL_ALERT_MIN_STREAK=3
 FAIL_STREAK_MAX=2147483647
 
+# Only the lock-owning shell may account for a run. Library sourcing and
+# diagnostics leave these unarmed; inherited subshells cannot record a second
+# failure for the parent's run. STATE is deliberately not an outcome receipt.
+MONITOR_RUN_PID=""
+MONITOR_TERMINAL_OUTCOME=""
+
 # Bash otherwise interprets leading zeroes as octal and wraps large integers.
 # Eighteen decimal digits fit in its signed 64-bit arithmetic on our Linux host.
 _monitor_decimal() {
@@ -1414,6 +1420,17 @@ _alert_fail_closed_streak() {
         push_due=true
     fi
     [[ "$github_due" == true || "$push_due" == true ]] || return 0
+    # A log failure may be the incident itself. Hold a usable output sink so
+    # failed redirection cannot prevent an otherwise deliverable notification.
+    # Keep diagnostics in the ordinary log when possible, otherwise stderr is
+    # retained by the service journal. Never open a known link or special file.
+    local notification_fd=""
+    if [[ ! -L "$LOG_FILE" && ( ! -e "$LOG_FILE" || -f "$LOG_FILE" ) ]] \
+        && { exec {notification_fd}>>"$LOG_FILE"; } 2>/dev/null; then
+        :
+    else
+        exec {notification_fd}>&2 || return 0
+    fi
     # The GitHub issue is public, so it names neither the host nor the home
     # directory; the private push does, so the operator knows where to look.
     local alert_msg=""
@@ -1423,13 +1440,16 @@ _alert_fail_closed_streak() {
     if [[ "$push_due" == true ]]; then
         if curl -fsS -m 10 -A "acfs (+https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup)" \
             -d "$push_msg" "https://ntfy.sh/${ACFS_NTFY_TOPIC}" \
-            >>"$LOG_FILE" 2>&1; then
+            >&"$notification_fd" 2>&1; then
             _fail_alert_record "$reason" "" "$FAIL_PUSH_ALERT_FILE"
         fi
     fi
     # A delivered push has its own cooldown. Failed GitHub posts still retry,
     # and a delivered GitHub post must not silence retries of a failed push.
-    [[ "$github_due" == true ]] || return 0
+    if [[ "$github_due" != true ]]; then
+        exec {notification_fd}>&- || true
+        return 0
+    fi
     # GitHub issue (deduped by label + search, same pattern as the
     # external-change review issue below)
     local repo_slug="Dicklesworthstone/agentic_coding_flywheel_setup"
@@ -1437,27 +1457,27 @@ _alert_fail_closed_streak() {
     existing="$(run_failure_bounded gh issue list --repo "$repo_slug" --state open \
         --label monitoring \
         --search "Checksum monitor failing closed" \
-        --json number -q '.[0].number' 2>>"$LOG_FILE" || true)"
+        --json number -q '.[0].number' 2>&"$notification_fd" || true)"
     local posted=false
     if [[ -n "$existing" && "$existing" != "null" ]]; then
         if run_failure_bounded gh issue comment "$existing" --repo "$repo_slug" \
-            --body "$alert_msg" >>"$LOG_FILE" 2>&1; then
-            log "commented on existing monitoring issue #$existing"
+            --body "$alert_msg" >&"$notification_fd" 2>&1; then
+            _monitor_failure_log "commented on existing monitoring issue #$existing"
             posted=true
         fi
     else
         if run_failure_bounded gh issue create --repo "$repo_slug" \
             --title "🚨 Checksum monitor failing closed - checksums unmonitored" \
             --label monitoring \
-            --body "$alert_msg" >>"$LOG_FILE" 2>&1; then
-            log "created monitoring alert issue"
+            --body "$alert_msg" >&"$notification_fd" 2>&1; then
+            _monitor_failure_log "created monitoring alert issue"
             posted=true
         elif run_failure_bounded gh issue create --repo "$repo_slug" \
             --title "🚨 Checksum monitor failing closed - checksums unmonitored" \
-            --body "$alert_msg" >>"$LOG_FILE" 2>&1; then
+            --body "$alert_msg" >&"$notification_fd" 2>&1; then
             # The label exists in the canonical repo; if it is ever missing,
             # an unlabeled alert (dedupe degraded) beats no alert at all.
-            log "created monitoring alert issue (unlabeled fallback)"
+            _monitor_failure_log "created monitoring alert issue (unlabeled fallback)"
             posted=true
         fi
     fi
@@ -1466,6 +1486,7 @@ _alert_fail_closed_streak() {
     if [[ "$posted" == "true" ]]; then
         _fail_alert_record "$reason"
     fi
+    exec {notification_fd}>&- || true
 }
 
 # Notification state carries no publication authority. Keep it bounded and
@@ -1614,30 +1635,112 @@ record_accepted_monitor_outcome() {
     printf '0\n' > "$FAIL_STREAK_FILE" \
         || fail_closed "remote publication is verified but the healthy-state marker could not be written"
     advance_state REMOTE_VERIFIED "$next_state" || return 1
+    # Required acceptance is complete. A later notification interruption must
+    # preserve its pending notice without inventing another verification outage.
+    MONITOR_TERMINAL_OUTCOME="accepted"
     _announce_recovery "$recorded_streak" "$outcome" || true
 }
 
-fail_closed() {
-    log "FAIL-CLOSED: $*"
+_record_monitor_failure() {
+    local reason="$*"
+    if [[ -n "$MONITOR_RUN_PID" && "$BASHPID" != "$MONITOR_RUN_PID" ]]; then
+        # Preserve the child's explanation locally without claiming a
+        # terminal parent failure: the caller may deliberately handle it.
+        _monitor_failure_log "subprocess failed closed: $reason"
+        return 0
+    fi
+    if [[ -n "$MONITOR_RUN_PID" ]]; then
+        case "$MONITOR_TERMINAL_OUTCOME" in
+            accepted|failed) return 0 ;;
+        esac
+    fi
+    # Claim the terminal outcome before any best-effort operation. In the
+    # armed owner, ignore repeated termination signals while bounded failure
+    # notification runs; EXIT still preserves the caller's final status.
+    if [[ -n "$MONITOR_RUN_PID" ]]; then
+        trap ':' HUP INT TERM
+    fi
+    MONITOR_TERMINAL_OUTCOME="failed"
     local streak=0
-    streak="$(_read_failure_streak)"
+    streak="$(_read_failure_streak)" || streak=0
     if (( streak < FAIL_STREAK_MAX )); then
         streak=$((streak + 1))
     fi
     printf '%s\n' "$streak" > "$FAIL_STREAK_FILE" 2>/dev/null || true
-    _alert_fail_closed_streak "$streak" "$*" || true
-    log "summary: result=fail_closed state=$STATE streak=$streak repo=$MONITOR_REPO"
+    # A broken log must not prevent streak accounting or notification. The
+    # existing logger also emits to stderr, retained by the service journal.
+    _monitor_failure_log "FAIL-CLOSED: $reason"
+    _alert_fail_closed_streak "$streak" "$reason" || true
+    _monitor_failure_log "summary: result=fail_closed state=$STATE streak=$streak repo=$MONITOR_REPO"
+    return 0
+}
+
+_monitor_failure_log() {
+    if [[ ! -L "$LOG_FILE" && ( ! -e "$LOG_FILE" || -f "$LOG_FILE" ) ]] && log "$*"; then
+        return 0
+    fi
+    printf 'ACFS checksum monitor: %s\n' "$*" >&2 || true
+}
+
+fail_closed() {
+    _record_monitor_failure "$*" || true
     exit 1
+}
+
+_monitor_exit_handler() {
+    local exit_status="$1" original_status="$1"
+    [[ "$BASHPID" == "$MONITOR_RUN_PID" ]] || return "$exit_status"
+    trap - EXIT
+    trap ':' HUP INT TERM
+    case "$MONITOR_TERMINAL_OUTCOME" in
+        accepted|failed) ;;
+        *)
+            # An early `exit 0` is not proof that verification and remote
+            # acceptance happened. Never turn an interrupted run green.
+            (( exit_status != 0 )) || exit_status=1
+            _record_monitor_failure "monitor exited unexpectedly before acceptance (exit=$original_status)" || true
+            ;;
+    esac
+    exit "$exit_status"
+}
+
+_monitor_signal_handler() {
+    local signal_name="$1" exit_status="$2"
+    if [[ "$BASHPID" == "$MONITOR_RUN_PID" ]]; then
+        trap ':' HUP INT TERM
+        _record_monitor_failure "monitor interrupted by $signal_name before acceptance" || true
+    fi
+    exit "$exit_status"
+}
+
+arm_monitor_exit_handlers() {
+    MONITOR_RUN_PID="$BASHPID"
+    MONITOR_TERMINAL_OUTCOME="running"
+    trap '_monitor_exit_handler "$?"' EXIT
+    trap '_monitor_signal_handler HUP 129' HUP
+    trap '_monitor_signal_handler INT 130' INT
+    trap '_monitor_signal_handler TERM 143' TERM
 }
 
 checksum_monitor_main() {
 # ---- single-instance lock (timer overlap is a silent no-op) ----
-exec 9>"$LOCK_FILE"
-if ! flock -n 9; then
-    # Another run is active; skipping is the correct behavior for a
-    # 15-minute timer, so exit success without noise.
-    exit 0
+if ! exec 9>"$LOCK_FILE"; then
+    fail_closed "could not open monitor lock file"
 fi
+local lock_status=0
+if flock -n -E 200 9; then
+    :
+else
+    lock_status=$?
+    # Another run is active; skipping is the correct behavior for a
+    # 15-minute timer. An explicit contention code distinguishes that normal
+    # condition from a broken lock utility or descriptor (which must alert).
+    if [[ "$lock_status" -eq 200 ]]; then
+        exit 0
+    fi
+    fail_closed "could not acquire monitor lock (flock exit=$lock_status)"
+fi
+arm_monitor_exit_handlers
 
 advance_state INIT LOCKED
 

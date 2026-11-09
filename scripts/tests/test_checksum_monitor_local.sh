@@ -977,6 +977,300 @@ for recovery_scenario in deferred post-retry lookup-retry no-open-issue invalid-
 done
 [[ "$recovery_failures" == 0 ]] || exit 1
 
+# Unexpected exits are exercised in separate Bash processes. Calling main in an
+# `if`/`||` test here would disable its errexit semantics and hide the regression.
+# Every injected exit happens at the first real state transition, before Git or
+# upstream verification; only the acceptance boundary is advanced explicitly in
+# the accepted-outcome cases. Network entry points are always intercepted.
+lifecycle_runner="$STATE_TMP/lifecycle-runner.sh"
+cat > "$lifecycle_runner" <<'LIFECYCLE_RUNNER'
+#!/usr/bin/env bash
+set -euo pipefail
+monitor_source="$1"
+lifecycle_root="$2"
+lifecycle_scenario="$3"
+export HOME="$lifecycle_root/home"
+export ACFS_MONITOR_STATE="$HOME/state"
+export ACFS_MONITOR_REPO="$lifecycle_root/no-repository"
+export ACFS_MONITOR_LIBRARY_ONLY=1
+unset ACFS_NTFY_TOPIC
+
+if [[ "$lifecycle_scenario" == source-traps ]]; then
+    trap 'printf "original trap\n" >> "$lifecycle_root/source-trap-fired"' EXIT
+    trap ':' HUP INT TERM
+    traps_before="$(trap -p EXIT HUP INT TERM)"
+fi
+# shellcheck source=../checksum-monitor-local.sh
+source "$monitor_source"
+if [[ "$lifecycle_scenario" == source-traps ]]; then
+    [[ "$(trap -p EXIT HUP INT TERM)" == "$traps_before" ]]
+    exit 0
+fi
+
+unexpected_transport() {
+    printf '%s\n' "$*" >> "$lifecycle_root/unexpected-transport"
+    return 97
+}
+git() { unexpected_transport git "$@"; }
+gh() { unexpected_transport gh "$@"; }
+run_bounded() { unexpected_transport run_bounded "$@"; }
+run_clean_bounded() { unexpected_transport run_clean_bounded "$@"; }
+run_bun_clean_bounded() { unexpected_transport run_bun_clean_bounded "$@"; }
+
+if [[ "$lifecycle_scenario" == broken-log-transport-* ]]; then
+    # Exercise the actual alert helper: a redirection failure used to prevent
+    # even the mocked transport from being called when the log was unwritable.
+    export ACFS_NTFY_TOPIC=fixture-topic
+    curl() {
+        printf 'push\n' >> "$lifecycle_root/transport-attempts"
+        [[ "$lifecycle_scenario" != broken-log-transport-failure ]]
+    }
+    run_failure_bounded() {
+        case "$*" in
+            'gh issue list '*)
+                printf 'lookup\n' >> "$lifecycle_root/transport-attempts"
+                printf '457\n'
+                ;;
+            'gh issue comment '*)
+                printf 'comment\n' >> "$lifecycle_root/transport-attempts"
+                printf '%s\n' "$*" >> "$lifecycle_root/public-alerts"
+                [[ "$lifecycle_scenario" != broken-log-transport-failure ]]
+                ;;
+            *) unexpected_transport "$@" ;;
+        esac
+    }
+else
+    _alert_fail_closed_streak() {
+        printf '%s\t%s\n' "$1" "$2" >> "$lifecycle_root/alert-attempts"
+        case "$lifecycle_scenario" in
+            signal-during-failure-alert) kill -s TERM "$BASHPID" ;;
+            log-and-alert-failure) return 75 ;;
+        esac
+        return 0
+    }
+fi
+
+_announce_recovery() {
+    printf '%s\t%s\n' "$1" "$2" >> "$lifecycle_root/recovery-attempts"
+    case "$lifecycle_scenario" in
+        accepted-term|accepted-deferred-term) kill -s TERM "$BASHPID" ;;
+    esac
+    return 0
+}
+
+case "$lifecycle_scenario" in
+    mode-help) exec /usr/bin/bash "$monitor_source" --help ;;
+    mode-diagnose) exec /usr/bin/bash "$monitor_source" --diagnose 20261108T110101Z ;;
+    flock-contention) flock() { return 200; } ;;
+    flock-error-one) flock() { return 1; } ;;
+    flock-error-two) flock() { return 2; } ;;
+    flock-error-usage) flock() { return 64; } ;;
+    flock-unavailable) flock() { return 127; } ;;
+    lock-open-failure) LOCK_FILE="$STATE_DIR/logs" ;;
+esac
+
+if [[ "$lifecycle_scenario" == broken-log || "$lifecycle_scenario" == log-and-alert-failure \
+    || "$lifecycle_scenario" == broken-log-transport-* || "$lifecycle_scenario" == explicit-broken-log ]]; then
+    LOG_FILE="$STATE_DIR/logs"
+    if [[ "$lifecycle_scenario" == explicit-broken-log ]]; then
+        fail_closed 'explicit fixture failure with unavailable log'
+    fi
+else
+    injected=false
+    LIFECYCLE_PRIVATE_COMMAND_SENTINEL() { return 73; }
+    log() {
+        if [[ "$*" == state=LOCKED && "$injected" == false ]]; then
+            injected=true
+            case "$lifecycle_scenario" in
+                unexpected-nonzero) LIFECYCLE_PRIVATE_COMMAND_SENTINEL ;;
+                unexpected-zero) exit 0 ;;
+                nounset) printf '%s\n' "$LIFECYCLE_UNSET_VARIABLE" ;;
+                signal-hup) kill -s HUP "$BASHPID" ;;
+                signal-int) kill -s INT "$BASHPID" ;;
+                signal-term) kill -s TERM "$BASHPID" ;;
+                explicit-failure|signal-during-failure-alert) fail_closed 'explicit fixture failure' ;;
+                subshell-nonzero) ( exit 73 ) ;;
+                subshell-explicit) ( fail_closed 'child fixture failure' ) ;;
+                substitution-explicit) discarded="$(fail_closed 'child fixture failure')" ;;
+                subshell-signal) ( kill -s TERM "$BASHPID"; exit 96 ) ;;
+                state-only-healthy) STATE=HEALTHY; exit 0 ;;
+                ignored-child-accepted|accepted-ok|accepted-deferred|accepted-term|accepted-deferred-term|accepted-nonzero|acceptance-transition-failure)
+                    if [[ "$lifecycle_scenario" == ignored-child-accepted ]]; then
+                        ( fail_closed 'ignored child fixture failure' ) || true
+                    fi
+                    STATE=REMOTE_VERIFIED
+                    outcome=ok
+                    [[ "$lifecycle_scenario" != accepted-deferred* ]] || outcome=deferred
+                    record_accepted_monitor_outcome "$outcome" || fail_closed 'accepted outcome recording failed'
+                    [[ "$lifecycle_scenario" != accepted-nonzero ]] || exit 73
+                    exit 0
+                    ;;
+                *) exit 96 ;;
+            esac
+            # Any injected signal unexpectedly ignored is a failed test rather
+            # than permission to fall through to the production network path.
+            exit 96
+        fi
+        if [[ "$lifecycle_scenario" == acceptance-transition-failure && "$*" == state=HEALTHY ]]; then
+            return 74
+        fi
+        printf '[00:00:00] %s\n' "$*" >> "$LOG_FILE"
+    }
+fi
+
+# This must remain a simple command, without a conditional-list wrapper.
+checksum_monitor_main
+LIFECYCLE_RUNNER
+
+lifecycle_case() (
+    lifecycle_scenario="$1"
+    lifecycle_root="$(mktemp -d "$STATE_TMP/lifecycle-$lifecycle_scenario.XXXXXX")"
+    mkdir -m 700 "$lifecycle_root/home" "$lifecycle_root/home/state"
+    lifecycle_state="$lifecycle_root/home/state"
+    printf '2\n' > "$lifecycle_state/fail_closed_streak"
+    case "$lifecycle_scenario" in
+        ignored-child-accepted|accepted-*|acceptance-transition-failure)
+            printf '3\n' > "$lifecycle_state/fail_closed_streak"
+            ;;
+    esac
+    printf 'private-authorization-sentinel\n' > "$lifecycle_state/authorized-checksum-change"
+    printf 'private-original-observation-sentinel\n' > "$lifecycle_state/retained-observation"
+    chmod 600 "$lifecycle_state/authorized-checksum-change" "$lifecycle_state/retained-observation"
+    protected_before="$(sha256sum "$lifecycle_state/authorized-checksum-change" "$lifecycle_state/retained-observation")"
+    held_lock=""
+    if [[ "$lifecycle_scenario" == held-lock ]]; then
+        exec {held_lock}>"$lifecycle_state/monitor.lock"
+        flock -n "$held_lock" || fail 'could not prepare real contended lock'
+    fi
+    monitor_status=0
+    timeout --signal=TERM --kill-after=2 8 bash "$lifecycle_runner" "$MONITOR" \
+        "$lifecycle_root" "$lifecycle_scenario" > "$lifecycle_root/stdout" 2> "$lifecycle_root/stderr" \
+        || monitor_status=$?
+    if [[ -n "$held_lock" ]]; then
+        exec {held_lock}>&-
+    fi
+    printf '%s\n' "$monitor_status" > "$lifecycle_root/exit-status"
+    expected_status=1
+    expected_streak=3
+    expected_alerts=1
+    expect_failure=true
+    case "$lifecycle_scenario" in
+        unexpected-nonzero|subshell-nonzero) expected_status=73 ;;
+        signal-hup) expected_status=129 ;;
+        signal-int) expected_status=130 ;;
+        signal-term|subshell-signal) expected_status=143 ;;
+        # The explicit failure has already claimed the terminal outcome. A
+        # repeated signal during bounded delivery preserves that first cause
+        # (exit 1); an initiating signal above still exits 128 + its number.
+        signal-during-failure-alert) expected_status=1 ;;
+        held-lock|flock-contention|source-traps|mode-help|mode-diagnose)
+            expected_status=0; expected_streak=2; expected_alerts=0; expect_failure=false
+            ;;
+        accepted-ok|accepted-deferred|ignored-child-accepted)
+            expected_status=0; expected_streak=0; expected_alerts=0; expect_failure=false
+            ;;
+        accepted-term|accepted-deferred-term)
+            expected_status=143; expected_streak=0; expected_alerts=0; expect_failure=false
+            ;;
+        accepted-nonzero)
+            expected_status=73; expected_streak=0; expected_alerts=0; expect_failure=false
+            ;;
+        acceptance-transition-failure) expected_streak=1 ;;
+        broken-log-transport-*) expected_alerts=0 ;;
+    esac
+    [[ "$monitor_status" == "$expected_status" ]] \
+        || fail "$lifecycle_scenario: expected exit $expected_status, found $monitor_status"
+    [[ "$(cat "$lifecycle_state/fail_closed_streak")" == "$expected_streak" ]] \
+        || fail "$lifecycle_scenario: failure was lost or counted more than once"
+    alert_count=0
+    [[ ! -f "$lifecycle_root/alert-attempts" ]] || alert_count="$(wc -l < "$lifecycle_root/alert-attempts")"
+    [[ "$alert_count" == "$expected_alerts" ]] \
+        || fail "$lifecycle_scenario: expected $expected_alerts alert attempts, found $alert_count"
+    [[ ! -e "$lifecycle_root/unexpected-transport" ]] \
+        || fail "$lifecycle_scenario reached a live verification/publication transport boundary"
+    [[ "$(sha256sum "$lifecycle_state/authorized-checksum-change" "$lifecycle_state/retained-observation")" == "$protected_before" ]] \
+        || fail "$lifecycle_scenario changed authorization or original observation evidence"
+    if [[ -f "$lifecycle_root/alert-attempts" ]]; then
+        ! grep -q 'LIFECYCLE_PRIVATE_COMMAND_SENTINEL' "$lifecycle_root/alert-attempts" \
+            || fail 'unexpected-exit notification disclosed the failing command'
+        ! grep -q 'child fixture failure' "$lifecycle_root/alert-attempts" \
+            || fail 'parent unexpected-exit notification disclosed a child failure reason'
+    fi
+    shopt -s nullglob
+    lifecycle_logs=("$lifecycle_state"/logs/run-*.log)
+    log_summaries=0
+    child_details=0
+    for lifecycle_log in "${lifecycle_logs[@]}"; do
+        found="$(grep -c 'summary: result=fail_closed' "$lifecycle_log" || true)"
+        log_summaries=$((log_summaries + found))
+        found="$(grep -c 'subprocess failed closed: .*child fixture failure' "$lifecycle_log" || true)"
+        child_details=$((child_details + found))
+    done
+    stderr_summaries="$(grep -c 'summary: result=fail_closed' "$lifecycle_root/stderr" || true)"
+    if [[ "$expect_failure" == true ]]; then
+        [[ "$log_summaries" -le 1 && "$stderr_summaries" -le 1 \
+            && ( "$log_summaries" == 1 || "$stderr_summaries" == 1 ) ]] \
+            || fail "$lifecycle_scenario did not retain exactly one terminal failure summary per sink"
+    else
+        [[ "$log_summaries" == 0 && "$stderr_summaries" == 0 ]] \
+            || fail "$lifecycle_scenario fabricated a terminal failure summary"
+    fi
+    case "$lifecycle_scenario" in
+        subshell-explicit|substitution-explicit|ignored-child-accepted)
+            [[ "$child_details" == 1 ]] || fail 'child failure reason was lost or duplicated in local evidence'
+            ;;
+    esac
+    case "$lifecycle_scenario" in
+        accepted-*|ignored-child-accepted)
+            [[ "$(cat "$lifecycle_state/fail_closed_recovery_pending")" == 3 ]] \
+                || fail "$lifecycle_scenario discarded or changed pending recovery during interruption"
+            [[ "$(wc -l < "$lifecycle_root/recovery-attempts")" == 1 ]] \
+                || fail "$lifecycle_scenario did not reach exactly one accepted recovery delivery"
+            ;;
+        acceptance-transition-failure)
+            [[ ! -e "$lifecycle_root/recovery-attempts" ]] || fail 'failed acceptance delivered recovery'
+            ;;
+        source-traps)
+            [[ "$(wc -l < "$lifecycle_root/source-trap-fired")" == 1 ]] \
+                || fail 'library-only sourcing replaced the caller trap'
+            ;;
+        mode-help|mode-diagnose)
+            [[ ! -e "$lifecycle_state/monitor.lock" ]] || fail 'diagnostic/help mode acquired the monitor lock'
+            ;;
+        broken-log-transport-*)
+            [[ "$(grep -c '^push$' "$lifecycle_root/transport-attempts")" == 1 \
+                && "$(grep -c '^lookup$' "$lifecycle_root/transport-attempts")" == 1 \
+                && "$(grep -c '^comment$' "$lifecycle_root/transport-attempts")" == 1 ]] \
+                || fail 'unavailable log suppressed or duplicated real alert transport attempts'
+            if [[ "$lifecycle_scenario" == broken-log-transport-success ]]; then
+                [[ -s "$lifecycle_state/fail_closed_alert" && -s "$lifecycle_state/fail_closed_push_alert" ]] \
+                    || fail 'delivered alerts did not retain their independent cooldowns'
+            else
+                [[ ! -s "$lifecycle_state/fail_closed_alert" && ! -s "$lifecycle_state/fail_closed_push_alert" ]] \
+                    || fail 'failed transports incorrectly suppressed the next alert retry'
+            fi
+            grep -q 'summary: result=fail_closed' "$lifecycle_root/stderr" \
+                || fail 'unavailable log suppressed the terminal failure summary from stderr'
+            ;;
+    esac
+)
+lifecycle_failures=0
+for lifecycle_scenario in unexpected-nonzero unexpected-zero nounset signal-hup signal-int signal-term \
+    explicit-failure explicit-broken-log broken-log log-and-alert-failure signal-during-failure-alert \
+    subshell-nonzero subshell-explicit substitution-explicit subshell-signal state-only-healthy \
+    ignored-child-accepted accepted-ok accepted-deferred accepted-term accepted-deferred-term \
+    accepted-nonzero acceptance-transition-failure held-lock flock-contention flock-error-one \
+    flock-error-two flock-error-usage flock-unavailable lock-open-failure source-traps mode-help \
+    mode-diagnose broken-log-transport-success broken-log-transport-failure; do
+    if lifecycle_case "$lifecycle_scenario"; then
+        printf 'PASS: monitor process lifecycle %s\n' "$lifecycle_scenario"
+    else
+        lifecycle_failures=$((lifecycle_failures + 1))
+        printf 'FAIL: monitor process lifecycle %s\n' "$lifecycle_scenario" >&2
+    fi
+done
+[[ "$lifecycle_failures" == 0 ]] || exit 1
+
 # Opt-in full state-machine qualification uses an immutable source archive.
 # Git's real SSH transport protocol is redirected to disposable bare fixtures;
 # dependencies, cleanliness, strict validators, generation, atomic pushes and
