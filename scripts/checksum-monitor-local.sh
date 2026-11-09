@@ -996,8 +996,8 @@ _alert_fail_closed_streak() {
     # The GitHub issue is public, so it names neither the host nor the home
     # directory; the private push does, so the operator knows where to look.
     local alert_msg=""
-    alert_msg="$(public_text "ACFS checksum monitor has failed closed $streak times in a row. Latest reason: $reason. Checksum drift is NOT being monitored until this is fixed. See $LOG_DIR on the monitor host. (Repeated at most once per 24h while the reason is unchanged.)")"
-    local push_msg="ACFS checksum monitor has failed closed $streak times in a row on $(hostname 2>/dev/null || echo unknown-host). Latest reason: $reason. Checksum drift is NOT being monitored until this is fixed. See $LOG_DIR. (Repeated at most once per 24h while the reason is unchanged.)"
+    alert_msg="$(public_text "ACFS checksum monitor has failed closed $streak times in a row. Latest reason: $reason. Checksum drift is NOT being monitored until this is fixed. Run: $RUN_TS. See $LOG_DIR on the monitor host. (Repeated at most once per 24h while the reason is unchanged.)")"
+    local push_msg="ACFS checksum monitor has failed closed $streak times in a row on $(hostname 2>/dev/null || echo unknown-host). Latest reason: $reason. Checksum drift is NOT being monitored until this is fixed. Run: $RUN_TS. See $LOG_DIR. (Repeated at most once per 24h while the reason is unchanged.)"
     # Optional push notification
     if [[ "$push_due" == true ]]; then
         if curl -fsS -m 10 -A "acfs (+https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup)" \
@@ -1238,10 +1238,14 @@ run_clean_bounded 300 env TMPDIR="$DOWNLOAD_EVIDENCE_RUN_DIR" \
     bash scripts/lib/security.sh --verify --json --retain-temp-files >"$verify_json" 2>>"$LOG_FILE"
 verify_exit=$?
 set -e
+# Keep locators and the producer exit even when the report contract fails.
+# Raw errors and HTTP evidence remain local; only the run locator is added to public alerts.
+log "verification evidence: run=$RUN_TS exit=$verify_exit report=$verify_json downloads=$DOWNLOAD_EVIDENCE_RUN_DIR"
 validate_verification_report "$verify_json" "$CURRENT_CHECKSUMS_SHA256" \
     || fail_closed "checksum verification returned data outside its strict bound report contract"
 VERIFICATION_REPORT_SHA256="$(sha256_file "$verify_json")" \
     || fail_closed "could not bind the validated verification report bytes"
+log "verification binding: policy_sha256=$CURRENT_CHECKSUMS_SHA256 report_sha256=$VERIFICATION_REPORT_SHA256"
 
 mismatches="$(jq '.mismatches | length' "$verify_json")"
 errors="$(jq '.errors | length' "$verify_json")"

@@ -215,6 +215,13 @@ printf 'Retaining checksum monitor test fixtures: %s\n' "$STATE_TMP" >&2
     _alert_fail_closed_streak 5 "reason B"
     [[ "$(grep -c '^gh issue comment 355 ' "$GH_CALLS")" == "1" ]] \
         || fail "changed reason did not produce exactly one alert comment"
+    grep -qF "Run: $RUN_TS." "$GH_CALLS" || fail 'public alert has no exact run locator'
+    saved_run_ts="$RUN_TS"
+    RUN_TS=20261108T111700Z
+    _alert_fail_closed_streak 6 "reason B"
+    [[ "$(grep -c '^gh issue comment 355 ' "$GH_CALLS")" == "1" ]] \
+        || fail 'a different run timestamp bypassed unchanged-reason deduplication'
+    RUN_TS="$saved_run_ts"
     IFS=$'\t' read -r rec_epoch rec_reason < "$FAIL_ALERT_FILE"
     [[ "$rec_reason" == "reason B" ]] || fail "alert record not updated to the posted reason (got: $rec_reason)"
     unset -f date
@@ -248,7 +255,9 @@ printf 'Retaining checksum monitor test fixtures: %s\n' "$STATE_TMP" >&2
     HOME="$STATE_TMP" _alert_fail_closed_streak 3 "push-only reason"
     first_gh_count=$(gh_count)
     grep -q 'test-host' "$CURL_CALLS" || fail "private push does not name the host"
+    grep -qF "Run: $RUN_TS." "$CURL_CALLS" || fail 'private push has no exact run locator'
     grep -qF "See $LOG_DIR." "$CURL_CALLS" || fail "private push does not give the log directory"
+    grep -qF "Run: $RUN_TS." "$GH_CALLS" || fail 'public alert has no exact run locator'
     grep -qF 'See ~/state/logs on the monitor host.' "$GH_CALLS" || fail "GitHub alert lost the log directory"
     ! grep -qF "$STATE_TMP" "$GH_CALLS" || fail "public GitHub alert names the home directory"
     grep -q 'push-only reason' "$GH_CALLS" || fail "GitHub alert body missing the reason"
@@ -1094,6 +1103,21 @@ RETAIN
                 approved-review-unavailable|push-rejected|fetch-error)
                     [[ "$monitor_exit" -ne 0 && "$remote_main" == "$integration_base" ]] \
                         || fail "$integration_case did not fail closed before remote acceptance"
+                    if [[ "$integration_case" == fetch-error ]]; then
+                        retained_reports=("$case_root/state"/verify-*.json)
+                        retained_downloads=("$case_root/state"/downloads-*)
+                        [[ ${#retained_reports[@]} == 1 && -f "${retained_reports[0]}" \
+                            && ${#retained_downloads[@]} == 1 && -d "${retained_downloads[0]}" ]] \
+                            || fail 'failed verification lost its original diagnostic artifacts'
+                        grep -qF "exit=1 report=${retained_reports[0]} downloads=${retained_downloads[0]}" \
+                            "$case_root/state/full-run.log" || fail 'failed verification lost its exit status or evidence locators'
+                        grep -qF "verification binding: policy_sha256=$integration_policy_digest report_sha256=$(sha256_file "${retained_reports[0]}")" \
+                            "$case_root/state/full-run.log" || fail 'failed verification lost its policy/report digest binding'
+                        grep -qF 'verification returned 1 error(s) / 0 skip(s); refusing to auto-update checksums.yaml' \
+                            "$case_root/state/full-run.log" || fail 'diagnostic logging changed the fail-closed reason'
+                        [[ "$(git -C "$case_root/repo" rev-parse HEAD)" == "$integration_base" ]] \
+                            || fail 'verification error created a publication commit'
+                    fi
                     if [[ -f "$AUTHORIZATION_FILE" ]]; then
                         [[ "$(cat "$AUTHORIZATION_FILE")" == "authorize:$integration_digest" ]] \
                             || fail "$integration_case consumed an unaccepted authorization"
