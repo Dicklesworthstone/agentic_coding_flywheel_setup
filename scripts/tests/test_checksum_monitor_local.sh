@@ -950,8 +950,8 @@ recovery_case() (
         write-allowlist)
             ! _write_monitor_notice_record "$AUTHORIZATION_FILE" 'replacement' || fail 'notification writer modified authorization'
             ! _write_monitor_notice_record "$STATE_DIR/unrelated" '' || fail 'notification writer accepted an unrelated path'
-            ! _write_monitor_notice_record "$FAIL_ALERT_FILE" $'1000000\tforged\n' \
-                || fail 'notification writer fabricated a failure delivery record'
+            ! _write_monitor_notice_record "$FAIL_ALERT_FILE" $'1000000\tforged\nextra\n' \
+                || fail 'notification writer accepted a malformed failure delivery record'
             ! _write_monitor_notice_record "$RECOVERY_PENDING_FILE" $'3\n4\n' \
                 || fail 'notification writer accepted noncanonical recovery state'
             [[ ! -e "$STATE_DIR/unrelated" && ! -s "$calls" ]] || fail 'notification writer escaped its state paths'
@@ -1270,6 +1270,381 @@ for lifecycle_scenario in unexpected-nonzero unexpected-zero nounset signal-hup 
     fi
 done
 [[ "$lifecycle_failures" == 0 ]] || exit 1
+
+# Mutable monitor records must never truncate an authorization/evidence alias.
+# Run the actual lifecycle and delivery helpers in isolated, timed processes;
+# every transport is intercepted and all rejected entries/temporary files stay
+# in the fixtures. This block also runs unchanged against an incumbent monitor.
+# BEGIN MONITOR_STATE_RECORD_REGRESSIONS
+state_record_runner="$STATE_TMP/state-record-runner.sh"
+cat > "$state_record_runner" <<'STATE_RECORD_RUNNER'
+#!/usr/bin/env bash
+set -euo pipefail
+monitor="$1"
+fixture_root="$2"
+scenario="$3"
+fail() { printf 'FAIL: %s\n' "$*" >&2; exit 97; }
+export HOME="$fixture_root/home"
+export ACFS_MONITOR_STATE="$HOME/state"
+export ACFS_MONITOR_REPO="$fixture_root/no-live-repository"
+mkdir -p "$HOME"
+if [[ "$scenario" == parent-symlink ]]; then
+    mkdir "$HOME/real-state"
+    ln -s "$HOME/real-state" "$ACFS_MONITOR_STATE"
+fi
+unset ACFS_NTFY_TOPIC
+ACFS_MONITOR_LIBRARY_ONLY=1
+# shellcheck source=../checksum-monitor-local.sh
+source "$monitor"
+RUN_TS=20261108T120000Z
+calls="$fixture_root/transport-attempts"
+comments="$fixture_root/comment-attempts"
+delivered="$fixture_root/comment-deliveries"
+: > "$calls"
+: > "$comments"
+: > "$delivered"
+GH_STATUS=0
+PUSH_STATUS=0
+run_failure_bounded() {
+    printf '%s\n' "$*" >> "$calls"
+    case "$*" in
+        'gh issue list '*) printf '457\n' ;;
+        'gh issue comment '*)
+            printf '%s\n' "$*" >> "$comments"
+            [[ "$GH_STATUS" == 0 ]] || return "$GH_STATUS"
+            printf '%s\n' "$*" >> "$delivered"
+            ;;
+        *) fail 'mutable-state test reached an unexpected transport' ;;
+    esac
+}
+curl() {
+    printf 'PUSH\n' >> "$calls"
+    [[ "$PUSH_STATUS" == 0 ]]
+}
+gh() { fail 'mutable-state test bypassed the bounded GitHub transport'; }
+git() { fail 'mutable-state test reached repository publication'; }
+hostname() { printf 'private-state-fixture-host\n'; }
+date() { printf '1000060\n'; }
+printf 'private-authorization-sentinel\n' > "$AUTHORIZATION_FILE"
+printf 'private-original-evidence-sentinel\n' > "$fixture_root/original-evidence"
+chmod 600 "$AUTHORIZATION_FILE" "$fixture_root/original-evidence"
+protected_before="$(sha256sum "$AUTHORIZATION_FILE" "$fixture_root/original-evidence")"
+protected_metadata="$(stat -c '%a:%u:%i' "$AUTHORIZATION_FILE" "$fixture_root/original-evidence")"
+
+assert_protected() {
+    [[ "$(sha256sum "$AUTHORIZATION_FILE" "$fixture_root/original-evidence")" == "$protected_before" \
+        && "$(stat -c '%a:%u:%i' "$AUTHORIZATION_FILE" "$fixture_root/original-evidence")" == "$protected_metadata" ]] \
+        || fail 'mutable monitor state changed authorization or original evidence'
+    ! grep -qE 'private-authorization-sentinel|private-original-evidence-sentinel|private-state-fixture-host' "$comments" \
+        || fail 'public failure alert disclosed retained evidence or host identity'
+}
+assert_unchanged() {
+    [[ "$(stat -c '%F:%a:%h:%i' "$record")" == "$record_metadata" ]] \
+        || fail 'unsafe record was silently replaced or its metadata changed'
+    [[ "$(stat -c '%h' "$target")" == "$target_links" ]] \
+        || fail 'unsafe alias target lost an evidence link'
+    assert_protected
+}
+failed_run() {
+    local status=0
+    ( fail_closed 'state fixture failure' ) >> "$fixture_root/failure-output" 2>&1 || status=$?
+    [[ "$status" == 1 ]] || fail "failed monitor lost its original exit status ($status)"
+    grep -q 'FAIL-CLOSED: state fixture failure' "$fixture_root/failure-output" \
+        || fail 'failure persistence error suppressed the original reason'
+}
+assert_unknown_count_alert() {
+    grep -q 'consecutive failure count is unavailable' "$comments" \
+        || fail 'unpersisted failure count stayed silent or lacked truthful diagnosis'
+    ! grep -q 'times in a row' "$comments" || fail 'unpersisted count fabricated a consecutive streak'
+    grep -q 'Checksum drift is NOT being monitored' "$comments" || fail 'failure alert claimed monitoring health'
+}
+
+case "$scenario" in
+    failure-symlink|failure-hardlink|accepted-symlink|accepted-hardlink|github-symlink|github-hardlink|push-symlink|push-hardlink)
+        operation="${scenario%-*}"
+        case "$operation" in
+            failure|accepted) record="$FAIL_STREAK_FILE"; target="$AUTHORIZATION_FILE" ;;
+            github) record="$FAIL_ALERT_FILE"; target="$fixture_root/original-evidence" ;;
+            push) record="$FAIL_PUSH_ALERT_FILE"; target="$fixture_root/original-evidence" ;;
+        esac
+        if [[ "$scenario" == *-symlink ]]; then ln -s "$target" "$record"; else ln "$target" "$record"; fi
+        record_metadata="$(stat -c '%F:%a:%h:%i' "$record")"
+        target_links="$(stat -c '%h' "$target")"
+        case "$operation" in
+            failure)
+                failed_run
+                assert_unchanged
+                assert_unknown_count_alert
+                ;;
+            accepted)
+                status=0
+                (
+                    STATE=REMOTE_VERIFIED
+                    record_accepted_monitor_outcome ok
+                    printf '%s\n' "$STATE" > "$fixture_root/accepted-state"
+                ) > "$fixture_root/acceptance-output" 2>&1 || status=$?
+                assert_unchanged
+                [[ "$status" == 1 && ! -e "$fixture_root/accepted-state" ]] \
+                    || fail 'unsafe failure-counter reset was declared healthy'
+                ! grep -q 'completed an accepted run' "$comments" || fail 'rejected acceptance emitted recovery'
+                grep -q 'failure-count state could not be safely read' "$fixture_root/acceptance-output" \
+                    || fail 'rejected counter reset lost the failure reason'
+                ;;
+            github|push)
+                _fail_alert_record 'state fixture failure' 1000060 "$record"
+                assert_unchanged
+                _fail_alert_due 4 'state fixture failure' 1000061 "$record" \
+                    || fail 'unsafe cooldown suppressed the retry'
+                ;;
+        esac
+        assert_unchanged
+        ;;
+    unsafe-mode|unsafe-directory|unsafe-fifo|unsafe-owner|parent-writable|parent-symlink)
+        if [[ "$scenario" == parent-writable ]]; then chmod 0770 "$STATE_DIR"; fi
+        for record in "$FAIL_STREAK_FILE" "$FAIL_ALERT_FILE" "$FAIL_PUSH_ALERT_FILE"; do
+            if [[ "$record" == "$FAIL_STREAK_FILE" ]]; then content=$'8\n'; else content=$'1000060\tstate fixture failure\n'; fi
+            case "$scenario" in
+                unsafe-mode|unsafe-owner|parent-writable|parent-symlink)
+                    printf '%s' "$content" > "$record"
+                    if [[ "$scenario" == unsafe-mode ]]; then chmod 0666 "$record"; fi
+                    if [[ "$scenario" == unsafe-owner ]]; then
+                        other_uid=65534
+                        [[ "$(id -u)" != "$other_uid" ]] || other_uid=65533
+                        if ! chown "$other_uid" "$record" 2> "$fixture_root/chown-error"; then
+                            printf 'SKIP: foreign-owner mutable-state fixture requires a mapped second uid\n'
+                            exit 0
+                        fi
+                    fi
+                    ;;
+                unsafe-directory) mkdir "$record" ;;
+                unsafe-fifo) mkfifo -m 600 "$record" ;;
+            esac
+            record_metadata="$(stat -c '%F:%a:%h:%i:%u' "$record")"
+            record_before=""
+            if [[ -f "$record" ]]; then record_before="$(sha256sum "$record")"; fi
+            if [[ "$record" == "$FAIL_STREAK_FILE" ]]; then
+                ! _read_failure_streak > "$fixture_root/unsafe-counter-output" \
+                    || fail 'unsafe counter supplied a consecutive count'
+                [[ ! -s "$fixture_root/unsafe-counter-output" ]] || fail 'unsafe counter was reported as an authoritative zero'
+                ! _write_monitor_notice_record "$record" $'1\n' || fail 'unsafe counter was overwritten'
+            else
+                _fail_alert_due 4 'state fixture failure' 1000061 "$record" || fail 'unsafe cooldown silenced an alert'
+                _fail_alert_record 'replacement' 1000061 "$record"
+                ! _write_monitor_notice_record "$record" '' || fail 'unsafe cooldown reset was accepted'
+            fi
+            [[ "$(stat -c '%F:%a:%h:%i:%u' "$record")" == "$record_metadata" ]] \
+                || fail 'unsafe state metadata was silently repaired'
+            if [[ -n "$record_before" ]]; then
+                [[ "$(sha256sum "$record")" == "$record_before" ]] || fail 'unsafe state bytes changed'
+            fi
+        done
+        ;;
+    legacy-failure|legacy-accepted|legacy-github|legacy-push)
+        printf '2\n' > "$FAIL_STREAK_FILE"
+        chmod 644 "$FAIL_STREAK_FILE"
+        case "$scenario" in
+            legacy-failure)
+                failed_run
+                [[ "$(cat "$FAIL_STREAK_FILE")" == 3 ]] || fail 'safe legacy count did not increment'
+                grep -q 'failed closed 3 times in a row' "$comments" || fail 'known persisted count became unavailable'
+                record="$FAIL_STREAK_FILE"
+                ;;
+            legacy-accepted)
+                printf '3\n' > "$FAIL_STREAK_FILE"
+                STATE=REMOTE_VERIFIED
+                record_accepted_monitor_outcome ok
+                [[ "$STATE" == HEALTHY && "$(cat "$FAIL_STREAK_FILE")" == 0 ]] || fail 'safe legacy recovery failed'
+                grep -q 'Previously recorded fail-closed streak: 3' "$comments" || fail 'safe recovery lost its history'
+                record="$FAIL_STREAK_FILE"
+                ;;
+            legacy-github|legacy-push)
+                if [[ "$scenario" == legacy-github ]]; then record="$FAIL_ALERT_FILE"; else record="$FAIL_PUSH_ALERT_FILE"; fi
+                printf '0001000000\told reason\n' > "$record"
+                chmod 644 "$record"
+                ! _fail_alert_due 4 'old reason' 1000060 "$record" || fail 'safe legacy cooldown was ignored'
+                _fail_alert_record 'new reason' 1000060 "$record"
+                ! _fail_alert_due 4 'new reason' 1000061 "$record" || fail 'delivered cooldown was not persisted'
+                ;;
+        esac
+        [[ "$(stat -c '%a:%h:%u' "$record")" == "600:1:$(id -u)" ]] \
+            || fail 'safe legacy record was not replaced with a private single-link record'
+        ;;
+    cooldown-nul|cooldown-extra-line|cooldown-extra-newline|cooldown-no-newline|cooldown-oversized|cooldown-tab|cooldown-control)
+        for record in "$FAIL_ALERT_FILE" "$FAIL_PUSH_ALERT_FILE"; do
+            case "$scenario" in
+                cooldown-nul) printf '1000060\tstate\0 fixture failure\n' > "$record" ;;
+                cooldown-extra-line) printf '1000060\tstate fixture failure\nuntrusted extra record\n' > "$record" ;;
+                cooldown-extra-newline) printf '1000060\tstate fixture failure\n\n' > "$record" ;;
+                cooldown-no-newline) printf '1000060\tstate fixture failure' > "$record" ;;
+                cooldown-oversized)
+                    printf '1000060\tstate fixture failure\n' > "$record"
+                    printf '%0131072d' 0 >> "$record"
+                    ;;
+                cooldown-tab) printf '1000060\tstate fixture failure\t\n' > "$record" ;;
+                cooldown-control) printf '1000060\tstate fixture failure\r\n' > "$record" ;;
+            esac
+            record_before="$(sha256sum "$record")"
+            _fail_alert_due 4 'state fixture failure' 1000061 "$record" || fail 'malformed cooldown silenced an alert'
+            [[ "$(sha256sum "$record")" == "$record_before" ]] || fail 'cooldown reader changed retained state'
+        done
+        ;;
+    unsupported-reason|cooldown-byte-boundary|typed-write-grammar)
+        _fail_alert_record 'old reason' 1000000
+        record_before="$(sha256sum "$FAIL_ALERT_FILE")"
+        case "$scenario" in
+            unsupported-reason)
+                printf -v oversized_reason '%05000d' 0
+                for reason in $'embedded\nnewline' $'embedded\tseparator' $'embedded\rcarriage' $'embedded\001control' "$oversized_reason"; do
+                    _fail_alert_record "$reason" 1000060
+                    [[ "$(sha256sum "$FAIL_ALERT_FILE")" == "$record_before" ]] || fail 'unsupported reason was truncated or persisted'
+                    _fail_alert_due 4 "$reason" 1000061 || fail 'unsupported reason suppressed its retry'
+                done
+                ;;
+            cooldown-byte-boundary)
+                printf -v reason '%04087d' 0
+                _fail_alert_record "$reason" 1000060
+                [[ "$(stat -c '%s' "$FAIL_ALERT_FILE")" == 4096 ]] || fail 'maximum valid cooldown was rejected'
+                ! _fail_alert_due 4 "$reason" 1000061 || fail 'maximum valid cooldown did not deduplicate'
+                record_before="$(sha256sum "$FAIL_ALERT_FILE")"
+                reason="${reason}x"
+                _fail_alert_record "$reason" 1000060
+                [[ "$(sha256sum "$FAIL_ALERT_FILE")" == "$record_before" ]] || fail 'oversized cooldown replaced valid state'
+                _fail_alert_due 4 "$reason" 1000061 || fail 'oversized reason was silently truncated into a duplicate'
+                ;;
+            typed-write-grammar)
+                for content in $'01\n' $'-1\n' $'2147483648\n' $'1\n2\n' '1' ''; do
+                    ! _write_monitor_notice_record "$FAIL_STREAK_FILE" "$content" || fail 'noncanonical failure count was written'
+                done
+                for content in $'0\treason\n' $'1000060\treason\nextra\n' $'1000060\treason\tother\n' $'1000060\treason' $'1000060\treason\r\n'; do
+                    ! _write_monitor_notice_record "$FAIL_ALERT_FILE" "$content" || fail 'noncanonical delivered cooldown was written'
+                done
+                [[ "$(sha256sum "$FAIL_ALERT_FILE")" == "$record_before" ]] || fail 'rejected grammar modified previous cooldown'
+                ! _write_monitor_notice_record "$AUTHORIZATION_FILE" $'1\n' || fail 'state writer accepted an authorization path'
+                ;;
+        esac
+        ;;
+    accepted-reset-failure)
+        printf '3\n' > "$FAIL_STREAK_FILE"
+        before="$(stat -c '%a:%h:%i' "$FAIL_STREAK_FILE"):$(sha256sum "$FAIL_STREAK_FILE")"
+        mv() {
+            [[ "${!#}" != "$FAIL_STREAK_FILE" ]] || return 75
+            command mv "$@"
+        }
+        status=0
+        (
+            STATE=REMOTE_VERIFIED
+            record_accepted_monitor_outcome ok
+            printf '%s\n' "$STATE" > "$fixture_root/accepted-state"
+        ) > "$fixture_root/acceptance-output" 2>&1 || status=$?
+        [[ "$status" == 1 && ! -e "$fixture_root/accepted-state" ]] \
+            || fail 'failed atomic counter reset was declared healthy'
+        [[ "$(stat -c '%a:%h:%i' "$FAIL_STREAK_FILE"):$(sha256sum "$FAIL_STREAK_FILE")" == "$before" ]] \
+            || fail 'failed accepted-run reset changed the previous counter'
+        [[ "$(cat "$RECOVERY_PENDING_FILE")" == 3 ]] || fail 'failed accepted-run reset discarded pending recovery evidence'
+        ! grep -q 'completed an accepted run' "$comments" || fail 'failed counter reset emitted recovery'
+        grep -q 'healthy-state marker could not be written' "$fixture_root/acceptance-output" \
+            || fail 'failed atomic reset lost its fail-closed reason'
+        assert_unknown_count_alert
+        ;;
+    persist-mktemp-failure|persist-write-failure|persist-rename-failure)
+        printf '2\n' > "$FAIL_STREAK_FILE"
+        before="$(stat -c '%a:%h:%i' "$FAIL_STREAK_FILE"):$(sha256sum "$FAIL_STREAK_FILE")"
+        case "$scenario" in
+            persist-mktemp-failure) mktemp() { return 75; } ;;
+            persist-write-failure)
+                printf() {
+                    if [[ "$#" == 2 && "$1" == '%s' && "$2" == $'3\n' ]]; then
+                        builtin printf 'partial write'
+                        return 75
+                    fi
+                    builtin printf "$@"
+                }
+                ;;
+            persist-rename-failure) mv() { return 75; } ;;
+        esac
+        failed_run
+        [[ "$(stat -c '%a:%h:%i' "$FAIL_STREAK_FILE"):$(sha256sum "$FAIL_STREAK_FILE")" == "$before" ]] \
+            || fail 'failed replacement damaged the previous counter'
+        assert_unknown_count_alert
+        shopt -s nullglob
+        staged=("$STATE_DIR"/notice-state.*)
+        shopt -u nullglob
+        if [[ "$scenario" == persist-mktemp-failure ]]; then
+            [[ "${#staged[@]}" == 0 ]] || fail 'failed temporary creation claimed a retained stage'
+        else
+            [[ "${#staged[@]}" -ge 1 ]] || fail 'failed state replacement discarded temporary evidence'
+            found=false
+            for staged_record in "${staged[@]}"; do
+                [[ "$(stat -c '%a' "$staged_record")" == 600 ]] || fail 'retained temporary record was public'
+                case "$scenario:$(cat "$staged_record")" in
+                    persist-write-failure:'partial write'|persist-rename-failure:3) found=true ;;
+                esac
+            done
+            [[ "$found" == true ]] || fail 'failed staging bytes were not retained'
+        fi
+        ;;
+    unavailable-dedup|unavailable-github-retry|unavailable-push-retry|unavailable-new-diagnosis)
+        ln -s "$AUTHORIZATION_FILE" "$FAIL_STREAK_FILE"
+        export ACFS_NTFY_TOPIC=fixture-never-sent
+        case "$scenario" in
+            unavailable-github-retry) GH_STATUS=75 ;;
+            unavailable-push-retry) PUSH_STATUS=75 ;;
+            unavailable-new-diagnosis)
+                _fail_alert_record 'state fixture failure' 1000000
+                _fail_alert_record 'state fixture failure' 1000000 "$FAIL_PUSH_ALERT_FILE"
+                ;;
+        esac
+        failed_run
+        failed_run
+        if [[ "$scenario" == unavailable-github-retry || "$scenario" == unavailable-push-retry ]]; then
+            GH_STATUS=0
+            PUSH_STATUS=0
+            failed_run
+            failed_run
+        fi
+        assert_unknown_count_alert
+        expected_comments=1
+        expected_pushes=1
+        [[ "$scenario" != unavailable-github-retry ]] || expected_comments=3
+        [[ "$scenario" != unavailable-push-retry ]] || expected_pushes=3
+        [[ "$(wc -l < "$comments")" == "$expected_comments" && "$(grep -c '^PUSH$' "$calls")" == "$expected_pushes" ]] \
+            || fail 'unavailable-count alert lost independent delivered-channel cooldowns or retries'
+        [[ "$(wc -l < "$delivered")" == 1 ]] || fail 'unavailable-count incident was not delivered exactly once in the fixture'
+        ;;
+    *) fail "unknown mutable-state scenario $scenario" ;;
+esac
+assert_protected
+STATE_RECORD_RUNNER
+
+state_record_failures=0
+for state_record_scenario in failure-symlink failure-hardlink accepted-symlink accepted-hardlink \
+    github-symlink github-hardlink push-symlink push-hardlink \
+    unsafe-mode unsafe-directory unsafe-fifo unsafe-owner parent-writable parent-symlink \
+    legacy-failure legacy-accepted legacy-github legacy-push \
+    cooldown-nul cooldown-extra-line cooldown-extra-newline cooldown-no-newline cooldown-oversized cooldown-tab cooldown-control \
+    unsupported-reason cooldown-byte-boundary typed-write-grammar \
+    accepted-reset-failure persist-mktemp-failure persist-write-failure persist-rename-failure \
+    unavailable-dedup unavailable-github-retry unavailable-push-retry unavailable-new-diagnosis; do
+    state_record_root="$(mktemp -d "$STATE_TMP/mutable-$state_record_scenario.XXXXXX")"
+    state_record_status=0
+    timeout --signal=TERM --kill-after=2 10 bash "$state_record_runner" "$MONITOR" \
+        "$state_record_root" "$state_record_scenario" > "$state_record_root/stdout" 2> "$state_record_root/stderr" \
+        || state_record_status=$?
+    if [[ "$state_record_status" == 0 ]]; then
+        if grep -q '^SKIP:' "$state_record_root/stdout"; then
+            cat "$state_record_root/stdout"
+        else
+            printf 'PASS: mutable monitor state %s\n' "$state_record_scenario"
+        fi
+    else
+        state_record_failures=$((state_record_failures + 1))
+        printf 'FAIL: mutable monitor state %s (exit %s; %s)\n' \
+            "$state_record_scenario" "$state_record_status" "$state_record_root" >&2
+        cat "$state_record_root/stderr" >&2
+    fi
+done
+[[ "$state_record_failures" == 0 ]] || exit 1
+# END MONITOR_STATE_RECORD_REGRESSIONS
 
 # Opt-in full state-machine qualification uses an immutable source archive.
 # Git's real SSH transport protocol is redirected to disposable bare fixtures;

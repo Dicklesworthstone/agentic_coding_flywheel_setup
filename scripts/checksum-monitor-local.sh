@@ -1323,6 +1323,7 @@ RECOVERY_PENDING_FILE="$STATE_DIR/fail_closed_recovery_pending"
 FAIL_ALERT_REPEAT_SECONDS=86400
 FAIL_ALERT_MIN_STREAK=3
 FAIL_STREAK_MAX=2147483647
+FAIL_ALERT_RECORD_MAX_BYTES=4096
 
 # Only the lock-owning shell may account for a run. Library sourcing and
 # diagnostics leave these unarmed; inherited subshells cannot record a second
@@ -1338,12 +1339,78 @@ _monitor_decimal() {
     printf '%s\n' "$((10#$value))"
 }
 
+# These bookkeeping paths carry no publication authority. Validate the parent
+# and each existing leaf before reading or replacing it, including hard links.
+# Legacy owner-readable 0644 records remain usable; replacements are private.
+_monitor_notice_record_path() {
+    local record_file="$1" metadata="" owner="" mode="" links="" mode_value=0 monitor_uid=""
+    case "$record_file" in
+        "$FAIL_STREAK_FILE"|"$FAIL_ALERT_FILE"|"$FAIL_PUSH_ALERT_FILE"|"$RECOVERY_PENDING_FILE") ;;
+        *) return 1 ;;
+    esac
+    monitor_uid="$(id -u)" || return 1
+    [[ -d "$STATE_DIR" && ! -L "$STATE_DIR" ]] || return 1
+    metadata="$(stat -c '%u:%a' -- "$STATE_DIR" 2>/dev/null)" || return 1
+    IFS=: read -r owner mode <<< "$metadata"
+    [[ "$owner" == "$monitor_uid" && "$mode" =~ ^[0-7]{3,4}$ ]] || return 1
+    mode_value=$((8#$mode))
+    (( (mode_value & 022) == 0 )) || return 1
+    if [[ -e "$record_file" || -L "$record_file" ]]; then
+        [[ -f "$record_file" && ! -L "$record_file" ]] || return 1
+        metadata="$(stat -c '%u:%a:%h' -- "$record_file" 2>/dev/null)" || return 1
+        IFS=: read -r owner mode links <<< "$metadata"
+        [[ "$owner" == "$monitor_uid" && "$links" == 1 && "$mode" =~ ^[0-7]{3,4}$ ]] || return 1
+        mode_value=$((8#$mode))
+        (( (mode_value & 022) == 0 && (mode_value & 0400) != 0 )) || return 1
+        [[ "$record_file" != "$RECOVERY_PENDING_FILE" || "$mode" == 600 ]] || return 1
+    fi
+}
+
+# The existing cooldown format is one complete epoch<TAB>reason<LF> record.
+# Do not truncate reasons: distinct failures must not share an accidental key.
+_monitor_cooldown_content_valid() {
+    local content="$1" payload="" epoch="" reason="" LC_ALL=C
+    (( ${#content} <= FAIL_ALERT_RECORD_MAX_BYTES )) || return 1
+    [[ "$content" == *$'\n' ]] || return 1
+    payload="${content%$'\n'}"
+    [[ "$payload" == *$'\t'* ]] || return 1
+    epoch="${payload%%$'\t'*}"
+    reason="${payload#*$'\t'}"
+    [[ ! "$reason" =~ [[:cntrl:]] ]] || return 1
+    epoch="$(_monitor_decimal "$epoch")" || return 1
+    (( epoch > 0 ))
+}
+
+_read_monitor_cooldown_record() {
+    local record_file="$1" content="" size="" reader_pid=""
+    case "$record_file" in
+        "$FAIL_ALERT_FILE"|"$FAIL_PUSH_ALERT_FILE") ;;
+        *) return 1 ;;
+    esac
+    _monitor_notice_record_path "$record_file" || return 1
+    [[ -f "$record_file" ]] || return 1
+    size="$(stat -c '%s' -- "$record_file" 2>/dev/null)" || return 1
+    [[ "$size" =~ ^[0-9]{1,10}$ ]] || return 1
+    (( size > 0 && size <= FAIL_ALERT_RECORD_MAX_BYTES )) || return 1
+    # read -d '' preserves the final LF and stops at a NUL. The exact bounded
+    # comparison below rejects NULs, extra lines and a valid-looking prefix.
+    IFS= read -r -d '' content < <(/usr/bin/head -c "$((FAIL_ALERT_RECORD_MAX_BYTES + 1))" -- "$record_file" 2>/dev/null) || true
+    reader_pid=$!
+    wait "$reader_pid" || return 1
+    _monitor_cooldown_content_valid "$content" || return 1
+    printf '%s' "$content" | cmp -s -- "$record_file" - || return 1
+    printf '%s' "$content"
+}
+
 _read_failure_streak() {
-    local value=""
-    if [[ -f "$FAIL_STREAK_FILE" && ! -L "$FAIL_STREAK_FILE" ]]; then
+    local value="" reader_pid=""
+    _monitor_notice_record_path "$FAIL_STREAK_FILE" || return 1
+    if [[ -f "$FAIL_STREAK_FILE" ]]; then
         # Bound malformed state reads. A long numeric record saturates rather
         # than wrapping negative and disabling the alert threshold.
         IFS= read -r value < <(/usr/bin/head -c 64 -- "$FAIL_STREAK_FILE" 2>/dev/null) || true
+        reader_pid=$!
+        wait "$reader_pid" || return 1
     fi
     if [[ ! "$value" =~ ^[0-9]+$ ]]; then
         printf '0\n'
@@ -1367,23 +1434,30 @@ _read_failure_streak() {
     fi
 }
 
-# _fail_alert_due STREAK REASON [NOW_EPOCH [RECORD_FILE]]
+# _fail_alert_due STREAK REASON [NOW_EPOCH [RECORD_FILE [MODE]]]
 # True when an alert should be posted for this failure: the streak has just
 # reached the alert threshold, the reason differs from the last posted alert,
-# or the last alert is older than FAIL_ALERT_REPEAT_SECONDS. Never true below
-# the threshold. Pure: reads the selected channel record, never writes it.
+# or the last alert is older than FAIL_ALERT_REPEAT_SECONDS. count-unavailable
+# bypasses the threshold without inventing a count. REASON is the exact stored
+# comparison key. Pure: reads the selected channel record, never writes it.
 _fail_alert_due() {
     local streak="$1" reason="$2" now="${3:-}"
-    local record_file="${4:-$FAIL_ALERT_FILE}"
-    local last_epoch="" last_reason=""
-    streak="$(_monitor_decimal "$streak")" || return 1
-    (( streak >= FAIL_ALERT_MIN_STREAK )) || return 1
+    local record_file="${4:-$FAIL_ALERT_FILE}" count_mode="${5:-normal}"
+    local last_epoch="" last_reason="" record=""
+    case "$count_mode" in
+        normal)
+            streak="$(_monitor_decimal "$streak")" || return 1
+            (( streak >= FAIL_ALERT_MIN_STREAK )) || return 1
+            ;;
+        count-unavailable) ;;
+        *) return 1 ;;
+    esac
     [[ -n "$now" ]] || now="$(date -u +%s 2>/dev/null || echo 0)"
     now="$(_monitor_decimal "$now")" || return 0
     (( now > 0 )) || return 0
-    if [[ -f "$record_file" && ! -L "$record_file" ]]; then
-        IFS=$'\t' read -r last_epoch last_reason < "$record_file" || true
-    fi
+    record="$(_read_monitor_cooldown_record "$record_file")" || return 0
+    last_epoch="${record%%$'\t'*}"
+    last_reason="${record#*$'\t'}"
     last_epoch="$(_monitor_decimal "$last_epoch")" || return 0
     [[ "$last_reason" == "$reason" ]] || return 0    # the failure changed: say so
     # Clock rollback or corrupt future state must not silence alerts forever.
@@ -1397,7 +1471,9 @@ _fail_alert_record() {
     [[ -n "$now" ]] || now="$(date -u +%s 2>/dev/null || echo 0)"
     now="$(_monitor_decimal "$now")" || return 0
     (( now > 0 )) || return 0
-    printf '%s\t%s\n' "$now" "$reason" > "$record_file" 2>/dev/null || true
+    _write_monitor_notice_record "$record_file" "$now"$'\t'"$reason"$'\n' \
+        || _monitor_failure_log "WARNING: failure notification was delivered but its cooldown could not be persisted"
+    return 0
 }
 
 # public_text TEXT: TEXT with the monitor user's home directory written as ~.
@@ -1411,12 +1487,22 @@ public_text() {
 }
 
 _alert_fail_closed_streak() {
-    local streak="$1" reason="$2"
+    local streak="$1" reason="$2" count_mode="${3:-normal}" failure_text=""
+    case "$count_mode" in
+        normal)
+            failure_text="ACFS checksum monitor has failed closed $streak times in a row."
+            ;;
+        count-unavailable)
+            reason="$reason. Failure count could not be persisted; consecutive count unavailable."
+            failure_text="ACFS checksum monitor has failed closed. The consecutive failure count is unavailable because monitoring state could not be persisted."
+            ;;
+        *) return 0 ;;
+    esac
     local github_due=false push_due=false
-    if _fail_alert_due "$streak" "$reason"; then
+    if _fail_alert_due "$streak" "$reason" "" "$FAIL_ALERT_FILE" "$count_mode"; then
         github_due=true
     fi
-    if [[ -n "${ACFS_NTFY_TOPIC:-}" ]] && _fail_alert_due "$streak" "$reason" "" "$FAIL_PUSH_ALERT_FILE"; then
+    if [[ -n "${ACFS_NTFY_TOPIC:-}" ]] && _fail_alert_due "$streak" "$reason" "" "$FAIL_PUSH_ALERT_FILE" "$count_mode"; then
         push_due=true
     fi
     [[ "$github_due" == true || "$push_due" == true ]] || return 0
@@ -1434,8 +1520,8 @@ _alert_fail_closed_streak() {
     # The GitHub issue is public, so it names neither the host nor the home
     # directory; the private push does, so the operator knows where to look.
     local alert_msg=""
-    alert_msg="$(public_text "ACFS checksum monitor has failed closed $streak times in a row. Latest reason: $reason. Checksum drift is NOT being monitored until this is fixed. Run: $RUN_TS. See $LOG_DIR on the monitor host. (Repeated at most once per 24h while the reason is unchanged.)")"
-    local push_msg="ACFS checksum monitor has failed closed $streak times in a row on $(hostname 2>/dev/null || echo unknown-host). Latest reason: $reason. Checksum drift is NOT being monitored until this is fixed. Run: $RUN_TS. See $LOG_DIR. (Repeated at most once per 24h while the reason is unchanged.)"
+    alert_msg="$(public_text "$failure_text Latest reason: $reason. Checksum drift is NOT being monitored until this is fixed. Run: $RUN_TS. See $LOG_DIR on the monitor host. (Repeated at most once per 24h while the reason is unchanged and delivery state can be persisted.)")"
+    local push_msg="$failure_text Monitor host: $(hostname 2>/dev/null || echo unknown-host). Latest reason: $reason. Checksum drift is NOT being monitored until this is fixed. Run: $RUN_TS. See $LOG_DIR. (Repeated at most once per 24h while the reason is unchanged and delivery state can be persisted.)"
     # Optional push notification
     if [[ "$push_due" == true ]]; then
         if curl -fsS -m 10 -A "acfs (+https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup)" \
@@ -1489,13 +1575,18 @@ _alert_fail_closed_streak() {
     exec {notification_fd}>&- || true
 }
 
-# Notification state carries no publication authority. Keep it bounded and
+# Monitoring state carries no publication authority. Keep it bounded and
 # private nevertheless: never follow a linked record or write through one.
 # Atomic replacement preserves the previous record when a write fails. Failed
 # temporary writes are retained; none of the observation evidence is touched.
 _write_monitor_notice_record() {
-    local record_file="$1" content="$2" owner="" mode="" mode_value=0 links="" temporary="" streak=""
+    local record_file="$1" content="$2" temporary="" streak=""
     case "$record_file" in
+        "$FAIL_STREAK_FILE")
+            streak="${content%$'\n'}"
+            [[ "$content" == "$streak"$'\n' && "$streak" =~ ^(0|[1-9][0-9]{0,9})$ ]] || return 1
+            (( streak <= FAIL_STREAK_MAX )) || return 1
+            ;;
         "$RECOVERY_PENDING_FILE")
             if [[ -n "$content" ]]; then
                 streak="${content%$'\n'}"
@@ -1503,25 +1594,12 @@ _write_monitor_notice_record() {
                 (( streak == 0 || (streak >= FAIL_ALERT_MIN_STREAK && streak <= FAIL_STREAK_MAX) )) || return 1
             fi
             ;;
-        "$FAIL_ALERT_FILE"|"$FAIL_PUSH_ALERT_FILE") [[ -z "$content" ]] || return 1 ;;
+        "$FAIL_ALERT_FILE"|"$FAIL_PUSH_ALERT_FILE")
+            [[ -z "$content" ]] || _monitor_cooldown_content_valid "$content" || return 1
+            ;;
         *) return 1 ;;
     esac
-    [[ -d "$STATE_DIR" && ! -L "$STATE_DIR" ]] || return 1
-    owner="$(stat -c '%u' -- "$STATE_DIR" 2>/dev/null)" || return 1
-    mode="$(stat -c '%a' -- "$STATE_DIR" 2>/dev/null)" || return 1
-    [[ "$owner" == "$(id -u)" && "$mode" =~ ^[0-7]{3,4}$ ]] || return 1
-    mode_value=$((8#$mode))
-    (( (mode_value & 022) == 0 )) || return 1
-    if [[ -e "$record_file" || -L "$record_file" ]]; then
-        [[ -f "$record_file" && ! -L "$record_file" ]] || return 1
-        owner="$(stat -c '%u' -- "$record_file" 2>/dev/null)" || return 1
-        mode="$(stat -c '%a' -- "$record_file" 2>/dev/null)" || return 1
-        links="$(stat -c '%h' -- "$record_file" 2>/dev/null)" || return 1
-        [[ "$owner" == "$(id -u)" && "$links" == 1 && "$mode" =~ ^[0-7]{3,4}$ ]] || return 1
-        mode_value=$((8#$mode))
-        (( (mode_value & 022) == 0 )) || return 1
-        [[ "$record_file" != "$RECOVERY_PENDING_FILE" || "$mode" == 600 ]] || return 1
-    fi
+    _monitor_notice_record_path "$record_file" || return 1
     temporary="$(mktemp "$STATE_DIR/notice-state.XXXXXX")" || return 1
     ( umask 077; printf '%s' "$content" > "$temporary" ) || return 1
     mv -fT -- "$temporary" "$record_file"
@@ -1623,7 +1701,8 @@ record_accepted_monitor_outcome() {
         deferred) next_state=DEFERRED ;;
         *) return 1 ;;
     esac
-    previous_streak="$(_read_failure_streak)" || return 1
+    previous_streak="$(_read_failure_streak)" \
+        || fail_closed "remote publication is verified but failure-count state could not be safely read"
     recorded_streak="$(_queue_recovery_notice "$previous_streak")" || {
         log "WARNING: could not prepare recovery notification state"
         recorded_streak=0
@@ -1632,7 +1711,7 @@ record_accepted_monitor_outcome() {
         || log "WARNING: could not reset GitHub failure alert cooldown"
     _write_monitor_notice_record "$FAIL_PUSH_ALERT_FILE" '' \
         || log "WARNING: could not reset private failure alert cooldown"
-    printf '0\n' > "$FAIL_STREAK_FILE" \
+    _write_monitor_notice_record "$FAIL_STREAK_FILE" $'0\n' \
         || fail_closed "remote publication is verified but the healthy-state marker could not be written"
     advance_state REMOTE_VERIFIED "$next_state" || return 1
     # Required acceptance is complete. A later notification interruption must
@@ -1661,17 +1740,27 @@ _record_monitor_failure() {
         trap ':' HUP INT TERM
     fi
     MONITOR_TERMINAL_OUTCOME="failed"
-    local streak=0
-    streak="$(_read_failure_streak)" || streak=0
-    if (( streak < FAIL_STREAK_MAX )); then
-        streak=$((streak + 1))
+    local streak=0 count_mode=normal summary_streak=""
+    if ! streak="$(_read_failure_streak)"; then
+        streak=0
+        count_mode=count-unavailable
+    else
+        if (( streak < FAIL_STREAK_MAX )); then
+            streak=$((streak + 1))
+        fi
+        _write_monitor_notice_record "$FAIL_STREAK_FILE" "$streak"$'\n' \
+            || count_mode=count-unavailable
     fi
-    printf '%s\n' "$streak" > "$FAIL_STREAK_FILE" 2>/dev/null || true
+    summary_streak="$streak"
+    if [[ "$count_mode" == count-unavailable ]]; then
+        summary_streak=unknown
+        _monitor_failure_log "WARNING: failure count could not be persisted; consecutive count unavailable"
+    fi
     # A broken log must not prevent streak accounting or notification. The
     # existing logger also emits to stderr, retained by the service journal.
     _monitor_failure_log "FAIL-CLOSED: $reason"
-    _alert_fail_closed_streak "$streak" "$reason" || true
-    _monitor_failure_log "summary: result=fail_closed state=$STATE streak=$streak repo=$MONITOR_REPO"
+    _alert_fail_closed_streak "$streak" "$reason" "$count_mode" || true
+    _monitor_failure_log "summary: result=fail_closed state=$STATE streak=$summary_streak repo=$MONITOR_REPO"
     return 0
 }
 

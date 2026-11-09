@@ -3315,6 +3315,27 @@ Saved numbers are read as decimal; oversized failure counts saturate at 2,147,48
 Invalid or future cooldown timestamps cannot silence alerts. An unavailable clock
 does not advance a delivery record.
 
+Failure counters and notification records are bookkeeping, and grant no publication
+authority. Their writes use private temporary files and atomic replacement of
+validated state paths. Linked files, special files, foreign-owned records, and
+group/world-writable records or a group/world-writable monitor state directory are
+rejected without overwriting them. Safe existing `0644` counters and cooldowns remain readable and become `0600`
+on replacement; pending recovery records retain their stricter `0600` requirement.
+Failed replacement preserves the previous record and any staging file for inspection.
+This protects ordinary file replacement; it is not a guarantee against power loss.
+
+If a failure count cannot be persisted, the monitor attempts an alert immediately
+and explicitly reports that the consecutive count is unavailable. Delivery still
+uses independent channel cooldowns. An unsafe or unwritable accepted-run counter
+reset prevents a healthy terminal transition. A delivered notification whose
+cooldown cannot be saved remains retryable. Cooldown readers validate the complete
+record within a 4,096-byte limit; malformed, linked, oversized, or multiline state
+cannot suppress delivery. Unsupported or oversized reasons are not truncated into
+a deduplication key. Preserve rejected records and inspect their metadata and
+targets on the monitor host before repairing the configuration. An unavailable
+count does not create a historical recovery streak; confirm recovery from a fresh
+accepted run's log, including whether its outcome is `HEALTHY` or `DEFERRED`.
+
 ### Production Smoke Tests (`production-smoke.yml`)
 
 Validates deployments on real environments:
