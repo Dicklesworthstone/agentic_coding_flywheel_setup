@@ -175,11 +175,16 @@ printf 'Retaining checksum monitor test fixtures: %s\n' "$STATE_TMP" >&2
     }
     hostname() { printf 'test-host\n'; }
     LOG_FILE="$STATE_TMP/log"
+    accept_recovery() {
+        printf '%s\n' "$1" > "$FAIL_STREAK_FILE"
+        STATE=REMOTE_VERIFIED
+        record_accepted_monitor_outcome "${2:-ok}"
+    }
     _fail_alert_record "reason A" "$now"
-    _announce_recovery 2 || fail "_announce_recovery below threshold must not fail"
-    [[ -f "$FAIL_ALERT_FILE" ]] || fail "recovery below the alert threshold must not touch the alert record"
+    accept_recovery 2 || fail "accepted recovery below threshold must not fail"
+    [[ -f "$FAIL_ALERT_FILE" ]] || fail "accepted recovery lost the alert record"
     [[ ! -s "$GH_CALLS" ]] || fail "recovery below the alert threshold must not talk to GitHub"
-    _announce_recovery 3 || fail "_announce_recovery at threshold failed"
+    accept_recovery 3 || fail "accepted recovery at threshold failed"
     [[ -f "$FAIL_ALERT_FILE" && ! -s "$FAIL_ALERT_FILE" ]] || fail "recovery did not reset the alert record"
     due 3 "reason A" "$now"                       # next streak alerts again immediately
     grep -q '^gh issue list ' "$GH_CALLS" || fail "recovery did not look up the monitoring issue"
@@ -195,11 +200,11 @@ printf 'Retaining checksum monitor test fixtures: %s\n' "$STATE_TMP" >&2
         esac
         return 0
     }
-    _announce_recovery 1008 || fail "_announce_recovery with an open issue failed"
+    accept_recovery 1008 || fail "accepted recovery with an open issue failed"
     [[ "$(grep -c '^gh issue comment 355 ' "$GH_CALLS")" == "1" ]] \
         || fail "expected exactly one recovery comment on the open issue"
-    grep -q 'recovered after 1008 consecutive fail-closed runs' "$GH_CALLS" \
-        || fail "recovery comment text missing streak"
+    grep -q 'Previously recorded fail-closed streak: 1008' "$GH_CALLS" \
+        || fail "recovery comment does not distinguish its historical streak"
     ! grep -q 'test-host' "$GH_CALLS" || fail "public recovery comment names the host"
 
     # The fail-closed alert path posts through the same runner: an alert that
@@ -308,7 +313,7 @@ printf 'Retaining checksum monitor test fixtures: %s\n' "$STATE_TMP" >&2
     _alert_fail_closed_streak 13 "GitHub-only reason"
     [[ "$(call_count)" == 7 ]] || fail "GitHub success silenced failed push retries"
     [[ "$(gh_count)" == "$github_only_count" ]] || fail "failed push repeated a delivered GitHub post"
-    _announce_recovery 13
+    accept_recovery 13 || fail 'accepted recovery failed while resetting both channels'
     [[ -f "$push_record" && ! -s "$push_record" && ! -s "$FAIL_ALERT_FILE" ]] \
         || fail "recovery did not reset both channel cooldowns"
     CURL_RESULT=0
@@ -665,8 +670,10 @@ numeric_case() (
             fi
             ;;
         recovery-leading-zero)
-            _announce_recovery 0008 || fail 'decimal recovery count failed'
-            grep -q 'recovered after 8 consecutive' "$calls" || fail 'recovery did not normalize decimal count'
+            printf '0008\n' > "$FAIL_STREAK_FILE"
+            STATE=REMOTE_VERIFIED
+            record_accepted_monitor_outcome ok || fail 'decimal recovery count failed'
+            grep -q 'Previously recorded fail-closed streak: 8' "$calls" || fail 'recovery did not normalize decimal count'
             ;;
         future-channels)
             printf '1000061\treason\n' > "$FAIL_ALERT_FILE"
@@ -690,6 +697,285 @@ for numeric_scenario in epoch-leading-zero epoch-eight epoch-overflow epoch-futu
         printf 'FAIL: numeric monitor state %s\n' "$numeric_scenario" >&2
     fi
 done
+
+# Recovery is a separate notification obligation from accepted publication.
+# Each case has fresh state; all network entry points are intercepted before
+# a helper is called. Keep the fixtures, including malformed/link records.
+recovery_case() (
+    export ACFS_MONITOR_STATE="$STATE_TMP/recovery-$1"
+    export ACFS_MONITOR_REPO="$STATE_TMP/no-live-repo"
+    unset ACFS_NTFY_TOPIC
+    ACFS_MONITOR_LIBRARY_ONLY=1
+    # shellcheck source=../checksum-monitor-local.sh
+    source "$MONITOR"
+    RUN_TS=20261108T120000Z
+    calls="$STATE_DIR/calls"
+    comments="$STATE_DIR/comment-attempts"
+    deliveries="$STATE_DIR/comment-deliveries"
+    : > "$calls"
+    : > "$comments"
+    : > "$deliveries"
+    GH_LOOKUP_STATUS=0
+    GH_POST_STATUS=0
+    GH_ISSUE_NUMBER=457
+    fixture_recovery_transport() {
+        printf '%s\t%s\n' "$STATE" "$*" >> "$calls"
+        case "$*" in
+            'gh issue list '*)
+                [[ "$GH_LOOKUP_STATUS" == 0 ]] || return "$GH_LOOKUP_STATUS"
+                printf '%s\n' "$GH_ISSUE_NUMBER"
+                ;;
+            'gh issue comment '*)
+                printf '%s\n' "$*" >> "$comments"
+                [[ "$GH_POST_STATUS" == 0 ]] || return "$GH_POST_STATUS"
+                printf '%s\n' "$*" >> "$deliveries"
+                ;;
+            *) fail 'recovery attempted an unexpected command' ;;
+        esac
+    }
+    run_failure_bounded() { fixture_recovery_transport "$@"; }
+    gh() { fail 'recovery bypassed the bounded notification runner'; }
+    curl() { fail 'recovery attempted an unexpected live push'; }
+    hostname() { printf 'private-monitor-host\n'; }
+    date() { printf '1000060\n'; }
+    accepted() {
+        STATE=REMOTE_VERIFIED
+        record_accepted_monitor_outcome "$1"
+    }
+    pending_count() { _read_recovery_pending_streak; }
+    comment_count() { wc -l < "$comments"; }
+    seed_pending() {
+        ( umask 077; printf '%s\n' "$1" > "$RECOVERY_PENDING_FILE" )
+    }
+    printf '3\n' > "$FAIL_STREAK_FILE"
+    _fail_alert_record 'same incident' 1000000
+    _fail_alert_record 'same incident' 1000000 "$FAIL_PUSH_ALERT_FILE"
+    printf 'private-authorization-sentinel\n' > "$AUTHORIZATION_FILE"
+    mkdir -m 700 "$STATE_DIR/retained-evidence"
+    printf 'private-original-response-sentinel\n' > "$STATE_DIR/retained-evidence/body"
+    protected_before="$(sha256sum "$AUTHORIZATION_FILE" "$STATE_DIR/retained-evidence/body")"
+
+    case "$1" in
+        deferred)
+            accepted deferred || fail 'accepted deferred recovery failed'
+            [[ "$STATE" == DEFERRED && "$(cat "$FAIL_STREAK_FILE")" == 0 ]] \
+                || fail 'deferred recovery changed the accepted outcome or retained the failure streak'
+            [[ "$(comment_count)" == 1 && "$(pending_count)" == 0 ]] \
+                || fail 'deferred recovery did not deliver and acknowledge one notice'
+            grep -q 'current state: DEFERRED' "$comments" || fail 'deferred recovery was not identified'
+            grep -q 'Unapproved external checksum changes remain pinned pending human authorization' "$comments" \
+                || fail 'deferred recovery falsely claimed external checksum authorization'
+            ! grep -q 'current state: HEALTHY' "$comments" || fail 'deferred recovery was reported healthy'
+            [[ ! -s "$FAIL_ALERT_FILE" && ! -s "$FAIL_PUSH_ALERT_FILE" ]] \
+                || fail 'deferred recovery did not reset both channel cooldowns'
+            ;;
+        post-retry|lookup-retry)
+            if [[ "$1" == post-retry ]]; then GH_POST_STATUS=75; else GH_LOOKUP_STATUS=75; fi
+            accepted deferred || fail 'notification failure changed the accepted outcome'
+            [[ "$STATE" == DEFERRED && "$(cat "$FAIL_STREAK_FILE")" == 0 && "$(pending_count)" == 3 ]] \
+                || fail 'failed recovery delivery lost pending state or changed accepted health'
+            [[ "$(stat -c '%a:%h:%u' "$RECOVERY_PENDING_FILE")" == "600:1:$(id -u)" ]] \
+                || fail 'recovery obligation is not private, owned and singly linked'
+            [[ ! -s "$FAIL_ALERT_FILE" && ! -s "$FAIL_PUSH_ALERT_FILE" ]] \
+                || fail 'failed recovery delivery kept an old failure cooldown'
+            _fail_alert_due 3 'same incident' 1000060 "$FAIL_ALERT_FILE" \
+                || fail 'old GitHub cooldown would suppress a new incident'
+            _fail_alert_due 3 'same incident' 1000060 "$FAIL_PUSH_ALERT_FILE" \
+                || fail 'old push cooldown would suppress a new incident'
+            [[ ! -s "$deliveries" ]] || fail 'failed notification was counted as delivered'
+            if [[ "$1" == lookup-retry ]]; then
+                [[ ! -s "$comments" ]] || fail 'failed issue lookup attempted a comment'
+            fi
+            GH_LOOKUP_STATUS=0
+            GH_POST_STATUS=0
+            RUN_TS=20261108T121500Z
+            # A fresh shell-source loses process-local state but must retain
+            # the delivery obligation even though the failure counter is zero.
+            source "$MONITOR"
+            # Sourcing reinstalls the production transport, so replace it
+            # before invoking any helper that can deliver a notification.
+            run_failure_bounded() { fixture_recovery_transport "$@"; }
+            RUN_TS=20261108T121500Z
+            accepted ok || fail 'accepted run did not retry pending recovery'
+            [[ "$STATE" == HEALTHY && "$(pending_count)" == 0 && "$(wc -l < "$deliveries")" == 1 ]] \
+                || fail 'successful recovery retry was not acknowledged exactly once'
+            grep -q 'Run: 20261108T121500Z.' "$deliveries" || fail 'retry reported a stale accepted run'
+            delivered_calls="$(wc -l < "$calls")"
+            accepted ok || fail 'no-op accepted run failed after recovery acknowledgement'
+            [[ "$(wc -l < "$calls")" == "$delivered_calls" ]] || fail 'acknowledged recovery was delivered again'
+            ;;
+        no-open-issue)
+            for GH_ISSUE_NUMBER in '' null; do
+                printf '3\n' > "$FAIL_STREAK_FILE"
+                accepted ok || fail 'successful empty issue lookup failed accepted recovery'
+                [[ "$(pending_count)" == 0 && ! -s "$comments" ]] \
+                    || fail 'empty issue lookup retained a notice or created a comment'
+            done
+            ! grep -q 'gh issue create ' "$calls" || fail 'recovery created a new issue'
+            ;;
+        invalid-issue)
+            for GH_ISSUE_NUMBER in 0 -1 0457 '457 458' $'457\n458' '--repo=elsewhere' 'not-a-number'; do
+                printf '3\n' > "$FAIL_STREAK_FILE"
+                accepted ok || fail 'invalid issue response invalidated accepted health'
+                [[ "$(pending_count)" == 3 && ! -s "$comments" ]] \
+                    || fail 'invalid issue identity was used or discarded the retry'
+            done
+            ;;
+        premature)
+            seed_pending 3
+            guarded_before="$(sha256sum "$FAIL_STREAK_FILE" "$RECOVERY_PENDING_FILE" "$FAIL_ALERT_FILE" "$FAIL_PUSH_ALERT_FILE")"
+            for STATE in INIT LOCKED CLEAN_BASE OBSERVED CANDIDATE_VALIDATED AUTHORIZED GENERATED STAGED COMMITTED ATOMIC_PUBLISHED; do
+                ! record_accepted_monitor_outcome ok || fail 'unaccepted state recorded recovery'
+                ! _announce_recovery 3 ok || fail 'unaccepted state delivered a queued recovery'
+            done
+            STATE=REMOTE_VERIFIED
+            ! record_accepted_monitor_outcome fail_closed || fail 'invalid accepted outcome was accepted'
+            STATE=DEFERRED
+            ! _announce_recovery 3 ok || fail 'deferred state emitted healthy recovery'
+            STATE=HEALTHY
+            ! _announce_recovery 3 deferred || fail 'healthy state emitted deferred recovery'
+            [[ ! -s "$calls" ]] || fail 'unverified state reached notification transport'
+            [[ "$(sha256sum "$FAIL_STREAK_FILE" "$RECOVERY_PENDING_FILE" "$FAIL_ALERT_FILE" "$FAIL_PUSH_ALERT_FILE")" == "$guarded_before" ]] \
+                || fail 'rejected recovery changed state or cooldown evidence'
+            ;;
+        transition-failure)
+            advance_state() { return 1; }
+            ! accepted ok || fail 'failed state transition was reported as accepted recovery'
+            [[ "$STATE" == REMOTE_VERIFIED && "$(pending_count)" == 3 && ! -s "$calls" ]] \
+                || fail 'failed state transition delivered or discarded pending recovery'
+            ;;
+        intervening-failure)
+            printf '8\n' > "$FAIL_STREAK_FILE"
+            GH_POST_STATUS=75
+            accepted ok || fail 'first accepted recovery failed'
+            [[ "$(pending_count)" == 8 ]] || fail 'initial pending notice lost its historical streak'
+            prior_attempts="$(comment_count)"
+            STATE=CLEAN_BASE
+            status=0
+            ( fail_closed 'new brief failure' ) > "$STATE_DIR/new-failure.log" 2>&1 || status=$?
+            [[ "$status" == 1 && "$(cat "$FAIL_STREAK_FILE")" == 1 ]] \
+                || fail 'new failure did not remain fail closed'
+            [[ "$(comment_count)" == "$prior_attempts" && "$(pending_count)" == 8 ]] \
+                || fail 'new failure delivered or discarded stale recovery state'
+            GH_POST_STATUS=0
+            RUN_TS=20261108T123000Z
+            accepted deferred || fail 'recovery after brief intervening failure failed'
+            grep -q 'Previously recorded fail-closed streak: 8' "$deliveries" \
+                || fail 'historical outage was not identified as historical'
+            grep -q 'current state: DEFERRED' "$deliveries" || fail 'retry did not report the latest accepted outcome'
+            ! grep -q 'after 8 consecutive' "$deliveries" || fail 'old pending streak was claimed as the latest streak'
+            ;;
+        newer-streak)
+            seed_pending 8
+            printf '5\n' > "$FAIL_STREAK_FILE"
+            accepted ok || fail 'new qualifying outage did not recover'
+            grep -q 'Previously recorded fail-closed streak: 5' "$deliveries" \
+                || fail 'new qualifying outage did not supersede the pending historical streak'
+            ;;
+        queue-write-failure|ack-write-failure)
+            notice_writer="$(declare -f _write_monitor_notice_record)"
+            notice_writer="${notice_writer/#_write_monitor_notice_record /fixture_write_monitor_notice_record }"
+            eval "$notice_writer"
+            fault="$1"
+            _write_monitor_notice_record() {
+                if [[ "$1" == "$RECOVERY_PENDING_FILE" ]]; then
+                    [[ "$fault" != queue-write-failure || -z "$2" ]] || return 1
+                    [[ "$fault" != ack-write-failure || -n "$2" ]] || return 1
+                fi
+                fixture_write_monitor_notice_record "$@"
+            }
+            accepted ok || fail 'notification persistence failure changed accepted health'
+            [[ "$STATE" == HEALTHY && "$(cat "$FAIL_STREAK_FILE")" == 0 && "$(wc -l < "$deliveries")" == 1 ]] \
+                || fail 'persistence failure suppressed immediate delivery or accepted health'
+            grep -q 'WARNING: recovery notification' "$LOG_FILE" || fail 'notification persistence failure was silent'
+            if [[ "$fault" == ack-write-failure ]]; then
+                [[ "$(pending_count)" == 3 ]] || fail 'failed acknowledgement discarded the pending record'
+                fault=none
+                accepted ok || fail 'acknowledgement failure was not retryable'
+                [[ "$(wc -l < "$deliveries")" == 2 && "$(pending_count)" == 0 ]] \
+                    || fail 'at-least-once acknowledgement retry was not persisted'
+            fi
+            ;;
+        malformed-record)
+            printf '0\n' > "$FAIL_STREAK_FILE"
+            for bad_record in shell multiline oversized nul leading-zero extra-newline short negative overflow; do
+                case "$bad_record" in
+                    shell) printf '$(touch %q)\n' "$STATE_DIR/record-was-executed" > "$RECOVERY_PENDING_FILE" ;;
+                    multiline) printf '3\n4\n' > "$RECOVERY_PENDING_FILE" ;;
+                    oversized) printf '%0100d\n' 3 > "$RECOVERY_PENDING_FILE" ;;
+                    nul) printf '3\0\n' > "$RECOVERY_PENDING_FILE" ;;
+                    leading-zero) printf '003\n' > "$RECOVERY_PENDING_FILE" ;;
+                    extra-newline) printf '3\n\n' > "$RECOVERY_PENDING_FILE" ;;
+                    short) printf '2\n' > "$RECOVERY_PENDING_FILE" ;;
+                    negative) printf -- '-3\n' > "$RECOVERY_PENDING_FILE" ;;
+                    overflow) printf '2147483648\n' > "$RECOVERY_PENDING_FILE" ;;
+                esac
+                chmod 600 "$RECOVERY_PENDING_FILE"
+                malformed_before="$(sha256sum "$RECOVERY_PENDING_FILE")"
+                ! _read_recovery_pending_streak >/dev/null 2>&1 || fail "$bad_record recovery record was trusted"
+                accepted ok || fail "$bad_record recovery record invalidated accepted health"
+                [[ ! -s "$calls" && ! -e "$STATE_DIR/record-was-executed" ]] \
+                    || fail "$bad_record recovery record reached execution or notification"
+                [[ "$(sha256sum "$RECOVERY_PENDING_FILE")" == "$malformed_before" ]] \
+                    || fail "$bad_record recovery record was silently rewritten"
+            done
+            ;;
+        mode-400|mode-644|mode-660|symlink|hardlink|directory|fifo)
+            printf '0\n' > "$FAIL_STREAK_FILE"
+            printf '3\n' > "$STATE_DIR/notice-target"
+            chmod 600 "$STATE_DIR/notice-target"
+            target_before="$(sha256sum "$STATE_DIR/notice-target")"
+            case "$1" in
+                mode-*) seed_pending 3; chmod "${1#mode-}" "$RECOVERY_PENDING_FILE" ;;
+                symlink) ln -s "$STATE_DIR/notice-target" "$RECOVERY_PENDING_FILE" ;;
+                hardlink) ln "$STATE_DIR/notice-target" "$RECOVERY_PENDING_FILE" ;;
+                directory) mkdir "$RECOVERY_PENDING_FILE" ;;
+                fifo) mkfifo -m 600 "$RECOVERY_PENDING_FILE" ;;
+            esac
+            metadata_before="$(stat -c '%F:%a:%h:%i' "$RECOVERY_PENDING_FILE")"
+            # Bound the FIFO regression in a separate shell so a reader bug
+            # cannot hang this suite waiting for a writer.
+            reader_status=0
+            ACFS_MONITOR_LIBRARY_ONLY=1 timeout 3 bash -c \
+                'source "$1"; _read_recovery_pending_streak' bash "$MONITOR" \
+                > "$STATE_DIR/unsafe-read.log" 2>&1 || reader_status=$?
+            [[ "$reader_status" == 1 ]] || fail "$1 recovery record was trusted or blocked (exit $reader_status)"
+            ! _write_monitor_notice_record "$RECOVERY_PENDING_FILE" '' || fail "$1 recovery record was overwritten"
+            accepted ok || fail "$1 pending record invalidated accepted health"
+            [[ ! -s "$calls" ]] || fail "$1 pending record caused a recovery notification"
+            [[ "$(stat -c '%F:%a:%h:%i' "$RECOVERY_PENDING_FILE")" == "$metadata_before" \
+                && "$(sha256sum "$STATE_DIR/notice-target")" == "$target_before" ]] \
+                || fail "$1 pending record or link target changed"
+            ;;
+        write-allowlist)
+            ! _write_monitor_notice_record "$AUTHORIZATION_FILE" 'replacement' || fail 'notification writer modified authorization'
+            ! _write_monitor_notice_record "$STATE_DIR/unrelated" '' || fail 'notification writer accepted an unrelated path'
+            ! _write_monitor_notice_record "$FAIL_ALERT_FILE" $'1000000\tforged\n' \
+                || fail 'notification writer fabricated a failure delivery record'
+            ! _write_monitor_notice_record "$RECOVERY_PENDING_FILE" $'3\n4\n' \
+                || fail 'notification writer accepted noncanonical recovery state'
+            [[ ! -e "$STATE_DIR/unrelated" && ! -s "$calls" ]] || fail 'notification writer escaped its state paths'
+            ;;
+        *) fail "unknown recovery scenario $1" ;;
+    esac
+    [[ "$(sha256sum "$AUTHORIZATION_FILE" "$STATE_DIR/retained-evidence/body")" == "$protected_before" ]] \
+        || fail 'notification lifecycle changed authorization or original evidence'
+    ! grep -qF "$STATE_TMP" "$comments" || fail 'public recovery leaked a private path'
+    ! grep -qE 'private-monitor-host|private-authorization-sentinel|private-original-response-sentinel' "$comments" \
+        || fail 'public recovery leaked host identity or private evidence'
+)
+recovery_failures=0
+for recovery_scenario in deferred post-retry lookup-retry no-open-issue invalid-issue premature transition-failure \
+    intervening-failure newer-streak queue-write-failure ack-write-failure malformed-record \
+    mode-400 mode-644 mode-660 symlink hardlink directory fifo write-allowlist; do
+    if recovery_case "$recovery_scenario"; then
+        printf 'PASS: recovery lifecycle %s\n' "$recovery_scenario"
+    else
+        recovery_failures=$((recovery_failures + 1))
+        printf 'FAIL: recovery lifecycle %s\n' "$recovery_scenario" >&2
+    fi
+done
+[[ "$recovery_failures" == 0 ]] || exit 1
 
 # Opt-in full state-machine qualification uses an immutable source archive.
 # Git's real SSH transport protocol is redirected to disposable bare fixtures;
@@ -854,7 +1140,20 @@ RETAIN
                     && "$integration_case" != subset-review-unavailable ]]
             }
             _alert_fail_closed_streak() { return 0; }
-            _announce_recovery() { return 0; }
+            # A prior alerted outage makes every accepted run exercise the
+            # real recovery lifecycle. Failed publication paths must never
+            # reach this mocked transport, even after a remote push succeeded.
+            printf '3\n' > "$FAIL_STREAK_FILE"
+            run_failure_bounded() {
+                printf '%s\t%s\n' "$STATE" "$*" >> "$case_root/state/recovery-calls"
+                [[ "$STATE" == HEALTHY || "$STATE" == DEFERRED ]] \
+                    || fail 'publication attempted recovery before accepted health'
+                case "$*" in
+                    'gh issue list '*) printf '457\n' ;;
+                    'gh issue comment 457 '*) return 0 ;;
+                    *) fail 'publication recovery attempted an unexpected command' ;;
+                esac
+            }
             # Delegate to the real remote reader before changing private state.
             # These deterministic interleavings occur after the last staging
             # check and are invisible to Git worktree/ref cleanliness checks.
@@ -971,7 +1270,7 @@ RETAIN
                 printf 'BUN_BIN=%q\n' "$integration_bun"
                 printf '%s\n' "$integration_remote_reader"
                 printf '%s\n' "$integration_state_advancer"
-                declare -f fail record_external_review _alert_fail_closed_streak _announce_recovery \
+                declare -f fail record_external_review _alert_fail_closed_streak run_failure_bounded \
                     read_remote_heads advance_state write_fixture_download_evidence run_clean_bounded run_bun_clean_bounded
                 printf 'checksum_monitor_main\n'
             } > "$case_root/state/runner.sh"
@@ -985,6 +1284,22 @@ RETAIN
                 fail "$integration_case stopped before the fixture observation (monitor exit $monitor_exit)"
             fi
             [[ "$(wc -l < "$case_root/state/network-calls")" -eq 1 ]] || fail "$integration_case did not observe exactly once"
+            if [[ "$monitor_exit" -eq 0 ]]; then
+                expected_health=DEFERRED
+                if [[ "$integration_case" == approved ]]; then expected_health=HEALTHY; fi
+                [[ "$(cat "$FAIL_STREAK_FILE")" == 0 && -f "$RECOVERY_PENDING_FILE" && ! -s "$RECOVERY_PENDING_FILE" ]] \
+                    || fail "$integration_case did not clear the accepted outage and acknowledge recovery"
+                [[ "$(grep -c 'gh issue comment 457 ' "$case_root/state/recovery-calls")" == 1 ]] \
+                    || fail "$integration_case did not deliver exactly one accepted recovery"
+                grep -q "current state: $expected_health" "$case_root/state/recovery-calls" \
+                    || fail "$integration_case reported an incorrect recovery outcome"
+                if [[ "$expected_health" == DEFERRED ]]; then
+                    grep -q 'Unapproved external checksum changes remain pinned pending human authorization' \
+                        "$case_root/state/recovery-calls" || fail 'deferred publication falsely claimed full authorization'
+                fi
+            else
+                [[ ! -e "$case_root/state/recovery-calls" ]] || fail "$integration_case announced recovery before acceptance"
+            fi
             case "$integration_case" in
                 subset-approved|subset-stale|subset-malformed|subset-grant-replaced-before-consumption)
                     local_head="$(git -C "$case_root/repo" rev-parse HEAD)"

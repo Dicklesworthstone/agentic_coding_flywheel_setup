@@ -899,6 +899,7 @@ FAIL_STREAK_FILE="$STATE_DIR/fail_closed_streak"
 # two weeks on #355).
 FAIL_ALERT_FILE="$STATE_DIR/fail_closed_alert"
 FAIL_PUSH_ALERT_FILE="$STATE_DIR/fail_closed_push_alert"
+RECOVERY_PENDING_FILE="$STATE_DIR/fail_closed_recovery_pending"
 FAIL_ALERT_REPEAT_SECONDS=86400
 FAIL_ALERT_MIN_STREAK=3
 FAIL_STREAK_MAX=2147483647
@@ -1047,28 +1048,153 @@ _alert_fail_closed_streak() {
     fi
 }
 
-# After a streak that alerted, tell the same issue thread the monitor is
-# healthy again so the alert does not stand as the last word. Best-effort.
+# Notification state carries no publication authority. Keep it bounded and
+# private nevertheless: never follow a linked record or write through one.
+# Atomic replacement preserves the previous record when a write fails. Failed
+# temporary writes are retained; none of the observation evidence is touched.
+_write_monitor_notice_record() {
+    local record_file="$1" content="$2" owner="" mode="" mode_value=0 links="" temporary="" streak=""
+    case "$record_file" in
+        "$RECOVERY_PENDING_FILE")
+            if [[ -n "$content" ]]; then
+                streak="${content%$'\n'}"
+                [[ "$content" == "$streak"$'\n' && "$streak" =~ ^(0|[1-9][0-9]{0,9})$ ]] || return 1
+                (( streak == 0 || (streak >= FAIL_ALERT_MIN_STREAK && streak <= FAIL_STREAK_MAX) )) || return 1
+            fi
+            ;;
+        "$FAIL_ALERT_FILE"|"$FAIL_PUSH_ALERT_FILE") [[ -z "$content" ]] || return 1 ;;
+        *) return 1 ;;
+    esac
+    [[ -d "$STATE_DIR" && ! -L "$STATE_DIR" ]] || return 1
+    owner="$(stat -c '%u' -- "$STATE_DIR" 2>/dev/null)" || return 1
+    mode="$(stat -c '%a' -- "$STATE_DIR" 2>/dev/null)" || return 1
+    [[ "$owner" == "$(id -u)" && "$mode" =~ ^[0-7]{3,4}$ ]] || return 1
+    mode_value=$((8#$mode))
+    (( (mode_value & 022) == 0 )) || return 1
+    if [[ -e "$record_file" || -L "$record_file" ]]; then
+        [[ -f "$record_file" && ! -L "$record_file" ]] || return 1
+        owner="$(stat -c '%u' -- "$record_file" 2>/dev/null)" || return 1
+        mode="$(stat -c '%a' -- "$record_file" 2>/dev/null)" || return 1
+        links="$(stat -c '%h' -- "$record_file" 2>/dev/null)" || return 1
+        [[ "$owner" == "$(id -u)" && "$links" == 1 && "$mode" =~ ^[0-7]{3,4}$ ]] || return 1
+        mode_value=$((8#$mode))
+        (( (mode_value & 022) == 0 )) || return 1
+        [[ "$record_file" != "$RECOVERY_PENDING_FILE" || "$mode" == 600 ]] || return 1
+    fi
+    temporary="$(mktemp "$STATE_DIR/notice-state.XXXXXX")" || return 1
+    ( umask 077; printf '%s' "$content" > "$temporary" ) || return 1
+    mv -fT -- "$temporary" "$record_file"
+}
+
+_read_recovery_pending_streak() {
+    local value=""
+    if [[ ! -e "$RECOVERY_PENDING_FILE" && ! -L "$RECOVERY_PENDING_FILE" ]]; then
+        printf '0\n'
+        return 0
+    fi
+    private_download_evidence_path "$RECOVERY_PENDING_FILE" file 64 || return 1
+    if [[ ! -s "$RECOVERY_PENDING_FILE" ]]; then
+        printf '0\n'
+        return 0
+    fi
+    value="$(head -c 64 -- "$RECOVERY_PENDING_FILE" 2>/dev/null)" || return 1
+    value="$(_monitor_decimal "$value")" || return 1
+    (( value == 0 || (value >= FAIL_ALERT_MIN_STREAK && value <= FAIL_STREAK_MAX) )) || return 1
+    # A bounded Bash read alone would lose NULs and trailing newlines. Exact
+    # comparison also rejects extra lines, control bytes and noncanonical counts.
+    printf '%s\n' "$value" | cmp -s -- "$RECOVERY_PENDING_FILE" - || return 1
+    printf '%s\n' "$value"
+}
+
+_queue_recovery_notice() {
+    local previous_streak="$1" pending=0 recorded=0
+    previous_streak="$(_monitor_decimal "$previous_streak")" || return 1
+    (( previous_streak <= FAIL_STREAK_MAX )) || return 1
+    if ! pending="$(_read_recovery_pending_streak)"; then
+        log "WARNING: ignoring unsafe or malformed pending recovery state"
+        pending=0
+    fi
+    recorded="$pending"
+    if (( previous_streak >= FAIL_ALERT_MIN_STREAK )); then
+        recorded="$previous_streak"
+    fi
+    if (( recorded > 0 && recorded != pending )); then
+        _write_monitor_notice_record "$RECOVERY_PENDING_FILE" "$recorded"$'\n' \
+            || log "WARNING: recovery notification could not be persisted; a failed delivery may not survive this run"
+    fi
+    printf '%s\n' "$recorded"
+}
+
+# Deliver only after a fresh accepted run. A queued notice can outlive a short
+# intervening failure, so its streak is explicitly historical; the current
+# result and run identifier always describe the newly accepted observation.
 _announce_recovery() {
-    local previous_streak="$1"
-    previous_streak="$(_monitor_decimal "$previous_streak")" || return 0
-    (( previous_streak >= FAIL_ALERT_MIN_STREAK )) || return 0
+    local recorded_streak="$1" outcome="$2" status_text=""
+    case "$outcome:$STATE" in
+        ok:HEALTHY) status_text="Verification and publication checks passed; current state: HEALTHY." ;;
+        deferred:DEFERRED)
+            status_text="Verification and publication checks passed; current state: DEFERRED. Unapproved external checksum changes remain pinned pending human authorization."
+            ;;
+        *) return 1 ;;
+    esac
+    recorded_streak="$(_monitor_decimal "$recorded_streak")" || return 1
+    (( recorded_streak >= FAIL_ALERT_MIN_STREAK && recorded_streak <= FAIL_STREAK_MAX )) || return 0
     local repo_slug="Dicklesworthstone/agentic_coding_flywheel_setup"
     local existing=""
-    local msg="ACFS checksum monitor recovered after $previous_streak consecutive fail-closed runs; drift monitoring and publication are live again."
-    existing="$(run_failure_bounded gh issue list --repo "$repo_slug" --state open \
+    local msg="ACFS checksum monitor completed an accepted run. Previously recorded fail-closed streak: $recorded_streak. Run: $RUN_TS. $status_text"
+    if ! existing="$(run_failure_bounded gh issue list --repo "$repo_slug" --state open \
         --label monitoring \
         --search "Checksum monitor failing closed" \
-        --json number -q '.[0].number' 2>>"$LOG_FILE" || true)"
-    if [[ -n "$existing" && "$existing" != "null" ]]; then
-        run_failure_bounded gh issue comment "$existing" --repo "$repo_slug" \
-            --body "$msg" >>"$LOG_FILE" 2>&1 \
-            && log "posted recovery note on monitoring issue #$existing" || true
+        --json number -q '.[0].number' 2>>"$LOG_FILE")"; then
+        log "WARNING: recovery issue lookup failed; notification remains pending"
+        return 1
     fi
-    # Reset the dedupe window: an empty record reads as "nothing posted yet",
-    # so the next streak's first alert is not suppressed by this one's.
-    : > "$FAIL_ALERT_FILE" 2>/dev/null || true
-    : > "$FAIL_PUSH_ALERT_FILE" 2>/dev/null || true
+    if [[ -n "$existing" && "$existing" != "null" ]]; then
+        [[ "$existing" =~ ^[1-9][0-9]{0,17}$ ]] || {
+            log "WARNING: recovery issue lookup returned an invalid issue number; notification remains pending"
+            return 1
+        }
+        if ! run_failure_bounded gh issue comment "$existing" --repo "$repo_slug" \
+            --body "$msg" >>"$LOG_FILE" 2>&1; then
+            log "WARNING: recovery notification delivery failed; notification remains pending"
+            return 1
+        fi
+        log "posted recovery note on monitoring issue #$existing"
+    fi
+    # A successful empty lookup needs no new issue. Failed lookups/posts retain
+    # the pending record. An ambiguous delivery or failed acknowledgement may
+    # repeat the notice; never claim exactly-once delivery from a CLI exit code.
+    _write_monitor_notice_record "$RECOVERY_PENDING_FILE" '' || {
+        log "WARNING: recovery notification acknowledgement could not be persisted; delivery may be retried"
+        return 1
+    }
+}
+
+# Called only after evidence, authorization consumption and remote acceptance.
+# Notification failures cannot invalidate a verified publication. Persist the
+# retry obligation first, then reset cooldowns before clearing the streak: a
+# crash can repeat an alert, but must not suppress the next outage's alert.
+record_accepted_monitor_outcome() {
+    local outcome="$1" previous_streak=0 recorded_streak=0 next_state=""
+    [[ "$STATE" == REMOTE_VERIFIED ]] || return 1
+    case "$outcome" in
+        ok) next_state=HEALTHY ;;
+        deferred) next_state=DEFERRED ;;
+        *) return 1 ;;
+    esac
+    previous_streak="$(_read_failure_streak)" || return 1
+    recorded_streak="$(_queue_recovery_notice "$previous_streak")" || {
+        log "WARNING: could not prepare recovery notification state"
+        recorded_streak=0
+    }
+    _write_monitor_notice_record "$FAIL_ALERT_FILE" '' \
+        || log "WARNING: could not reset GitHub failure alert cooldown"
+    _write_monitor_notice_record "$FAIL_PUSH_ALERT_FILE" '' \
+        || log "WARNING: could not reset private failure alert cooldown"
+    printf '0\n' > "$FAIL_STREAK_FILE" \
+        || fail_closed "remote publication is verified but the healthy-state marker could not be written"
+    advance_state REMOTE_VERIFIED "$next_state" || return 1
+    _announce_recovery "$recorded_streak" "$outcome" || true
 }
 
 fail_closed() {
@@ -1132,7 +1258,7 @@ done
 # /usr/bin. Confining the target to /usr/bin failed closed on every such host
 # (issue #344); the directory and file metadata checks below carry the actual
 # trust decision.
-for dep in bash env git gh jq curl flock sha256sum stat sort uniq awk sed tr cmp mktemp paste head id cp timeout readlink date tee mkdir hostname cat; do
+for dep in bash env git gh jq curl flock sha256sum stat sort uniq awk sed tr cmp mktemp paste head id cp mv timeout readlink date tee mkdir hostname cat; do
     dep_path="$(command -v "$dep" 2>/dev/null || true)"
     [[ "$dep_path" == /* ]] || fail_closed "missing dependency: $dep"
     case "$dep_path" in
@@ -1452,18 +1578,13 @@ if [[ "$authorization_consumed" == "true" ]]; then
     fi
 fi
 
-# Only an accepted remote state can clear monitoring failure history.
-previous_fail_streak="$(_read_failure_streak)"
-printf '0\n' > "$FAIL_STREAK_FILE" \
-    || fail_closed "remote publication is verified but the healthy-state marker could not be written"
 if [[ "$external_deferred" == "true" ]]; then
-    advance_state REMOTE_VERIFIED DEFERRED
     result="deferred"
 else
-    _announce_recovery "$previous_fail_streak" || true
-    advance_state REMOTE_VERIFIED HEALTHY
     result="ok"
 fi
+record_accepted_monitor_outcome "$result" \
+    || fail_closed "could not record the accepted monitor outcome"
 
 log "summary: result=$result state=$STATE base=$BASE_HEAD published=$PUBLISH_HEAD push=$push_result mismatches=$mismatches errors=$errors skipped=$skipped trusted=${trusted_changed:-none} external=${external_changed:-none} deferred=${deferred_changed:-none} selected=${applicable_changed:-none} committed=$committed"
 }
