@@ -3099,6 +3099,63 @@ scripts/templates/acfs-checksum-monitor.* # timer + service templates
 4. **Build and validate offline**: Uses the complete first observation to construct the candidate, without downloading installers a second time. Selects trusted-owner mismatches and exactly the authorized external tools; every deferred external pin stays unchanged. The validator checks the exact selected mismatch set, unchanged URLs and unchanged unselected pins. Its default, without explicit selection, still requires all observed mismatches. A changing external endpoint therefore cannot invalidate trusted publication through a second fetch. If issue delivery fails, the bound evidence stays in local state with a warning; approved external changes still require recorded review before mutation.
 5. **Generate and publish**: Places the validated candidate, regenerates its installer ledger and web metadata, checks the complete generated contract, and commits only the declared publication paths. Rechecks retained evidence and selected authorization after remote probes, immediately before commit and push, and before accepting remote readback. Pushes both compatibility refs atomically and reads them back before recording the result. Pending external review reports `result=deferred state=DEFERRED`, including after an approved subset publishes, and leaves the deferred review open. An accepted run with no pending review records `HEALTHY`. Authorization is consumed only after accepted external publication.
 
+#### Diagnose a failed monitor run
+
+Run the diagnostic command on the monitor host as the monitor account. Select
+the UTC run identifier from its alert or `logs/run-YYYYMMDDTHHMMSSZ.log` filename;
+an issue comment's posting time is not necessarily the run's start time.
+The default state directory is `~/.local/state/acfs-monitor`, with
+`ACFS_MONITOR_STATE` selecting an existing alternate directory.
+
+```bash
+# Replace this example with the run identifier from the host's log or alert.
+run_id='20261108T110101Z'
+bash "$HOME/acfs-monitor/scripts/checksum-monitor-local.sh" --diagnose "$run_id"
+```
+
+This offline command requires the system Python 3 interpreter. It prints JSON
+with the locally recorded outcome, verification partition counts, installer
+names, report hashes, and the selected run's artifact availability. It also
+handles runs that stopped before verification or left an incomplete report.
+Missing, unsafe, malformed, or ambiguous artifacts remain explicit; the command
+does not select an arbitrary report when multiple reports match the run.
+
+Default output omits free-form log and error text and installer URLs. To obtain
+the exact retained error descriptions for private investigation, explicitly add:
+
+```bash
+bash "$HOME/acfs-monitor/scripts/checksum-monitor-local.sh" \
+  --diagnose "$run_id" --include-private-details
+```
+
+Private details can contain credentials or other sensitive upstream diagnostics.
+Review them locally before sharing. Neither mode reads installer bodies, HTTP
+headers, or raw fetch-stderr sidecars, contacts a service, fetches Git refs, runs
+verification, executes an installer, or changes the clone, authorization records,
+failure counters, logs, or retained evidence. Unknown arguments are rejected
+before the monitor starts. Running the script with no arguments still runs the
+normal monitor.
+
+The JSON is **diagnostic only**. Exit `0` means inspection completed, including
+an explicit finding that an artifact is missing, invalid, or ambiguous. Exit
+`2` means invalid arguments, unavailable state, an unsafe or changed input, or
+an inspection limit prevented completion. Its locally recorded outcome is
+historical, not a fresh health check. A report hash agreeing with the same host's log is a
+local consistency observation, not independent evidence of integrity or upstream
+trust, and the command grants no publication authority.
+
+| Recorded finding | Next investigation |
+| --- | --- |
+| Clone, dependency, remote-ref, or generated-artifact failure before verification | Compare the recorded failure with the host configuration and the exact repository base. Repair the host when its configuration drifted; repair the repository when the pinned source itself fails its contract. |
+| Verification errors or skipped entries | Inspect the private per-installer descriptions and preserve the original partial report and download directory. A failed fetch or hash calculation does not establish an upstream checksum change. |
+| Checksum mismatches | Review the original bytes and upstream provenance through the complete evidence workflow below. A mismatch alone does not establish a compromise or authorize a new pin. |
+| Invalid report, changed local binding, or missing evidence | Preserve the remaining records and investigate the discrepancy; do not regenerate evidence or substitute a fresh download to clear the failure. |
+| No terminal outcome | The run may have been interrupted or still be active. Inspect its service journal and later runs before claiming recovery. |
+
+Failed verification can stop before an evidence index is created. The diagnostic
+command can inspect that failure; the strict evidence verifier and exporter
+below still require complete, error-free observations and independent anchors.
+
 #### Verify retained download evidence offline
 
 Before reviewing changed installers, obtain the original verification report,

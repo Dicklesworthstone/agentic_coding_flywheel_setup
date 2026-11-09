@@ -40,6 +40,426 @@
 
 set -euo pipefail
 
+# Diagnostics deliberately run before normal monitor initialization. In
+# particular, inspecting an old failure must not create state, acquire the
+# publication lock, fetch a repository, or execute its current verifier.
+diagnose_monitor_run() {
+    if [[ ! -x /usr/bin/python3 ]]; then
+        printf '%s\n' 'Monitor diagnostics require /usr/bin/python3.' >&2
+        return 2
+    fi
+    command /usr/bin/python3 -I -S -B - "${ACFS_MONITOR_STATE:-$HOME/.local/state/acfs-monitor}" "$@" <<'ACFS_MONITOR_DIAGNOSTICS_PY'
+import datetime
+import errno
+import hashlib
+import json
+import os
+import re
+import stat
+import sys
+import time
+
+SCHEMA = "acfs.checksum-monitor-diagnostics.v1"
+LOG_LIMIT = 8 * 1024 * 1024
+REPORT_LIMIT = 1024 * 1024
+MATCH_LIMIT = 32
+DEADLINE = time.monotonic() + 30
+STATES = {"INIT", "LOCKED", "CLEAN_BASE", "OBSERVED", "CANDIDATE_VALIDATED",
+          "AUTHORIZED", "GENERATED", "STAGED", "COMMITTED", "ATOMIC_PUBLISHED",
+          "REMOTE_VERIFIED", "HEALTHY", "DEFERRED"}
+HASH = re.compile(r"[0-9a-f]{64}\Z")
+NAME = re.compile(r"[a-z][a-z0-9_]{0,127}\Z")
+
+
+class DiagnosticError(Exception):
+    def __init__(self, code):
+        self.code = code
+
+
+def require(condition, code="unsafe_input"):
+    if not condition:
+        raise DiagnosticError(code)
+
+
+def check_deadline():
+    require(time.monotonic() < DEADLINE, "limit_exceeded")
+
+
+def identity(info):
+    return info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid
+
+
+def file_identity(info):
+    return identity(info) + (info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
+class Reader:
+    """Read held descriptors; never trust a path supplied by an artifact."""
+    def __init__(self):
+        require(all(hasattr(os, key) for key in
+                    ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK", "O_CLOEXEC")), "unavailable")
+        self.directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+        self.file_flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
+        self.directories = {}
+        self.files = []
+        self.selections = []
+
+    def directory(self, path, owned=False, private=False):
+        check_deadline()
+        if path not in self.directories:
+            parent = None if path == "/" else self.directory(os.path.dirname(path))
+            fd = os.open(path if parent is None else os.path.basename(path), self.directory_flags,
+                         **({} if parent is None else {"dir_fd": parent["fd"]}))
+            self.directories[path] = {"fd": fd, "path": path, "parent": parent,
+                                      "initial": os.fstat(fd)}
+        value = self.directories[path]
+        info = os.fstat(value["fd"])
+        if owned or private:
+            require(info.st_uid == os.geteuid() and not stat.S_IMODE(info.st_mode) & 0o7022)
+        if private:
+            require(stat.S_IMODE(info.st_mode) == 0o700)
+        return value
+
+    def matching(self, directory, pattern):
+        matches = []
+        # Retention is unlimited. Bound selected artifacts and elapsed time,
+        # not the number of unrelated historical runs in the state directory.
+        with os.scandir(directory["fd"]) as entries:
+            for entry in entries:
+                check_deadline()
+                if pattern.fullmatch(entry.name):
+                    matches.append(entry.name)
+                    require(len(matches) <= MATCH_LIMIT, "limit_exceeded")
+        return sorted(matches)
+
+    def select(self, directory, pattern):
+        names = self.matching(directory, pattern)
+        self.selections.append((directory, pattern, names))
+        return names
+
+    def hold(self, directory, name, limit, private=False):
+        check_deadline()
+        fd = os.open(name, self.file_flags, dir_fd=directory["fd"])
+        info = os.fstat(fd)
+        self.files.append((directory, name, fd, info))
+        mode = stat.S_IMODE(info.st_mode)
+        require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1
+                and info.st_uid == os.geteuid() and not mode & 0o7022)
+        require(not private or mode == 0o600)
+        require(info.st_size <= limit, "limit_exceeded")
+        return fd, info
+
+    def take(self, directory, name, limit, private=False):
+        fd, info = self.hold(directory, name, limit, private)
+        chunks, size = [], 0
+        while True:
+            check_deadline()
+            chunk = os.read(fd, min(65536, limit + 1 - size))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            size += len(chunk)
+            require(size <= limit, "limit_exceeded")
+        require(file_identity(os.fstat(fd)) == file_identity(info), "changed_input")
+        data = b"".join(chunks)
+        return data, {"bytes": size, "sha256": hashlib.sha256(data).hexdigest()}
+
+    def fence(self):
+        for directory, pattern, names in self.selections:
+            require(self.matching(directory, pattern) == names, "changed_input")
+        for directory, name, fd, initial in self.files:
+            require(file_identity(os.fstat(fd)) == file_identity(initial), "changed_input")
+            reopened = os.open(name, self.file_flags, dir_fd=directory["fd"])
+            try:
+                require(file_identity(os.fstat(reopened)) == file_identity(initial), "changed_input")
+            finally:
+                os.close(reopened)
+        for directory in self.directories.values():
+            require(identity(os.fstat(directory["fd"])) == identity(directory["initial"]), "changed_input")
+            parent = directory["parent"]
+            reopened = os.open(directory["path"] if parent is None else os.path.basename(directory["path"]),
+                               self.directory_flags, **({} if parent is None else {"dir_fd": parent["fd"]}))
+            try:
+                require(identity(os.fstat(reopened)) == identity(directory["initial"]), "changed_input")
+            finally:
+                os.close(reopened)
+
+    def close(self):
+        for _, _, fd, _ in self.files:
+            os.close(fd)
+        for directory in reversed(list(self.directories.values())):
+            os.close(directory["fd"])
+
+
+def unique_object(pairs):
+    result = {}
+    for key, value in pairs:
+        require(key not in result, "invalid_report")
+        result[key] = value
+    return result
+
+
+def parse_report(data):
+    def reject_constant(_):
+        raise DiagnosticError("invalid_report")
+    report = json.loads(data, object_pairs_hook=unique_object, parse_constant=reject_constant)
+    require(isinstance(report, dict) and set(report) == {
+        "schema", "schemaVersion", "timestamp", "checksumsYamlSha256", "total",
+        "matches", "mismatches", "errors", "skipped"}, "invalid_report")
+    require(report["schema"] == "acfs.installer-checksum-verification.v1"
+            and type(report["schemaVersion"]) is int and report["schemaVersion"] == 1
+            and type(report["total"]) is int and report["total"] >= 0
+            and isinstance(report["checksumsYamlSha256"], str)
+            and HASH.fullmatch(report["checksumsYamlSha256"]), "invalid_report")
+    require(isinstance(report["timestamp"], str)
+            and re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z", report["timestamp"]), "invalid_report")
+    datetime.datetime.strptime(report["timestamp"], "%Y-%m-%dT%H:%M:%SZ")
+    shapes = {"matches": {"name", "url", "checksum"},
+              "mismatches": {"name", "url", "expected", "actual"},
+              "errors": {"name", "url", "error"}, "skipped": {"name", "url", "reason"}}
+    seen = set()
+    for category, keys in shapes.items():
+        require(isinstance(report[category], list), "invalid_report")
+        for item in report[category]:
+            require(isinstance(item, dict) and set(item) == keys
+                    and all(isinstance(value, str) for value in item.values()), "invalid_report")
+            # The lower-level producer can record an incomplete policy entry
+            # as skipped with no URL. It remains diagnostic-only here; the
+            # publication validator continues to reject that contract breach.
+            good_url = re.fullmatch(r"https://[^\s\x00-\x1f\x7f]+", item["url"])
+            require(NAME.fullmatch(item["name"]) and item["name"] not in seen
+                    and (good_url or (category == "skipped" and item["url"] == "")), "invalid_report")
+            seen.add(item["name"])
+            for key in keys & {"checksum", "expected", "actual"}:
+                require(HASH.fullmatch(item[key]), "invalid_report")
+            if category == "mismatches":
+                require(item["expected"] != item["actual"], "invalid_report")
+            if category in ("errors", "skipped"):
+                text_key = "error" if category == "errors" else "reason"
+                require(bool(item[text_key]) and len(item[text_key]) <= 8192, "invalid_report")
+    require(report["total"] == len(seen), "invalid_report")
+    return report
+
+
+def failure_category(reason):
+    if reason.startswith("verification returned ") and "error(s)" in reason:
+        return "verification_items"
+    if "strict bound report contract" in reason or reason.startswith("verification reported "):
+        return "verification_contract"
+    if reason.startswith("pinned base already contains generated drift"):
+        return "generated_artifact_drift"
+    if any(reason.startswith(prefix) for prefix in (
+            "missing dependency:", "dependency ", "trusted system prefix ", "pinned Bun ",
+            "Bun version unacceptable:", "monitor clone ", "origin does not ", "remote main ",
+            "fetch of main ", "could not resolve exactly one remote ", "local main ",
+            "local HEAD ", "clone is not clean ", "frozen, lifecycle-disabled Bun install ")):
+        return "configuration"
+    if any(word in reason for word in ("publication", "authorization", "atomic push", "published")):
+        return "publication"
+    return "unknown"
+
+
+def inspect_log(data, result, run_id, private, warnings):
+    states, summaries, failures, bindings, producer_exits, starts, bases = [], [], [], [], [], [], []
+    for number, line in enumerate(data.decode("utf-8", errors="strict").splitlines()):
+        match = re.fullmatch(r"\[[0-9]{2}:[0-9]{2}:[0-9]{2}\] (.*)", line)
+        if not match:
+            continue
+        message = match[1]
+        if message.startswith("ACFS checksum monitor starting (") or message == "state=LOCKED":
+            starts.append((number, message.startswith("ACFS checksum")))
+        if message.startswith("state=") and message[6:] in STATES:
+            states.append((number, message[6:]))
+        summary = re.match(r"summary: result=(ok|deferred|fail_closed) state=([A-Z_]+)(?: |$)", message)
+        if summary and summary[2] in STATES:
+            summaries.append((number, summary[1], summary[2]))
+        if message.startswith("FAIL-CLOSED: "):
+            failures.append((number, message[13:]))
+        base = re.fullmatch(r"clean base pinned to ([0-9a-f]{40})", message)
+        if base:
+            bases.append(base[1])
+        binding = re.fullmatch(r"verification binding: policy_sha256=([0-9a-f]{64}) report_sha256=([0-9a-f]{64})", message)
+        if binding:
+            bindings.append((binding[1], binding[2]))
+        producer = re.match(r"verification evidence: run=" + re.escape(run_id) + r" exit=([0-9]{1,3})(?: |$)", message)
+        if producer:
+            producer_exits.append(int(producer[1]))
+    ambiguous = len(summaries) > 1 or any(sum(kind == target for _, kind in starts) > 1 for target in (True, False))
+    if ambiguous:
+        result["status"] = "ambiguous"
+        warnings.append("ambiguous_run_log")
+        return [], []
+    if states:
+        result["recorded_state"] = states[-1][1]
+    if len(bases) == 1:
+        result["recorded_base_commit"] = bases[0]
+    elif len(bases) > 1:
+        warnings.append("ambiguous_base_commit_records")
+    if summaries:
+        position, outcome, state = summaries[-1]
+        later = any(item[0] > position for item in states + failures + starts)
+        consistent = ((outcome == "ok" and state == "HEALTHY") or (outcome == "deferred" and state == "DEFERRED")) and not failures
+        consistent = consistent or (outcome == "fail_closed" and state not in {"HEALTHY", "DEFERRED"})
+        if not later and consistent:
+            result["recorded_result"], result["recorded_state"] = outcome, state
+        else:
+            warnings.append("incomplete_log")
+    else:
+        warnings.append("incomplete_log")
+    if failures and result["recorded_result"] not in ("ok", "deferred"):
+        reason = failures[-1][1]
+        result["failure_category"] = failure_category(reason)
+        if private:
+            result["failure_reason"] = reason
+    return bindings, producer_exits
+
+
+def inspect(state_path, run_id, private):
+    run_time = datetime.datetime.strptime(run_id, "%Y%m%dT%H%M%SZ")
+    warnings = ["local_diagnostics_are_not_publication_evidence", "current_monitor_health_not_established"]
+    output = {"schema": SCHEMA, "run_id": run_id, "diagnostic_only": True,
+              "publication_authorized": False, "current_health": "unknown",
+              "private_details_included": private, "warnings": warnings}
+    log = {"status": "missing", "path": "logs/run-" + run_id + ".log",
+           "recorded_state": None, "recorded_result": "unknown", "failure_category": "unknown",
+           "recorded_base_commit": None}
+    verification = {"status": "missing", "candidates": [],
+                    "logged_report_binding": "absent", "logged_policy_binding": "absent"}
+    downloads = {"status": "missing", "candidates": [], "observation_roots": [], "policy_snapshots": []}
+    output.update(log=log, verification=verification, downloads=downloads)
+    reader = Reader()
+    try:
+        state_dir = reader.directory(state_path, owned=True)
+        bindings, producer_exits = [], []
+        try:
+            log_dir = reader.directory(os.path.join(state_path, "logs"), owned=True)
+        except FileNotFoundError:
+            log_dir = None
+        if log_dir is not None:
+            logs = reader.select(log_dir, re.compile(re.escape("run-" + run_id + ".log")))
+            if logs:
+                data, metadata = reader.take(log_dir, logs[0], LOG_LIMIT)
+                log.update(status="inspected", **metadata)
+                try:
+                    bindings, producer_exits = inspect_log(data, log, run_id, private, warnings)
+                except UnicodeError:
+                    log["status"] = "invalid"
+                    warnings.append("invalid_log_encoding")
+        suffix = r"[A-Za-z0-9]{6}"
+        verification["candidates"] = reader.select(state_dir, re.compile("verify-" + re.escape(run_id) + r"\." + suffix + r"\.json"))
+        if len(verification["candidates"]) > 1:
+            verification["status"] = "ambiguous"
+            warnings.append("ambiguous_verification_reports")
+        elif verification["candidates"]:
+            data, metadata = reader.take(state_dir, verification["candidates"][0], REPORT_LIMIT, private=True)
+            verification.update(metadata)
+            try:
+                report = parse_report(data)
+            except (DiagnosticError, ValueError, TypeError, RecursionError, UnicodeError):
+                report = None
+                verification["status"] = "invalid"
+                warnings.append("invalid_verification_report")
+            if report is not None:
+                verification.update(status="inspected", policy_sha256=report["checksumsYamlSha256"],
+                                    timestamp=report["timestamp"],
+                                    counts={key: len(report[key]) for key in ("matches", "mismatches", "errors", "skipped")})
+                verification["counts"]["total"] = report["total"]
+                verification["errors"] = [{"name": item["name"], **({"description": item["error"]} if private else {})} for item in report["errors"]]
+                verification["skipped"] = [{"name": item["name"], **({"description": item["reason"]} if private else {})} for item in report["skipped"]]
+                verification["mismatches"] = [{key: item[key] for key in ("name", "expected", "actual")} for item in report["mismatches"]]
+                elapsed = (datetime.datetime.strptime(report["timestamp"], "%Y-%m-%dT%H:%M:%SZ") - run_time).total_seconds()
+                if not 0 <= elapsed <= 1200:
+                    warnings.append("report_timestamp_outside_run_window")
+                if len(bindings) == 1:
+                    verification["logged_report_binding"] = "matches" if bindings[0][1] == metadata["sha256"] else "differs"
+                    verification["logged_policy_binding"] = "matches" if bindings[0][0] == report["checksumsYamlSha256"] else "differs"
+                elif len(bindings) > 1:
+                    verification["logged_report_binding"] = verification["logged_policy_binding"] = "ambiguous"
+                if "differs" in (verification["logged_report_binding"], verification["logged_policy_binding"]):
+                    warnings.append("local_report_binding_differs")
+        if len(producer_exits) == 1:
+            verification["recorded_producer_exit"] = producer_exits[0]
+        elif len(producer_exits) > 1:
+            warnings.append("ambiguous_verifier_exit_records")
+        downloads["candidates"] = reader.select(state_dir, re.compile("downloads-" + re.escape(run_id) + r"\." + suffix))
+        if len(downloads["candidates"]) > 1:
+            downloads["status"] = "ambiguous"
+            warnings.append("ambiguous_download_directories")
+        elif downloads["candidates"]:
+            name = downloads["candidates"][0]
+            directory = reader.directory(os.path.join(state_path, name), private=True)
+            downloads["status"] = "present"
+            for key, prefix in (("observation_roots", "acfs-observations."), ("policy_snapshots", "acfs-checksums-policy.")):
+                names = reader.select(directory, re.compile(re.escape(prefix) + suffix))
+                for item in names:
+                    if key == "observation_roots":
+                        reader.directory(os.path.join(state_path, name, item), private=True)
+                    else:
+                        reader.hold(directory, item, REPORT_LIMIT, private=True)
+                # Locators only: installer bodies, headers, stderr, authorization
+                # records and repository files are never read by diagnostics.
+                downloads[key] = [name + "/" + item for item in names]
+        reader.fence()
+        return output
+    finally:
+        reader.close()
+
+
+try:
+    require(len(sys.argv) in (3, 4), "invalid_arguments")
+    state_path, run_id = sys.argv[1:3]
+    require(re.fullmatch(r"[0-9]{8}T[0-9]{6}Z", run_id), "invalid_arguments")
+    try:
+        datetime.datetime.strptime(run_id, "%Y%m%dT%H%M%SZ")
+    except ValueError:
+        raise DiagnosticError("invalid_arguments") from None
+    require(len(sys.argv) == 3 or sys.argv[3] == "--include-private-details", "invalid_arguments")
+    require(state_path and ".." not in state_path.split("/")
+            and not any(ord(char) < 32 for char in state_path), "invalid_arguments")
+    output = inspect(os.path.abspath(state_path), run_id, len(sys.argv) == 4)
+    print(json.dumps(output, ensure_ascii=True, separators=(",", ":")))
+except (DiagnosticError, OSError, ValueError, TypeError, RecursionError) as error:
+    code = error.code if isinstance(error, DiagnosticError) else "unsafe_input"
+    if isinstance(error, OSError) and error.errno in (errno.ENOENT, errno.EACCES, errno.EPERM):
+        code = "unavailable"
+    messages = {"invalid_arguments": "Expected a valid UTC run ID and optional --include-private-details.",
+                "unsafe_input": "A diagnostic input is unsafe or unsupported.",
+                "changed_input": "Diagnostic inputs changed during inspection; retry after the run finishes.",
+                "limit_exceeded": "A diagnostic input exceeded its bounded inspection limit.",
+                "unavailable": "The requested run state or a required input is unavailable."}
+    print(json.dumps({"schema": SCHEMA, "diagnostic_only": True, "publication_authorized": False,
+                      "error": {"code": code, "message": messages.get(code, messages["unsafe_input"])}},
+                     ensure_ascii=True, separators=(",", ":")))
+    sys.exit(2)
+ACFS_MONITOR_DIAGNOSTICS_PY
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" && "$#" -gt 0 ]]; then
+    case "$1" in
+        --diagnose)
+            shift
+            diagnose_monitor_run "$@"
+            exit "$?"
+            ;;
+        --help|-h)
+            if [[ "$#" -ne 1 ]]; then
+                printf '%s\n' '{"schema":"acfs.checksum-monitor-diagnostics.v1","diagnostic_only":true,"publication_authorized":false,"error":{"code":"invalid_arguments","message":"Expected --diagnose RUN_ID [--include-private-details] or --help."}}'
+                exit 2
+            fi
+            printf '%s\n' \
+                'Usage: checksum-monitor-local.sh [--diagnose RUN_ID [--include-private-details]]' \
+                'RUN_ID is an explicit UTC timestamp such as 20261108T110101Z.' \
+                'Diagnostics read existing state and emit JSON without running the monitor.' \
+                'Private details may contain credentials or host information; keep that output private.'
+            exit 0
+            ;;
+        *)
+            printf '%s\n' '{"schema":"acfs.checksum-monitor-diagnostics.v1","diagnostic_only":true,"publication_authorized":false,"error":{"code":"invalid_arguments","message":"Expected --diagnose RUN_ID [--include-private-details] or --help."}}'
+            exit 2
+            ;;
+    esac
+fi
+
 MONITOR_REPO="${ACFS_MONITOR_REPO:-$HOME/acfs-monitor}"
 STATE_DIR="${ACFS_MONITOR_STATE:-$HOME/.local/state/acfs-monitor}"
 
