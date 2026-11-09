@@ -304,6 +304,96 @@ class DiagnosticsTests(unittest.TestCase):
                 self.assertEqual(data["verification"]["status"], "missing")
                 self.assertEqual(data["downloads"]["status"], "missing")
 
+    def test_state_storage_failures_keep_legacy_incident_classification(self):
+        reasons = (
+            "could not open monitor lock file",
+            "could not open a safe monitor lock file",
+            "could not open a safe monitor log file",
+            "monitor lock path changed or became unsafe while acquiring it",
+            "remote publication is verified but failure-count state could not be safely read",
+            "remote publication is verified but the healthy-state marker could not be written",
+        )
+        for reason in reasons:
+            with self.subTest(reason=reason):
+                fx = self.fixture(report=False, downloads=False)
+                state = "REMOTE_VERIFIED" if reason.startswith("remote publication") else "INIT"
+                private_file(fx.log,
+                             "[11:01:01] FAIL-CLOSED: " + reason + "\n"
+                             "[11:01:01] summary: result=fail_closed state=" + state + " streak=unknown\n",
+                             0o644)
+                data, _ = self.inspected(fx)
+                self.assertEqual(data["log"]["failure_category"], "state_storage")
+                self.assertEqual(data["log"]["recorded_result"], "fail_closed")
+                self.assertEqual(data["log"]["recorded_state"], state)
+                self.assertNotIn("state_refusal", data["log"])
+
+    def test_typed_primary_state_refusal_survives_secondary_failures(self):
+        fx = self.fixture(report=False, downloads=False)
+        reason = ("could not open a safe monitor lock file " + LOG_SECRET
+                  + " [state_refusal=lock_file.symlink]")
+        private_file(fx.log,
+                     "[11:01:01] WARNING: failure count could not be persisted "
+                     "[count_refusal=failure_counter.multiple_links]\n"
+                     "[11:01:01] WARNING: log unavailable [state_refusal=log_file.wrong_type]\n"
+                     "[11:01:01] FAIL-CLOSED: " + reason + "\n"
+                     "[11:01:01] summary: result=fail_closed state=INIT streak=unknown\n",
+                     0o644)
+        for private in (False, True):
+            with self.subTest(private=private):
+                data, _ = self.inspected(fx, private=private)
+                self.assertEqual(data["log"]["state_refusal"],
+                                 {"component": "lock_file", "reason": "symlink"})
+                self.assertEqual(data["log"]["failure_category"], "state_storage")
+                self.assertNotIn("invalid_state_refusal", data["warnings"])
+                if private:
+                    self.assertEqual(data["log"]["failure_reason"], reason)
+                else:
+                    self.assertNotIn("failure_reason", data["log"])
+
+    def test_unknown_or_ambiguous_state_refusal_does_not_invent_a_cause(self):
+        markers = (
+            "[state_refusal=untrusted.symlink]",
+            "[state_refusal=lock_file." + LOG_SECRET + "]",
+            "[state_refusal=LOCK_FILE.symlink]",
+            "[state_refusal=lock_file.symlink",
+            "[state_refusal=state_record.unclassified]",
+            "[state_refusal=lock_file.symlink] [state_refusal=log_file.wrong_type]",
+            "[state_refusal=lock_file.symlink] [state_refusal=lock_file.symlink]",
+        )
+        for marker in markers:
+            with self.subTest(marker=marker):
+                fx = self.fixture(report=False, downloads=False)
+                private_file(fx.log,
+                             "[11:01:01] FAIL-CLOSED: could not open a safe monitor lock file "
+                             + marker + "\n"
+                             "[11:01:01] summary: result=fail_closed state=INIT streak=unknown\n",
+                             0o644)
+                data, _ = self.inspected(fx)
+                self.assertEqual(data["log"]["failure_category"], "state_storage")
+                self.assertNotIn("state_refusal", data["log"])
+                self.assertIn("invalid_state_refusal", data["warnings"])
+
+    def test_state_refusal_markers_do_not_override_outcome_consistency(self):
+        for inconsistent in (False, True):
+            with self.subTest(inconsistent=inconsistent):
+                fx = self.fixture(report=False, downloads=False)
+                prefix = "FAIL-CLOSED: " if inconsistent else "WARNING: "
+                private_file(fx.log,
+                             "[11:01:01] " + prefix + "could not open a safe monitor log file "
+                             "[state_refusal=log_file.wrong_type]\n"
+                             "[11:01:02] state=HEALTHY\n"
+                             "[11:01:02] summary: result=ok state=HEALTHY\n",
+                             0o644)
+                data, _ = self.inspected(fx)
+                if inconsistent:
+                    self.assertEqual(data["log"]["recorded_result"], "unknown")
+                    self.assertIn("incomplete_log", data["warnings"])
+                    self.assertEqual(data["log"]["state_refusal"],
+                                     {"component": "log_file", "reason": "wrong_type"})
+                else:
+                    self.assertEqual(data["log"]["recorded_result"], "ok")
+                    self.assertNotIn("state_refusal", data["log"])
+
     def test_historical_accepted_results_do_not_establish_current_health(self):
         for state, outcome in (("HEALTHY", "ok"), ("DEFERRED", "deferred")):
             with self.subTest(state=state):

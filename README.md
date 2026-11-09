@@ -3119,6 +3119,26 @@ reuse the held descriptor instead of reopening the log pathname. An unsafe
 initial log stops normal execution before verification or publication, while
 failure reporting and alert delivery can still use the service journal.
 
+State safety failures include a fixed diagnostic marker, for example
+`[state_refusal=state_directory.group_or_world_writable]`. It identifies the
+component and failed check without including a host path, numeric user identity,
+record contents, or raw utility output. The original refusal remains attached to
+the failure even if subsequent counter or log operations also fail. A secondary
+counter failure uses its own `count_refusal` marker.
+
+| Refusal component | What to inspect on the monitor host |
+| --- | --- |
+| `state_directory` | The configured state directory's type, owner, and permissions; it is shared by lock, counter, and notification state. |
+| `lock_file` | The lock's type, owner, permissions, link count, and whether its pathname still identifies the opened inode. |
+| `log_directory`, `log_file` | Log destination metadata and descriptor identity; rejected output falls back to the journal. |
+| `failure_counter` | Counter metadata and bounded-read or replacement failures; accepted-state recording still requires a safe counter. |
+| `github_cooldown`, `private_cooldown`, `recovery_pending` | Notification-state metadata and persistence; failed delivery bookkeeping remains retryable. |
+
+An `io_failure` or `metadata_unavailable` identifies the operation class, not its
+underlying cause. Unknown statuses remain `state_record.unclassified`; they are
+not converted into an invented ownership, permission, or link diagnosis. Preserve
+the rejected records before investigating or repairing the host configuration.
+
 Failure accounting does not depend on successfully writing the normal log.
 If that log is unavailable, the terminal failure record falls back to standard
 error for the service journal, and notification attempts use a fallback output
@@ -3185,6 +3205,14 @@ an inspection limit prevented completion. Its locally recorded outcome is
 historical, not a fresh health check. A report hash agreeing with the same host's log is a
 local consistency observation, not independent evidence of integrity or upstream
 trust, and the command grants no publication authority.
+
+For a state failure with one valid primary marker, the default JSON includes
+`log.state_refusal` with its `component` and `reason`, and classifies the failure
+as `state_storage`. Legacy lock, log, and counter failure messages receive the
+same broad category without inventing a more specific refusal. Unknown,
+malformed, or duplicate primary markers produce `invalid_state_refusal` warnings
+instead of a guessed cause. Notification warnings cannot replace the primary
+failure, and these fields do not establish the host's current health.
 
 | Recorded finding | Next investigation |
 | --- | --- |

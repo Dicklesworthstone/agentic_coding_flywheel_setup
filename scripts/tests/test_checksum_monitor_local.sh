@@ -1973,6 +1973,330 @@ done
 [[ "$descriptor_failures" == 0 ]] || exit 1
 # END MONITOR_DESCRIPTOR_REGRESSIONS
 
+# State refusals must explain the failed guard without exposing private data.
+# These cases test the actual terminal paths with intercepted transports. The
+# incumbent already rejects unsafe state; the regression is its lost diagnosis.
+# BEGIN MONITOR_REFUSAL_REGRESSIONS
+refusal_runner="$STATE_TMP/refusal-runner.sh"
+cat > "$refusal_runner" <<'REFUSAL_RUNNER'
+#!/usr/bin/env bash
+set -euo pipefail
+monitor="$1"
+fixture_root="$2"
+scenario="$3"
+export HOME="$fixture_root/home"
+export ACFS_MONITOR_STATE="$HOME/state"
+export ACFS_MONITOR_REPO="$fixture_root/no-live-repository"
+export ACFS_MONITOR_LIBRARY_ONLY=1
+unset ACFS_NTFY_TOPIC
+# shellcheck source=../checksum-monitor-local.sh
+source "$monitor"
+fail() { printf 'FAIL: %s\n' "$*" >&2; exit 97; }
+LOG_FILE="$LOG_DIR/refusal-fixture.log"
+AUTHORIZATION_FILE="$fixture_root/private-authorization"
+evidence="$fixture_root/private-evidence"
+printf 'private-authorization-content\n' > "$AUTHORIZATION_FILE"
+printf 'private-retained-evidence-content\n' > "$evidence"
+chmod 600 "$AUTHORIZATION_FILE" "$evidence"
+protected_before="$(sha256sum "$AUTHORIZATION_FILE" "$evidence")"
+protected_metadata="$(stat -c '%a:%i:%u' "$AUTHORIZATION_FILE" "$evidence")"
+printf '2\n' > "$FAIL_STREAK_FILE"
+printf 'retained lock bytes\n' > "$LOCK_FILE"
+chmod 644 "$FAIL_STREAK_FILE" "$LOCK_FILE"
+calls="$fixture_root/transport-attempts"
+comments="$fixture_root/public-comments"
+: > "$calls"
+: > "$comments"
+hostname() { printf 'private-refusal-host\n'; }
+date() { printf '1000060\n'; }
+run_failure_bounded() {
+    case "$*" in
+        'gh issue list '*) printf 'lookup\n' >> "$calls"; printf '457\n' ;;
+        'gh issue comment '*) printf 'comment\n' >> "$calls"; printf '%s\n' "$*" >> "$comments" ;;
+        *) fail 'refusal fixture reached an unexpected notification command' ;;
+    esac
+}
+curl() { printf 'push\n' >> "$calls"; }
+git() { fail 'refusal fixture reached repository publication'; }
+gh() { fail 'refusal fixture bypassed the intercepted notification runner'; }
+advance_state() {
+    if [[ "$1:$2" == INIT:LOCKED && "$scenario" == valid-main ]]; then
+        printf 'accepted lock\n' > "$fixture_root/first-transition"
+        exit 73
+    fi
+    printf '%s:%s\n' "$1" "$2" > "$fixture_root/unexpected-transition"
+    fail 'state refusal passed its required terminal boundary'
+}
+
+case "$scenario" in
+    state-symlink)
+        mv "$STATE_DIR" "$fixture_root/retained-state"
+        ln -s "$fixture_root/retained-state" "$STATE_DIR"
+        ;;
+    state-writable) chmod 775 "$STATE_DIR" ;;
+    state-owner|lock-owner)
+        target="$STATE_DIR"
+        [[ "$scenario" != lock-owner ]] || target="$LOCK_FILE"
+        other_uid=65534
+        [[ "$(id -u)" != "$other_uid" ]] || other_uid=65533
+        if ! chown "$other_uid" "$target" 2> "$fixture_root/chown-error"; then
+            printf 'SKIP: refusal %s requires a mapped second uid\n' "$scenario"
+            exit 77
+        fi
+        ;;
+    lock-symlink|primary-secondary)
+        mv "$LOCK_FILE" "$fixture_root/retained-lock"
+        ln -s "$AUTHORIZATION_FILE" "$LOCK_FILE"
+        if [[ "$scenario" == primary-secondary ]]; then
+            mv "$FAIL_STREAK_FILE" "$fixture_root/retained-counter"
+            ln "$evidence" "$FAIL_STREAK_FILE"
+            chmod 775 "$LOG_DIR"
+        fi
+        ;;
+    lock-hardlink)
+        mv "$LOCK_FILE" "$fixture_root/retained-lock"
+        ln "$evidence" "$LOCK_FILE"
+        ;;
+    lock-directory)
+        mv "$LOCK_FILE" "$fixture_root/retained-lock"
+        mkdir "$LOCK_FILE"
+        ;;
+    lock-writable) chmod 666 "$LOCK_FILE" ;;
+    lock-readonly) chmod 400 "$LOCK_FILE" ;;
+    lock-metadata|counter-metadata)
+        stat() {
+            local path="${@: -1}"
+            if [[ "$scenario:$path" == "lock-metadata:$LOCK_FILE" \
+                || "$scenario:$path" == "counter-metadata:$FAIL_STREAK_FILE" ]]; then
+                printf 'private-stat-error uid=123456789 secret=private-evidence\n' >&2
+                return 77
+            fi
+            command stat "$@"
+        }
+        ;;
+    lock-open)
+        fault_pending=true
+        umask() {
+            if [[ "$fault_pending" == true && "${1:-}" == 077 ]]; then
+                fault_pending=false
+                mv "$STATE_DIR" "$fixture_root/retained-state"
+                printf 'retained replacement parent\n' > "$STATE_DIR"
+                printf 'open fault reached\n' > "$fixture_root/fault-reached"
+            fi
+            builtin umask "$@"
+        }
+        ;;
+    lock-replaced)
+        flock() {
+            command flock "$@" || return "$?"
+            mv "$LOCK_FILE" "$fixture_root/retained-lock"
+            printf 'new safe lock inode\n' > "$LOCK_FILE"
+            chmod 600 "$LOCK_FILE"
+            printf 'identity fault reached\n' > "$fixture_root/fault-reached"
+        }
+        ;;
+    log-symlink) ln -s "$evidence" "$LOG_FILE" ;;
+    log-parent-writable) chmod 775 "$LOG_DIR" ;;
+    counter-symlink)
+        mv "$FAIL_STREAK_FILE" "$fixture_root/retained-counter"
+        ln -s "$AUTHORIZATION_FILE" "$FAIL_STREAK_FILE"
+        ;;
+    counter-read)
+        inject_counter_read_failure() {
+            if [[ "$BASH_COMMAND" == 'IFS= read -r value '* && ! -e "$fixture_root/fault-reached" ]]; then
+                mv "$FAIL_STREAK_FILE" "$fixture_root/retained-counter"
+                ln -s "$fixture_root/missing-reader-target" "$FAIL_STREAK_FILE"
+                printf 'head fault reached\n' > "$fixture_root/fault-reached"
+            fi
+        }
+        set -T
+        trap inject_counter_read_failure DEBUG
+        ;;
+    counter-reset)
+        printf '3\n' > "$FAIL_STREAK_FILE"
+        mv() {
+            if [[ "${@: -1}" == "$FAIL_STREAK_FILE" ]]; then
+                printf 'replace fault reached\n' > "$fixture_root/fault-reached"
+                return 77
+            fi
+            command mv "$@"
+        }
+        ;;
+    counter-create)
+        mktemp() { printf 'create fault reached\n' > "$fixture_root/fault-reached"; return 77; }
+        ;;
+    github-cooldown|private-cooldown)
+        record="$FAIL_ALERT_FILE"
+        [[ "$scenario" != private-cooldown ]] || record="$FAIL_PUSH_ALERT_FILE"
+        ln "$evidence" "$record"
+        ;;
+esac
+sha256sum "$AUTHORIZATION_FILE" "$evidence" > "$fixture_root/protected-digests"
+stat -c '%F:%a:%u:%h:%i' "$AUTHORIZATION_FILE" "$evidence" > "$fixture_root/protected-metadata"
+
+case "$scenario" in
+    counter-symlink|counter-metadata|counter-read|counter-reset)
+        STATE=REMOTE_VERIFIED
+        record_accepted_monitor_outcome ok
+        fail 'counter refusal was accepted as healthy'
+        ;;
+    counter-create) fail_closed 'original verification fixture failure' ;;
+    github-cooldown|private-cooldown)
+        _fail_alert_record 'delivered fixture' 1000060 "$record"
+        [[ "$(sha256sum "$AUTHORIZATION_FILE" "$evidence")" == "$protected_before" \
+            && "$(stat -c '%a:%i:%u' "$AUTHORIZATION_FILE" "$evidence")" == "$protected_metadata" ]] \
+            || fail 'classified cooldown refusal changed evidence'
+        _fail_alert_due 4 'delivered fixture' 1000061 "$record" || fail 'rejected cooldown silenced a retry'
+        ;;
+    optional-absent|valid-values)
+        if [[ "$scenario" == optional-absent ]]; then
+            mv "$FAIL_STREAK_FILE" "$fixture_root/retained-counter"
+            [[ "$(_read_failure_streak)" == 0 ]] || fail 'absent optional counter became a refusal'
+            _fail_alert_due 3 reason 1000060 || fail 'absent optional cooldown suppressed delivery'
+            [[ "$(_read_recovery_pending_streak)" == 0 ]] || fail 'absent pending recovery became a refusal'
+        else
+            printf '0008\n' > "$FAIL_STREAK_FILE"
+            [[ "$(_read_failure_streak)" == 8 ]] || fail 'count output contains refusal metadata or lost decimal semantics'
+        fi
+        identity="$(_monitor_named_file_identity "$LOCK_FILE")"
+        [[ "$identity" =~ ^[0-9]+:[0-9]+$ ]] || fail 'identity output was contaminated by refusal metadata'
+        [[ ! -s "$comments" ]] || fail 'valid bookkeeping state sent an alert'
+        ;;
+    *) checksum_monitor_main ;;
+esac
+REFUSAL_RUNNER
+
+refusal_case() (
+    scenario="$1"
+    fixture_root="$(mktemp -d "$STATE_TMP/refusal-$scenario.XXXXXX")"
+    status=0
+    timeout --signal=TERM --kill-after=2 10 bash "$refusal_runner" "$MONITOR" \
+        "$fixture_root" "$scenario" > "$fixture_root/stdout" 2> "$fixture_root/stderr" || status=$?
+    if [[ "$status" == 77 ]]; then cat "$fixture_root/stdout"; return 77; fi
+    expected_status=1
+    expected=''
+    case "$scenario" in
+        state-symlink) expected=state_directory.symlink ;;
+        state-writable) expected=state_directory.group_or_world_writable ;;
+        state-owner) expected=state_directory.owner_mismatch ;;
+        lock-symlink|primary-secondary) expected=lock_file.symlink ;;
+        lock-hardlink) expected=lock_file.multiple_links ;;
+        lock-directory) expected=lock_file.wrong_type ;;
+        lock-owner) expected=lock_file.owner_mismatch ;;
+        lock-writable) expected=lock_file.group_or_world_writable ;;
+        lock-readonly) expected=lock_file.owner_permissions ;;
+        lock-metadata) expected=lock_file.metadata_unavailable ;;
+        lock-open) expected=lock_file.io_failure ;;
+        lock-replaced) expected=lock_file.identity_changed ;;
+        log-symlink) expected=log_file.symlink ;;
+        log-parent-writable) expected=log_directory.group_or_world_writable ;;
+        counter-symlink) expected=failure_counter.symlink ;;
+        counter-metadata) expected=failure_counter.metadata_unavailable ;;
+        counter-read) expected=failure_counter.io_failure ;;
+        counter-reset) expected=failure_counter.io_failure ;;
+        counter-create) expected=failure_counter.io_failure ;;
+        github-cooldown) expected=github_cooldown.multiple_links; expected_status=0 ;;
+        private-cooldown) expected=private_cooldown.multiple_links; expected_status=0 ;;
+        optional-absent|valid-values) expected_status=0 ;;
+        valid-main) expected_status=73 ;;
+        *) fail "unknown refusal scenario $scenario" ;;
+    esac
+    [[ "$status" == "$expected_status" ]] || fail "$scenario returned $status instead of $expected_status ($fixture_root)"
+    [[ "$(cat "$fixture_root/private-authorization")" == private-authorization-content \
+        && "$(cat "$fixture_root/private-evidence")" == private-retained-evidence-content ]] \
+        || fail "$scenario modified private authorization or retained evidence"
+    [[ "$(sha256sum "$fixture_root/private-authorization" "$fixture_root/private-evidence")" == "$(cat "$fixture_root/protected-digests")" \
+        && "$(stat -c '%F:%a:%u:%h:%i' "$fixture_root/private-authorization" "$fixture_root/private-evidence")" == "$(cat "$fixture_root/protected-metadata")" ]] \
+        || fail "$scenario changed protected bytes, inode, permissions, ownership or link count"
+    ! grep -qE 'private-authorization-content|private-retained-evidence-content|private-refusal-host|private-stat-error|uid=123456789' \
+        "$fixture_root/public-comments" || fail "$scenario exposed private state in its alert"
+    ! grep -qF "$fixture_root" "$fixture_root/public-comments" || fail "$scenario exposed its private fixture path"
+    [[ ! -e "$fixture_root/unexpected-transition" ]] || fail "$scenario advanced after a refused state check"
+    if [[ -n "$expected" ]]; then
+        grep -qF "$expected" "$fixture_root/stderr" || fail "$scenario lost its classified journal refusal ($fixture_root)"
+        case "$scenario" in
+            github-cooldown|private-cooldown) ;;
+            *) grep -qF "$expected" "$fixture_root/public-comments" || fail "$scenario lost its classified public refusal ($fixture_root)" ;;
+        esac
+    fi
+    phase=''
+    case "$scenario" in
+        state-*|lock-symlink|lock-hardlink|lock-directory|lock-owner|lock-writable|lock-readonly|lock-metadata|lock-open|primary-secondary)
+            phase='could not open a safe monitor lock file' ;;
+        lock-replaced) phase='monitor lock path changed or became unsafe while acquiring it' ;;
+        log-*) phase='could not open a safe monitor log file' ;;
+        counter-symlink|counter-metadata|counter-read)
+            phase='remote publication is verified but failure-count state could not be safely read' ;;
+        counter-reset) phase='remote publication is verified but the healthy-state marker could not be written' ;;
+    esac
+    if [[ -n "$phase" ]]; then
+        grep -qF "Latest reason: $phase [state_refusal=$expected]" "$fixture_root/public-comments" \
+            || fail "$scenario did not preserve its original phase and classified primary cause"
+    fi
+    case "$scenario" in
+        primary-secondary)
+            grep -qF 'Latest reason: could not open a safe monitor lock file [state_refusal=lock_file.symlink]' \
+                "$fixture_root/public-comments" || fail 'secondary refusal replaced the primary lock diagnosis'
+            grep -qF 'failure_counter.multiple_links' "$fixture_root/public-comments" \
+                || fail 'unavailable-count alert lost its independent counter diagnosis'
+            ;;
+        counter-read|counter-reset|lock-open|lock-replaced)
+            [[ -s "$fixture_root/fault-reached" ]] || fail "$scenario did not exercise its intended reader or descriptor boundary"
+            ;;
+        counter-create)
+            grep -qF 'FAIL-CLOSED: original verification fixture failure' "$fixture_root/stderr" \
+                || fail 'counter creation failure replaced the original verification cause'
+            grep -qF 'Latest reason: original verification fixture failure' "$fixture_root/public-comments" \
+                || fail 'counter creation failure replaced the public primary cause'
+            ;;
+        valid-main) [[ -s "$fixture_root/first-transition" ]] || fail 'valid metadata was falsely refused before locking' ;;
+    esac
+)
+refusal_failures=0
+for refusal_scenario in state-symlink state-writable state-owner \
+    lock-symlink lock-hardlink lock-directory lock-owner lock-writable lock-readonly lock-metadata lock-open lock-replaced \
+    log-symlink log-parent-writable primary-secondary counter-symlink counter-metadata counter-read counter-reset counter-create \
+    github-cooldown private-cooldown optional-absent valid-values valid-main; do
+    refusal_status=0
+    refusal_case "$refusal_scenario" || refusal_status=$?
+    if [[ "$refusal_status" == 0 ]]; then
+        printf 'PASS: classified monitor refusal %s\n' "$refusal_scenario"
+    elif [[ "$refusal_status" != 77 ]]; then
+        refusal_failures=$((refusal_failures + 1))
+        printf 'FAIL: classified monitor refusal %s\n' "$refusal_scenario" >&2
+    fi
+done
+[[ "$refusal_failures" == 0 ]] || exit 1
+# END MONITOR_REFUSAL_REGRESSIONS
+
+# The codec is a new API, so these checks are not counted as incumbent runtime
+# regressions. Signal statuses and hostile strings must remain unclassified.
+(
+    export ACFS_MONITOR_STATE="$STATE_TMP/refusal-codec"
+    export ACFS_MONITOR_REPO="$STATE_TMP/no-live-repository"
+    ACFS_MONITOR_LIBRARY_ONLY=1
+    # shellcheck source=../checksum-monitor-local.sh
+    source "$MONITOR"
+    for status in '' 0 08 124 127 128 137 255 -1 999999999999999999999999 broken '1+15' \
+        '$(touch "$STATE_DIR/refusal-code-was-executed")' 'array[$(touch "$STATE_DIR/refusal-code-was-executed")]'; do
+        label="$(_monitor_refusal_label "$status")"
+        [[ "$label" == state_record.unclassified ]] || fail 'untrusted status became a specific state diagnosis'
+    done
+    for pair in state_directory.missing lock_file.symlink failure_counter.metadata_unavailable state_record.private_mode_required; do
+        code="$(_monitor_refusal_code "${pair%%.*}" "${pair#*.}")"
+        [[ "$code" =~ ^[0-9]+$ ]] && (( code >= 16 && code < 128 )) \
+            || fail 'state refusal status escaped its non-signal range'
+        [[ "$(_monitor_refusal_label "$code")" == "$pair" ]] || fail 'state refusal lost its declared component/reason'
+    done
+    for pair in unknown.symlink lock_file.unknown 'private/path.symlink'; do
+        code="$(_monitor_refusal_code "${pair%%.*}" "${pair#*.}")"
+        [[ "$(_monitor_refusal_label "$code")" == state_record.unclassified ]] \
+            || fail 'unknown component or reason entered the public refusal vocabulary'
+    done
+    [[ ! -e "$STATE_DIR/refusal-code-was-executed" ]] || fail 'state refusal status executed shell content'
+)
+printf 'PASS: monitor refusal codec boundaries\n'
+
 # Opt-in full state-machine qualification uses an immutable source archive.
 # Git's real SSH transport protocol is redirected to disposable bare fixtures;
 # dependencies, cleanliness, strict validators, generation, atomic pushes and

@@ -69,6 +69,14 @@ STATES = {"INIT", "LOCKED", "CLEAN_BASE", "OBSERVED", "CANDIDATE_VALIDATED",
           "REMOTE_VERIFIED", "HEALTHY", "DEFERRED"}
 HASH = re.compile(r"[0-9a-f]{64}\Z")
 NAME = re.compile(r"[a-z][a-z0-9_]{0,127}\Z")
+REFUSAL_COMPONENTS = {"state_directory", "log_directory", "log_file", "lock_file",
+                      "failure_counter", "github_cooldown", "private_cooldown",
+                      "recovery_pending", "state_record"}
+REFUSAL_REASONS = {"missing", "symlink", "wrong_type", "owner_mismatch",
+                  "group_or_world_writable", "owner_permissions", "multiple_links",
+                  "metadata_unavailable", "identity_changed", "io_failure",
+                  "invalid_input", "private_mode_required"}
+REFUSAL_MARKER = re.compile(r"\[state_refusal=([a-z_]+)\.([a-z_]+)\]")
 
 
 class DiagnosticError(Exception):
@@ -241,7 +249,27 @@ def parse_report(data):
     return report
 
 
-def failure_category(reason):
+def state_refusal(reason, warnings):
+    if "[state_refusal=" not in reason:
+        return None
+    markers = list(REFUSAL_MARKER.finditer(reason))
+    if (reason.count("[state_refusal=") != 1 or len(markers) != 1
+            or markers[0].end() != len(reason)
+            or markers[0][1] not in REFUSAL_COMPONENTS
+            or markers[0][2] not in REFUSAL_REASONS):
+        warnings.append("invalid_state_refusal")
+        return None
+    return {"component": markers[0][1], "reason": markers[0][2]}
+
+
+def failure_category(reason, refusal=None):
+    if refusal is not None or any(reason.startswith(prefix) for prefix in (
+            "could not open monitor lock file", "could not open a safe monitor lock file",
+            "could not open a safe monitor log file",
+            "monitor lock path changed or became unsafe while acquiring it",
+            "remote publication is verified but failure-count state could not be safely read",
+            "remote publication is verified but the healthy-state marker could not be written")):
+        return "state_storage"
     if reason.startswith("verification returned ") and "error(s)" in reason:
         return "verification_items"
     if "strict bound report contract" in reason or reason.startswith("verification reported "):
@@ -308,7 +336,10 @@ def inspect_log(data, result, run_id, private, warnings):
         warnings.append("incomplete_log")
     if failures and result["recorded_result"] not in ("ok", "deferred"):
         reason = failures[-1][1]
-        result["failure_category"] = failure_category(reason)
+        refusal = state_refusal(reason, warnings)
+        result["failure_category"] = failure_category(reason, refusal)
+        if refusal is not None:
+            result["state_refusal"] = refusal
         if private:
             result["failure_reason"] = reason
     return bindings, producer_exits
@@ -536,51 +567,125 @@ for publication_path in "${PUBLICATION_PATHS[@]}"; do
     PUBLICATION_PATH_SET["$publication_path"]=1
 done
 
+# Only these internally produced statuses carry a public refusal label. Keep
+# them below 128: a killed child must never look like a specific metadata fault.
+# Every external utility failure is translated at its call site, not decoded.
+_monitor_refusal_code() {
+    local component="$1" reason="$2" component_id=0 reason_id=0
+    case "$component" in
+        state_directory) component_id=0 ;; log_directory) component_id=1 ;;
+        log_file) component_id=2 ;; lock_file) component_id=3 ;;
+        failure_counter) component_id=4 ;; github_cooldown) component_id=5 ;;
+        private_cooldown) component_id=6 ;; recovery_pending) component_id=7 ;;
+        state_record) component_id=8 ;;
+        *) printf '1\n'; return 0 ;;
+    esac
+    case "$reason" in
+        missing) reason_id=0 ;; symlink) reason_id=1 ;;
+        wrong_type) reason_id=2 ;; owner_mismatch) reason_id=3 ;;
+        group_or_world_writable) reason_id=4 ;; owner_permissions) reason_id=5 ;;
+        multiple_links) reason_id=6 ;; metadata_unavailable) reason_id=7 ;;
+        identity_changed) reason_id=8 ;; io_failure) reason_id=9 ;;
+        invalid_input) reason_id=10 ;; private_mode_required) reason_id=11 ;;
+        *) printf '1\n'; return 0 ;;
+    esac
+    printf '%s\n' "$((16 + component_id * 12 + reason_id))"
+}
+
+_monitor_refusal_label() {
+    local status="${1:-}" component="" reason="" value=0
+    if [[ ! "$status" =~ ^[0-9]{1,3}$ ]]; then
+        printf 'state_record.unclassified\n'
+        return 0
+    fi
+    value=$((10#$status))
+    if (( value < 16 || value > 123 )); then
+        printf 'state_record.unclassified\n'
+        return 0
+    fi
+    case "$(((value - 16) / 12))" in
+        0) component=state_directory ;; 1) component=log_directory ;;
+        2) component=log_file ;; 3) component=lock_file ;;
+        4) component=failure_counter ;; 5) component=github_cooldown ;;
+        6) component=private_cooldown ;; 7) component=recovery_pending ;;
+        8) component=state_record ;;
+    esac
+    case "$(((value - 16) % 12))" in
+        0) reason=missing ;; 1) reason=symlink ;; 2) reason=wrong_type ;;
+        3) reason=owner_mismatch ;; 4) reason=group_or_world_writable ;;
+        5) reason=owner_permissions ;; 6) reason=multiple_links ;;
+        7) reason=metadata_unavailable ;; 8) reason=identity_changed ;;
+        9) reason=io_failure ;; 10) reason=invalid_input ;;
+        11) reason=private_mode_required ;;
+    esac
+    printf '%s.%s\n' "$component" "$reason"
+}
+
 _monitor_owned_directory() {
-    local directory="$1" metadata="" owner="" mode="" mode_value=0
-    [[ -d "$directory" && ! -L "$directory" ]] || return 1
-    metadata="$(stat -c '%u:%a' -- "$directory" 2>/dev/null)" || return 1
+    local directory="$1" component="${2:-state_record}" metadata="" owner="" mode="" mode_value=0
+    [[ ! -L "$directory" ]] || return "$(_monitor_refusal_code "$component" symlink)"
+    [[ -e "$directory" ]] || return "$(_monitor_refusal_code "$component" missing)"
+    [[ -d "$directory" ]] || return "$(_monitor_refusal_code "$component" wrong_type)"
+    metadata="$(stat -c '%u:%a' -- "$directory" 2>/dev/null)" \
+        || return "$(_monitor_refusal_code "$component" metadata_unavailable)"
     IFS=: read -r owner mode <<< "$metadata"
-    [[ "$owner" == "$EUID" && "$mode" =~ ^[0-7]{3,4}$ ]] || return 1
+    [[ "$owner" =~ ^[0-9]+$ && "$mode" =~ ^[0-7]{3,4}$ ]] \
+        || return "$(_monitor_refusal_code "$component" metadata_unavailable)"
+    [[ "$owner" == "$EUID" ]] || return "$(_monitor_refusal_code "$component" owner_mismatch)"
     mode_value=$((8#$mode))
-    (( (mode_value & 0700) == 0700 && (mode_value & 022) == 0 ))
+    (( (mode_value & 022) == 0 )) || return "$(_monitor_refusal_code "$component" group_or_world_writable)"
+    (( (mode_value & 0700) == 0700 )) || return "$(_monitor_refusal_code "$component" owner_permissions)"
+    return 0
 }
 
 _monitor_file_metadata_identity() {
-    local metadata="$1" device="" inode="" owner="" mode="" links="" mode_value=0
+    local metadata="$1" component="${2:-state_record}" device="" inode="" owner="" mode="" links="" mode_value=0
     IFS=: read -r device inode owner mode links <<< "$metadata"
-    [[ "$device" =~ ^[0-9]+$ && "$inode" =~ ^[0-9]+$ && "$owner" == "$EUID" \
-        && "$links" == 1 && "$mode" =~ ^[0-7]{3,4}$ ]] || return 1
+    [[ "$device" =~ ^[0-9]+$ && "$inode" =~ ^[0-9]+$ && "$owner" =~ ^[0-9]+$ \
+        && "$links" =~ ^[0-9]+$ && "$mode" =~ ^[0-7]{3,4}$ ]] \
+        || return "$(_monitor_refusal_code "$component" metadata_unavailable)"
+    [[ "$owner" == "$EUID" ]] || return "$(_monitor_refusal_code "$component" owner_mismatch)"
+    if [[ "$links" != 1 ]]; then
+        [[ "$links" != 0 ]] || return "$(_monitor_refusal_code "$component" identity_changed)"
+        return "$(_monitor_refusal_code "$component" multiple_links)"
+    fi
     mode_value=$((8#$mode))
-    (( (mode_value & 0600) == 0600 && (mode_value & 022) == 0 )) || return 1
+    (( (mode_value & 022) == 0 )) || return "$(_monitor_refusal_code "$component" group_or_world_writable)"
+    (( (mode_value & 0600) == 0600 )) || return "$(_monitor_refusal_code "$component" owner_permissions)"
     printf '%s:%s\n' "$device" "$inode"
 }
 
 _monitor_named_file_identity() {
-    local path="$1" metadata=""
-    [[ -f "$path" && ! -L "$path" ]] || return 1
-    metadata="$(stat -c '%d:%i:%u:%a:%h' -- "$path" 2>/dev/null)" || return 1
-    _monitor_file_metadata_identity "$metadata"
+    local path="$1" component="${2:-state_record}" metadata=""
+    [[ ! -L "$path" ]] || return "$(_monitor_refusal_code "$component" symlink)"
+    [[ -e "$path" ]] || return "$(_monitor_refusal_code "$component" missing)"
+    [[ -f "$path" ]] || return "$(_monitor_refusal_code "$component" wrong_type)"
+    metadata="$(stat -c '%d:%i:%u:%a:%h' -- "$path" 2>/dev/null)" \
+        || return "$(_monitor_refusal_code "$component" metadata_unavailable)"
+    _monitor_file_metadata_identity "$metadata" "$component"
 }
 
 _monitor_descriptor_identity() {
-    local descriptor="$1" descriptor_path="" metadata=""
-    [[ "$descriptor" =~ ^[0-9]{1,9}$ ]] || return 1
+    local descriptor="$1" component="${2:-state_record}" descriptor_path="" metadata=""
+    [[ "$descriptor" =~ ^[0-9]{1,9}$ ]] || return "$(_monitor_refusal_code "$component" invalid_input)"
     descriptor_path="/proc/self/fd/$descriptor"
-    [[ -f "$descriptor_path" ]] || return 1
-    metadata="$(stat -Lc '%d:%i:%u:%a:%h' -- "$descriptor_path" 2>/dev/null)" || return 1
-    _monitor_file_metadata_identity "$metadata"
+    [[ -f "$descriptor_path" ]] || return "$(_monitor_refusal_code "$component" io_failure)"
+    metadata="$(stat -Lc '%d:%i:%u:%a:%h' -- "$descriptor_path" 2>/dev/null)" \
+        || return "$(_monitor_refusal_code "$component" metadata_unavailable)"
+    _monitor_file_metadata_identity "$metadata" "$component"
 }
 
 _initialize_monitor_log_directories() {
     if [[ ! -e "$STATE_DIR" && ! -L "$STATE_DIR" ]]; then
-        ( umask 077; /usr/bin/mkdir -p -- "$STATE_DIR" ) || return 1
+        ( umask 077; /usr/bin/mkdir -p -- "$STATE_DIR" ) \
+            || return "$(_monitor_refusal_code state_directory io_failure)"
     fi
-    _monitor_owned_directory "$STATE_DIR" || return 1
+    _monitor_owned_directory "$STATE_DIR" state_directory || return "$?"
     if [[ ! -e "$LOG_DIR" && ! -L "$LOG_DIR" ]]; then
-        ( umask 077; /usr/bin/mkdir -- "$LOG_DIR" ) || return 1
+        ( umask 077; /usr/bin/mkdir -- "$LOG_DIR" ) \
+            || return "$(_monitor_refusal_code log_directory io_failure)"
     fi
-    _monitor_owned_directory "$LOG_DIR"
+    _monitor_owned_directory "$LOG_DIR" log_directory
 }
 
 # Sourcing retains its directory setup, but never follows an unsafe directory
@@ -597,50 +702,65 @@ _close_monitor_log() {
     fi
 }
 
+_monitor_open_log_identity() {
+    local descriptor="$1" before="${2:-}" current="" opened=""
+    _monitor_owned_directory "$STATE_DIR" state_directory || return "$?"
+    _monitor_owned_directory "$LOG_DIR" log_directory || return "$?"
+    [[ "${LOG_FILE%/*}" == "$LOG_DIR" ]] || return "$(_monitor_refusal_code log_file invalid_input)"
+    current="$(_monitor_named_file_identity "$LOG_FILE" log_file)" || return "$?"
+    opened="$(_monitor_descriptor_identity "$descriptor" log_file)" || return "$?"
+    [[ "$current" == "$opened" && ( -z "$before" || "$current" == "$before" ) ]] \
+        || return "$(_monitor_refusal_code log_file identity_changed)"
+    printf '%s\n' "$opened"
+}
+
 _prepare_monitor_log() {
-    local before="" current="" opened="" opened_fd="" previous_umask="" open_status=0
+    local before="" opened="" opened_fd="" previous_umask="" open_status=0 validation_status=0
     if [[ "$MONITOR_LOG_FD" != 2 ]]; then
         if [[ "$MONITOR_LOG_PATH" == "$LOG_FILE" ]] \
-            && _monitor_owned_directory "$STATE_DIR" \
-            && _monitor_owned_directory "$LOG_DIR" \
-            && [[ "${LOG_FILE%/*}" == "$LOG_DIR" ]] \
-            && current="$(_monitor_named_file_identity "$LOG_FILE")" \
-            && opened="$(_monitor_descriptor_identity "$MONITOR_LOG_FD")" \
-            && [[ "$current" == "$opened" ]]; then
+            && opened="$(_monitor_open_log_identity "$MONITOR_LOG_FD")"; then
             return 0
         fi
         # A changed or unsafe name must not silently keep writing the old log.
         _close_monitor_log
     fi
-    _monitor_owned_directory "$STATE_DIR" || return 1
-    _monitor_owned_directory "$LOG_DIR" || return 1
-    [[ "${LOG_FILE%/*}" == "$LOG_DIR" ]] || return 1
+    _monitor_owned_directory "$STATE_DIR" state_directory || return "$?"
+    _monitor_owned_directory "$LOG_DIR" log_directory || return "$?"
+    [[ "${LOG_FILE%/*}" == "$LOG_DIR" ]] || return "$(_monitor_refusal_code log_file invalid_input)"
     if [[ -e "$LOG_FILE" || -L "$LOG_FILE" ]]; then
-        before="$(_monitor_named_file_identity "$LOG_FILE")" || return 1
+        before="$(_monitor_named_file_identity "$LOG_FILE" log_file)" || return "$?"
     fi
     previous_umask="$(umask)"
     umask 077
     { exec {opened_fd}>>"$LOG_FILE"; } 2>/dev/null || open_status=$?
     umask "$previous_umask"
-    (( open_status == 0 )) || return 1
-    if ! _monitor_owned_directory "$STATE_DIR" \
-        || ! _monitor_owned_directory "$LOG_DIR" \
-        || ! current="$(_monitor_named_file_identity "$LOG_FILE")" \
-        || ! opened="$(_monitor_descriptor_identity "$opened_fd")" \
-        || [[ "$current" != "$opened" || ( -n "$before" && "$current" != "$before" ) ]]; then
+    (( open_status == 0 )) || return "$(_monitor_refusal_code log_file io_failure)"
+    opened="$(_monitor_open_log_identity "$opened_fd" "$before")" || validation_status=$?
+    if (( validation_status != 0 )); then
         { exec {opened_fd}>&-; } 2>/dev/null || true
-        return 1
+        return "$validation_status"
     fi
     MONITOR_LOG_FD="$opened_fd"
     MONITOR_LOG_PATH="$LOG_FILE"
 }
 
+_monitor_open_lock_identity() {
+    local before="${1:-}" current="" opened=""
+    [[ "$LOCK_FILE" == "$STATE_DIR/monitor.lock" ]] || return "$(_monitor_refusal_code lock_file invalid_input)"
+    _monitor_owned_directory "$STATE_DIR" state_directory || return "$?"
+    current="$(_monitor_named_file_identity "$LOCK_FILE" lock_file)" || return "$?"
+    opened="$(_monitor_descriptor_identity 9 lock_file)" || return "$?"
+    [[ "$current" == "$opened" && ( -z "$before" || "$current" == "$before" ) ]] \
+        || return "$(_monitor_refusal_code lock_file identity_changed)"
+    printf '%s\n' "$opened"
+}
+
 _open_monitor_lock() {
-    local before="" current="" opened="" previous_umask="" open_status=0
-    [[ "$LOCK_FILE" == "$STATE_DIR/monitor.lock" ]] || return 1
-    _monitor_owned_directory "$STATE_DIR" || return 1
+    local before="" opened="" previous_umask="" open_status=0 validation_status=0
+    [[ "$LOCK_FILE" == "$STATE_DIR/monitor.lock" ]] || return "$(_monitor_refusal_code lock_file invalid_input)"
+    _monitor_owned_directory "$STATE_DIR" state_directory || return "$?"
     if [[ -e "$LOCK_FILE" || -L "$LOCK_FILE" ]]; then
-        before="$(_monitor_named_file_identity "$LOCK_FILE")" || return 1
+        before="$(_monitor_named_file_identity "$LOCK_FILE" lock_file)" || return "$?"
     fi
     previous_umask="$(umask)"
     umask 077
@@ -648,32 +768,31 @@ _open_monitor_lock() {
     # inode. Replacing or unlinking a live lock would break mutual exclusion.
     { exec 9<>"$LOCK_FILE"; } 2>/dev/null || open_status=$?
     umask "$previous_umask"
-    (( open_status == 0 )) || return 1
-    if ! _monitor_owned_directory "$STATE_DIR" \
-        || ! current="$(_monitor_named_file_identity "$LOCK_FILE")" \
-        || ! opened="$(_monitor_descriptor_identity 9)" \
-        || [[ "$current" != "$opened" || ( -n "$before" && "$current" != "$before" ) ]]; then
+    (( open_status == 0 )) || return "$(_monitor_refusal_code lock_file io_failure)"
+    opened="$(_monitor_open_lock_identity "$before")" || validation_status=$?
+    if (( validation_status != 0 )); then
         exec 9>&-
-        return 1
+        return "$validation_status"
     fi
     MONITOR_LOCK_IDENTITY="$opened"
 }
 
 _monitor_lock_is_current() {
-    local current="" opened=""
-    [[ "$LOCK_FILE" == "$STATE_DIR/monitor.lock" && -n "$MONITOR_LOCK_IDENTITY" ]] || return 1
-    _monitor_owned_directory "$STATE_DIR" || return 1
-    current="$(_monitor_named_file_identity "$LOCK_FILE")" || return 1
-    opened="$(_monitor_descriptor_identity 9)" || return 1
-    [[ "$current" == "$MONITOR_LOCK_IDENTITY" && "$opened" == "$MONITOR_LOCK_IDENTITY" ]]
+    local opened=""
+    [[ -n "$MONITOR_LOCK_IDENTITY" ]] || return "$(_monitor_refusal_code lock_file invalid_input)"
+    opened="$(_monitor_open_lock_identity "$MONITOR_LOCK_IDENTITY")" || return "$?"
+    return 0
 }
 
 log() {
-    local message="" status=0
+    local message="" status=0 refusal_status=0
     printf -v message '[%s] %s\n' "$(/usr/bin/date -u +%H:%M:%S)" "$*"
     if _prepare_monitor_log; then
         printf '%s' "$message" >&"$MONITOR_LOG_FD" || status=1
     else
+        refusal_status=$?
+        printf 'ACFS monitor log unavailable [state_refusal=%s]\n' \
+            "$(_monitor_refusal_label "$refusal_status")" >&2 || true
         status=1
     fi
     printf '%s' "$message" >&2 || status=1
@@ -1491,27 +1610,54 @@ _monitor_decimal() {
 # These bookkeeping paths carry no publication authority. Validate the parent
 # and each existing leaf before reading or replacing it, including hard links.
 # Legacy owner-readable 0644 records remain usable; replacements are private.
+_monitor_notice_component() {
+    case "$1" in
+        "$FAIL_STREAK_FILE") printf 'failure_counter\n' ;;
+        "$FAIL_ALERT_FILE") printf 'github_cooldown\n' ;;
+        "$FAIL_PUSH_ALERT_FILE") printf 'private_cooldown\n' ;;
+        "$RECOVERY_PENDING_FILE") printf 'recovery_pending\n' ;;
+        *) printf 'state_record\n' ;;
+    esac
+}
+
 _monitor_notice_record_path() {
-    local record_file="$1" metadata="" owner="" mode="" links="" mode_value=0 monitor_uid=""
+    local record_file="$1" component="" metadata="" owner="" mode="" links="" mode_value=0 monitor_uid=""
+    component="$(_monitor_notice_component "$record_file")"
     case "$record_file" in
         "$FAIL_STREAK_FILE"|"$FAIL_ALERT_FILE"|"$FAIL_PUSH_ALERT_FILE"|"$RECOVERY_PENDING_FILE") ;;
-        *) return 1 ;;
+        *) return "$(_monitor_refusal_code state_record invalid_input)" ;;
     esac
-    monitor_uid="$(id -u)" || return 1
-    [[ -d "$STATE_DIR" && ! -L "$STATE_DIR" ]] || return 1
-    metadata="$(stat -c '%u:%a' -- "$STATE_DIR" 2>/dev/null)" || return 1
+    monitor_uid="$(id -u)" || return "$(_monitor_refusal_code state_directory metadata_unavailable)"
+    [[ "$monitor_uid" =~ ^[0-9]+$ ]] || return "$(_monitor_refusal_code state_directory metadata_unavailable)"
+    [[ ! -L "$STATE_DIR" ]] || return "$(_monitor_refusal_code state_directory symlink)"
+    [[ -e "$STATE_DIR" ]] || return "$(_monitor_refusal_code state_directory missing)"
+    [[ -d "$STATE_DIR" ]] || return "$(_monitor_refusal_code state_directory wrong_type)"
+    metadata="$(stat -c '%u:%a' -- "$STATE_DIR" 2>/dev/null)" \
+        || return "$(_monitor_refusal_code state_directory metadata_unavailable)"
     IFS=: read -r owner mode <<< "$metadata"
-    [[ "$owner" == "$monitor_uid" && "$mode" =~ ^[0-7]{3,4}$ ]] || return 1
+    [[ "$owner" =~ ^[0-9]+$ && "$mode" =~ ^[0-7]{3,4}$ ]] \
+        || return "$(_monitor_refusal_code state_directory metadata_unavailable)"
+    [[ "$owner" == "$monitor_uid" ]] || return "$(_monitor_refusal_code state_directory owner_mismatch)"
     mode_value=$((8#$mode))
-    (( (mode_value & 022) == 0 )) || return 1
+    (( (mode_value & 022) == 0 )) || return "$(_monitor_refusal_code state_directory group_or_world_writable)"
     if [[ -e "$record_file" || -L "$record_file" ]]; then
-        [[ -f "$record_file" && ! -L "$record_file" ]] || return 1
-        metadata="$(stat -c '%u:%a:%h' -- "$record_file" 2>/dev/null)" || return 1
+        [[ ! -L "$record_file" ]] || return "$(_monitor_refusal_code "$component" symlink)"
+        [[ -f "$record_file" ]] || return "$(_monitor_refusal_code "$component" wrong_type)"
+        metadata="$(stat -c '%u:%a:%h' -- "$record_file" 2>/dev/null)" \
+            || return "$(_monitor_refusal_code "$component" metadata_unavailable)"
         IFS=: read -r owner mode links <<< "$metadata"
-        [[ "$owner" == "$monitor_uid" && "$links" == 1 && "$mode" =~ ^[0-7]{3,4}$ ]] || return 1
+        [[ "$owner" =~ ^[0-9]+$ && "$links" =~ ^[0-9]+$ && "$mode" =~ ^[0-7]{3,4}$ ]] \
+            || return "$(_monitor_refusal_code "$component" metadata_unavailable)"
+        [[ "$owner" == "$monitor_uid" ]] || return "$(_monitor_refusal_code "$component" owner_mismatch)"
+        if [[ "$links" != 1 ]]; then
+            [[ "$links" != 0 ]] || return "$(_monitor_refusal_code "$component" identity_changed)"
+            return "$(_monitor_refusal_code "$component" multiple_links)"
+        fi
         mode_value=$((8#$mode))
-        (( (mode_value & 022) == 0 && (mode_value & 0400) != 0 )) || return 1
-        [[ "$record_file" != "$RECOVERY_PENDING_FILE" || "$mode" == 600 ]] || return 1
+        (( (mode_value & 022) == 0 )) || return "$(_monitor_refusal_code "$component" group_or_world_writable)"
+        (( (mode_value & 0400) != 0 )) || return "$(_monitor_refusal_code "$component" owner_permissions)"
+        [[ "$record_file" != "$RECOVERY_PENDING_FILE" || "$mode" == 600 ]] \
+            || return "$(_monitor_refusal_code "$component" private_mode_required)"
     fi
 }
 
@@ -1553,13 +1699,13 @@ _read_monitor_cooldown_record() {
 
 _read_failure_streak() {
     local value="" reader_pid=""
-    _monitor_notice_record_path "$FAIL_STREAK_FILE" || return 1
+    _monitor_notice_record_path "$FAIL_STREAK_FILE" || return "$?"
     if [[ -f "$FAIL_STREAK_FILE" ]]; then
         # Bound malformed state reads. A long numeric record saturates rather
         # than wrapping negative and disabling the alert threshold.
         IFS= read -r value < <(/usr/bin/head -c 64 -- "$FAIL_STREAK_FILE" 2>/dev/null) || true
         reader_pid=$!
-        wait "$reader_pid" || return 1
+        wait "$reader_pid" || return "$(_monitor_refusal_code failure_counter io_failure)"
     fi
     if [[ ! "$value" =~ ^[0-9]+$ ]]; then
         printf '0\n'
@@ -1616,12 +1762,16 @@ _fail_alert_due() {
 
 _fail_alert_record() {
     local reason="$1" now="${2:-}"
-    local record_file="${3:-$FAIL_ALERT_FILE}"
+    local record_file="${3:-$FAIL_ALERT_FILE}" refusal_status=0
     [[ -n "$now" ]] || now="$(date -u +%s 2>/dev/null || echo 0)"
     now="$(_monitor_decimal "$now")" || return 0
     (( now > 0 )) || return 0
-    _write_monitor_notice_record "$record_file" "$now"$'\t'"$reason"$'\n' \
-        || _monitor_failure_log "WARNING: failure notification was delivered but its cooldown could not be persisted"
+    if _write_monitor_notice_record "$record_file" "$now"$'\t'"$reason"$'\n'; then
+        :
+    else
+        refusal_status=$?
+        _monitor_failure_log "WARNING: failure notification was delivered but its cooldown could not be persisted [state_refusal=$(_monitor_refusal_label "$refusal_status")]"
+    fi
     return 0
 }
 
@@ -1636,13 +1786,17 @@ public_text() {
 }
 
 _alert_fail_closed_streak() {
-    local streak="$1" reason="$2" count_mode="${3:-normal}" failure_text=""
+    local streak="$1" reason="$2" count_mode="${3:-normal}" count_refusal="${4:-}" failure_text=""
     case "$count_mode" in
         normal)
             failure_text="ACFS checksum monitor has failed closed $streak times in a row."
             ;;
         count-unavailable)
             reason="$reason. Failure count could not be persisted; consecutive count unavailable."
+            if [[ -n "$count_refusal" ]]; then
+                count_refusal="$(_monitor_refusal_label "$(_monitor_refusal_code "${count_refusal%%.*}" "${count_refusal#*.}")")"
+                reason="$reason [count_refusal=$count_refusal]"
+            fi
             failure_text="ACFS checksum monitor has failed closed. The consecutive failure count is unavailable because monitoring state could not be persisted."
             ;;
         *) return 0 ;;
@@ -1729,29 +1883,38 @@ _alert_fail_closed_streak() {
 # Atomic replacement preserves the previous record when a write fails. Failed
 # temporary writes are retained; none of the observation evidence is touched.
 _write_monitor_notice_record() {
-    local record_file="$1" content="$2" temporary="" streak=""
+    local record_file="$1" content="$2" component="" temporary="" streak=""
+    component="$(_monitor_notice_component "$record_file")"
     case "$record_file" in
         "$FAIL_STREAK_FILE")
             streak="${content%$'\n'}"
-            [[ "$content" == "$streak"$'\n' && "$streak" =~ ^(0|[1-9][0-9]{0,9})$ ]] || return 1
-            (( streak <= FAIL_STREAK_MAX )) || return 1
+            [[ "$content" == "$streak"$'\n' && "$streak" =~ ^(0|[1-9][0-9]{0,9})$ ]] \
+                || return "$(_monitor_refusal_code "$component" invalid_input)"
+            (( streak <= FAIL_STREAK_MAX )) || return "$(_monitor_refusal_code "$component" invalid_input)"
             ;;
         "$RECOVERY_PENDING_FILE")
             if [[ -n "$content" ]]; then
                 streak="${content%$'\n'}"
-                [[ "$content" == "$streak"$'\n' && "$streak" =~ ^(0|[1-9][0-9]{0,9})$ ]] || return 1
-                (( streak == 0 || (streak >= FAIL_ALERT_MIN_STREAK && streak <= FAIL_STREAK_MAX) )) || return 1
+                [[ "$content" == "$streak"$'\n' && "$streak" =~ ^(0|[1-9][0-9]{0,9})$ ]] \
+                    || return "$(_monitor_refusal_code "$component" invalid_input)"
+                (( streak == 0 || (streak >= FAIL_ALERT_MIN_STREAK && streak <= FAIL_STREAK_MAX) )) \
+                    || return "$(_monitor_refusal_code "$component" invalid_input)"
             fi
             ;;
         "$FAIL_ALERT_FILE"|"$FAIL_PUSH_ALERT_FILE")
-            [[ -z "$content" ]] || _monitor_cooldown_content_valid "$content" || return 1
+            [[ -z "$content" ]] || _monitor_cooldown_content_valid "$content" \
+                || return "$(_monitor_refusal_code "$component" invalid_input)"
             ;;
-        *) return 1 ;;
+        *) return "$(_monitor_refusal_code state_record invalid_input)" ;;
     esac
-    _monitor_notice_record_path "$record_file" || return 1
-    temporary="$(mktemp "$STATE_DIR/notice-state.XXXXXX")" || return 1
-    ( umask 077; printf '%s' "$content" > "$temporary" ) || return 1
-    mv -fT -- "$temporary" "$record_file"
+    _monitor_notice_record_path "$record_file" || return "$?"
+    temporary="$(mktemp "$STATE_DIR/notice-state.XXXXXX")" \
+        || return "$(_monitor_refusal_code "$component" io_failure)"
+    ( umask 077; printf '%s' "$content" > "$temporary" ) \
+        || return "$(_monitor_refusal_code "$component" io_failure)"
+    mv -fT -- "$temporary" "$record_file" \
+        || return "$(_monitor_refusal_code "$component" io_failure)"
+    return 0
 }
 
 _read_recovery_pending_streak() {
@@ -1846,15 +2009,19 @@ _announce_recovery() {
 # retry obligation first, then reset cooldowns before clearing the streak: a
 # crash can repeat an alert, but must not suppress the next outage's alert.
 record_accepted_monitor_outcome() {
-    local outcome="$1" previous_streak=0 recorded_streak=0 next_state=""
+    local outcome="$1" previous_streak=0 recorded_streak=0 next_state="" refusal_status=0
     [[ "$STATE" == REMOTE_VERIFIED ]] || return 1
     case "$outcome" in
         ok) next_state=HEALTHY ;;
         deferred) next_state=DEFERRED ;;
         *) return 1 ;;
     esac
-    previous_streak="$(_read_failure_streak)" \
-        || fail_closed "remote publication is verified but failure-count state could not be safely read"
+    if previous_streak="$(_read_failure_streak)"; then
+        :
+    else
+        refusal_status=$?
+        fail_closed "remote publication is verified but failure-count state could not be safely read [state_refusal=$(_monitor_refusal_label "$refusal_status")]"
+    fi
     recorded_streak="$(_queue_recovery_notice "$previous_streak")" || {
         log "WARNING: could not prepare recovery notification state"
         recorded_streak=0
@@ -1863,8 +2030,12 @@ record_accepted_monitor_outcome() {
         || log "WARNING: could not reset GitHub failure alert cooldown"
     _write_monitor_notice_record "$FAIL_PUSH_ALERT_FILE" '' \
         || log "WARNING: could not reset private failure alert cooldown"
-    _write_monitor_notice_record "$FAIL_STREAK_FILE" $'0\n' \
-        || fail_closed "remote publication is verified but the healthy-state marker could not be written"
+    if _write_monitor_notice_record "$FAIL_STREAK_FILE" $'0\n'; then
+        :
+    else
+        refusal_status=$?
+        fail_closed "remote publication is verified but the healthy-state marker could not be written [state_refusal=$(_monitor_refusal_label "$refusal_status")]"
+    fi
     advance_state REMOTE_VERIFIED "$next_state" || return 1
     # Required acceptance is complete. A later notification interruption must
     # preserve its pending notice without inventing another verification outage.
@@ -1892,26 +2063,33 @@ _record_monitor_failure() {
         trap ':' HUP INT TERM
     fi
     MONITOR_TERMINAL_OUTCOME="failed"
-    local streak=0 count_mode=normal summary_streak=""
-    if ! streak="$(_read_failure_streak)"; then
-        streak=0
-        count_mode=count-unavailable
-    else
+    local streak=0 count_mode=normal summary_streak="" count_refusal="" refusal_status=0
+    if streak="$(_read_failure_streak)"; then
         if (( streak < FAIL_STREAK_MAX )); then
             streak=$((streak + 1))
         fi
-        _write_monitor_notice_record "$FAIL_STREAK_FILE" "$streak"$'\n' \
-            || count_mode=count-unavailable
+        if _write_monitor_notice_record "$FAIL_STREAK_FILE" "$streak"$'\n'; then
+            :
+        else
+            refusal_status=$?
+            count_mode=count-unavailable
+            count_refusal="$(_monitor_refusal_label "$refusal_status")"
+        fi
+    else
+        refusal_status=$?
+        streak=0
+        count_mode=count-unavailable
+        count_refusal="$(_monitor_refusal_label "$refusal_status")"
     fi
     summary_streak="$streak"
     if [[ "$count_mode" == count-unavailable ]]; then
         summary_streak=unknown
-        _monitor_failure_log "WARNING: failure count could not be persisted; consecutive count unavailable"
+        _monitor_failure_log "WARNING: failure count could not be persisted; consecutive count unavailable [count_refusal=$count_refusal]"
     fi
     # A broken log must not prevent streak accounting or notification. The
     # existing logger also emits to stderr, retained by the service journal.
     _monitor_failure_log "FAIL-CLOSED: $reason"
-    _alert_fail_closed_streak "$streak" "$reason" "$count_mode" || true
+    _alert_fail_closed_streak "$streak" "$reason" "$count_mode" "$count_refusal" || true
     _monitor_failure_log "summary: result=fail_closed state=$STATE streak=$summary_streak repo=$MONITOR_REPO"
     return 0
 }
@@ -1964,8 +2142,12 @@ arm_monitor_exit_handlers() {
 
 checksum_monitor_main() {
 # ---- single-instance lock (timer overlap is a silent no-op) ----
-if ! _open_monitor_lock; then
-    fail_closed "could not open a safe monitor lock file"
+local state_refusal_status=0
+if _open_monitor_lock; then
+    :
+else
+    state_refusal_status=$?
+    fail_closed "could not open a safe monitor lock file [state_refusal=$(_monitor_refusal_label "$state_refusal_status")]"
 fi
 local lock_status=0
 if flock -n -E 200 9; then
@@ -1980,11 +2162,20 @@ else
     fi
     fail_closed "could not acquire monitor lock (flock exit=$lock_status)"
 fi
-_monitor_lock_is_current \
-    || fail_closed "monitor lock path changed or became unsafe while acquiring it"
+if _monitor_lock_is_current; then
+    :
+else
+    state_refusal_status=$?
+    fail_closed "monitor lock path changed or became unsafe while acquiring it [state_refusal=$(_monitor_refusal_label "$state_refusal_status")]"
+fi
 arm_monitor_exit_handlers
 
-_prepare_monitor_log || fail_closed "could not open a safe monitor log file"
+if _prepare_monitor_log; then
+    :
+else
+    state_refusal_status=$?
+    fail_closed "could not open a safe monitor log file [state_refusal=$(_monitor_refusal_label "$state_refusal_status")]"
+fi
 
 advance_state INIT LOCKED
 
