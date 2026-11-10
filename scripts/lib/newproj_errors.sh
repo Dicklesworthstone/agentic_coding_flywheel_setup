@@ -442,6 +442,32 @@ try_create_directory() {
     return 0
 }
 
+# Run a project tool without repository selectors inherited from a Git hook,
+# worktree, or surrounding agent session. Even `git -C` follows GIT_DIR and
+# GIT_WORK_TREE, and an inherited index/object directory can modify another
+# project while reporting success here. br may invoke Git internally too.
+# Keep account-level Git configuration, identity, authentication and templates;
+# only repository-local state and injected per-command configuration are reset.
+# The subshell preserves every caller variable, including on command failure.
+newproj_run_project_command() (
+    local name
+    for name in GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE \
+        GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_NAMESPACE \
+        GIT_IMPLICIT_WORK_TREE GIT_GRAFT_FILE GIT_REPLACE_REF_BASE GIT_PREFIX \
+        GIT_SHALLOW_FILE GIT_SUPER_PREFIX GIT_INTERNAL_SUPER_PREFIX \
+        GIT_CEILING_DIRECTORIES GIT_DISCOVERY_ACROSS_FILESYSTEM \
+        GIT_CONFIG GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT; do
+        unset "$name" || return 1
+    done
+    # Entries accompany GIT_CONFIG_COUNT, but must not leak into child tools
+    # that construct their own numbered Git configuration environment.
+    for name in "${!GIT_CONFIG_KEY_@}" "${!GIT_CONFIG_VALUE_@}"; do
+        [[ -n "$name" ]] || continue
+        unset "$name" || return 1
+    done
+    "$@"
+)
+
 # Try to initialize git repository
 # Usage: try_git_init "/path/to/dir"
 try_git_init() {
@@ -458,7 +484,7 @@ try_git_init() {
     # -q: this runs under run_screen_handler_capture, which treats the last
     # stdout line as the next screen id; "Initialized empty Git repository…"
     # became an "Unknown screen" abort on [r] Retry.
-    git -C "$dir" init -q -b main 2>/dev/null
+    newproj_run_project_command git -C "$dir" init -q -b main 2>/dev/null
     local errno=$?
     if [[ $errno -ne 0 ]]; then
         log_error "git init failed in $dir (errno: $errno)" 2>/dev/null || true
@@ -494,7 +520,7 @@ try_br_init() {
     # Capture output so a failure reason is never silently discarded
     # (GH #315: users saw .beads missing with no explanation).
     local br_output=""
-    br_output=$(cd "$dir" && br init 2>&1)
+    br_output=$(cd "$dir" && newproj_run_project_command br init 2>&1)
     local errno=$?
     if [[ $errno -ne 0 ]]; then
         log_warn "br init failed in $dir (errno: $errno): $br_output" 2>/dev/null || true

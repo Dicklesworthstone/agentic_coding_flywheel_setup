@@ -418,10 +418,10 @@ sys.exit(result.returncode)
 ''')
         wrapper.chmod(0o700)
 
-    def create(self, *options, with_beads=False):
+    def create(self, *options, with_beads=False, environment=None):
         flags = [] if with_beads else ["--no-br"]
         return subprocess.run([BASH, str(ROOT / "scripts/lib/newproj.sh"), "myapp",
-                               str(self.project), *flags, *options], env=self.env,
+                               str(self.project), *flags, *options], env=environment or self.env,
                               cwd=self.root, text=True, capture_output=True, timeout=10)
 
     def git(self, *args, check=True):
@@ -430,6 +430,29 @@ sys.exit(result.returncode)
 
     def committed(self):
         return set(self.git("ls-tree", "-r", "--name-only", "HEAD").stdout.splitlines())
+
+    def existing_project(self, name):
+        """A real repository with both staged and unstaged work to preserve."""
+        directory = self.root / name
+        directory.mkdir()
+        subprocess.run(["/usr/bin/git", "-C", str(directory), "init", "-b", "main"], env=self.env,
+                       capture_output=True, text=True, timeout=10, check=True)
+        for name in ("README.md", ".gitignore", ".ubsignore"):
+            (directory / name).write_text("original " + name + "\n")
+        for args in (("add", "."), ("commit", "-m", "Existing project")):
+            subprocess.run(["/usr/bin/git", "-C", str(directory), *args], env=self.env,
+                           capture_output=True, text=True, timeout=10, check=True)
+        (directory / ".gitignore").write_text("staged existing work\n")
+        subprocess.run(["/usr/bin/git", "-C", str(directory), "add", "--", ".gitignore"],
+                       env=self.env, capture_output=True, timeout=10, check=True)
+        (directory / "README.md").write_text("uncommitted work in the existing project\n")
+        (directory / ".gitignore").write_text("unstaged edit after staging\n")
+        return directory
+
+    @staticmethod
+    def repository_bytes(directory):
+        return {str(path.relative_to(directory)): path.read_bytes()
+                for path in directory.rglob("*") if path.is_file()}
 
     def assert_user_work_preserved(self):
         self.assertEqual((self.project / "concurrent-untracked.txt").read_text(), "unreviewed user work\n")
@@ -446,6 +469,65 @@ sys.exit(result.returncode)
         self.assertEqual(self.committed(), {"README.md", ".gitignore", ".ubsignore", "AGENTS.md"})
         self.assertTrue((self.project / ".claude/settings.local.json").is_file())
         self.assertEqual(self.git("check-ignore", ".claude/settings.local.json").returncode, 0)
+
+    def test_repository_selectors_do_not_commit_another_project(self):
+        existing = self.existing_project("existing-repository")
+        before = self.repository_bytes(existing)
+        environment = self.env | {"GIT_DIR": str(existing / ".git"),
+                                  "GIT_WORK_TREE": str(existing)}
+        result = self.create("--no-agents", "--no-claude", environment=environment)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.repository_bytes(existing), before,
+                         "newproj changed an unrelated repository or its uncommitted work")
+        self.assertTrue((self.project / ".git").is_dir())
+        self.assertEqual(self.committed(), {"README.md", ".gitignore", ".ubsignore"})
+        self.assertEqual(self.git("show", "HEAD:README.md").stdout, "# myapp\n")
+
+    def test_git_local_state_and_injected_configuration_are_isolated(self):
+        for selector in ("GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_COMMON_DIR",
+                         "GIT_CONFIG", "GIT_CONFIG_COUNT", "GIT_CONFIG_PARAMETERS"):
+            with self.subTest(selector=selector):
+                existing = self.existing_project("existing-" + selector)
+                self.project = self.root / ("new-" + selector)
+                before = self.repository_bytes(existing)
+                values = {
+                    "GIT_INDEX_FILE": str(existing / ".git/index"),
+                    "GIT_OBJECT_DIRECTORY": str(existing / ".git/objects"),
+                    "GIT_COMMON_DIR": str(existing / ".git"),
+                    "GIT_CONFIG": str(existing / ".git/config"),
+                    "GIT_CONFIG_COUNT": "1",
+                    "GIT_CONFIG_PARAMETERS": "'core.bare=true'",
+                }
+                environment = self.env | {selector: values[selector]}
+                if selector == "GIT_CONFIG_COUNT":
+                    environment.update(GIT_CONFIG_KEY_0="core.worktree", GIT_CONFIG_VALUE_0=str(existing))
+                result = self.create("--no-agents", "--no-claude", environment=environment)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(self.repository_bytes(existing), before)
+                self.assertEqual(self.committed(), {"README.md", ".gitignore", ".ubsignore"})
+                self.assertEqual(self.git("show", "HEAD:README.md").stdout, "# myapp\n")
+
+    def test_tui_git_initialization_is_local_without_changing_caller_environment(self):
+        existing = self.existing_project("existing-tui-repository")
+        before = self.repository_bytes(existing)
+        self.project.mkdir()
+        environment = self.env | {"GIT_DIR": str(existing / ".git"),
+                                  "GIT_WORK_TREE": str(existing),
+                                  "GIT_INDEX_FILE": str(existing / ".git/index"),
+                                  "GIT_OBJECT_DIRECTORY": str(existing / ".git/objects"),
+                                  "ERROR_SCRIPT": str(ROOT / "scripts/lib/newproj_errors.sh"),
+                                  "PROJECT": str(self.project), "EXISTING": str(existing)}
+        result = subprocess.run([BASH, "-c", '''
+set -eu
+source "$ERROR_SCRIPT"
+try_git_init "$PROJECT"
+[[ "$GIT_DIR" == "$EXISTING/.git" && "$GIT_WORK_TREE" == "$EXISTING" ]]
+[[ "$GIT_INDEX_FILE" == "$EXISTING/.git/index" && "$GIT_OBJECT_DIRECTORY" == "$EXISTING/.git/objects" ]]
+'''], env=environment, cwd=self.root, text=True, capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.repository_bytes(existing), before)
+        self.assertTrue((self.project / ".git").is_dir())
+        self.assertEqual(self.git("branch", "--show-current").stdout.strip(), "main")
 
     def test_concurrent_work_is_not_staged_or_committed(self):
         self.env["ACFS_TEST_INJECT_WORK"] = "1"
