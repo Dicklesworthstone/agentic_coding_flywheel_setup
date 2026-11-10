@@ -8,11 +8,13 @@ can hide sudo to exercise the real runuser fallback. All artifacts are retained.
 import os
 from pathlib import Path
 import pwd
+import select
 import shlex
 import shutil
 import signal
 import subprocess
 import tempfile
+import time
 import unittest
 
 
@@ -1434,21 +1436,12 @@ printf 'COUNTS=%s,%s,%s\n' "$SUCCESS_COUNT" "$SKIP_COUNT" "$FAIL_COUNT"
         self.assertEqual(list(self.caller.iterdir()), [])
 
 
-class RetryCommandExecutionTests(unittest.TestCase):
-    """Real retry execution must finish without waiting for orphaned writers."""
-
-    wrappers = (
-        "run_cmd_with_retry_status",
-        "run_cmd_attempt_with_retry",
-        "run_cmd_bun_with_retry",
-        "update_run_command_capture_with_retry",
-    )
-
+class UpdaterCommandHarness(unittest.TestCase):
     def setUp(self):
         self.base = Path(tempfile.mkdtemp(prefix="acfs-update-retry-"))
 
     def execute(self, wrapper, body, *, verbose=False, quiet=True, setup="", stdin="",
-                invocation='"$TEST_ROOT/command"'):
+                invocation='"$TEST_ROOT/command"', observe=None, expected_returncode=0):
         case = Path(tempfile.mkdtemp(prefix="case-", dir=self.base))
         command = case / "command"
         command.write_text("#!/bin/bash\nset -euo pipefail\n" + body + "\n")
@@ -1468,7 +1461,7 @@ ACFS_UPDATE_RETRY_MAX_ATTEMPTS=2
 ACFS_UPDATE_RETRY_SLEEP_SECONDS=0
 # Retain captures and all fixture files for failure diagnosis.
 rm() { :; }
-''' + setup + "\nrc=0\n" + wrapper + ' "fixture" ' + invocation + r''' || rc=$?
+''' + setup + "\nrc=0\n" + wrapper + (" " if wrapper == "update_run_logged_passthrough" else ' "fixture" ') + invocation + r''' || rc=$?
 printf 'RESULT=%s COUNTS=%s,%s,%s\n' "$rc" "$SUCCESS_COUNT" "$SKIP_COUNT" "$FAIL_COUNT"
 printf 'CAPTURE=%s\n' "$UPDATE_LAST_COMMAND_OUTPUT"
 printf 'STATE=%s\n' "$UPDATE_LAST_HOLD_DETAILS"
@@ -1477,8 +1470,10 @@ printf 'STATE=%s\n' "$UPDATE_LAST_HOLD_DETAILS"
                                    env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                    stderr=subprocess.PIPE, text=True, start_new_session=True)
         try:
+            observed = observe(process, case) if observe is not None else ""
             stdout, stderr = process.communicate(stdin, timeout=3)
-            self.assertEqual(process.returncode, 0, stdout + stderr)
+            stdout = observed + stdout
+            self.assertEqual(process.returncode, expected_returncode, stdout + stderr)
             return case, stdout, stderr
         finally:
             # Terminate only the fixture processes created by this invocation.
@@ -1494,6 +1489,17 @@ printf 'STATE=%s\n' "$UPDATE_LAST_HOLD_DETAILS"
             except ProcessLookupError:
                 pass
             process.communicate(timeout=3)
+
+
+class RetryCommandExecutionTests(UpdaterCommandHarness):
+    """Real retry execution must finish without waiting for orphaned writers."""
+
+    wrappers = (
+        "run_cmd_with_retry_status",
+        "run_cmd_attempt_with_retry",
+        "run_cmd_bun_with_retry",
+        "update_run_command_capture_with_retry",
+    )
 
     def test_retry_external_commands_obey_existing_deadline_in_all_output_modes(self):
         for wrapper in self.wrappers:
@@ -1595,6 +1601,129 @@ fixture_function() {
                 self.assertIn(f"RESULT={expected_status} ", stdout)
                 self.assertIn("STATE=held fixture", stdout)
                 self.assertIn("CAPTURE=function output", stdout)
+
+
+class StreamedCommandExecutionTests(UpdaterCommandHarness):
+    """Live updater output is independent of background installer writers."""
+
+    wrappers = ("run_cmd", "update_run_logged_passthrough")
+
+    def test_completed_stream_does_not_wait_for_background_writer(self):
+        for wrapper in self.wrappers:
+            for status in (0, 7):
+                with self.subTest(wrapper=wrapper, status=status):
+                    case, stdout, _ = self.execute(wrapper,
+                        'sleep 30 &\nprintf "%s\\n" "$!" > "$TEST_ROOT/background-pid"\n'
+                        'printf "foreground stdout\\n"\nprintf "foreground stderr\\n" >&2\n'
+                        f'exit {status}', verbose=True, quiet=False)
+                    expected_status = status if wrapper == "update_run_logged_passthrough" else 0
+                    self.assertIn(f"RESULT={expected_status} ", stdout)
+                    self.assertEqual(stdout.count("foreground stdout\nforeground stderr"), 1)
+                    self.assertIn("foreground stdout\nforeground stderr", (case / "update.log").read_text())
+                    if wrapper == "run_cmd":
+                        self.assertIn(f"COUNTS={int(status == 0)},0,{int(status != 0)}", stdout)
+
+    def test_live_stream_preserves_final_partial_line_and_function_state(self):
+        def observe(process, case):
+            # The command waits for this test to observe its actual output.
+            # Buffering until completion would deadlock and fail this check.
+            output = b""
+            deadline = time.monotonic() + 3
+            while b"live foreground\n" not in output:
+                remaining = deadline - time.monotonic()
+                self.assertGreater(remaining, 0, "foreground output was not streamed live")
+                ready, _, _ = select.select([process.stdout], [], [], remaining)
+                self.assertTrue(ready, "foreground output was not streamed live")
+                chunk = os.read(process.stdout.fileno(), 65536)
+                self.assertTrue(chunk, output.decode(errors="replace"))
+                output += chunk
+            self.assertIsNone(process.poll(), "command ended before the live-output handshake")
+            (case / "continue").write_text("continue\n")
+            return output.decode()
+
+        for wrapper in self.wrappers:
+            with self.subTest(wrapper=wrapper):
+                case, stdout, _ = self.execute(wrapper,
+                    'printf "live foreground\\n"\n'
+                    'while [[ ! -f "$TEST_ROOT/continue" ]]; do sleep .02; done\n'
+                    'printf "final partial: café"\nexit 7', verbose=True, quiet=False,
+                    setup='fixture_function() { UPDATE_LAST_HOLD_DETAILS="native state"; "$TEST_ROOT/command"; }',
+                    invocation="fixture_function", observe=observe)
+                self.assertEqual(stdout.count("live foreground\n"), 1)
+                self.assertEqual(stdout.count("final partial: café"), 1)
+                self.assertIn("STATE=native state", stdout)
+                self.assertIn("live foreground\nfinal partial: café", (case / "update.log").read_text())
+                self.assertIn(f"RESULT={7 if wrapper == 'update_run_logged_passthrough' else 0} ", stdout)
+
+    def test_stream_shutdown_survives_ignored_term_and_keeps_existing_command_deadlines(self):
+        for wrapper in self.wrappers:
+            with self.subTest(wrapper=wrapper):
+                _, stdout, _ = self.execute(wrapper,
+                    'sleep .35\nprintf "allowed foreground completed\\n"',
+                    verbose=True, quiet=False, setup=r'''
+trap '' TERM
+fixture_function() { "$TEST_ROOT/command"; }
+''', invocation="fixture_function")
+                # The existing 0.2s external-command deadline does not cap a
+                # function whose own runner intentionally allows this job.
+                self.assertIn("RESULT=0 ", stdout)
+                self.assertIn("allowed foreground completed", stdout)
+
+        case, stdout, _ = self.execute("run_cmd", 'printf "before deadline\\n"\nsleep 30',
+                                        verbose=True, quiet=False)
+        self.assertIn("RESULT=0 COUNTS=0,0,1", stdout)
+        self.assertIn("exit code: 124", (case / "update.log").read_text())
+
+    def test_stream_allocation_failure_never_executes_the_command(self):
+        for wrapper in self.wrappers:
+            with self.subTest(wrapper=wrapper):
+                case, stdout, stderr = self.execute(wrapper,
+                    'printf "executed\\n" > "$TEST_ROOT/unexpected"', verbose=True, quiet=False,
+                    setup='mktemp() { return 1; }')
+                self.assertFalse((case / "unexpected").exists())
+                self.assertIn("command was not run", stderr)
+                self.assertIn(f"RESULT={int(wrapper != 'run_cmd')} ", stdout)
+                self.assertNotIn("Success:", (case / "update.log").read_text())
+
+    def test_stream_failure_is_reported_without_replacing_native_command_failure(self):
+        for status in (0, 7):
+            with self.subTest(status=status):
+                _, stdout, stderr = self.execute("update_run_logged_passthrough",
+                    f'printf "foreground output\\n"\nexit {status}', verbose=True, quiet=False,
+                    setup=r'''
+printf '#!/bin/sh\nexit 23\n' > "$TEST_ROOT/failed-tee"
+chmod 700 "$TEST_ROOT/failed-tee"
+update_system_binary_path() {
+    if [[ "$1" == tee ]]; then printf '%s\n' "$TEST_ROOT/failed-tee"; else command -v "$1"; fi
+}
+''')
+                self.assertIn(f"RESULT={status or 1} ", stdout)
+                self.assertIn("Unable to finish streaming update output", stderr)
+
+    def test_updater_death_does_not_leave_output_helpers_waiting_on_installer(self):
+        def terminate_after_output(process, case):
+            output = b""
+            deadline = time.monotonic() + 3
+            while b"installer started\n" not in output:
+                remaining = deadline - time.monotonic()
+                self.assertGreater(remaining, 0)
+                ready, _, _ = select.select([process.stdout], [], [], remaining)
+                self.assertTrue(ready)
+                chunk = os.read(process.stdout.fileno(), 65536)
+                self.assertTrue(chunk, output.decode(errors="replace"))
+                output += chunk
+            process.kill()
+            process.wait(timeout=3)
+            return output.decode()
+
+        # Tail/tee own the output pipe. The harness must reach EOF without
+        # waiting for the still-running fixture installer after this signal.
+        _, stdout, stderr = self.execute("update_run_logged_passthrough",
+            'printf "%s\\n" "$$" > "$TEST_ROOT/background-pid"\n'
+            'printf "installer started\\n"\nsleep 30\nprintf "installer finished\\n"',
+            verbose=True, quiet=False, observe=terminate_after_output, expected_returncode=-9)
+        self.assertEqual(stderr, "")
+        self.assertNotIn("installer finished", stdout)
 
 
 if __name__ == "__main__":

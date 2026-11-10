@@ -1407,6 +1407,55 @@ update_finish_cmd_fail() {
     fi
 }
 
+# Stream a regular capture file rather than the command's pipe. Installers can
+# leave a background process holding stdout/stderr open after they return; that
+# process must not keep tee (and the entire update) waiting for EOF. The lifetime
+# watcher belongs only to this call and also exits if the updater is killed.
+# Commands still execute in this shell, preserving hold/backoff and other state.
+update_run_streamed_command() {
+    local stream_dir="" lifetime_pid="" stream_pid="" owner_pid="$BASHPID"
+    local exit_code=0 stream_status=0 lifetime_status=0 utility=""
+    local -A stream_bins=()
+    for utility in tail tee; do
+        if ! stream_bins["$utility"]="$(update_system_binary_path "$utility")"; then
+            printf 'Unable to stream update output: trusted %s is unavailable; command was not run.\n' "$utility" >&2
+            return 1
+        fi
+    done
+    if ! stream_dir="$(mktemp -d "${TMPDIR:-/tmp}/acfs-stream.XXXXXX")" \
+        || ! { : > "$stream_dir/output" && : > "$stream_dir/lifetime"; }; then
+        printf 'Unable to allocate update output stream; command was not run.\n' >&2
+        return 1
+    fi
+
+    # tail --pid drains the capture before exiting, including a final partial
+    # line. The watcher uses a separate empty file, so a descendant that keeps
+    # writing the capture cannot extend the foreground command's lifetime.
+    "${stream_bins[tail]}" --pid="$owner_pid" --sleep-interval=0.1 \
+        -c +1 -f -- "$stream_dir/lifetime" >/dev/null 2>&1 &
+    lifetime_pid=$!
+    (
+        "${stream_bins[tail]}" --pid="$lifetime_pid" --sleep-interval=0.1 \
+            -c +1 -f -- "$stream_dir/output" | "${stream_bins[tee]}" -a -- "$UPDATE_LOG_FILE"
+    ) &
+    stream_pid=$!
+
+    "$@" >"$stream_dir/output" 2>&1 || exit_code=$?
+    # This is our empty-file watcher, never the installer or one of its
+    # services. KILL also works when the caller inherited an ignored TERM.
+    kill -KILL "$lifetime_pid" 2>/dev/null || stream_status=1
+    wait "$lifetime_pid" 2>/dev/null || lifetime_status=$?
+    [[ "$lifetime_status" -eq 137 ]] || stream_status=1
+    wait "$stream_pid" || stream_status=$?
+    rm -f -- "$stream_dir/output" "$stream_dir/lifetime" 2>/dev/null || true
+    rmdir -- "$stream_dir" 2>/dev/null || true
+    if [[ "$stream_status" -ne 0 ]]; then
+        printf 'Unable to finish streaming update output (exit %s).\n' "$stream_status" >&2
+        [[ "$exit_code" -ne 0 ]] || exit_code=1
+    fi
+    return "$exit_code"
+}
+
 update_run_logged_passthrough() {
     local cmd_display=""
     cmd_display=$(printf '%q ' "$@")
@@ -1420,8 +1469,8 @@ update_run_logged_passthrough() {
     fi
 
     if [[ "$QUIET" != "true" && -n "${UPDATE_LOG_FILE:-}" ]]; then
-        "$@" 2>&1 | tee -a "$UPDATE_LOG_FILE"
-        return "${PIPESTATUS[0]}"
+        update_run_streamed_command "$@"
+        return $?
     fi
 
     if [[ -n "${UPDATE_LOG_FILE:-}" ]]; then
@@ -2014,15 +2063,9 @@ run_cmd() {
         fi
 
         if [[ "$QUIET" != "true" ]] && [[ -n "${UPDATE_LOG_FILE:-}" ]]; then
-            # Feed tee through a descriptor, not a pipeline: a pipeline runs the
-            # command in a subshell and drops the hold/backoff details it sets,
-            # so a held tool was reported as [fail] (issue #434).
-            local tee_fd="" tee_pid=""
-            exec {tee_fd}> >(tee -a "$UPDATE_LOG_FILE")
-            tee_pid=$!
-            _run_bounded "$@" >&"$tee_fd" 2>&1 || exit_code=$?
-            exec {tee_fd}>&-
-            wait "$tee_pid" 2>/dev/null || true
+            # Preserve caller-shell state and live output without waiting on
+            # a descendant that inherited the command's stdout/stderr.
+            update_run_streamed_command _run_bounded "$@" || exit_code=$?
         elif [[ -n "${UPDATE_LOG_FILE:-}" ]]; then
             if _run_bounded "$@" >> "$UPDATE_LOG_FILE" 2>&1; then
                 exit_code=0
