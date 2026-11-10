@@ -23,6 +23,8 @@
 #     active, else rc 1 with a loud message
 #   - repeated updates keep the same healthy process when executable
 #     content and managed unit definition are unchanged (issue #505)
+#   - an unchanged Type=notify process already initializing is allowed to
+#     finish; a bounded wait still reports failure if it never becomes active
 #   - changed binaries, managed units, or failed readiness still restart
 #   - both public command links are repaired independently of the service;
 #     missing, wrong, or blocked links never force a healthy-process restart
@@ -190,6 +192,13 @@ case "$cmd" in
         exit 1
         ;;
     is-active)
+        if [[ -f "$state/startup-polls" ]]; then
+            remaining="$(cat "$state/startup-polls")"
+            if (( remaining > 0 )); then
+                printf '%s\n' "$((remaining - 1))" > "$state/startup-polls"
+                exit 3
+            fi
+        fi
         [[ -f "$state/active" ]] && exit 0
         exit 3
         ;;
@@ -219,6 +228,7 @@ case "$cmd" in
         cp "$HOME/mcp_agent_mail/am" "$ACFS_AM_PROC_DIR/$new_pid/exe"
         printf '%s\n' "$new_pid" > "$state/main-pid"
         touch "$state/active"
+        [[ ! -f "$state/startup-polls" ]] || printf '0\n' > "$state/startup-polls"
         exit 0
         ;;
     show)
@@ -233,6 +243,25 @@ case "$cmd" in
         case "$prop" in
             MainPID)
                 cat "$state/main-pid" 2>/dev/null || echo 0
+                ;;
+            ActiveState)
+                if [[ -f "$state/startup-polls" ]] && (( $(cat "$state/startup-polls") > 0 )); then
+                    echo activating
+                elif [[ -f "$state/active" ]]; then
+                    echo active
+                else
+                    echo inactive
+                fi
+                ;;
+            SubState)
+                if [[ -f "$state/startup-polls" ]] && (( $(cat "$state/startup-polls") > 0 )); then
+                    cat "$state/startup-substate" 2>/dev/null || echo start
+                else
+                    echo running
+                fi
+                if [[ -f "$state/rotate-pid-on-state-query" ]]; then
+                    cat "$state/rotate-pid-on-state-query" > "$state/main-pid"
+                fi
                 ;;
             LoadState)
                 if [[ -f "$state/force-loadstate" ]]; then
@@ -534,6 +563,83 @@ check "unit definition is unchanged" cmp -s "$UNIT_FILE" "$SANDBOX/unchanged-uni
 check "service is still active" service_active
 check "skip was announced" grep -q "not restarting" "$CONFIGURE_ERR_FILE"
 check "post-update assertion still ran" calls_match "show agent-mail.service -p LoadState"
+
+begin_test "unchanged service still initializing: wait without restarting"
+settle_running_service
+touch "$FAKE_STATE_DIR/not-ready"
+printf '2\n' > "$FAKE_STATE_DIR/startup-polls"
+run_configure
+check "startup completes successfully" test "$CONFIGURE_RC" -eq 0
+check_not "initializing process is not restarted" calls_match "restart agent-mail.service"
+check "initializing pid is preserved" test "$(cat "$FAKE_STATE_DIR/main-pid")" = 4242
+check "startup wait is announced without claiming readiness" grep -q "still starting.*without restarting" "$CONFIGURE_ERR_FILE"
+check_not "unready service is not described as ready" grep -q "is ready; not restarting" "$CONFIGURE_ERR_FILE"
+check "post-update assertion still ran" calls_match "show agent-mail.service -p LoadState"
+
+begin_test "unchanged initialization that never completes: fail without resetting progress"
+settle_running_service
+touch "$FAKE_STATE_DIR/not-ready"
+printf '100\n' > "$FAKE_STATE_DIR/startup-polls"
+# Model the existing bounded poll loop without waiting 30 wall-clock seconds.
+# This stub only applies to this sandbox; assert every requested one-second wait.
+cat > "$FAKE_HOME/.local/bin/sleep" <<'SLEEP_EOF'
+#!/usr/bin/env bash
+[[ "$*" == "1" ]] || exit 1
+printf '%s\n' "$*" >> "$FAKE_STATE_DIR/sleeps.log"
+SLEEP_EOF
+chmod +x "$FAKE_HOME/.local/bin/sleep"
+run_configure
+check "unfinished startup remains a failure" test "$CONFIGURE_RC" -eq 1
+check_not "timeout does not restart initialization" calls_match "restart agent-mail.service"
+check "timed-out initialization pid is preserved" test "$(cat "$FAKE_STATE_DIR/main-pid")" = 4242
+check "all thirty configured polls ran" test "$(wc -l < "$FAKE_STATE_DIR/sleeps.log")" -eq 30
+check "failure names the active-state problem" grep -q "did not become active" "$CONFIGURE_ERR_FILE"
+
+begin_test "changed executable during initialization: restarted"
+settle_running_service
+touch "$FAKE_STATE_DIR/not-ready"
+printf '2\n' > "$FAKE_STATE_DIR/startup-polls"
+printf '\n# Updated executable during startup.\n' >> "$FAKE_HOME/mcp_agent_mail/am"
+run_configure
+check "changed startup succeeds" test "$CONFIGURE_RC" -eq 0
+check "changed executable still triggers restart" calls_match "restart agent-mail.service"
+check_not "old startup pid is retained after binary change" test "$(cat "$FAKE_STATE_DIR/main-pid")" = 4242
+
+begin_test "newly generated unit during initialization: restarted"
+settle_running_service
+touch "$FAKE_STATE_DIR/not-ready"
+printf '2\n' > "$FAKE_STATE_DIR/startup-polls"
+mv "$UNIT_FILE" "$SANDBOX/previous-unit"
+run_configure
+check "new unit setup succeeds" test "$CONFIGURE_RC" -eq 0
+check "newly generated unit still triggers restart" calls_match "restart agent-mail.service"
+
+begin_test "auto-restart backoff is not healthy initialization"
+settle_running_service
+touch "$FAKE_STATE_DIR/not-ready"
+printf '2\n' > "$FAKE_STATE_DIR/startup-polls"
+printf 'auto-restart\n' > "$FAKE_STATE_DIR/startup-substate"
+run_configure
+check "backoff recovery succeeds" test "$CONFIGURE_RC" -eq 0
+check "failed service is not mistaken for startup" calls_match "restart agent-mail.service"
+
+begin_test "startup process changes while checking: do not trust stale evidence"
+settle_running_service
+touch "$FAKE_STATE_DIR/not-ready"
+printf '2\n' > "$FAKE_STATE_DIR/startup-polls"
+printf '5000\n' > "$FAKE_STATE_DIR/rotate-pid-on-state-query"
+run_configure
+check "stale startup recovery succeeds" test "$CONFIGURE_RC" -eq 0
+check "changed main pid invalidates startup preservation" calls_match "restart agent-mail.service"
+
+begin_test "startup process image missing: restarted"
+settle_running_service
+touch "$FAKE_STATE_DIR/not-ready"
+printf '2\n' > "$FAKE_STATE_DIR/startup-polls"
+mv "$SANDBOX/proc/4242/exe" "$SANDBOX/proc/4242/exe.unavailable"
+run_configure
+check "unverifiable startup recovery succeeds" test "$CONFIGURE_RC" -eq 0
+check "unverifiable startup image triggers restart" calls_match "restart agent-mail.service"
 
 begin_test "installed binary differs from the running one: restarted"
 settle_running_service

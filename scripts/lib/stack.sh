@@ -1889,18 +1889,38 @@ agent_mail_readiness_ready() {
 # message DB on start (90s+ on large mailboxes), so an update that changed
 # nothing must not bounce it: every nightly and every manual `acfs update`
 # used to restart it unconditionally. Keep it running only when the unit was
-# not rewritten, the caller saw it healthy and ready, it is active, and its
-# running executable is byte-identical to the installed binary.
+# not rewritten and its running executable is byte-identical to the installed
+# binary. An active service must also be healthy and ready. A Type=notify
+# process still in its initial startup is allowed to finish instead of losing
+# its mailbox recovery progress; the bounded active/readiness checks still
+# report failure if it never finishes. Other activating states (notably
+# auto-restart backoff after a failure) are not evidence of healthy startup.
 # ACFS_AM_PROC_DIR is a sandbox hook for the test harness; production uses /proc.
+agent_mail_preserve_reason=""
 agent_mail_restart_needed() {
     local main_pid=""
+    local active_state=""
+    local sub_state=""
     local proc_dir="${ACFS_AM_PROC_DIR:-/proc}"
 
-    [[ "$write_unit" != "true" && "${ACFS_AM_ALREADY_READY:-0}" == "1" ]] || return 0
-    systemctl --user is-active --quiet agent-mail.service >/dev/null 2>&1 || return 0
+    [[ "$write_unit" != "true" ]] || return 0
     main_pid="$(systemctl --user show agent-mail.service -p MainPID --value 2>/dev/null || true)"
     [[ "$main_pid" =~ ^[1-9][0-9]*$ ]] || return 0
     cmp -s "$proc_dir/$main_pid/exe" "$am_bin" 2>/dev/null || return 0
+
+    active_state="$(systemctl --user show agent-mail.service -p ActiveState --value 2>/dev/null || true)"
+    sub_state="$(systemctl --user show agent-mail.service -p SubState --value 2>/dev/null || true)"
+    # A process replacement between the image and state checks invalidates
+    # those observations. Do not preserve a new process based on a stale PID.
+    [[ "$(systemctl --user show agent-mail.service -p MainPID --value 2>/dev/null || true)" == "$main_pid" ]] || return 0
+    if [[ "$active_state" == "activating" && "$sub_state" == "start" ]]; then
+        agent_mail_preserve_reason="starting"
+        return 1
+    fi
+
+    [[ "${ACFS_AM_ALREADY_READY:-0}" == "1" ]] || return 0
+    systemctl --user is-active --quiet agent-mail.service >/dev/null 2>&1 || return 0
+    agent_mail_preserve_reason="ready"
     return 1
 }
 
@@ -1952,6 +1972,8 @@ if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/d
     systemctl --user enable agent-mail.service >/dev/null 2>&1 || exit 1
     if agent_mail_restart_needed; then
         systemctl --user restart agent-mail.service >/dev/null 2>&1 || exit 1
+    elif [[ "$agent_mail_preserve_reason" == "starting" ]]; then
+        echo "Agent Mail: service is still starting with the installed binary and current unit; waiting without restarting" >&2
     else
         echo "Agent Mail: service already runs the installed binary with the current unit and is ready; not restarting" >&2
     fi
