@@ -50,6 +50,8 @@ Options:
 The generator does not update Beads, send Agent Mail, reserve files, start agents,
 run builds, or edit generated files. Live CM retrieval may update memory/history
 caches. Use --no-live-context or saved context files to avoid those backend writes.
+Python 3 and jq are required. Inputs are limited to 1 MiB; each live probe has a
+12-second deadline. Credentials are redacted before text is shortened for a packet.
 EOF
 }
 
@@ -198,11 +200,46 @@ swarm_packet_binary_path() {
     printf '%s\n' "$path_value"
 }
 
+# Validate complete bounded bytes before Bash can discard NULs or a byte cut can
+# break a UTF-8 character/quoted credential. Do not return a partial input.
+swarm_packet_read_text_file() {
+    local path_value="$1"
+    local label="$2"
+    python3 -I - "$path_value" "$label" <<'PY_ACFS_PACKET_FILE'
+import os
+import stat
+import sys
+
+LIMIT = 1048576
+path, label = sys.argv[1:]
+try:
+    fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as stream:
+        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            raise ValueError("must be a regular file")
+        data = stream.read(LIMIT + 1)
+    if len(data) > LIMIT:
+        raise ValueError("exceeds 1 MiB")
+    if b"\x00" in data:
+        raise ValueError("contains a NUL byte")
+    data.decode("utf-8")
+    sys.stdout.buffer.write(data)
+except UnicodeError:
+    print("Error: " + label + " is not valid UTF-8 text", file=sys.stderr)
+    sys.exit(2)
+except ValueError as exc:
+    print("Error: " + label + " " + str(exc), file=sys.stderr)
+    sys.exit(2)
+except OSError:
+    print("Error: " + label + " could not be read", file=sys.stderr)
+    sys.exit(2)
+PY_ACFS_PACKET_FILE
+}
+
 swarm_packet_read_file_excerpt() {
     local path_value="$1"
     local label="$2"
-    local max_bytes="$3"
-    local byte_count=""
+    local max_chars="$3"
     local excerpt=""
 
     if [[ ! -f "$path_value" ]]; then
@@ -210,23 +247,30 @@ swarm_packet_read_file_excerpt() {
         return 0
     fi
 
-    byte_count="$(wc -c < "$path_value" | tr -d '[:space:]')"
-    excerpt="$(LC_ALL=C head -c "$max_bytes" "$path_value")"
-    if [[ "$byte_count" =~ ^[0-9]+$ ]] && (( byte_count > max_bytes )); then
-        excerpt+=$'\n[truncated for packet size]'
-    fi
-    printf '%s' "$excerpt"
+    excerpt="$(swarm_packet_read_text_file "$path_value" "$label")" || return 2
+    excerpt="$(swarm_packet_sanitize_context_text "$excerpt" source)" || return 2
+    swarm_packet_limit_text "$excerpt" "$max_chars"
 }
 
 swarm_packet_limit_text() {
     local text="$1"
-    local max_bytes="$2"
+    local max_chars="$2"
+    local notice="${3:-[truncated for packet size]}"
 
-    if (( ${#text} > max_bytes )); then
-        printf '%s\n[truncated for packet size]' "${text:0:max_bytes}"
-    else
-        printf '%s' "$text"
-    fi
+    # Count Unicode characters independently of the caller's locale. Never cut
+    # through an encoded character, including in the final delivered Markdown.
+    printf '%s' "$text" | python3 -I -c '
+import sys
+try:
+    text = sys.stdin.buffer.read().decode("utf-8")
+except UnicodeError:
+    print("Error: packet text is not valid UTF-8", file=sys.stderr)
+    sys.exit(2)
+limit = int(sys.argv[1])
+if len(text) > limit:
+    text = text[:limit] + "\n" + sys.argv[2]
+sys.stdout.buffer.write(text.encode("utf-8"))
+' "$max_chars" "$notice"
 }
 
 swarm_packet_sanitize_context_text() {
@@ -302,13 +346,22 @@ swarm_packet_sanitize_context_text() {
         echo "Error: credential redaction failed; no packet was created" >&2
         return 1
     }
-    # Tool names in titles/tags are data. Keep them intact while instructional
-    # excerpts still receive the recommended br/bv/rch command forms.
-    if [[ "${2:-}" != "metadata" ]]; then
+    # Repository quotations are current instructions, not generated advice.
+    # Preserve their command spellings (including forbidden-command examples)
+    # while still removing credentials. Historical hints receive the recommended
+    # br/bv/rch forms; titles and tags retain their literal tool names.
+    if [[ "${2:-}" != "metadata" && "${2:-}" != "source" ]]; then
         context_rules=(
             -e 's/^([[:space:]]*)bv([[:space:]]*)$/\1bv --robot-next\2/g'
             -e 's/^([[:space:]]*)bd[[:space:]]+/\1br /g'
             -e 's/^([[:space:]]*)cargo[[:space:]]+(test|build|clippy)/\1rch exec -- cargo \2/g'
+        )
+    fi
+    if [[ "${2:-}" != "source" ]]; then
+        context_rules+=(
+            -e 's/rm[[:space:]]+-rf/[unsafe cleanup command redacted]/g'
+            -e 's/git[[:space:]]+reset[[:space:]]+--hard/[destructive git command redacted]/g'
+            -e 's/git[[:space:]]+clean[[:space:]]+-fd/[destructive git cleanup command redacted]/g'
         )
     fi
     # Public endpoint metadata is safe; webhook token paths are credentials.
@@ -318,8 +371,8 @@ swarm_packet_sanitize_context_text() {
     local webhook_pattern="[Hh][Tt][Tt][Pp][Ss]?:${webhook_slash}{2}${webhook_routes}[A-Za-z0-9_-]{8,}[^[:space:]\"'<>\`)]*"
 
     # Two concerns, one pass:
-    #  1. Neutralize dangerous command examples so a packet can never teach
-    #     an agent a forbidden command verbatim.
+    #  1. Neutralize dangerous examples in historical context without rewriting
+    #     current repository instructions or their quoted prohibition examples.
     #  2. Redact secret-shaped values. cass/cm excerpts replay agent session
     #     history, which can contain tokens or passwords that were echoed in
     #     past sessions; a work packet is handed to other agents and must
@@ -356,9 +409,6 @@ swarm_packet_sanitize_context_text() {
         if (emit_line || length(output)) print output
       }
     ' | sed -E "${context_rules[@]}" \
-        -e 's/rm[[:space:]]+-rf/[unsafe cleanup command redacted]/g' \
-        -e 's/git[[:space:]]+reset[[:space:]]+--hard/[destructive git command redacted]/g' \
-        -e 's/git[[:space:]]+clean[[:space:]]+-fd/[destructive git cleanup command redacted]/g' \
         -e 's/(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}/[github token redacted]/g' \
         -e 's/github_pat_[A-Za-z0-9_]{20,}/[github token redacted]/g' \
         -e 's/tskey-[A-Za-z0-9-]{10,}/[tailscale key redacted]/g' \
@@ -372,19 +422,120 @@ swarm_packet_sanitize_context_text() {
         -e 's/([Aa]uthorization:[[:space:]]*)(Bearer|Basic)[[:space:]]+[A-Za-z0-9._~+\/=-]+/\1[credential redacted]/g'
 }
 
+# Bound each live probe before its output reaches Bash. A plain timeout can
+# leave TERM-resistant descendants holding a pipe open, and trimming after
+# command substitution does not bound memory. Python is already required for
+# packet preparation/delivery; if unavailable, never run an unbounded fallback.
+# Exit 124 means the deadline expired; 125 means output was excessive/invalid.
+swarm_packet_run_bounded() {
+    local timeout_seconds="$1"
+    shift
+    local python_bin=""
+    python_bin="$(swarm_packet_binary_path python3 2>/dev/null || true)"
+    if [[ -z "$python_bin" ]]; then
+        echo "Error: Python 3 is required for bounded live packet retrieval" >&2
+        return 127
+    fi
+    "$python_bin" -I - "$SWARM_PACKET_REPO_ROOT" "$timeout_seconds" "$@" <<'PY_ACFS_PACKET_PROBE'
+import os
+import selectors
+import signal
+import subprocess
+import sys
+import time
+
+LIMIT = 1048576
+cwd, duration, *argv = sys.argv[1:]
+process = None
+output = bytearray()
+diagnostics = bytearray()
+
+
+class OutputLimit(Exception):
+    pass
+
+
+def cancelled(signum, frame):
+    raise KeyboardInterrupt
+
+
+for sig in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
+    signal.signal(sig, cancelled)
+
+try:
+    deadline = time.monotonic() + float(duration)
+    process = subprocess.Popen(argv, cwd=cwd, stdin=subprocess.DEVNULL,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               start_new_session=True)
+    with selectors.DefaultSelector() as selector:
+        selector.register(process.stdout, selectors.EVENT_READ, output)
+        selector.register(process.stderr, selectors.EVENT_READ, diagnostics)
+        while selector.get_map():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(argv, float(duration))
+            events = selector.select(remaining)
+            if not events:
+                raise subprocess.TimeoutExpired(argv, float(duration))
+            for key, _ in events:
+                chunk = os.read(key.fd, 16384)
+                if not chunk:
+                    selector.unregister(key.fileobj)
+                    continue
+                if len(output) + len(diagnostics) + len(chunk) > LIMIT:
+                    raise OutputLimit
+                key.data.extend(chunk)
+    code = process.wait(timeout=max(0.001, deadline - time.monotonic()))
+    if code != 0:
+        sys.exit(code if code >= 0 else 128 - code)
+    # Shell variables cannot preserve NULs; refuse instead of silently changing
+    # an issue ID or credential. Invalid UTF-8 must not become trusted context.
+    output.decode("utf-8")
+    if b"\x00" in output:
+        raise OutputLimit
+    sys.stderr.buffer.write(diagnostics)
+    sys.stdout.buffer.write(output)
+except subprocess.TimeoutExpired:
+    print("Error: packet retrieval exceeded its time limit", file=sys.stderr)
+    sys.exit(124)
+except (OutputLimit, UnicodeError):
+    print("Error: packet retrieval output exceeds 1 MiB or is not valid UTF-8 text", file=sys.stderr)
+    sys.exit(125)
+except KeyboardInterrupt:
+    print("Error: packet retrieval interrupted", file=sys.stderr)
+    sys.exit(130)
+except OSError:
+    print("Error: packet retrieval could not run", file=sys.stderr)
+    sys.exit(127)
+finally:
+    if process is not None:
+        # Kill the entire session group even after its leader exits: a child may
+        # retain stdout/stderr or keep working after the original probe finishes.
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        try:
+            process.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            # A kernel-blocked child may not reap immediately after SIGKILL;
+            # cleanup must not turn a bounded probe into another unbounded wait.
+            pass
+        process.stdout.close()
+        process.stderr.close()
+PY_ACFS_PACKET_PROBE
+}
+
 swarm_packet_collect_tool_context() {
     local tool_name="$1"
     local fixture_file="$2"
     local query="$3"
-    local max_bytes="$4"
-    local output=""
-    local status=0
-    local timeout_bin=""
     local -a context_command=()
 
     if [[ -n "$fixture_file" ]]; then
-        swarm_packet_read_file_excerpt "$fixture_file" "$tool_name context fixture" "$max_bytes"
-        return 0
+        [[ -f "$fixture_file" ]] || return 0
+        swarm_packet_read_text_file "$fixture_file" "$tool_name context fixture"
+        return $?
     fi
 
     if [[ "$SWARM_PACKET_NO_LIVE_CONTEXT" == true ]]; then
@@ -397,7 +548,6 @@ swarm_packet_collect_tool_context() {
         return 0
     fi
 
-    timeout_bin="$(swarm_packet_binary_path timeout 2>/dev/null || true)"
     if [[ "$tool_name" == "cm" ]]; then
         context_command=(cm context "$query" --workspace "$SWARM_PACKET_REPO_ROOT" --limit 5 --history 3 --json)
     else
@@ -407,18 +557,11 @@ swarm_packet_collect_tool_context() {
             --fields "title,snippet,source_path,line_number,agent" --json --max-tokens 1200
             --mode lexical --no-maintenance)
     fi
-    if [[ -n "$timeout_bin" ]]; then
-        context_command=("$timeout_bin" 12s "${context_command[@]}")
-    fi
-
     # Keep CLI diagnostics on stderr, not in agent prompts. The caller records
     # failures: an array mutation here would be lost in command substitution.
-    if output="$("${context_command[@]}")"; then
-        swarm_packet_limit_text "$output" "$max_bytes"
-    else
-        status=$?
-        return "$status"
-    fi
+    # The caller redacts this complete bounded text before shortening it. Cutting
+    # inside a quoted JSON secret first can make the credential unrecognizable.
+    swarm_packet_run_bounded 12 "${context_command[@]}"
 }
 
 swarm_packet_collect_bead_json() {
@@ -429,13 +572,16 @@ swarm_packet_collect_bead_json() {
             echo "Error: bead file not found: $SWARM_PACKET_BEAD_FILE" >&2
             return 2
         fi
-        raw_json="$(cat "$SWARM_PACKET_BEAD_FILE")"
+        raw_json="$(swarm_packet_read_text_file "$SWARM_PACKET_BEAD_FILE" "Beads JSON")" || return 2
     else
         if ! swarm_packet_binary_path br >/dev/null 2>&1; then
             echo "Error: br is required when --bead-file is not supplied" >&2
             return 2
         fi
-        raw_json="$(cd "$SWARM_PACKET_REPO_ROOT" && br show "$SWARM_PACKET_BEAD_ID" --json --no-db)"
+        raw_json="$(swarm_packet_run_bounded 12 br show "$SWARM_PACKET_BEAD_ID" --json --no-db)" || {
+            echo "Error: Beads retrieval failed; no packet was created" >&2
+            return 2
+        }
     fi
 
     if ! jq -e . >/dev/null 2>&1 <<<"$raw_json"; then
@@ -443,8 +589,9 @@ swarm_packet_collect_bead_json() {
         return 2
     fi
 
-    jq -ce --arg id "$SWARM_PACKET_BEAD_ID" '
-      (if type == "array" then . elif type == "object" then [.] else [] end)
+    jq -ces --arg id "$SWARM_PACKET_BEAD_ID" '
+      if length == 1 then .[0] else error("expected one Beads JSON document") end
+      | (if type == "array" then . elif type == "object" then [.] else [] end)
       | (if $id != "" then map(select(.id == $id)) else . end)
       | if length == 1 then .[0] else error("expected exactly one selected Bead") end
       | if (.id | type) == "string" and (.id | test("^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"))
@@ -616,6 +763,7 @@ swarm_packet_build_report() {
     local warnings_json=""
     local warnings_block=""
     local packet_markdown=""
+    local packet_char_count=0
     local output_truncated=false
     local truncate_limit=0
     local status_value="pass"
@@ -630,8 +778,12 @@ swarm_packet_build_report() {
         echo "Error: jq is required for swarm packet generation" >&2
         return 2
     fi
+    if ! swarm_packet_binary_path python3 >/dev/null 2>&1; then
+        echo "Error: Python 3 is required for packet input validation" >&2
+        return 2
+    fi
 
-    bead_json="$(swarm_packet_collect_bead_json)"
+    bead_json="$(swarm_packet_collect_bead_json)" || return 2
     bead_id="$("$jq_bin" -r --arg fallback "$SWARM_PACKET_BEAD_ID" '.id // $fallback' <<<"$bead_json")"
     bead_title="$("$jq_bin" -r '.title // "Untitled Bead"' <<<"$bead_json")"
     bead_title="$(swarm_packet_sanitize_context_text "$bead_title" metadata)" || return 2
@@ -669,7 +821,7 @@ swarm_packet_build_report() {
       | if length == 0 then "No task brief recorded. Read the current Bead and agree on scope before editing."
         else .[] | "### " + .[0] + "\n\n" + .[1] + "\n" end
     ' <<<"$bead_json")"
-    task_brief="$(swarm_packet_sanitize_context_text "$task_brief")" || return 2
+    task_brief="$(swarm_packet_sanitize_context_text "$task_brief" source)" || return 2
     task_brief="$(printf '%s' "$task_brief" | swarm_packet_indent_text)"
 
     query="$bead_id $bead_title in $SWARM_PACKET_REPO_ROOT"
@@ -680,10 +832,8 @@ swarm_packet_build_report() {
         SWARM_PACKET_WARNINGS+=("README.md not found: $SWARM_PACKET_README_FILE")
     fi
 
-    agents_excerpt="$(swarm_packet_read_file_excerpt "$SWARM_PACKET_AGENTS_FILE" "AGENTS.md" 1800)"
-    readme_excerpt="$(swarm_packet_read_file_excerpt "$SWARM_PACKET_README_FILE" "README.md" 1600)"
-    agents_excerpt="$(swarm_packet_sanitize_context_text "$agents_excerpt")" || return 2
-    readme_excerpt="$(swarm_packet_sanitize_context_text "$readme_excerpt")" || return 2
+    agents_excerpt="$(swarm_packet_read_file_excerpt "$SWARM_PACKET_AGENTS_FILE" "AGENTS.md" 1800)" || return 2
+    readme_excerpt="$(swarm_packet_read_file_excerpt "$SWARM_PACKET_README_FILE" "README.md" 1600)" || return 2
 
     cm_warning_count_before=${#SWARM_PACKET_WARNINGS[@]}
     if [[ -n "$SWARM_PACKET_CM_FILE" && ! -f "$SWARM_PACKET_CM_FILE" ]]; then
@@ -696,13 +846,14 @@ swarm_packet_build_report() {
         live_cm_context=true
         context_safety_note="Generation leaves repository and Beads unchanged. Live CM retrieval may update memory/history caches."
     fi
-    if cm_context="$(swarm_packet_collect_tool_context cm "$SWARM_PACKET_CM_FILE" "$query" 1800)"; then
+    if cm_context="$(swarm_packet_collect_tool_context cm "$SWARM_PACKET_CM_FILE" "$query")"; then
         :
     else
         context_status=$?
         SWARM_PACKET_WARNINGS+=("cm context unavailable: command exited $context_status")
     fi
     cm_context="$(swarm_packet_sanitize_context_text "$cm_context")" || return 2
+    cm_context="$(swarm_packet_limit_text "$cm_context" 1800)" || return 2
     if [[ -z "$cm_context" ]]; then
         if (( ${#SWARM_PACKET_WARNINGS[@]} == cm_warning_count_before )); then
             SWARM_PACKET_WARNINGS+=("cm context unavailable: command returned no output")
@@ -718,13 +869,14 @@ swarm_packet_build_report() {
     elif [[ -z "$SWARM_PACKET_CASS_FILE" ]] && ! swarm_packet_binary_path cass >/dev/null 2>&1; then
         SWARM_PACKET_WARNINGS+=("cass context unavailable: command not found")
     fi
-    if cass_context="$(swarm_packet_collect_tool_context cass "$SWARM_PACKET_CASS_FILE" "$query" 1800)"; then
+    if cass_context="$(swarm_packet_collect_tool_context cass "$SWARM_PACKET_CASS_FILE" "$query")"; then
         :
     else
         context_status=$?
         SWARM_PACKET_WARNINGS+=("cass context unavailable: command exited $context_status")
     fi
     cass_context="$(swarm_packet_sanitize_context_text "$cass_context")" || return 2
+    cass_context="$(swarm_packet_limit_text "$cass_context" 1800)" || return 2
 
     if [[ -z "$cass_context" ]]; then
         if (( ${#SWARM_PACKET_WARNINGS[@]} == cass_warning_count_before )); then
@@ -755,13 +907,15 @@ swarm_packet_build_report() {
         "$task_brief" \
         "$context_safety_note")"
 
-    if (( ${#packet_markdown} > SWARM_PACKET_MAX_CHARS )); then
+    packet_char_count="$(printf '%s' "$packet_markdown" | "$jq_bin" -Rs 'length')" || return 2
+    if (( packet_char_count > SWARM_PACKET_MAX_CHARS )); then
         output_truncated=true
         truncate_limit=$((SWARM_PACKET_MAX_CHARS - 90))
         if (( truncate_limit < 1500 )); then
             truncate_limit="$SWARM_PACKET_MAX_CHARS"
         fi
-        packet_markdown="$(printf '%s' "$packet_markdown" | LC_ALL=C head -c "$truncate_limit")"$'\n\n[truncated: rerun with a larger --max-chars for more context]'
+        packet_markdown="$(swarm_packet_limit_text "$packet_markdown" "$truncate_limit" \
+            $'\n[truncated: rerun with a larger --max-chars for more context]')" || return 2
     fi
 
     # The task brief above carries description/design/acceptance criteria.

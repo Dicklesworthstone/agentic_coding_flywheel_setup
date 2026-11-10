@@ -57,7 +57,7 @@ agents_fixture() {
 - Never delete files.
 - Use Beads and Agent Mail for coordination.
 - Use RCH for CPU-heavy Rust gates.
-- Policy examples must be sanitized before packet output:
+- Forbidden-command examples and locally required command spellings:
   git reset --hard
   git clean -fd
   rm -rf
@@ -227,12 +227,15 @@ test_missing_cm_and_cass_warn_without_failing() {
 }
 
 test_generated_content_lint_blocks_unsafe_templates() {
-    local bead agents readme cm cass output status line trimmed
+    local bead agents readme cm cass output generated_output status line trimmed
     bead="$(bead_fixture)"
     agents="$(agents_fixture)"
     readme="$(readme_fixture)"
     cm="$(cm_fixture)"
     cass="$(cass_fixture)"
+    # Historical hints still receive safe command forms. Literal repository
+    # quotations are checked separately for faithful, credential-free excerpts.
+    printf '%s\n' 'git reset --hard' 'git clean -fd' 'rm -rf' 'bv' 'bd ready' 'cargo test' > "$cm"
 
     output="$(run_packet_markdown lint \
         --bead-file "$bead" \
@@ -246,9 +249,14 @@ test_generated_content_lint_blocks_unsafe_templates() {
     status="$(cat "$ARTIFACT_DIR/lint.exit")"
 
     [[ "$status" -eq 0 ]] || return 1
-    [[ "$output" != *"rm -rf"* ]] || return 1
-    [[ "$output" != *"git reset --hard"* ]] || return 1
-    [[ "$output" != *"git clean -fd"* ]] || return 1
+    generated_output="$(awk '
+      /^## Current Repo Instructions Excerpt$/ { source_excerpt = 1; next }
+      /^## CM Context$/ { source_excerpt = 0 }
+      !source_excerpt { print }
+    ' <<<"$output")"
+    [[ "$generated_output" != *"rm -rf"* ]] || return 1
+    [[ "$generated_output" != *"git reset --hard"* ]] || return 1
+    [[ "$generated_output" != *"git clean -fd"* ]] || return 1
 
     while IFS= read -r line; do
         trimmed="${line#"${line%%[![:space:]]*}"}"
@@ -261,9 +269,37 @@ test_generated_content_lint_blocks_unsafe_templates() {
         if [[ "$trimmed" == cargo\ * ]]; then
             return 1
         fi
-    done <<<"$output"
+    done <<<"$generated_output"
 
     pass "generated_content_lint_blocks_unsafe_templates"
+}
+
+test_repository_quotations_keep_commands_and_remove_credentials() {
+    local bead agents readme cm cass output expected_agents expected_readme
+    bead="$(bead_fixture)"
+    agents="$(agents_fixture)"
+    readme="$(readme_fixture)"
+    cm="$(cm_fixture)"
+    cass="$(cass_fixture)"
+    printf '%s\n' 'export SERVICE_TOKEN=fixtureSourceCredential123456' >> "$agents"
+    printf '%s\n' 'Run the checker locally:' 'cargo test' 'Never use git reset --hard.' \
+        'apiKey="fixtureReadmeCredential123456"' >> "$readme"
+    expected_agents="$(cat "$agents")"
+    expected_agents="${expected_agents/fixtureSourceCredential123456/[redacted]}"
+    expected_readme="$(cat "$readme")"
+    expected_readme="${expected_readme/fixtureReadmeCredential123456/[redacted]}"
+    output="$(run_packet_json source-quotes \
+        --bead-file "$bead" --agents-file "$agents" --readme-file "$readme" \
+        --cm-file "$cm" --cass-file "$cass" --repo "$REPO_ROOT" --max-chars 12000)"
+    [[ "$(cat "$ARTIFACT_DIR/source-quotes.exit")" -eq 0 ]] || return 1
+    jq -e --arg agents "$expected_agents" --arg readme "$expected_readme" '
+      .context.agents_excerpt == $agents and .context.readme_excerpt == $readme and
+      (.packet_markdown | contains("    cargo test")) and
+      (.packet_markdown | contains("    Never use git reset --hard.")) and
+      (.commands.gates | index("rch exec -- cargo test")) != null
+    ' <<<"$output" >/dev/null || return 1
+    [[ "$output" != *fixtureSourceCredential123456* && "$output" != *fixtureReadmeCredential123456* ]] || return 1
+    pass "repository_quotations_keep_commands_and_remove_credentials"
 }
 
 test_context_service_credentials_are_redacted_before_packet_output() {
@@ -761,7 +797,9 @@ test_packet_metadata_keeps_tool_names() {
     [[ "$(cat "$ARTIFACT_DIR/tool-name-metadata.exit")" -eq 0 ]] || return 1
     jq -e '.status == "pass" and .bead.title == "cargo build cache" and
       .bead.labels == ["bv", "br"] and
-      (.context.agents_excerpt | contains("rch exec -- cargo test"))' <<<"$output" >/dev/null || return 1
+      (.context.agents_excerpt | contains("  cargo test")) and
+      (.context.agents_excerpt | contains("rch exec -- cargo test") | not) and
+      (.commands.gates | index("rch exec -- cargo test")) != null' <<<"$output" >/dev/null || return 1
     pass "packet_metadata_keeps_tool_names"
 }
 
@@ -965,6 +1003,269 @@ EOF
     pass "live_bead_reader_uses_jsonl_only"
 }
 
+test_live_probe_bounds_apply_to_children_and_both_streams() {
+    # Real child processes exercise pipe ownership, ignored TERM, both output
+    # streams, and tools that close pipes but keep running. No timeout executable
+    # is present in the child environment; bounds belong to the packet reader.
+    python3 - "$SWARM_PACKET_SH" "$ARTIFACT_DIR" <<'PY'
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import time
+
+script = Path(sys.argv[1])
+artifacts = Path(sys.argv[2]) / "bounded-probes"
+artifacts.mkdir()
+sparse = artifacts / "bin"
+sparse.mkdir()
+python = shutil.which("python3")
+bash = shutil.which("bash")
+(sparse / "python3").symlink_to(python)
+(sparse / "cat").symlink_to(shutil.which("cat"))
+env = {**os.environ, "PATH": str(sparse)}
+driver = 'source "$1" --help >/dev/null; swarm_packet_run_bounded 0.4 "$2" "$3"'
+
+for mode in ("ignore-term", "orphan", "closed-pipes", "stdout-flood", "stderr-flood", "successful-leader"):
+    pidfile = artifacts / (mode + ".pid")
+    fixture = artifacts / (mode + ".py")
+    source = "import os, signal, time\nsignal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+    if mode == "orphan":
+        source += "if os.fork():\n    raise SystemExit(0)\n"
+    elif mode == "successful-leader":
+        source += ("if os.fork():\n"
+                   "    while not os.path.exists(" + repr(str(pidfile)) + "):\n"
+                   "        time.sleep(0.001)\n"
+                   "    print('probe complete')\n"
+                   "    raise SystemExit(0)\n")
+    source += "with open(" + repr(str(pidfile)) + ", 'w') as f:\n    f.write(str(os.getpid()))\n"
+    if mode in ("closed-pipes", "successful-leader"):
+        source += "os.close(1)\nos.close(2)\n"
+    elif mode.endswith("flood"):
+        fd = 1 if mode == "stdout-flood" else 2
+        source += "while True:\n    os.write(" + str(fd) + ", b'fixtureProbeSecret' * 4096)\n"
+    source += "time.sleep(60)\n"
+    fixture.write_text(source)
+    started = time.monotonic()
+    result = subprocess.run([bash, "-c", driver, "probe", str(script), python, str(fixture)],
+                            capture_output=True, env=env, timeout=4)
+    elapsed = time.monotonic() - started
+    expected = 0 if mode == "successful-leader" else 125 if mode.endswith("flood") else 124
+    assert result.returncode == expected, (mode, result)
+    assert elapsed < 3, (mode, elapsed)
+    assert result.stdout == (b"probe complete\n" if mode == "successful-leader" else b""), (mode, result.stdout)
+    assert b"fixtureProbeSecret" not in result.stderr, (mode, result.stderr)
+    pid = int(pidfile.read_text())
+    state = Path("/proc") / str(pid) / "stat"
+    reap_deadline = time.monotonic() + 0.5
+    while state.exists() and state.read_text().rsplit(") ", 1)[1][0] != "Z" and time.monotonic() < reap_deadline:
+        time.sleep(0.01)
+    if state.exists():
+        # An orphan may briefly await init's reaper, but must not still execute.
+        assert state.read_text().rsplit(") ", 1)[1][0] == "Z", (mode, pid)
+
+failure = artifacts / "failure.py"
+failure.write_text("import sys\nprint('fixtureFailedPayload')\n"
+                   "print('fixtureFailedDiagnostic', file=sys.stderr)\nraise SystemExit(23)\n")
+result = subprocess.run([bash, "-c", driver, "probe", str(script), python, str(failure)],
+                        capture_output=True, env=env, timeout=4)
+assert result.returncode == 23 and not result.stdout and not result.stderr, result
+
+for data in (b"fixtureInvalidUtf8\xff", b"fixtureInvalid\x00Nul"):
+    failure.write_text("import os\nos.write(1, " + repr(data) + ")\n")
+    result = subprocess.run([bash, "-c", driver, "probe", str(script), python, str(failure)],
+                            capture_output=True, env=env, timeout=4)
+    assert result.returncode == 125 and not result.stdout, result
+    assert b"fixtureInvalid" not in result.stderr, result
+
+no_python = artifacts / "no-python"
+no_python.mkdir()
+(no_python / "cat").symlink_to(shutil.which("cat"))
+marker = artifacts / "unbounded-fallback-was-run"
+failure.write_text("from pathlib import Path\nPath(" + repr(str(marker)) + ").touch()\n")
+result = subprocess.run([bash, "-c", driver, "probe", str(script), python, str(failure)],
+                        capture_output=True, env={**env, "PATH": str(no_python)}, timeout=4)
+assert result.returncode == 127 and not marker.exists(), result
+PY
+    [[ $? -eq 0 ]] || return 1
+    pass "live_probe_bounds_apply_to_children_and_both_streams"
+}
+
+test_packet_rejects_excessive_live_context_and_bead_output() {
+    local bead agents readme output bin_dir="$ARTIFACT_DIR/excessive-cli"
+    bead="$(bead_fixture)"
+    agents="$(agents_fixture)"
+    readme="$(readme_fixture)"
+    mkdir -p "$bin_dir"
+    cat > "$bin_dir/cm" <<'EOF'
+#!/usr/bin/env bash
+exec python3 -c 'import os; os.write(1, b"fixtureExcessiveContextSecret" * 50000)'
+EOF
+    cat > "$bin_dir/cass" <<'EOF'
+#!/usr/bin/env bash
+exec python3 -c 'import os; os.write(2, b"fixtureExcessiveDiagnosticSecret" * 50000)'
+EOF
+    cp "$bin_dir/cm" "$bin_dir/br"
+    chmod +x "$bin_dir/cm" "$bin_dir/cass" "$bin_dir/br"
+    output="$(run_live_context_packet excessive-context "$bin_dir" \
+        --bead-file "$bead" --agents-file "$agents" --readme-file "$readme" \
+        --repo "$REPO_ROOT" --max-chars 12000)"
+    [[ "$(cat "$ARTIFACT_DIR/excessive-context.exit")" -eq 0 ]] || return 1
+    jq -e '.status == "warn" and .context.cm.status == "missing" and
+      .context.cass.status == "missing" and
+      (.warnings | index("cm context unavailable: command exited 125")) != null and
+      (.warnings | index("cass context unavailable: command exited 125")) != null' <<<"$output" >/dev/null || return 1
+    [[ "$output" != *fixtureExcessive* &&
+       "$(cat "$ARTIFACT_DIR/excessive-context.stderr")" != *fixtureExcessive* ]] || return 1
+    output="$(run_live_context_packet excessive-bead "$bin_dir" \
+        --bead bd-n968h --agents-file "$agents" --readme-file "$readme" \
+        --repo "$REPO_ROOT" --no-live-context)"
+    [[ "$(cat "$ARTIFACT_DIR/excessive-bead.exit")" -eq 2 && -z "$output" ]] || return 1
+    [[ "$(cat "$ARTIFACT_DIR/excessive-bead.stderr")" == *"Beads retrieval failed"* ]] || return 1
+    pass "packet_rejects_excessive_live_context_and_bead_output"
+}
+
+test_packet_rejects_oversized_saved_bead_json() {
+    local agents readme output bead="$ARTIFACT_DIR/oversized-bead.json"
+    agents="$(agents_fixture)"
+    readme="$(readme_fixture)"
+    # A complete task followed by whitespace must not let head's truncation
+    # turn an overlong, ambiguous export into an apparently valid single task.
+    python3 - "$bead" <<'PY'
+from pathlib import Path
+import sys
+Path(sys.argv[1]).write_text('{"id":"bd-first","title":"First task"}' + "\n" * 1048576 +
+                           '{"id":"bd-second","title":"Second task"}\n')
+PY
+    output="$(run_live_context_packet oversized-bead "$ARTIFACT_DIR" \
+        --bead-file "$bead" --agents-file "$agents" --readme-file "$readme" \
+        --repo "$REPO_ROOT" --no-live-context)"
+    [[ "$(cat "$ARTIFACT_DIR/oversized-bead.exit")" -eq 2 && -z "$output" ]] || return 1
+    [[ "$(cat "$ARTIFACT_DIR/oversized-bead.stderr")" == *"Beads JSON exceeds 1 MiB"* ]] || return 1
+    pass "packet_rejects_oversized_saved_bead_json"
+}
+
+test_redaction_precedes_unicode_safe_packet_truncation() {
+    python3 - "$SWARM_PACKET_SH" "$ARTIFACT_DIR" <<'PY'
+import json
+import os
+from pathlib import Path
+import shlex
+import subprocess
+import sys
+
+script = Path(sys.argv[1])
+root = Path(sys.argv[2]) / "redaction-boundaries"
+root.mkdir()
+agents = "x" * 1799 + "é"
+(root / "AGENTS.md").write_text(agents + "\n", encoding="utf-8")
+opaque = "fixtureOpaqueCredential" * 120
+(root / "README.md").write_text(json.dumps({"token": opaque}), encoding="utf-8")
+(root / "cm.json").write_text(json.dumps({"token": opaque, "public": "keep this hint"}), encoding="utf-8")
+(root / "cass.json").write_text(json.dumps({"snippet": 'PASSWORD="' + opaque + '"\nPublic history'}), encoding="utf-8")
+bead = {"id": "bd-boundary", "title": "Packet boundary", "status": "open", "priority": 1,
+        "description": "Run this checker locally:\ncargo test\nNever use git reset --hard.",
+        "acceptance_criteria": "Retain the exact current task instructions."}
+(root / "bead.json").write_text(json.dumps(bead), encoding="utf-8")
+base = ["bash", str(script), "--json", "--bead-file", str(root / "bead.json"),
+        "--repo", str(root), "--cass-file", str(root / "cass.json"), "--max-chars", "12000"]
+
+def packet(extra, env=None):
+    result = subprocess.run([*base, *extra], capture_output=True, env=env, timeout=30)
+    assert result.returncode == 0, result.stderr
+    text = result.stdout.decode("utf-8")
+    assert "fixtureOpaqueCredential" not in text and "\ufffd" not in text, text
+    return json.loads(text)
+
+result = packet(["--cm-file", str(root / "cm.json"), "--no-live-context"])
+assert result["context"]["agents_excerpt"] == agents
+assert json.loads(result["context"]["readme_excerpt"])["token"] == "[redacted]"
+assert json.loads(result["context"]["cm"]["text"])["public"] == "keep this hint"
+assert "Public history" in result["context"]["cass"]["text"]
+assert "    cargo test\n    Never use git reset --hard." in result["packet_markdown"]
+assert "Retain the exact current task instructions." in result["packet_markdown"]
+
+# The same long credential must be safe when it arrives from a live command.
+bin_dir = root / "bin"
+bin_dir.mkdir()
+cm = bin_dir / "cm"
+cm.write_text("#!/bin/sh\nexec cat " + shlex.quote(str(root / "cm.json")) + "\n")
+cm.chmod(0o755)
+result = packet([], {**os.environ, "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"]})
+assert result["context"]["cm"]["status"] == "available"
+
+# The final prompt cap also counts characters when the caller uses the C locale.
+bead["description"] = "é" * 3000
+(root / "bead.json").write_text(json.dumps(bead), encoding="utf-8")
+result = packet(["--cm-file", str(root / "cm.json"), "--no-live-context", "--max-chars", "2201"],
+                {**os.environ, "LC_ALL": "C"})
+assert result["output"]["truncated"] and result["output"]["char_count"] <= 2201
+assert result["packet_markdown"].count("é") > 1000
+assert result["output"]["char_count"] == len(result["packet_markdown"])
+PY
+    [[ $? -eq 0 ]] || return 1
+    pass "redaction_precedes_unicode_safe_packet_truncation"
+}
+
+test_saved_input_validation_precedes_shell_parsing() {
+    python3 - "$SWARM_PACKET_SH" "$ARTIFACT_DIR" <<'PY'
+import json
+import os
+from pathlib import Path
+import shlex
+import subprocess
+import sys
+
+script = Path(sys.argv[1])
+root = Path(sys.argv[2]) / "saved-input-boundaries"
+root.mkdir()
+(root / "AGENTS.md").write_text("Keep the current task identity.\n")
+(root / "README.md").write_text("Public project text.\n")
+bead = root / "bead.json"
+base = ["bash", str(script), "--json", "--repo", str(root), "--no-live-context"]
+valid = b'{"id":"bd-first","title":"Current task"}'
+cases = (
+    (b'{"id":"bd-fi\x00rst","title":"Invalid NUL"}', b"NUL"),
+    (b'{"id":"bd-first","title":"Invalid \xff"}', b"UTF-8"),
+    (valid + b' {"id":"bd-second","title":"Another task"}', b"one Beads JSON document"),
+    (valid + b' []', b"one Beads JSON document"),
+)
+for data, message in cases:
+    bead.write_bytes(data)
+    result = subprocess.run([*base, "--bead-file", str(bead)], capture_output=True, timeout=30)
+    assert result.returncode == 2 and not result.stdout, result
+    assert message in result.stderr, result.stderr
+
+# Live br must reject a document stream just as saved input does.
+bin_dir = root / "bin"
+bin_dir.mkdir()
+br = bin_dir / "br"
+br.write_text("#!/bin/sh\nexec cat " + shlex.quote(str(bead)) + "\n")
+br.chmod(0o755)
+result = subprocess.run([*base, "--bead", "bd-first"], capture_output=True, timeout=30,
+                        env={**os.environ, "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"]})
+assert result.returncode == 2 and not result.stdout and b"one Beads JSON document" in result.stderr
+
+# Broken required instructions abort; broken optional context is omitted with a
+# warning, never decoded with replacement or silently repaired by the shell.
+bead.write_bytes(valid)
+(root / "AGENTS.md").write_bytes(b"fixturePrivateSource\xff")
+result = subprocess.run([*base, "--bead-file", str(bead)], capture_output=True, timeout=30)
+assert result.returncode == 2 and not result.stdout and b"fixturePrivateSource" not in result.stderr
+(root / "AGENTS.md").write_text("Current instructions.\n")
+context = root / "cm.json"
+context.write_bytes(b'{"token":"fixturePrivateContext\x00suffix"}')
+result = subprocess.run([*base, "--bead-file", str(bead), "--cm-file", str(context)],
+                        capture_output=True, timeout=30)
+assert result.returncode == 0 and b"fixturePrivateContext" not in result.stdout + result.stderr
+packet = json.loads(result.stdout)
+assert packet["status"] == "warn" and packet["context"]["cm"]["status"] == "missing"
+PY
+    [[ $? -eq 0 ]] || return 1
+    pass "saved_input_validation_precedes_shell_parsing"
+}
+
 main() {
     command -v jq >/dev/null 2>&1 || {
         echo "jq is required for swarm packet tests" >&2
@@ -975,6 +1276,7 @@ main() {
     run_test test_markdown_packet_is_bounded
     run_test test_missing_cm_and_cass_warn_without_failing
     run_test test_generated_content_lint_blocks_unsafe_templates
+    run_test test_repository_quotations_keep_commands_and_remove_credentials
     run_test test_context_service_credentials_are_redacted_before_packet_output
     run_test test_context_credential_aliases_preserve_public_metadata
     run_test test_quoted_credential_families_are_redacted
@@ -993,6 +1295,11 @@ main() {
     run_test test_live_context_keeps_diagnostics_out_of_prompts
     run_test test_empty_and_disabled_live_context_remain_distinct
     run_test test_live_bead_reader_uses_jsonl_only
+    run_test test_live_probe_bounds_apply_to_children_and_both_streams
+    run_test test_packet_rejects_excessive_live_context_and_bead_output
+    run_test test_packet_rejects_oversized_saved_bead_json
+    run_test test_redaction_precedes_unicode_safe_packet_truncation
+    run_test test_saved_input_validation_precedes_shell_parsing
 
     echo "Results: $TESTS_PASSED passed, $TESTS_FAILED failed"
     echo "Artifacts: $ARTIFACT_DIR"

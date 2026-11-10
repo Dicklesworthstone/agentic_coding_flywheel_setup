@@ -4618,6 +4618,15 @@ can update memory/history caches, so packets that invoke it report
 `safety.read_only: false`. For read-only generation, use `--no-live-context`;
 saved `--cm-file` and `--cass-file` context remains available in that mode.
 
+Packet generation requires Python 3 and jq. Each live CM, CASS, or Beads lookup
+has a 12-second deadline and a 1 MiB combined output limit; failed optional
+context is omitted with a warning. Saved input files must be regular UTF-8 files
+without NUL bytes and fit within 1 MiB. Invalid Beads or repository instructions
+stop generation. Credentials are redacted before excerpts are shortened, and
+shortening preserves complete Unicode characters. Quoted repository and task
+instructions retain their original command spellings. A Beads file must contain
+one JSON document, which may be a single task or an array selected by task ID.
+
 Automatic packet and assignment reads use `br --no-db` to read exported JSONL
 without opening or importing into the tracker database. Run `br sync --flush-only`
 explicitly before generating packets when you have unexported Beads changes.

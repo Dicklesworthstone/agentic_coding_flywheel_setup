@@ -88,6 +88,14 @@ expand those scopes silently. Large or truncated task packets block preparation
 rather than silently losing acceptance criteria. Ordinary single-packet generation
 also includes task briefs and can select a specific ID from a multi-Bead file.
 
+The underlying packet generator requires Python 3 and jq. Live context lookups
+have a 12-second deadline and a 1 MiB combined stdout/stderr limit. Saved source
+and context files must be regular UTF-8 files without NUL bytes, at most 1 MiB;
+invalid required task data or repository instructions prevent publication.
+Credentials are redacted before Unicode-safe shortening, and quoted repository
+instructions and task briefs retain their original command spellings. Optional
+CM/CASS retrieval failures are reported as warnings and contribute no context.
+
 Review every Markdown prompt, then run the returned `preview_command`:
 
 ```bash
