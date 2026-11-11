@@ -370,7 +370,7 @@ describe("buildWindowsTerminalProfileSshCommand", () => {
   test("keeps %USERPROFILE% only for the Windows Terminal profile commandline", () => {
     const commandline = buildWindowsTerminalProfileSshCommand("dev-user", "203.0.113.42");
 
-    expect(commandline).toBe("ssh -i %USERPROFILE%\\.ssh\\acfs_ed25519 dev-user@203.0.113.42");
+    expect(commandline).toBe('ssh -i "%USERPROFILE%\\.ssh\\acfs_ed25519" dev-user@203.0.113.42');
     expect(commandline).not.toContain("$HOME");
   });
 });

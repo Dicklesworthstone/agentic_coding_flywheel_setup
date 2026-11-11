@@ -485,7 +485,9 @@ export function buildSshKeyLoginCommands(
  * `%USERPROFILE%` is (#302). Never show this string as something to type.
  */
 export function buildWindowsTerminalProfileSshCommand(username: string, host: string): string {
-  return `ssh -i ${SSH_KEY_PATH_WINDOWS_TERMINAL_PROFILE} ${formatSshTarget(username, host)}`;
+  // Windows expands USERPROFILE before splitting the native command line.
+  // Preserve a home directory containing spaces as one identity-file argument.
+  return `ssh -i "${SSH_KEY_PATH_WINDOWS_TERMINAL_PROFILE}" ${formatSshTarget(username, host)}`;
 }
 
 /**

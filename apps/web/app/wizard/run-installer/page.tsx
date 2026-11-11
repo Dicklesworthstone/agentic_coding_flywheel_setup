@@ -46,7 +46,12 @@ import {
 } from "@/lib/commandBuilder";
 import { manifestProvenance, manifestSelectionProfiles } from "@/lib/generated/manifest-modules";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
-import { createInstallerCheckpoint, installerCheckpointMatches } from "@/lib/installerCheckpoint";
+import {
+  createInstallerCheckpoint,
+  type InstallerCheckpoint,
+  type InstallerCheckpointInput,
+  installerCheckpointMatches,
+} from "@/lib/installerCheckpoint";
 import { resolveModuleSelection } from "@/lib/moduleSelection";
 import {
   buildProviderProvisioningPacket,
@@ -249,7 +254,7 @@ export default function RunInstallerPage() {
   // The cache is consumed AFTER Ubuntu auto-upgrade. Preserve the original
   // provisioning image in exports, but cache for the actual command destination.
   const installerTargetUbuntuVersion = installDetails?.targetUbuntu;
-  const checkpointInput = useMemo(
+  const checkpointInput = useMemo<InstallerCheckpointInput | null>(
     () =>
       installCommand
         ? {
@@ -266,16 +271,42 @@ export default function RunInstallerPage() {
       manifestProvenance.checksumsYamlSha256,
     ],
   );
-  const { data: checkpoint, isError: checkpointError } = useQuery({
-    queryKey: ["installerCheckpoint", checkpointInput],
-    queryFn: () => createInstallerCheckpoint(checkpointInput!),
-    enabled: checkpointInput !== null,
-    staleTime: Infinity,
-    retry: false,
-  });
-  const currentCheckpoint = installerCheckpointMatches(checkpoint, checkpointInput)
-    ? checkpoint
-    : null;
+  // Host and command may come from a reviewed team profile. Keep them outside
+  // the shared query cache so discarding a profile or leaving this page cannot
+  // persist its contents, and a restored query cannot bypass secure hashing.
+  const [checkpoint, setCheckpoint] = useState<{
+    input: InstallerCheckpointInput;
+    value: InstallerCheckpoint;
+  }>();
+  const [hashFailure, setHashFailure] = useState<InstallerCheckpointInput | null>(null);
+  useEffect(() => {
+    let current = true;
+    if (checkpointInput) {
+      void createInstallerCheckpoint(checkpointInput)
+        .then((value) => {
+          if (current) {
+            setCheckpoint({ input: checkpointInput, value });
+            setHashFailure(null);
+          }
+        })
+        .catch(() => {
+          if (current) setHashFailure(checkpointInput);
+        });
+    }
+    return () => {
+      current = false;
+    };
+  }, [checkpointInput]);
+  const checkpointError = Boolean(checkpointInput) && hashFailure === checkpointInput;
+  // Returning to the same host/command still requires this request's digest.
+  // Value equality alone would revive A's earlier result during A -> B -> A
+  // while the new hash is pending or has failed.
+  const currentCheckpoint =
+    !checkpointError &&
+    checkpoint?.input === checkpointInput &&
+    installerCheckpointMatches(checkpoint?.value, checkpointInput)
+      ? checkpoint.value
+      : null;
   const completionKey = currentCheckpoint ? `acfs-command-${currentCheckpoint.persistKey}` : null;
   // No migration from the old unbound boolean: it cannot identify the host,
   // command or manifest the user acknowledged. Share the card's exact scoped key.

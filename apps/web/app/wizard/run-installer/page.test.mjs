@@ -98,6 +98,11 @@ function fixture(initial = {}) {
   let checkpointPending = false;
   let checkpointFailed = false;
   let checkpointOverride;
+  let dirty = false;
+  const effects = [];
+  const checkpointJobs = [];
+  const nativeCheckpointJobs = [];
+  const queryInputs = [];
   const acknowledgements = new Map();
   const provenance = { manifestSha256: "a".repeat(64), checksumsYamlSha256: "b".repeat(64) };
   const sameDeps = (a, b) =>
@@ -110,7 +115,9 @@ function fixture(initial = {}) {
       return [
         slots[index],
         (next) => {
-          slots[index] = typeof next === "function" ? next(slots[index]) : next;
+          const value = typeof next === "function" ? next(slots[index]) : next;
+          if (!Object.is(slots[index], value)) dirty = true;
+          slots[index] = value;
         },
       ];
     },
@@ -127,8 +134,14 @@ function fixture(initial = {}) {
       slots[index] ??= { current: value };
       return slots[index];
     },
-    useEffect() {
-      cursor++;
+    useEffect(fn, deps) {
+      const index = cursor++;
+      if (!slots[index] || !sameDeps(slots[index].deps, deps)) {
+        effects.push(() => {
+          slots[index]?.cleanup?.();
+          slots[index] = { deps, cleanup: fn() };
+        });
+      }
     },
   };
   const jsx = (type, props) => ({ type, props: props ?? {} });
@@ -176,6 +189,7 @@ function fixture(initial = {}) {
     "react/jsx-runtime": { jsx, jsxs: jsx, Fragment: "fragment" },
     "@tanstack/react-query": {
       useQuery: (options) => {
+        queryInputs.push(options);
         if (options.queryKey[0] === "installerCheckpoint") {
           const input = options.queryKey[1];
           if (!input || checkpointPending || checkpointFailed)
@@ -341,7 +355,41 @@ function fixture(initial = {}) {
     checkpointModule,
     checkpointModule.exports,
   );
-  deps["@/lib/installerCheckpoint"] = checkpointModule.exports;
+  deps["@/lib/installerCheckpoint"] = {
+    ...checkpointModule.exports,
+    // The routing corpus controls completion synchronously, as its previous
+    // useQuery double did. Native Web Crypto is covered separately below and
+    // in installerCheckpoint.test.mjs; this is not a browser timing claim.
+    createInstallerCheckpoint(input) {
+      const snapshot = { ...input };
+      const digest = createHash("sha256")
+        .update(
+          JSON.stringify([
+            "acfs.installer-acknowledgement.v1",
+            snapshot.command,
+            snapshot.host,
+            snapshot.manifestSha256,
+            snapshot.checksumsYamlSha256,
+          ]),
+        )
+        .digest("hex");
+      const value = { ...snapshot, persistKey: `run-flywheel-installer-v2-${digest}` };
+      lastCheckpoint = value;
+      return {
+        then(resolve) {
+          const job = { value, resolve, reject: () => {} };
+          checkpointJobs.push(job);
+          if (!checkpointPending && !checkpointFailed) resolve(checkpointOverride ?? value);
+          return {
+            catch(reject) {
+              job.reject = reject;
+              if (checkpointFailed) reject(new Error("Secure hashing failed"));
+            },
+          };
+        },
+      };
+    },
+  };
   const cjs = { exports: {} };
   runInContext(`(function(require,module,exports){${compiled.outputText}\n})`, context, {
     filename: fileURLToPath(pageUrl),
@@ -355,7 +403,6 @@ function fixture(initial = {}) {
     cjs.exports,
   );
   function render() {
-    cursor = 0;
     const nodes = [];
     function visit(node) {
       if (Array.isArray(node)) {
@@ -366,7 +413,17 @@ function fixture(initial = {}) {
       nodes.push(node);
       visit(node.props.children);
     }
-    visit(cjs.exports.default());
+    // Commit effects and synchronous fixture results before returning a stable
+    // view. Deferred jobs remain pending until a test explicitly resolves them.
+    for (let pass = 0; pass < 10; pass++) {
+      cursor = 0;
+      dirty = false;
+      nodes.length = 0;
+      visit(cjs.exports.default());
+      for (const run of effects.splice(0)) run();
+      if (!dirty) break;
+      assert.ok(pass < 9, "page fixture did not settle");
+    }
     const find = (predicate) => {
       const node = nodes.find(predicate);
       assert.ok(node, "Expected page control");
@@ -413,6 +470,20 @@ function fixture(initial = {}) {
     provenance,
     acknowledgements,
     session,
+    queryInputs,
+    checkpointJobs,
+    useNativeHashing: (crypto = webcrypto) => {
+      context.crypto = crypto;
+      deps["@/lib/installerCheckpoint"].createInstallerCheckpoint = (input) => {
+        const job = checkpointModule.exports.createInstallerCheckpoint(input);
+        nativeCheckpointJobs.push(job);
+        return job;
+      };
+    },
+    hashesSettled: () => Promise.allSettled(nativeCheckpointJobs),
+    unmount: () => {
+      for (const slot of slots) slot?.cleanup?.();
+    },
     adopt: (overrides = {}) => {
       const value = {
         profileId: "team-test",
@@ -685,17 +756,17 @@ test("catalogue and checksum changes invalidate a formerly acknowledged command"
 });
 
 test("pending or failed hashing cannot reuse a preceding completion but leaves the safe command copyable", () => {
-  const item = fixture();
-  item.render();
-  item.setAcknowledged(true);
-  for (const set of [item.setCheckpointPending, item.setCheckpointFailed]) {
-    set(true);
+  for (const method of ["setCheckpointPending", "setCheckpointFailed"]) {
+    const item = fixture();
+    item.render();
+    item.setAcknowledged(true);
+    item.prefs.ip = "203.0.113.99";
+    item[method](true);
     const view = item.render();
     assert.ok(view.main().props.command);
     assert.equal(view.main().props.showCheckbox, false);
     assert.equal(view.main().props.persistKey, undefined);
     assert.equal(view.navigation().disabled, true);
-    set(false);
   }
 });
 
@@ -721,6 +792,32 @@ test("an acknowledged context can be revisited without approving a different one
   const view = item.render();
   assert.equal(view.main().props.persistKey, first);
   assert.equal(view.navigation().disabled, false);
+});
+
+test("returning to an acknowledged context cannot revive an old digest while its new hash is pending or failed", () => {
+  for (const failed of [false, true]) {
+    const item = fixture();
+    const initialHost = item.prefs.ip;
+    const initialKey = item.render().main().props.persistKey;
+    item.setAcknowledged(true);
+    assert.equal(item.render().navigation().disabled, false);
+    item.setCheckpointPending(true);
+    item.prefs.ip = "203.0.113.99";
+    assert.equal(item.render().navigation().disabled, true);
+    item.prefs.ip = initialHost;
+    if (failed) {
+      item.setCheckpointPending(false);
+      item.setCheckpointFailed(true);
+    }
+    const view = item.render();
+    assert.equal(item.checkpoint().persistKey, initialKey);
+    assert.equal(view.main().props.showCheckbox, false);
+    assert.equal(view.main().props.persistKey, undefined);
+    assert.equal(view.navigation().disabled, true);
+    view.navigation().onContinue();
+    assert.deepEqual(item.completed, []);
+    if (failed) assert.match(view.errors(), /could not prepare the installation acknowledgement/);
+  }
 });
 
 test("cache targets the explicit upgrade destination while exports preserve an older source image", () => {
@@ -888,4 +985,73 @@ test("adoption changes the scoped acknowledgement and cannot reuse saved install
   const view = item.render();
   assert.notEqual(view.main().props.persistKey, previous);
   assert.equal(view.navigation().disabled, true);
+});
+
+test("reviewed installation checkpoints never enter the shared query cache, including after discard", () => {
+  const item = fixture();
+  item.adopt({ username: "private-team-user", ref: "private-team-ref" });
+  const imported = item.render();
+  const command = imported.main().props.command;
+  assert.ok(command.includes("private-team-user"));
+  assert.ok(command.includes("private-team-ref"));
+  assert.ok(imported.main().props.persistKey);
+  item.session.status = "saved";
+  item.session.installation = null;
+  const saved = item.render();
+  assert.notEqual(saved.main().props.command, command);
+  assert.notEqual(saved.main().props.persistKey, imported.main().props.persistKey);
+  for (const query of item.queryInputs) {
+    assert.notEqual(query.queryKey[0], "installerCheckpoint");
+    const serialized = JSON.stringify(query);
+    for (const value of [item.prefs.ip, "private-team-user", "private-team-ref", command]) {
+      assert.ok(!serialized.includes(value), "raw installation context reached the query cache");
+    }
+  }
+});
+
+test("late hashing cannot restore a discarded imported profile or replace the current host", () => {
+  const item = fixture();
+  item.setCheckpointPending(true);
+  item.adopt();
+  assert.equal(item.render().main().props.showCheckbox, false);
+  const imported = item.checkpointJobs.at(-1);
+  item.session.status = "saved";
+  item.session.installation = null;
+  item.prefs.ip = "203.0.113.99";
+  assert.equal(item.render().main().props.showCheckbox, false);
+  const current = item.checkpointJobs.at(-1);
+  current.resolve(current.value);
+  const currentKey = item.render().main().props.persistKey;
+  assert.equal(currentKey, current.value.persistKey);
+  imported.resolve(imported.value);
+  imported.reject(new Error("late failure"));
+  const view = item.render();
+  assert.equal(view.main().props.persistKey, currentKey);
+  assert.equal(view.main().props.showCheckbox, true);
+  assert.doesNotMatch(view.errors(), /hashing/);
+});
+
+test("native hashing runs again after remount and a persisted acknowledgement cannot bypass its failure", async () => {
+  const first = fixture();
+  first.useNativeHashing();
+  assert.equal(first.render().main().props.showCheckbox, false);
+  await first.hashesSettled();
+  const checkpointKey = first.render().main().props.persistKey;
+  assert.match(checkpointKey, /^run-flywheel-installer-v2-[a-f0-9]{64}$/);
+  first.setAcknowledged(true);
+  assert.equal(first.render().navigation().disabled, false);
+  first.unmount();
+
+  const next = fixture();
+  next.acknowledgements.set(`acfs-command-${checkpointKey}`, true);
+  next.useNativeHashing({});
+  next.render();
+  await next.hashesSettled();
+  const failed = next.render();
+  assert.ok(failed.main().props.command);
+  assert.equal(failed.main().props.showCheckbox, false);
+  assert.equal(failed.navigation().disabled, true);
+  failed.navigation().onContinue();
+  assert.deepEqual(next.completed, []);
+  assert.match(failed.errors(), /could not prepare the installation acknowledgement/);
 });

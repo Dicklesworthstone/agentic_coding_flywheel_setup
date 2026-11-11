@@ -52,6 +52,7 @@ for (const deep of [false, true]) {
       "ACFS_VERSION=0.9.0",
       "ACFS_MODE=safe",
       `DEEP_MODE=${deep}`,
+      "FIX_MODE=false",
       "PASS_COUNT=1",
       "FAIL_COUNT=1",
       "SKIP_COUNT=1",
@@ -71,6 +72,7 @@ for (const deep of [false, true]) {
     });
     const raw = JSON.parse(bytes.toString());
     assert.equal(raw.deep_mode, deep);
+    assert.equal(raw.fixes, undefined);
     assert.equal(raw.summary.warn, 2);
     assert.equal(raw.deep_summary !== undefined, deep);
     const value = await reader.reviewDoctorReportFile(new Blob([bytes]), {

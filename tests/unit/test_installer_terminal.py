@@ -487,8 +487,25 @@ printf '%s\n' "$*" >> "$TEST_CAPTURE_CLEANUP"
             "sudo": r'''
 # This is a signal-transparent exec fixture, not a real privilege transition.
 # Authentication happens before detaching, including when stdin is null.
+if [[ "$TEST_SUDO_DETACHED" == true ]]; then
+    # The detached success case models cached/noninteractive authorization.
+    # Requiring /dev/tty here made that existing case fail on every non-root
+    # runner before apt started; root runners never invoked this fixture.
+    /usr/bin/python3 -c 'import errno, os, sys
+try:
+    fd = os.open("/dev/tty", os.O_RDWR)
+except OSError as error:
+    if error.errno != errno.ENXIO:
+        raise
+else:
+    os.close(fd)
+    sys.exit(97)
+' || exit 97
+    printf 'detached-cached-authorization\n' >> "$TEST_SUDO_EVENTS"
+else
 /usr/bin/python3 -c 'import os, sys; fd = os.open("/dev/tty", os.O_RDWR); sys.exit(os.tcgetpgrp(fd) != os.getpgrp())' || exit 97
 printf 'foreground-terminal\n' >> "$TEST_SUDO_EVENTS"
+fi
 unset DEBIAN_FRONTEND
 exec "$@"
 ''',
@@ -528,6 +545,7 @@ exec "$@"
             f"TEST_SETSID_BIN={shlex.quote(setsid_bin)}",
             f"TEST_ENV_BIN={shlex.quote(env_bin)}",
             f"export TEST_SUDO_EVENTS={shlex.quote(str(self.root / 'sudo-events'))}",
+            f"export TEST_SUDO_DETACHED={'true' if detached else 'false'}",
             f"export TEST_FIXTURE_DIR={shlex.quote(str(self.root))}",
             f"TEST_SETSID_AVAILABLE={'true' if setsid_available else 'false'}",
             f"TEST_SLEEP_AVAILABLE={'true' if sleep_available else 'false'}",
@@ -820,6 +838,9 @@ Path(sys.argv[1]).write_text("finished\n")
         output, events, _ = self.gum(detached=True)
         self.assertIn("HAS_GUM=true", output)
         self.assertEqual(events, "update:started\nupdate:detached\ninstall:started\ninstall:detached\n")
+        if os.geteuid() != 0:
+            self.assertEqual((self.root / "sudo-events").read_text().splitlines(),
+                             ["detached-cached-authorization"] * 5)
 
     def test_early_gum_simulated_nonroot_sudo_keeps_terminal_and_restores_environment(self):
         output, events, _ = self.gum(sudo_identity_fixture=True)

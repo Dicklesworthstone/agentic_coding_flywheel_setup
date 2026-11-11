@@ -124,7 +124,10 @@ export function useInstallationHealth() {
         : null,
     [reinstallCommand, vpsIP, manifestSha256, checksumsYamlSha256],
   );
-  const [checkpoint, setCheckpoint] = useState<DoctorCheckpoint>();
+  const [checkpoint, setCheckpoint] = useState<{
+    input: DoctorCheckpointInput;
+    value: DoctorCheckpoint;
+  }>();
   const [hashFailure, setHashFailure] = useState<DoctorCheckpointInput | null>(null);
   useEffect(() => {
     let current = true;
@@ -132,7 +135,7 @@ export function useInstallationHealth() {
       void createDoctorCheckpoint(checkpointInput)
         .then((value) => {
           if (current) {
-            setCheckpoint(value);
+            setCheckpoint({ input: checkpointInput, value });
             setHashFailure(null);
           }
         })
@@ -144,8 +147,16 @@ export function useInstallationHealth() {
       current = false;
     };
   }, [checkpointInput]);
-  const activeCheckpoint = doctorCheckpointMatches(checkpoint, checkpointInput) ? checkpoint : null;
   const hashFailed = Boolean(checkpointInput) && hashFailure === checkpointInput;
+  // An earlier digest for A must not unlock A -> B -> A while the fresh A
+  // request is pending or failed. Reuse the opaque acknowledgement only after
+  // hashing succeeds for this exact input request.
+  const activeCheckpoint =
+    !hashFailed &&
+    checkpoint?.input === checkpointInput &&
+    doctorCheckpointMatches(checkpoint?.value, checkpointInput)
+      ? checkpoint.value
+      : null;
   const completionKey = activeCheckpoint ? `acfs-command-${activeCheckpoint.persistKey}` : null;
   const { acknowledged, status: acknowledgementStatus } = useCommandAcknowledgement(completionKey);
   const doctorConfirmed =

@@ -641,6 +641,53 @@ test("hash failure leaves the manual doctor command but never a fallback complet
   assert.equal(f.routes.length, 0);
 });
 
+for (const outcome of ["success", "failure"]) {
+  test(`returning to an acknowledged host requires a fresh doctor digest (${outcome})`, async () => {
+    const f = fixture();
+    const initialHost = f.prefs.host;
+    f.render();
+    const initial = await f.settle();
+    const initialKey = initial.doctor().props.persistKey;
+    assert.equal(f.acknowledge().continue().props.disabled, false);
+
+    let resume;
+    const wait = new Promise((done) => {
+      resume = done;
+    });
+    f.scope.crypto = {
+      subtle: {
+        async digest(...args) {
+          await wait;
+          if (outcome === "failure") throw new Error("Secure hashing failed");
+          return webcrypto.subtle.digest(...args);
+        },
+      },
+    };
+    f.prefs.host = "203.0.113.99";
+    assert.equal(f.render().continue().props.disabled, true);
+    f.prefs.host = initialHost;
+    const pending = f.render();
+    assert.equal(pending.doctor().props.showCheckbox, false);
+    assert.equal(pending.continue().props.disabled, true);
+    assert.equal(f.rawSteps.validateStep(12).valid, false);
+    f.forward().onContinue();
+    assert.equal(f.routes.length, 0);
+
+    resume();
+    const settled = await f.settle();
+    if (outcome === "failure") {
+      assert.match(settled.error(), /hashing failed/);
+      assert.equal(settled.doctor().props.showCheckbox, false);
+      assert.equal(settled.continue().props.disabled, true);
+      f.forward().onContinue();
+      assert.equal(f.routes.length, 0);
+    } else {
+      assert.equal(settled.doctor().props.persistKey, initialKey);
+      assert.equal(settled.continue().props.disabled, false);
+    }
+  });
+}
+
 test("a late hash from the previous host cannot replace the current checkpoint", async () => {
   const f = fixture();
   let resume;

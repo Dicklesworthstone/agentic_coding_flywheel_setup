@@ -82,6 +82,11 @@ function shouldDehydrateQuery(query: Query): boolean {
   if (queryKey[0] === "commandCompletion") {
     return false;
   }
+  // Older Run Installer pages put the raw host and exact command in both the
+  // key and data. Never write those entries back during an in-flight upgrade.
+  if (queryKey[0] === "installerCheckpoint") {
+    return false;
+  }
   return true;
 }
 
@@ -91,9 +96,9 @@ export function QueryProvider({ children }: { children: ReactNode }) {
   // whenever the options object changes, so build it once.
   const [persistOptions] = useState<Omit<PersistQueryClientOptions, "queryClient">>(() => ({
     persister: makePersister(),
-    // Reject old snapshots that predate the exclusion above. Canonical step,
-    // preference and command flags are separate and are not cleared here.
-    buster: "acfs-canonical-command-completion-v1",
+    // Reject old snapshots containing raw installation checkpoints. Canonical
+    // step, preference and command flags are separate and are not cleared here.
+    buster: "acfs-private-installation-checkpoints-v2",
     dehydrateOptions: { shouldDehydrateQuery },
   }));
 

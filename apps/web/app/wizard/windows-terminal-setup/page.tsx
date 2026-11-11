@@ -17,7 +17,7 @@ import { AlertCard, OutputPreview } from "@/components/alert-card";
 import { GuideExplain, GuideSection, GuideTip, SimplerGuide } from "@/components/simpler-guide";
 import { Button } from "@/components/ui/button";
 import { CodeBlock } from "@/components/ui/code-block";
-import { formatSshTarget } from "@/lib/commandBuilder";
+import { buildWindowsTerminalProfileSshCommand, formatSshTarget } from "@/lib/commandBuilder";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
 import { useSSHUsername, useVPSIP } from "@/lib/userPreferences";
 import { copyTextToClipboard, withCurrentSearch } from "@/lib/utils";
@@ -94,12 +94,11 @@ function WindowsTerminalSetupContent() {
 
   const displayIP = vpsIP || "YOUR_VPS_IP";
   const effectiveUsername = sshUsername.trim() || "ubuntu";
-  const ubuntuTarget = formatSshTarget(effectiveUsername, displayIP);
   // Use %USERPROFILE% (not $HOME): the Windows Terminal profile `commandline`
   // context does not expand PowerShell's $HOME before launching ssh, so the key
   // path would be passed literally and OpenSSH would fall back to password auth
   // (#302). %USERPROFILE% is expanded by Windows in this context.
-  const sshCommandLine = `ssh -i %USERPROFILE%\\.ssh\\acfs_ed25519 ${ubuntuTarget}`;
+  const sshCommandLine = buildWindowsTerminalProfileSshCommand(effectiveUsername, displayIP);
 
   const handleCopy = useCallback(async () => {
     const copiedOk = await copyTextToClipboard(sshCommandLine);
@@ -279,7 +278,7 @@ function WindowsTerminalSetupContent() {
       {/* What you'll see */}
       <OutputPreview title="When you click your new profile:">
         <div className="space-y-1 font-mono text-xs">
-          <p className="text-muted-foreground">Connecting to {ubuntuTarget}...</p>
+          <p className="text-muted-foreground">Connecting to {formatSshTarget(effectiveUsername, displayIP)}...</p>
           <p className="text-green">Welcome to Ubuntu {ACFS_RECOMMENDED_UBUNTU} LTS</p>
           <p className="text-green">{effectiveUsername}@vps:~$</p>
         </div>
