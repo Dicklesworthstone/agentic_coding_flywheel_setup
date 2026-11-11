@@ -162,6 +162,11 @@ function fixture() {
     scope,
   );
   const catalogue = load(new URL("../../../lib/services.ts", import.meta.url), {}, scope);
+  const agentCatalogue = load(
+    new URL("../../../lib/generated/manifest-agents.ts", import.meta.url),
+    {},
+    scope,
+  );
   const rawSteps = load(
     new URL("../../../lib/wizardSteps.ts", import.meta.url),
     {
@@ -261,6 +266,7 @@ function fixture() {
     "@/lib/services": catalogue,
     "@/lib/installerCheckpoint": checkpoint,
     "@/lib/generated/manifest-modules": { manifestProvenance: metadata },
+    "@/lib/generated/manifest-agents": agentCatalogue,
     "@/lib/wizardInstallation": { useWizardInstallation: () => session },
     "@/lib/wizardSteps": {
       ...rawSteps,
@@ -955,4 +961,117 @@ test("no raw command or host is stored in health query keys or acknowledgement s
   assert.ok(!keys.includes(f.prefs.host));
   assert.ok(!keys.includes("bash install.sh"));
   assert.deepEqual([...f.storage.values()], ["true"]);
+});
+
+
+async function completedOnboarding(f) {
+  f.render();
+  await f.settle();
+  f.acknowledge().continue().props.onClick();
+  f.navigateToOnboarding();
+  return finishNavigation(f);
+}
+
+const fullGuideModules = [
+  "base.system", "users.ubuntu", "base.filesystem", "acfs.doctor", "acfs.onboard",
+  "agents.claude", "agents.codex", "agents.antigravity", "stack.ntm", "cli.modern",
+  "shell.zsh", "shell.login", "shell.omz", "tools.lazygit", "tools.zoxide",
+  "lang.bun", "lang.uv", "lang.rust", "lang.go",
+];
+
+test("focused cloud handoff omits unselected agents, NTM, doctor and terminal tutorial", async () => {
+  const f = fixture();
+  f.select([
+    "base.system", "users.ubuntu", "base.filesystem", "lang.bun",
+    "cloud.wrangler", "cloud.supabase", "cloud.vercel",
+  ]);
+  const view = await completedOnboarding(f);
+  const commands = view.cards.map((card) => card.props.command);
+  for (const command of ["wrangler --help", "supabase --help", "vercel --help"]) {
+    assert.ok(commands.includes(command), command);
+  }
+  assert.ok(!commands.includes("acfs doctor"));
+  for (const command of commands) {
+    assert.doesNotMatch(command, /^(?:claude|codex|agy|cc|cod|ntm|onboard|lsd|fd|rg|lazygit)(?:\s|$)/);
+  }
+  assert.doesNotMatch(view.text(), /Claude Code|NTM|ntm new|\bonboard\b|\blazygit\b/);
+});
+
+for (const [moduleId, executable] of [
+  ["agents.claude", "claude"],
+  ["agents.codex", "codex"],
+  ["agents.opencode", "opencode"],
+  ["agents.grok", "grok"],
+]) {
+  test(`focused ${moduleId} handoff uses its executable without assuming shell aliases`, async () => {
+    const f = fixture();
+    f.select(["users.ubuntu", "base.filesystem", moduleId]);
+    const view = await completedOnboarding(f);
+    const commands = view.cards.map((card) => card.props.command);
+    assert.ok(commands.includes(executable));
+    assert.ok(!commands.includes("acfs doctor"));
+    for (const command of commands) {
+      assert.doesNotMatch(command, /^(?:cc|cod|ntm|onboard)(?:\s|$)/);
+    }
+    for (const other of ["claude", "codex", "agy", "opencode", "grok"]) {
+      if (other !== executable) assert.ok(!commands.includes(other), other);
+    }
+  });
+}
+
+for (const [moduleId, expected, absent] of [
+  ["acfs.doctor", "acfs doctor", "onboard"],
+  ["acfs.onboard", "onboard", "acfs doctor"],
+  ["stack.ntm", "ntm new myproject", "onboard"],
+]) {
+  test(`compact handoff includes only the selected ${moduleId} capability`, async () => {
+    const f = fixture();
+    f.select(["users.ubuntu", "base.filesystem", moduleId]);
+    const view = await completedOnboarding(f);
+    const commands = view.cards.map((card) => card.props.command);
+    assert.ok(commands.includes(expected));
+    assert.ok(!commands.includes(absent));
+  });
+}
+
+test("a complete toolset retains the original beginner guide", async () => {
+  const f = fixture();
+  f.select(fullGuideModules);
+  const view = await completedOnboarding(f);
+  const commands = view.cards.map((card) => card.props.command);
+  assert.ok(commands.includes("cc"));
+  assert.ok(commands.includes("ntm new myproject"));
+  assert.match(view.text(), /Your First 5 Minutes/);
+});
+
+for (const missing of [
+  "shell.login", "tools.lazygit", "tools.zoxide", "lang.uv",
+  "stack.ntm", "acfs.onboard", "acfs.doctor",
+]) {
+  test(`omitting ${missing} prevents unrelated inline full-guide instructions`, async () => {
+    const f = fixture();
+    f.select(fullGuideModules.filter((id) => id !== missing));
+    const view = await completedOnboarding(f);
+    assert.match(view.text(), /Continue with your selected setup/);
+    assert.doesNotMatch(view.text(), /Your First 5 Minutes/);
+  });
+}
+
+test("command-builder edits cannot rewrite the acknowledged handoff's tools or reconnect user", async () => {
+  const f = fixture();
+  f.prefs.selection = { profile: "cloud-only" };
+  f.select(["users.ubuntu", "base.filesystem", "cloud.vercel"]);
+  await completedOnboarding(f);
+  f.prefs.selection = { profile: "full" };
+  f.prefs.username = "different-user";
+  f.select(fullGuideModules);
+  const view = f.render();
+  const commands = view.cards.map((card) => card.props.command);
+  assert.ok(commands.includes("vercel --help"));
+  assert.ok(!commands.includes("cc"));
+  assert.ok(!commands.includes("ntm new myproject"));
+  assert.ok(!commands.includes("acfs doctor"));
+  assert.ok(commands.includes("ssh -i ~/.ssh/acfs_ed25519 developer@203.0.113.42"));
+  assert.ok(commands.every((command) => !command.includes("different-user@")));
+  assert.equal(f.redirects.length, 0);
 });

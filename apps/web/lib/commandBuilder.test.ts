@@ -1970,3 +1970,43 @@ describe("buildShareURL", () => {
     }
   });
 });
+
+describe("selected post-install commands", () => {
+  const inputs = {
+    ip: "203.0.113.42",
+    os: "linux" as const,
+    username: "ubuntu",
+    mode: "safe" as const,
+    ref: null,
+  };
+
+  for (const profile of ["agents-only", "cloud-only", "stack-only"] as const) {
+    test(`${profile} omits unselected health and tutorial commands without changing its selector`, () => {
+      const commands = buildCommands({ ...inputs, moduleSelection: { profile } });
+      expect(commands.some((entry) => entry.command === "acfs doctor")).toBe(false);
+      expect(commands.some((entry) => entry.command === "onboard")).toBe(false);
+      expect(commands.find((entry) => entry.id === "installer")?.command).toContain(`--profile "${profile}"`);
+      expect(commands.find((entry) => entry.id === "installer")?.command).not.toContain('--only "acfs.doctor"');
+    });
+  }
+
+  for (const profile of ["full", "minimal"] as const) {
+    test(`${profile} retains both selected post-install commands`, () => {
+      const commands = buildCommands({ ...inputs, moduleSelection: { profile } });
+      expect(commands.find((entry) => entry.id === "doctor")?.command).toBe("acfs doctor");
+      expect(commands.find((entry) => entry.id === "onboard")?.command).toBe("onboard");
+    });
+  }
+
+  test("health and tutorial selection are independent", () => {
+    for (const [moduleId, expected, absent] of [
+      ["acfs.doctor", "acfs doctor", "onboard"],
+      ["acfs.onboard", "onboard", "acfs doctor"],
+    ] as const) {
+      const commands = buildCommands({ ...inputs, moduleSelection: { onlyModules: [moduleId] } });
+      expect(commands.some((entry) => entry.command === expected)).toBe(true);
+      expect(commands.some((entry) => entry.command === absent)).toBe(false);
+      expect(commands.find((entry) => entry.id === "installer")?.command).toContain(`--only "${moduleId}"`);
+    }
+  });
+});

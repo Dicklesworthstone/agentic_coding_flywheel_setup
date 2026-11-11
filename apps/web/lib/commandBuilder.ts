@@ -775,23 +775,29 @@ export function buildCommands(inputs: CommandBuilderInputs): GeneratedCommand[] 
     runLocation: "local",
   });
 
-  // 4. Doctor check
-  commands.push({
-    id: "doctor",
-    label: "Health check",
-    description: "Verify all tools installed correctly",
-    command: "acfs doctor",
-    runLocation: "vps",
-  });
-
-  // 5. Onboard
-  commands.push({
-    id: "onboard",
-    label: "Start tutorial",
-    description: "Launch the interactive onboarding",
-    command: "onboard",
-    runLocation: "vps",
-  });
+  // Post-install commands must belong to the selected toolset. A targeted
+  // installation need not deploy either the ACFS doctor or terminal lessons.
+  const selectedModules = new Set(
+    resolveModuleSelection(inputs.moduleSelection).included.map((entry) => entry.id),
+  );
+  if (selectedModules.has("acfs.doctor")) {
+    commands.push({
+      id: "doctor",
+      label: "Health check",
+      description: "Verify the selected installation",
+      command: "acfs doctor",
+      runLocation: "vps",
+    });
+  }
+  if (selectedModules.has("acfs.onboard")) {
+    commands.push({
+      id: "onboard",
+      label: "Start tutorial",
+      description: "Launch the interactive onboarding",
+      command: "onboard",
+      runLocation: "vps",
+    });
+  }
 
   return commands;
 }

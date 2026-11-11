@@ -30,6 +30,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { trackConversion } from "@/lib/analytics";
 import { formatSshTarget } from "@/lib/commandBuilder";
+import { manifestAgents } from "@/lib/generated/manifest-agents";
 import {
   useCommandAcknowledgement,
   useInstallationHealth,
@@ -113,9 +114,144 @@ function ConfettiParticle({
   );
 }
 
+// The full beginner guide contains commands and inline examples for this toolset.
+const FULL_TUTORIAL_MODULES = [
+  "base.system",
+  "users.ubuntu",
+  "base.filesystem",
+  "acfs.doctor",
+  "acfs.onboard",
+  "agents.claude",
+  "agents.codex",
+  "agents.antigravity",
+  "stack.ntm",
+  "cli.modern",
+  "shell.zsh",
+  "shell.login",
+  "shell.omz",
+  "tools.lazygit",
+  "tools.zoxide",
+  "lang.bun",
+  "lang.uv",
+  "lang.rust",
+  "lang.go",
+] as const;
+
+function SelectedStackGuidance({
+  moduleIds,
+  userTarget,
+}: {
+  moduleIds: readonly string[];
+  userTarget: string;
+}) {
+  const selected = new Set(moduleIds);
+  const agents = manifestAgents.filter((agent) => selected.has(agent.moduleId));
+  const cloudTools = [
+    { moduleId: "cloud.wrangler", name: "Cloudflare Wrangler", command: "wrangler --help" },
+    { moduleId: "cloud.supabase", name: "Supabase", command: "supabase --help" },
+    { moduleId: "cloud.vercel", name: "Vercel", command: "vercel --help" },
+  ].filter((tool) => selected.has(tool.moduleId));
+
+  return (
+    <div className="space-y-8">
+      <div className="space-y-3">
+        <h1 className="text-3xl font-bold tracking-tight">Continue with your selected setup</h1>
+        <p className="text-muted-foreground">
+          Use the commands below for the tools you selected during installation. You can return to
+          the Learning Hub whenever you need a tutorial.
+        </p>
+      </div>
+      <CommandBuilderPanel />
+      <Card className="space-y-4 p-6">
+        <h2 className="text-xl font-semibold">Reconnect to your VPS</h2>
+        <CommandCard
+          command={`ssh -i ~/.ssh/acfs_ed25519 ${userTarget}`}
+          windowsCommand={`ssh -i $HOME\\.ssh\\acfs_ed25519 ${userTarget}`}
+          description="Connect from your laptop"
+          runLocation="local"
+        />
+        {selected.has("acfs.doctor") && (
+          <CommandCard
+            command="acfs doctor"
+            description="Review installation health"
+            runLocation="vps"
+          />
+        )}
+      </Card>
+      {agents.length > 0 && (
+        <Card className="space-y-4 p-6">
+          <h2 className="text-xl font-semibold">Open a coding agent</h2>
+          <p className="text-muted-foreground">
+            Open the agent you plan to use from your project directory and complete its sign-in
+            prompts if needed.
+          </p>
+          {agents.map((agent) => (
+            <CommandCard
+              key={agent.moduleId}
+              command={agent.cli}
+              description={agent.displayName}
+              runLocation="vps"
+            />
+          ))}
+        </Card>
+      )}
+      {selected.has("stack.ntm") && (
+        <Card className="space-y-4 p-6">
+          <h2 className="text-xl font-semibold">Keep a session running</h2>
+          <CommandCard command="ntm list" description="See existing sessions" runLocation="vps" />
+          <CommandCard
+            command="ntm new myproject"
+            description="Create a project session"
+            runLocation="vps"
+          />
+          <CommandCard
+            command="ntm attach myproject"
+            description="Return to that session"
+            runLocation="vps"
+          />
+        </Card>
+      )}
+      {cloudTools.length > 0 && (
+        <Card className="space-y-4 p-6">
+          <h2 className="text-xl font-semibold">Use your cloud tools</h2>
+          {cloudTools.map((tool) => (
+            <CommandCard
+              key={tool.moduleId}
+              command={tool.command}
+              description={tool.name}
+              runLocation="vps"
+            />
+          ))}
+        </Card>
+      )}
+      <Card className="space-y-4 p-6">
+        <h2 className="text-xl font-semibold">Continue learning</h2>
+        <Button asChild>
+          <Link href="/learn" onClick={() => trackConversion("learning_hub_started")}>
+            <BookOpen className="mr-2 h-4 w-4" />
+            Open Learning Hub
+          </Link>
+        </Button>
+        {selected.has("acfs.onboard") && (
+          <CommandCard
+            command="onboard"
+            description="Open the terminal tutorial"
+            runLocation="vps"
+          />
+        )}
+      </Card>
+    </div>
+  );
+}
+
 export default function LaunchOnboardingStep() {
   const router = useRouter();
-  const [unlocked, setUnlocked] = useState<{ key: string; host: string } | null>(null);
+  const [unlocked, setUnlocked] = useState<{
+    key: string;
+    host: string;
+    username: string;
+    moduleIds: string[];
+  } | null>(null);
 
   // Analytics tracking for this wizard step
   const { markComplete } = useWizardAnalytics({
@@ -134,6 +270,7 @@ export default function LaunchOnboardingStep() {
     sshUsername,
     doctorConfirmed,
     completionKey,
+    selectedPlan,
   } = useInstallationHealth();
   const ready = settingsReady && !loading;
   // Entry needs the exact verified checkpoint. After that, the Command Builder
@@ -149,7 +286,7 @@ export default function LaunchOnboardingStep() {
     unlockedStatus === "success" &&
     unlockedAcknowledged;
   const displayIP = vpsIP && vpsIP.trim() ? vpsIP : "YOUR_VPS_IP";
-  const effectiveUsername = sshUsername.trim() || "ubuntu";
+  const effectiveUsername = (unlocked?.username ?? sshUsername).trim() || "ubuntu";
   const userTarget = formatSshTarget(effectiveUsername, displayIP);
   const homeDir = effectiveUsername === "root" ? "/root" : `/home/${effectiveUsername}`;
   const sshConfigSnippet = `Host myserver\n    HostName ${displayIP}\n    User ${effectiveUsername}\n    IdentityFile ~/.ssh/acfs_ed25519`;
@@ -164,7 +301,7 @@ export default function LaunchOnboardingStep() {
     const canAccess =
       canAccessWizardStep(completedSteps, 13) && highestCompleted >= 12 && doctorConfirmed;
 
-    if (!canAccess || completionKey === null || !vpsIP) {
+    if (!canAccess || completionKey === null || !vpsIP || !selectedPlan?.ok) {
       router.replace(withCurrentSearch("/wizard/status-check"));
       return;
     }
@@ -175,16 +312,28 @@ export default function LaunchOnboardingStep() {
     setCompletedSteps(allSteps);
     // Use setTimeout to avoid the ESLint set-state-in-effect rule, since
     // this unlock is logically part of the navigation guard check above.
-    const timer = setTimeout(() => setUnlocked({ key: completionKey, host: vpsIP }), 0);
+    const timer = setTimeout(
+      () => setUnlocked({
+        key: completionKey,
+        host: vpsIP,
+        username: sshUsername,
+        moduleIds: selectedPlan.included.map((entry) => entry.id),
+      }),
+      0,
+    );
     return () => clearTimeout(timer);
-  }, [markComplete, ready, retained, router, doctorConfirmed, completionKey, vpsIP]);
+  }, [markComplete, ready, retained, router, doctorConfirmed, completionKey, vpsIP, sshUsername, selectedPlan]);
 
-  if (!retained) {
+  if (!retained || unlocked === null) {
     return (
       <div className="flex items-center justify-center py-12">
         <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     );
+  }
+
+  if (!FULL_TUTORIAL_MODULES.every((id) => unlocked.moduleIds.includes(id))) {
+    return <SelectedStackGuidance moduleIds={unlocked.moduleIds} userTarget={userTarget} />;
   }
 
   return (
