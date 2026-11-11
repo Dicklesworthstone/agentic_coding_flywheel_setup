@@ -559,24 +559,11 @@ fi
 mkdir -p "$target_home/.acfs"
 chown -hR "${TARGET_USER:-ubuntu}:${TARGET_USER:-ubuntu}" "$target_home/.acfs"
 
-# Save the workspace AGENTS.md template into ACFS-owned storage.
-# ACFS may freely refresh this canonical copy on every install/update.
-ACFS_RAW="${ACFS_RAW:-https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/${ACFS_REF:-main}}"
-CURL_ARGS=(-q -fsSL)
-if curl -q --help all 2>/dev/null | grep -q -- '--proto'; then
-  CURL_ARGS=(-q --proto '=https' --proto-redir '=https' -fsSL)
-fi
-mkdir -p "$target_home/.acfs/docs"
-curl "${CURL_ARGS[@]}" -o "$target_home/.acfs/docs/AGENTS.workspace.md" "${ACFS_RAW}/acfs/AGENTS.md" || true
-chown -R "${TARGET_USER:-ubuntu}:${TARGET_USER:-ubuntu}" "$target_home/.acfs/docs" 2>/dev/null || true
-
-# Seed /data/projects/AGENTS.md ONLY when absent. An existing file
-# may contain user-authored rules and is never overwritten; use
-# `acfs agents install` for explicit, non-overwriting deployment.
-if [[ -f "$target_home/.acfs/docs/AGENTS.workspace.md" && ! -e /data/projects/AGENTS.md ]]; then
-  cp "$target_home/.acfs/docs/AGENTS.workspace.md" /data/projects/AGENTS.md
-  chown "${TARGET_USER:-ubuntu}:${TARGET_USER:-ubuntu}" /data/projects/AGENTS.md 2>/dev/null || true
-fi
+# Use the same authenticated local asset and no-overwrite deployment
+# as the authored phase. Fetching mutable raw bytes here would break
+# the verified bootstrap identity and make offline resumes fail.
+source "${ACFS_LIB_DIR:?}/install_helpers.sh"
+acfs_install_workspace_template "$target_home" /data/projects
 INSTALL_BASE_FILESYSTEM
         then
             log_error "base.filesystem: install command failed: if [[ -n \"\$explicit_target_home\" ]]; then"

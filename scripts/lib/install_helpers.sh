@@ -1472,6 +1472,156 @@ acfs_install_executable_into_primary_bin() {
     run_as_target "$install_bin" -m 0755 "$src_path" "$dest_path"
 }
 
+# Deploy the workspace guide from the same verified source as the installer.
+# Both the authored filesystem phase and its manifest module use this helper.
+# Publish the managed copy atomically; seed user instructions with a no-replace
+# link so an existing file, directory, or even dangling symlink is preserved.
+acfs_install_workspace_template() {
+    local target_home="${1:-${TARGET_HOME:-}}"
+    local workspace="${2:-/data/projects}"
+    local source_root="${ACFS_TRUSTED_INTERNAL_SOURCE_ROOT:-}"
+    local ledger_sha="${ACFS_TRUSTED_INTERNAL_LEDGER_SHA256:-}"
+    local python_bin=""
+    local -a writer=()
+
+    if [[ "$source_root" != /* || "$source_root" == / || ! "$ledger_sha" =~ ^[0-9a-f]{64}$ ]]; then
+        log_error "Workspace template requires the verified ACFS source identity"
+        return 1
+    fi
+    python_bin="$(_acfs_system_binary_path python3 2>/dev/null)" || return 1
+    writer=("$python_bin")
+    if [[ $EUID -ne 0 && "${TARGET_USER:-ubuntu}" != "$(_acfs_resolve_current_user)" ]]; then
+        writer=(_acfs_run_root_bin_command "$python_bin")
+    fi
+    "${writer[@]}" -I - "${TARGET_USER:-ubuntu}" \
+        "$target_home" "$workspace" "$source_root" "$ledger_sha" <<'PY'
+import hashlib
+import os
+import pwd
+import re
+import secrets
+import stat
+import sys
+
+user, home, workspace, source, ledger_sha = sys.argv[1:]
+directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+
+def directory(path):
+    if not path.startswith("/") or path == "/" or any(p in (".", "..", "") for p in path[1:].split("/")):
+        raise ValueError("invalid workspace template path")
+    fd = os.open("/", directory_flags)
+    try:
+        for part in path[1:].split("/"):
+            child = os.open(part, directory_flags, dir_fd=fd)
+            os.close(fd)
+            fd = child
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+def read_file(path):
+    parent, name = os.path.split(path)
+    parent_fd = directory(parent)
+    try:
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=parent_fd)
+        with os.fdopen(fd, "rb") as stream:
+            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                raise ValueError("workspace template source is not a regular file")
+            body = stream.read(2 * 1024 * 1024 + 1)
+            if len(body) > 2 * 1024 * 1024:
+                raise ValueError("workspace template source exceeds the size limit")
+            return body
+    finally:
+        os.close(parent_fd)
+
+def child_directory(parent_fd, name):
+    try:
+        os.mkdir(name, 0o755, dir_fd=parent_fd)
+    except FileExistsError:
+        pass
+    return os.open(name, directory_flags, dir_fd=parent_fd)
+
+def publish(parent_fd, name, body, *, replace):
+    try:
+        existing = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        existing = None
+    if existing is not None:
+        if not replace:
+            return
+        if not stat.S_ISREG(existing.st_mode) or existing.st_uid != os.geteuid():
+            raise ValueError("managed workspace template is not an owned regular file")
+
+    temporary = "." + name + "." + secrets.token_hex(16)
+    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                 0o600, dir_fd=parent_fd)
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(body)
+            stream.flush()
+            os.fchmod(stream.fileno(), 0o644)
+            os.fsync(stream.fileno())
+        if replace:
+            os.replace(temporary, name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+        else:
+            try:
+                os.link(temporary, name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd,
+                        follow_symlinks=False)
+            except FileExistsError:
+                # Another writer won after the absence check. Its instructions
+                # have the same precedence as a file present before this run.
+                pass
+        os.fsync(parent_fd)
+    finally:
+        try:
+            os.unlink(temporary, dir_fd=parent_fd)
+        except FileNotFoundError:
+            pass
+
+try:
+    ledger = read_file(source + "/scripts/generated/internal_checksums.sh")
+    if hashlib.sha256(ledger).hexdigest() != ledger_sha:
+        raise ValueError("internal checksum ledger changed after source verification")
+    expected = re.findall(rb'^  \[acfs/AGENTS\.md\]="([0-9a-f]{64})"$', ledger, re.MULTILINE)
+    body = read_file(source + "/acfs/AGENTS.md")
+    if len(expected) != 1 or hashlib.sha256(body).hexdigest().encode() != expected[0]:
+        raise ValueError("workspace template changed after source verification")
+
+    account = pwd.getpwnam(user)
+    # Read the authenticated bootstrap while it is still root-private. All
+    # writes then run with the target identity, never root through user paths.
+    if os.geteuid() == 0 and account.pw_uid != 0:
+        os.setgroups([])
+        os.setgid(account.pw_gid)
+        os.setuid(account.pw_uid)
+    elif os.geteuid() != account.pw_uid:
+        raise ValueError("workspace template writer is not the target user")
+
+    home_fd = directory(home)
+    try:
+        acfs_fd = child_directory(home_fd, ".acfs")
+        try:
+            docs_fd = child_directory(acfs_fd, "docs")
+            try:
+                publish(docs_fd, "AGENTS.workspace.md", body, replace=True)
+            finally:
+                os.close(docs_fd)
+        finally:
+            os.close(acfs_fd)
+    finally:
+        os.close(home_fd)
+    workspace_fd = directory(workspace)
+    try:
+        publish(workspace_fd, "AGENTS.md", body, replace=False)
+    finally:
+        os.close(workspace_fd)
+except (OSError, ValueError, KeyError) as error:
+    print("ERROR: Unable to install the verified workspace template: " + str(error), file=sys.stderr)
+    sys.exit(1)
+PY
+}
+
 # Run a shell string (or stdin) as TARGET_USER
 run_as_target_shell() {
     local cmd="${1:-}"
@@ -1574,6 +1724,10 @@ run_as_root_shell() {
     local env_bin=""
     local bash_bin=""
     local sudo_bin=""
+    # Authored manifest asset deployment must retain the source identity in
+    # both direct-root child shells and the explicit sudo environment below.
+    local -x ACFS_TRUSTED_INTERNAL_SOURCE_ROOT="${ACFS_TRUSTED_INTERNAL_SOURCE_ROOT:-}"
+    local -x ACFS_TRUSTED_INTERNAL_LEDGER_SHA256="${ACFS_TRUSTED_INTERNAL_LEDGER_SHA256:-}"
 
     path_export_source="$(_acfs_privileged_path_export_source)"
     if [[ "$EUID" -eq 0 ]]; then
@@ -1603,6 +1757,8 @@ run_as_root_shell() {
     [[ -n "${ACFS_ASSETS_DIR:-}" ]] && env_args+=("ACFS_ASSETS_DIR=$ACFS_ASSETS_DIR")
     [[ -n "${ACFS_CHECKSUMS_YAML:-}" ]] && env_args+=("ACFS_CHECKSUMS_YAML=$ACFS_CHECKSUMS_YAML")
     [[ -n "${ACFS_MANIFEST_YAML:-}" ]] && env_args+=("ACFS_MANIFEST_YAML=$ACFS_MANIFEST_YAML")
+    [[ -n "${ACFS_TRUSTED_INTERNAL_SOURCE_ROOT:-}" ]] && env_args+=("ACFS_TRUSTED_INTERNAL_SOURCE_ROOT=$ACFS_TRUSTED_INTERNAL_SOURCE_ROOT")
+    [[ -n "${ACFS_TRUSTED_INTERNAL_LEDGER_SHA256:-}" ]] && env_args+=("ACFS_TRUSTED_INTERNAL_LEDGER_SHA256=$ACFS_TRUSTED_INTERNAL_LEDGER_SHA256")
     [[ -n "${CHECKSUMS_FILE:-}" ]] && env_args+=("CHECKSUMS_FILE=$CHECKSUMS_FILE")
     [[ -n "${SCRIPT_DIR:-}" ]] && env_args+=("SCRIPT_DIR=$SCRIPT_DIR")
     [[ -n "${ACFS_RAW:-}" ]] && env_args+=("ACFS_RAW=$ACFS_RAW")

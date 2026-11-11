@@ -8198,11 +8198,6 @@ setup_filesystem() {
     # Ensure workspace directories are owned by target user (avoid over-broad recursive chown).
     try_step "Setting /data ownership" $SUDO chown -h "$TARGET_USER:$TARGET_USER" /data /data/projects /data/cache || true
 
-    # Install AGENTS.md template to /data/projects for agent guidance
-    log_detail "Installing AGENTS.md template"
-    try_step_optional "Installing AGENTS.md" install_asset "acfs/AGENTS.md" "/data/projects/AGENTS.md" || true
-    try_step_optional "Setting AGENTS.md ownership" $SUDO chown "$TARGET_USER:$TARGET_USER" "/data/projects/AGENTS.md" || true
-
     # CRITICAL: Fix home directory ownership FIRST, before any run_as_target calls
     # Some cloud images (e.g., Hetzner) have /home/ubuntu owned by root after user creation
     # If we don't fix this first, all run_as_target mkdir calls below will fail
@@ -8223,6 +8218,12 @@ setup_filesystem() {
     try_step "Creating ACFS directories" $SUDO mkdir -p "$ACFS_HOME"/{zsh,tmux,bin,docs,logs,scripts/lib} || return 1
     try_step "Setting ACFS directory ownership" acfs_chown_tree "$TARGET_USER:$TARGET_USER" "$ACFS_HOME" || return 1
     try_step "Creating ACFS log directory" $SUDO mkdir -p "$ACFS_LOG_DIR" || return 1
+
+    # The canonical guide is required by base.filesystem verification. Keep
+    # deployment identical to the generated module and preserve workspace
+    # instructions on reruns, including dangling user-owned symlinks.
+    try_step "Installing workspace AGENTS.md template" \
+        acfs_install_workspace_template "$TARGET_HOME" /data/projects || return 1
 
     # Install essential ACFS scripts early so `acfs doctor` works even after early failures.
     # This is critical for debugging failed installs - users need `acfs doctor` to work
