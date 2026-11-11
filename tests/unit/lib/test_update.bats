@@ -11463,6 +11463,7 @@ EOF
     local installer="$PROJECT_ROOT/install.sh"
 
     init_stub_dir
+    source_lib "install_helpers"
 
     # shellcheck disable=SC1090
     eval "$(sed -n '/^_smoke_target_path()/,/^}$/p' "$installer")"

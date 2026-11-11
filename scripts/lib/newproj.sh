@@ -1401,10 +1401,13 @@ NEWPROJ_PARTIAL_DIR=""
 _newproj_report_partial_on_exit() {
     local rc=$?
     if (( rc != 0 )) && [[ -n "${NEWPROJ_PARTIAL_DIR:-}" ]]; then
+        local retained_dir
+        # Bash can cache the old pathname after another process renames cwd.
+        retained_dir=$(python3 -I -c 'import os; print(os.getcwd())' 2>/dev/null) || retained_dir="$NEWPROJ_PARTIAL_DIR"
         {
             echo ""
             echo -e "${RED}newproj failed (exit $rc) before project setup finished.${NC}"
-            echo -e "${YELLOW}Partial project left at: ${NEWPROJ_PARTIAL_DIR}${NC}"
+            echo -e "${YELLOW}Partial project left at: ${retained_dir}${NC}"
             if [[ ${#CREATED_ITEMS[@]} -gt 0 ]]; then
                 echo -e "${YELLOW}Created before the failure:${NC}"
                 local item
@@ -1415,6 +1418,68 @@ _newproj_report_partial_on_exit() {
             echo -e "${YELLOW}Nothing was removed automatically. Review the directory, delete it if unwanted, then re-run newproj.${NC}"
         } >&2
     fi
+}
+
+# Keep CLI creation on the same directory throughout setup, including across
+# external git/br calls. The working directory retains the original inode;
+# inspect the requested path without following any linked ancestor before
+# using it again. Only explicit bootstrap directories may be created here.
+newproj_cli_directory() {
+    if ! command -v python3 >/dev/null 2>&1; then
+        printf '%s\n' 'Error: safe project creation requires python3.' >&2
+        return 1
+    fi
+    python3 -I - "$@" <<'ACFS_NEWPROJ_DIRECTORY_PY'
+from contextlib import ExitStack
+import os
+import sys
+
+
+path, action, *expected = sys.argv[1:]
+try:
+    if not path.startswith("/") or action not in ("prepare", "verify", "commands"):
+        raise ValueError("invalid project directory request")
+    parts = path.split("/")
+    if not parts[-1]:
+        raise ValueError("project path must name a directory")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    with ExitStack() as handles:
+        def opened(name, parent=None):
+            fd = os.open(name, flags, dir_fd=parent)
+            handles.callback(os.close, fd)
+            return fd
+
+        parent = opened("/")
+        for part in parts[1:-1]:
+            if part not in ("", "."):
+                parent = opened(part, parent)
+        if action == "prepare":
+            try:
+                os.mkdir(parts[-1], 0o755, dir_fd=parent)
+            except FileExistsError:
+                pass
+        root = opened(parts[-1], parent)
+        info = os.fstat(root)
+        identity = str(info.st_dev) + ":" + str(info.st_ino)
+        if action == "prepare":
+            if os.listdir(root):
+                raise ValueError("project directory is no longer empty")
+            print(identity)
+        else:
+            current = os.stat(".")
+            if expected != [identity] or (current.st_dev, current.st_ino) != (info.st_dev, info.st_ino):
+                raise ValueError("project directory moved or was replaced; original files were retained")
+            if action == "commands":
+                for part in (".claude", "commands"):
+                    try:
+                        os.mkdir(part, 0o755, dir_fd=root)
+                    except FileExistsError:
+                        pass
+                    root = opened(part, root)
+except (OSError, ValueError) as error:
+    print("Error: cannot safely use project directory: " + str(error), file=sys.stderr)
+    sys.exit(1)
+ACFS_NEWPROJ_DIRECTORY_PY
 }
 
 # ============================================================
@@ -1852,7 +1917,7 @@ ubs .                                   # Whole project
 AGENTS_EOF
 )
 
-    printf '%s\n' "${template//PROJECT_NAME_PLACEHOLDER/$project_name}" > AGENTS.md
+    try_write_file AGENTS.md "${template//PROJECT_NAME_PLACEHOLDER/$project_name}"$'\n'
 }
 
 # ============================================================
@@ -1948,6 +2013,8 @@ main() {
     local skip_agents=false
     local interactive_mode=false
     local git_initialized=false
+    local directory_identity=""
+    local generated_content=""
     local -a initial_commit_paths=()
 
     # Parse arguments
@@ -2091,29 +2158,35 @@ main() {
     echo -e "${CYAN}Directory: $project_dir${NC}"
     echo ""
 
-    # Create directory
-    mkdir -p "$project_dir"
-    cd "$project_dir" || {
+    # Create or reopen only an empty, unlinked directory. The earlier checks
+    # are user-facing diagnostics, not permission to follow a later symlink.
+    directory_identity=$(newproj_cli_directory "$project_dir" prepare) || return $?
+    cd -- "$project_dir" || {
         echo -e "${RED}Error: Failed to enter project directory: $project_dir${NC}" >&2
-        exit 1
+        return 1
     }
     # From here on a failure leaves a partially-populated project.
     NEWPROJ_PARTIAL_DIR="$project_dir"
+    # The shared writer tracks created paths for the TUI; CLI failures always
+    # retain those paths and must never arm the legacy rollback mechanism.
+    suspend_project_creation_cleanup || return $?
+    newproj_cli_directory "$project_dir" verify "$directory_identity" || return $?
 
     # Initialize git if not already
     if [[ ! -d .git ]]; then
         echo -e "${GREEN}Initializing git repository...${NC}"
-        newproj_run_project_command git init -b main
+        newproj_run_project_command git init -b main || return $?
+        newproj_cli_directory "$project_dir" verify "$directory_identity" || return $?
         git_initialized=true
         CREATED_ITEMS+=("Git repository")
 
         # Create README
-        echo "# $project_name" > README.md
+        try_write_file README.md "# $project_name"$'\n' || return $?
         initial_commit_paths+=("README.md")
         CREATED_ITEMS+=("README.md")
 
         # Create universal .gitignore (patterns that apply to ALL project types)
-        cat > .gitignore << 'EOF'
+        generated_content=$(cat << 'EOF'
 # OS/Editor artifacts
 .DS_Store
 Thumbs.db
@@ -2148,11 +2221,13 @@ venv/
 # Local AI agent settings
 .claude/settings.local.json
 EOF
+        )
+        try_write_file .gitignore "$generated_content"$'\n' || return $?
         initial_commit_paths+=(".gitignore")
         CREATED_ITEMS+=(".gitignore")
 
         # Create universal .ubsignore (patterns for UBS bug scanner)
-        cat > .ubsignore << 'EOF'
+        generated_content=$(cat << 'EOF'
 # UBS ignore globs (keep bug scanner focused on source code)
 # Patterns are evaluated relative to the project root.
 
@@ -2190,6 +2265,8 @@ test-results/
 .pnpm-store/
 .yarn/
 EOF
+        )
+        try_write_file .ubsignore "$generated_content"$'\n' || return $?
         initial_commit_paths+=(".ubsignore")
         CREATED_ITEMS+=(".ubsignore")
     else
@@ -2201,7 +2278,9 @@ EOF
         if command -v br &>/dev/null; then
             if [[ ! -d .beads ]]; then
                 echo -e "${GREEN}Initializing beads (br)...${NC}"
-                newproj_run_project_command br init
+                newproj_cli_directory "$project_dir" verify "$directory_identity" || return $?
+                newproj_run_project_command br init || return $?
+                newproj_cli_directory "$project_dir" verify "$directory_identity" || return $?
                 # Only known shareable br outputs belong to this bootstrap.
                 # Never sweep the directory: it also holds private databases
                 # and may acquire unrelated work while initialization runs.
@@ -2224,17 +2303,26 @@ EOF
 
     # Create Claude settings if not skipped
     if [[ "$skip_claude" == "false" ]]; then
-        mkdir -p .claude/commands
+        newproj_cli_directory "$project_dir" commands "$directory_identity" || return $?
+        local settings_path
+        for settings_path in .claude/settings.local.json .claude/settings.toml; do
+            if [[ -L "$settings_path" || ( -e "$settings_path" && ! -f "$settings_path" ) ]]; then
+                printf 'Error: refusing unsafe existing Claude settings: %s\n' "$settings_path" >&2
+                return 1
+            fi
+        done
 
         if [[ ! -f .claude/settings.local.json ]] && [[ ! -f .claude/settings.toml ]]; then
             echo -e "${GREEN}Creating Claude settings...${NC}"
-            cat > .claude/settings.local.json << 'EOF'
+            generated_content=$(cat << 'EOF'
 {
   "permissions": {
     "allow": ["Read", "Edit", "Write", "Bash"]
   }
 }
 EOF
+            )
+            try_write_file .claude/settings.local.json "$generated_content"$'\n' || return $?
             initial_commit_paths+=(".claude/settings.local.json")
             CREATED_ITEMS+=("Claude settings (.claude/settings.local.json)")
         else
@@ -2244,9 +2332,14 @@ EOF
 
     # Create AGENTS.md template if not skipped
     if [[ "$skip_agents" == "false" ]]; then
+        newproj_cli_directory "$project_dir" verify "$directory_identity" || return $?
+        if [[ -L AGENTS.md || ( -e AGENTS.md && ! -f AGENTS.md ) ]]; then
+            printf '%s\n' 'Error: refusing unsafe existing AGENTS.md.' >&2
+            return 1
+        fi
         if [[ ! -f AGENTS.md ]]; then
             echo -e "${GREEN}Creating AGENTS.md template...${NC}"
-            create_agents_template "$project_name"
+            create_agents_template "$project_name" || return $?
             initial_commit_paths+=("AGENTS.md")
             CREATED_ITEMS+=("AGENTS.md (template)")
         else
@@ -2254,6 +2347,7 @@ EOF
         fi
     fi
 
+    newproj_cli_directory "$project_dir" verify "$directory_identity" || return $?
     if [[ "$git_initialized" == "true" ]]; then
         local -a commit_paths=()
         local initial_path ignore_status diff_status
@@ -2295,6 +2389,7 @@ EOF
         fi
     fi
 
+    newproj_cli_directory "$project_dir" verify "$directory_identity" || return $?
     # Print summary of what was created
     echo ""
     if [[ ${#CREATED_ITEMS[@]} -gt 0 ]]; then
@@ -2305,6 +2400,7 @@ EOF
     fi
 
     echo ""
+    suspend_project_creation_cleanup || return $?
     NEWPROJ_PARTIAL_DIR=""
     echo -e "${GREEN}Project $project_name ready at $project_dir${NC}"
     echo ""

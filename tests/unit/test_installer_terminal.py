@@ -18,6 +18,7 @@ import select
 import shlex
 import shutil
 import signal
+import subprocess
 import tempfile
 import time
 import unittest
@@ -27,9 +28,9 @@ ROOT = Path(__file__).resolve().parents[2]
 SOURCE = Path(os.environ.get("ACFS_INSTALLER_TEST_SOURCE", ROOT / "install.sh"))
 
 
-def definition(name: str) -> str:
+def definition(name: str, source: Path = SOURCE) -> str:
     match = re.search(r"^" + re.escape(name) + r"\(\) \{\n.*?^\}",
-                      SOURCE.read_text(), re.M | re.S)
+                      source.read_text(), re.M | re.S)
     if not match:
         raise ValueError(f"Missing production function: {name}")
     return match[0]
@@ -921,6 +922,268 @@ Path(sys.argv[1]).write_text("finished\n")
         self.assertIn("HAS_GUM=false", output)
         self.assertEqual(events, "")
         self.assertFalse(timeouts.exists())
+
+
+class InstallerSmokeTests(unittest.TestCase):
+    """Real bounded probe processes and production smoke selection/exit logic."""
+
+    @classmethod
+    def setUpClass(cls):
+        # Reap test-owned descendants even if their probe exits before them.
+        import ctypes
+        if ctypes.CDLL(None).prctl(36, 1, 0, 0, 0) != 0:
+            raise RuntimeError("Linux child-subreaper support is required")
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix="acfs-smoke-test-"))
+        self.target = self.root / "target's home; literal"
+        self.bin = self.target / ".local/bin"
+        self.bin.mkdir(parents=True)
+        self.addCleanup(self.stop_probes)
+        self.environment = {
+            "PATH": "/usr/bin:/bin", "HOME": str(self.root),
+            "TARGET_HOME": str(self.target), "ACFS_BIN_DIR": str(self.bin),
+            "TEST_SMOKE_ROOT": str(self.root),
+        }
+        self.timeout = self.root / "timeout"
+        self.timeout.write_text("#!/bin/bash\n" + r'''
+set -euo pipefail
+[[ "$1" == --kill-after=2s && "$2" == 120s ]] || exit 98
+printf '%s\n' "$1 $2" >> "$TEST_SMOKE_ROOT/deadlines"
+printf '%s\n' "$$" > "$TEST_SMOKE_ROOT/timeout.pid"
+shift 2
+# Scale only the production allowance/grace, retaining real GNU timeout,
+# its process group, and the production guardian and strict child shells.
+exec /usr/bin/timeout --kill-after=0.2s 0.3s "$@"
+''')
+        self.timeout.chmod(0o755)
+
+    def stop_probes(self):
+        for path in self.root.glob("*.pid"):
+            pid = int(path.read_text())
+            try:
+                if path.name == "timeout.pid":
+                    os.killpg(pid, signal.SIGKILL)
+                else:
+                    os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            try:
+                os.waitpid(pid, 0)
+            except ChildProcessError:
+                pass
+
+    def runner(self, body, *, selected=(), stdin="", missing_timeout=False):
+        helpers = ROOT / "scripts/lib/install_helpers.sh"
+        script = "\n".join([
+            "set -euo pipefail",
+            *(definition(name, helpers) for name in (
+                "_acfs_user_path_export_source", "run_as_target_shell",
+                "acfs_run_verification_shell", "acfs_selection_filters_active",
+                "should_run_module",
+            )),
+            *(definition(name) for name in (
+                "_smoke_target_path", "_smoke_run_as_target", "run_smoke_test",
+                "acfs_legacy_module_selected", "acfs_smoke_install_fix_command",
+            )),
+            r'''
+# Only identity is a fixture; shell execution and timeout remain real.
+run_as_target() { HOME="$TARGET_HOME" "$@"; }
+log_error() { printf '%s\n' "$*" >&2; }
+_acfs_system_binary_path() {
+    if [[ "$1" == timeout ]]; then
+        [[ "$TEST_MISSING_TIMEOUT" != true ]] || return 1
+        printf '%s/timeout\n' "$TEST_SMOKE_ROOT"
+    elif [[ -x "/usr/bin/$1" ]]; then
+        printf '/usr/bin/%s\n' "$1"
+    else
+        return 1
+    fi
+}
+acfs_early_system_binary_path() { printf /bin/true; }
+acfs_early_getent_passwd_entry() { printf 'tester:x:1000:1000::/home/tester:/bin/zsh'; }
+user_login_shell_configured() { return 0; }
+user_select_login_shell() { printf /bin/zsh; }
+binary_installed() {
+    printf '%s\n' "$1" >> "$TEST_SMOKE_ROOT/presence-probes"
+    [[ -x "$ACFS_BIN_DIR/$1" ]]
+}
+acfs_postgres_ready() { printf 'postgres\n' >> "$TEST_SMOKE_ROOT/presence-probes"; return 1; }
+acfs_legacy_module_is_required() { return 1; }
+TARGET_USER=tester
+MODE=vibe
+SKIP_POSTGRES=false SKIP_VAULT=false SKIP_CLOUD=false
+declare -a ONLY_MODULES=() ONLY_PHASES=() SKIP_MODULES=(excluded-fixture-module)
+declare -A ACFS_EFFECTIVE_RUN=()
+''',
+            *(f"ACFS_EFFECTIVE_RUN[{shlex.quote(module)}]=1" for module in selected),
+            body,
+        ])
+        (self.root / "runner.sh").write_text(script)
+        environment = dict(self.environment, TEST_MISSING_TIMEOUT=str(missing_timeout).lower())
+        process = subprocess.Popen(
+            ["/bin/bash", "-p", "-c", script], text=True, env=environment,
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            start_new_session=True)
+        try:
+            output, errors = process.communicate(stdin, timeout=4)
+        except subprocess.TimeoutExpired:
+            self.stop_probes()
+            os.killpg(process.pid, signal.SIGKILL)
+            output, errors = process.communicate(timeout=2)
+            self.fail("Smoke probe exceeded the fixture deadline:\n" + output + errors)
+        (self.root / "output.log").write_text(output + errors)
+        return subprocess.CompletedProcess(process.args, process.returncode, output, errors)
+
+    def binary(self, name, body="exit 0\n"):
+        path = self.bin / name
+        path.write_text("#!/bin/bash\n" + body)
+        path.chmod(0o755)
+        return path
+
+    def hanging_binary(self, name, *, resistant_parent=True):
+        path = self.bin / name
+        path.write_text("#!/usr/bin/python3\n" + f"RESISTANT_PARENT={resistant_parent!r}\n" + r'''
+import os, signal, time
+from pathlib import Path
+root = Path(os.environ["TEST_SMOKE_ROOT"])
+(root / "probe.pid").write_text(str(os.getpid()))
+if RESISTANT_PARENT:
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+if os.fork() == 0:
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    (root / "descendant.pid").write_text(str(os.getpid()))
+    (root / "started").write_text("started\n")
+    time.sleep(8)
+    os._exit(0)
+time.sleep(8)
+''')
+        path.chmod(0o755)
+
+    def assert_probes_stopped(self):
+        self.assertTrue((self.root / "started").exists(), "real probe never started")
+        for name in ("probe.pid", "descendant.pid"):
+            pid = int((self.root / name).read_text())
+            deadline = time.monotonic() + 1
+            while time.monotonic() < deadline:
+                try:
+                    reaped, _ = os.waitpid(pid, os.WNOHANG)
+                except ChildProcessError:
+                    reaped = 0
+                if reaped or not Path(f"/proc/{pid}").exists():
+                    break
+                time.sleep(0.01)
+            else:
+                self.fail(f"Smoke probe process {pid} survived its deadline")
+        self.assertIn("--kill-after=2s 120s", (self.root / "deadlines").read_text())
+
+    def test_smoke_probe_preserves_success_native_failure_and_strict_failure(self):
+        for command, expected in (("printf ready", 0), ("exit 37", 37),
+                                  ("false; printf unexpected", 1)):
+            with self.subTest(command=command):
+                result = self.runner(f"_smoke_run_as_target {shlex.quote(command)}")
+                self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+                self.assertEqual(result.stdout, "ready" if expected == 0 else "")
+
+    def test_smoke_probe_cannot_consume_remaining_installer_input(self):
+        result = self.runner(r'''
+status=0
+_smoke_run_as_target 'read -r stolen' || status=$?
+IFS= read -r remaining
+printf 'status:%s remaining:%s\n' "$status" "$remaining"
+''', stdin="remaining-installer-input\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "status:1 remaining:remaining-installer-input\n")
+
+    def test_smoke_probe_preserves_target_home_and_literal_search_path(self):
+        self.binary("target-tool", 'printf "home:%s\\n" "$HOME"\n')
+        current_bin = self.root / "current-bin"
+        current_bin.mkdir()
+        current_only = current_bin / "caller-only-tool"
+        current_only.write_text("#!/bin/bash\nexit 0\n")
+        current_only.chmod(0o755)
+        self.environment["PATH"] = str(current_bin) + ":/usr/bin:/bin"
+        result = self.runner("_smoke_run_as_target 'target-tool; ! command -v caller-only-tool'")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.stdout, f"home:{self.target}\n")
+
+    def test_smoke_probe_fails_closed_without_trusted_timeout(self):
+        result = self.runner("_smoke_run_as_target 'printf should-not-run'", missing_timeout=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, "")
+        self.assertFalse((self.root / "deadlines").exists())
+
+    def test_smoke_help_deadline_stops_resistant_parent_and_descendant(self):
+        self.hanging_binary("ntm")
+        result = self.runner("_smoke_run_as_target 'command -v ntm >/dev/null && ntm --help'")
+        self.assertEqual(result.returncode, 137, result.stdout + result.stderr)
+        self.assert_probes_stopped()
+
+    def test_smoke_help_deadline_stops_descendant_after_parent_exits(self):
+        self.hanging_binary("ntm", resistant_parent=False)
+        result = self.runner("_smoke_run_as_target 'command -v ntm >/dev/null && ntm --help'")
+        self.assertEqual(result.returncode, 137, result.stdout + result.stderr)
+        self.assert_probes_stopped()
+
+    def test_smoke_only_checks_selected_agents_languages_and_cloud_tools(self):
+        for name in ("codex", "uv", "vercel"):
+            self.binary(name)
+        result = self.runner("run_smoke_test", selected=("agents.codex", "lang.uv", "cloud.vercel"))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("2/2 critical passed, 0 warnings", result.stderr)
+        self.assertIn("Agents: codex", result.stderr)
+        self.assertIn("Cloud CLIs: vercel", result.stderr)
+        self.assertNotIn("missing", result.stderr)
+        self.assertEqual((self.root / "presence-probes").read_text(), "vercel\n")
+        self.assertFalse((self.root / "deadlines").exists(), "deselected tools must not run")
+
+    def test_smoke_selected_missing_agent_still_fails_with_selected_repair_only(self):
+        result = self.runner("run_smoke_test", selected=("agents.claude",))
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("Agents: missing claude", result.stderr)
+        self.assertIn("0/1 critical passed, 1 critical failed", result.stderr)
+        self.assertIn("--only agents.claude", result.stderr)
+        self.assertNotIn("--only agents.codex", result.stderr)
+        self.assertNotIn("--only agents.antigravity", result.stderr)
+
+    def test_smoke_selected_optional_cloud_failure_remains_a_warning(self):
+        result = self.runner("run_smoke_test", selected=("cloud.vercel",))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("Cloud CLIs: missing vercel (optional)", result.stderr)
+        self.assertIn("0/0 critical passed, 1 warnings", result.stderr)
+        self.assertEqual((self.root / "presence-probes").read_text(), "vercel\n")
+
+    def test_smoke_agent_mail_systemctl_probe_is_bounded(self):
+        self.binary("am")
+        self.hanging_binary("systemctl", resistant_parent=False)
+        result = self.runner("run_smoke_test", selected=("stack.mcp_agent_mail",))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("Agent Mail: installed but service is not running", result.stderr)
+        self.assertIn("0/0 critical passed, 1 warnings", result.stderr)
+        self.assert_probes_stopped()
+
+    def test_smoke_selected_unhealthy_ntm_fails_terminal_verdict(self):
+        self.binary("ntm", "exit 37\n")
+        result = self.runner("run_smoke_test", selected=("stack.ntm",))
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("NTM: not working", result.stderr)
+        self.assertIn("0/1 critical passed, 1 critical failed", result.stderr)
+
+    def test_smoke_stack_help_checks_use_manifest_module_ids(self):
+        bindings = {
+            "ntm": "stack.ntm", "ubs": "stack.ultimate_bug_scanner",
+            "bv": "stack.beads_viewer", "cass": "stack.cass",
+            "cm": "stack.cm", "caam": "stack.caam", "slb": "stack.slb",
+        }
+        for tool, module in bindings.items():
+            with self.subTest(module=module):
+                probe_log = self.root / "tool-probes"
+                previous = probe_log.read_text().splitlines() if probe_log.exists() else []
+                self.binary(tool, f"printf '%s\\n' {shlex.quote(tool)} >> \"$TEST_SMOKE_ROOT/tool-probes\"\n")
+                result = self.runner("run_smoke_test", selected=(module,))
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                expected = previous + [tool] * (2 if tool == "ntm" else 1)
+                self.assertEqual(probe_log.read_text().splitlines(), expected)
 
 
 if __name__ == "__main__":

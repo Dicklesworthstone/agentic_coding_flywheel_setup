@@ -11703,9 +11703,14 @@ _smoke_target_path() {
 _smoke_run_as_target() {
     local cmd="$1"
     local smoke_path=""
+    local smoke_path_q=""
 
     smoke_path="$(_smoke_target_path)" || return 1
-    run_as_target env "PATH=$smoke_path" bash -c "set -euo pipefail; $cmd"
+    printf -v smoke_path_q '%q' "$smoke_path"
+    # Smoke runs after module verification, including after a failed verifier.
+    # Reuse its deadline, process-group cleanup and closed stdin so a broken
+    # --help or service probe cannot hang completion or consume curl|bash input.
+    acfs_run_verification_shell target_user "export PATH=$smoke_path_q; $cmd"
 }
 
 acfs_smoke_install_fix_command() {
@@ -11749,7 +11754,10 @@ run_smoke_test() {
     local target_shell=""
     local target_shell_entry=""
     smoke_id_bin="$(acfs_early_system_binary_path id 2>/dev/null || true)"
-    if [[ -n "$smoke_id_bin" ]] && "$smoke_id_bin" "$TARGET_USER" &>/dev/null; then
+    if ! acfs_legacy_module_selected "users.ubuntu"; then
+        echo "User: not selected" >&2
+        critical_total=$((critical_total - 1))
+    elif [[ -n "$smoke_id_bin" ]] && "$smoke_id_bin" "$TARGET_USER" &>/dev/null; then
         echo "✅ User: $TARGET_USER" >&2
         ((critical_passed += 1))
     else
@@ -11760,11 +11768,16 @@ run_smoke_test() {
 
     # 2) Account shell is approved by /etc/shells, or an externally managed
     # Bash login has the verified handoff. A zsh-like pathname alone is unsafe.
-    target_shell_entry="$(acfs_early_getent_passwd_entry "$TARGET_USER" 2>/dev/null || true)"
+    if acfs_legacy_module_selected "shell.login"; then
+        target_shell_entry="$(acfs_early_getent_passwd_entry "$TARGET_USER" 2>/dev/null || true)"
+    fi
     if [[ -n "$target_shell_entry" ]]; then
         IFS=: read -r _ _ _ _ _ _ target_shell <<< "$target_shell_entry"
     fi
-    if user_login_shell_configured "$TARGET_USER"; then
+    if ! acfs_legacy_module_selected "shell.login"; then
+        echo "Shell: not selected" >&2
+        critical_total=$((critical_total - 1))
+    elif user_login_shell_configured "$TARGET_USER"; then
         echo "✅ Shell: approved login shell and zsh configuration ($target_shell)" >&2
         ((critical_passed += 1))
     else
@@ -11783,7 +11796,10 @@ run_smoke_test() {
     # 3) Sudo configuration
     # - vibe mode: passwordless sudo is required
     # - safe mode: sudo must exist, but may require a password
-    if [[ "$MODE" == "vibe" ]]; then
+    if ! acfs_legacy_module_selected "users.ubuntu"; then
+        echo "Sudo: not selected" >&2
+        critical_total=$((critical_total - 1))
+    elif [[ "$MODE" == "vibe" ]]; then
         if _smoke_run_as_target "sudo -n true" &>/dev/null; then
             echo "✅ Sudo: passwordless (vibe mode)" >&2
             ((critical_passed += 1))
@@ -11812,7 +11828,10 @@ run_smoke_test() {
     fi
 
     # 4) /data/projects exists
-    if _smoke_run_as_target "[[ -d /data/projects && -w /data/projects ]]" &>/dev/null; then
+    if ! acfs_legacy_module_selected "base.filesystem"; then
+        echo "Workspace: not selected" >&2
+        critical_total=$((critical_total - 1))
+    elif _smoke_run_as_target "[[ -d /data/projects && -w /data/projects ]]" &>/dev/null; then
         echo "✅ Workspace: /data/projects exists" >&2
         ((critical_passed += 1))
     else
@@ -11823,37 +11842,82 @@ run_smoke_test() {
 
     # 5) bun, uv, cargo, go available
     local missing_lang=()
-    [[ -x "$TARGET_HOME/.bun/bin/bun" ]] || missing_lang+=("bun")
-    [[ -x "$ACFS_BIN_DIR/uv" || -x "$TARGET_HOME/.cargo/bin/uv" ]] || missing_lang+=("uv")
-    [[ -x "$TARGET_HOME/.cargo/bin/cargo" ]] || missing_lang+=("cargo")
-    binary_installed "go" || missing_lang+=("go")
-    if [[ ${#missing_lang[@]} -eq 0 ]]; then
-        echo "✅ Languages: bun, uv, cargo, go available" >&2
+    local selected_lang=() selected_lang_modules=()
+    local module_id=""
+    for module_id in lang.bun lang.uv lang.rust lang.go; do
+        acfs_legacy_module_selected "$module_id" || continue
+        selected_lang_modules+=("$module_id")
+        case "$module_id" in
+            lang.bun)
+                selected_lang+=(bun)
+                [[ -x "$TARGET_HOME/.bun/bin/bun" ]] || missing_lang+=(bun)
+                ;;
+            lang.uv)
+                selected_lang+=(uv)
+                [[ -x "$ACFS_BIN_DIR/uv" || -x "$TARGET_HOME/.cargo/bin/uv" ]] || missing_lang+=(uv)
+                ;;
+            lang.rust)
+                selected_lang+=(cargo)
+                [[ -x "$TARGET_HOME/.cargo/bin/cargo" ]] || missing_lang+=(cargo)
+                ;;
+            lang.go)
+                selected_lang+=(go)
+                binary_installed go || missing_lang+=(go)
+                ;;
+        esac
+    done
+    if [[ ${#selected_lang[@]} -eq 0 ]]; then
+        echo "Languages: not selected" >&2
+        critical_total=$((critical_total - 1))
+    elif [[ ${#missing_lang[@]} -eq 0 ]]; then
+        echo "✅ Languages: ${selected_lang[*]} available" >&2
         ((critical_passed += 1))
     else
         echo "✖ Languages: missing ${missing_lang[*]}" >&2
-        echo "    Fix: $(acfs_smoke_install_fix_command lang.bun lang.uv lang.rust lang.go)" >&2
+        echo "    Fix: $(acfs_smoke_install_fix_command "${selected_lang_modules[@]}")" >&2
         ((critical_failed += 1))
     fi
 
     # 6) claude, codex, agy commands exist
     local missing_agents=()
-    [[ -x "$ACFS_BIN_DIR/claude" || -x "$TARGET_HOME/.bun/bin/claude" ]] || missing_agents+=("claude")
-    [[ -x "$TARGET_HOME/.bun/bin/codex" || -x "$ACFS_BIN_DIR/codex" ]] || missing_agents+=("codex")
-    [[ -x "$ACFS_BIN_DIR/agy" || -x "$TARGET_HOME/.local/bin/agy" ]] || missing_agents+=("agy")
-    [[ -x "$ACFS_BIN_DIR/agy-locked" || -x "$TARGET_HOME/.local/bin/agy-locked" ]] || missing_agents+=("agy-locked")
-    [[ -x "$ACFS_BIN_DIR/agy-real" || -x "$TARGET_HOME/.local/bin/agy-real" ]] || missing_agents+=("agy-real")
-    if [[ ${#missing_agents[@]} -eq 0 ]]; then
-        echo "✅ Agents: claude, codex, agy" >&2
+    local selected_agents=() selected_agent_modules=()
+    for module_id in agents.claude agents.codex agents.antigravity; do
+        acfs_legacy_module_selected "$module_id" || continue
+        selected_agent_modules+=("$module_id")
+        case "$module_id" in
+            agents.claude)
+                selected_agents+=(claude)
+                [[ -x "$ACFS_BIN_DIR/claude" || -x "$TARGET_HOME/.bun/bin/claude" ]] || missing_agents+=(claude)
+                ;;
+            agents.codex)
+                selected_agents+=(codex)
+                [[ -x "$TARGET_HOME/.bun/bin/codex" || -x "$ACFS_BIN_DIR/codex" ]] || missing_agents+=(codex)
+                ;;
+            agents.antigravity)
+                selected_agents+=(agy)
+                [[ -x "$ACFS_BIN_DIR/agy" || -x "$TARGET_HOME/.local/bin/agy" ]] || missing_agents+=(agy)
+                [[ -x "$ACFS_BIN_DIR/agy-locked" || -x "$TARGET_HOME/.local/bin/agy-locked" ]] || missing_agents+=(agy-locked)
+                [[ -x "$ACFS_BIN_DIR/agy-real" || -x "$TARGET_HOME/.local/bin/agy-real" ]] || missing_agents+=(agy-real)
+                ;;
+        esac
+    done
+    if [[ ${#selected_agents[@]} -eq 0 ]]; then
+        echo "Agents: not selected" >&2
+        critical_total=$((critical_total - 1))
+    elif [[ ${#missing_agents[@]} -eq 0 ]]; then
+        echo "✅ Agents: ${selected_agents[*]}" >&2
         ((critical_passed += 1))
     else
         echo "✖ Agents: missing ${missing_agents[*]}" >&2
-        echo "    Fix: $(acfs_smoke_install_fix_command agents.claude agents.codex agents.antigravity)" >&2
+        echo "    Fix: $(acfs_smoke_install_fix_command "${selected_agent_modules[@]}")" >&2
         ((critical_failed += 1))
     fi
 
     # 7) ntm command works
-    if _smoke_run_as_target "command -v ntm >/dev/null && ntm --help >/dev/null 2>&1"; then
+    if ! acfs_legacy_module_selected "stack.ntm"; then
+        echo "NTM: not selected" >&2
+        critical_total=$((critical_total - 1))
+    elif _smoke_run_as_target "command -v ntm >/dev/null && ntm --help >/dev/null 2>&1"; then
         echo "✅ NTM: working" >&2
         ((critical_passed += 1))
     else
@@ -11863,7 +11927,10 @@ run_smoke_test() {
     fi
 
     # 8) onboard command exists
-    if [[ -x "$ACFS_BIN_DIR/onboard" ]]; then
+    if ! acfs_legacy_module_selected "acfs.onboard"; then
+        echo "Onboard: not selected" >&2
+        critical_total=$((critical_total - 1))
+    elif [[ -x "$ACFS_BIN_DIR/onboard" ]]; then
         echo "✅ Onboard: installed" >&2
         ((critical_passed += 1))
     else
@@ -11873,8 +11940,10 @@ run_smoke_test() {
     fi
 
     # Non-critical: Agent Mail service status
-    if run_as_target bash -c 'set -euo pipefail
-        export PATH="${ACFS_BIN_DIR:-$HOME/.local/bin}:$HOME/.local/bin:$HOME/.acfs/bin:$HOME/.cargo/bin:$HOME/.bun/bin:$HOME/.atuin/bin:$HOME/go/bin:/usr/local/bin:/usr/bin:/bin:/snap/bin"
+    # The quoted heredoc is authored shell data for the bounded target runner;
+    # HOME, PATH and service state must be resolved there, not by the installer.
+    local agent_mail_check=""
+    IFS= read -r -d '' agent_mail_check <<'ACFS_SMOKE_AGENT_MAIL' || true
         agent_mail_service_curl() {
             local curl_bin=""
             local candidate=""
@@ -11901,9 +11970,12 @@ run_smoke_test() {
             systemctl --user is-active --quiet agent-mail.service >/dev/null 2>&1
         fi
         agent_mail_service_curl -fsS --max-time 5 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1
-    ' &>/dev/null; then
+ACFS_SMOKE_AGENT_MAIL
+    if ! acfs_legacy_module_selected "stack.mcp_agent_mail"; then
+        echo "Agent Mail: not selected" >&2
+    elif _smoke_run_as_target "$agent_mail_check" &>/dev/null; then
         echo "✅ Agent Mail: running on http://127.0.0.1:8765" >&2
-    elif [[ -x "$TARGET_HOME/.local/bin/am" ]] || [[ -x "$TARGET_HOME/mcp_agent_mail/scripts/run_server_with_token.sh" ]]; then
+    elif [[ -x "$ACFS_BIN_DIR/am" || -x "$TARGET_HOME/.local/bin/am" || -x "$TARGET_HOME/mcp_agent_mail/scripts/run_server_with_token.sh" ]]; then
         echo "⚠️ Agent Mail: installed but service is not running" >&2
         echo "    Fix: rerun ACFS update/install to rewrite agent-mail.service, then systemctl --user enable --now agent-mail.service" >&2
         ((warnings += 1))
@@ -11915,7 +11987,14 @@ run_smoke_test() {
     # Non-critical: Stack tools respond to --help
     local stack_help_fail=()
     local stack_tools=(ntm ubs bv cass cm caam slb)
+    local tool=""
     for tool in "${stack_tools[@]}"; do
+        case "$tool" in
+            ubs) module_id=stack.ultimate_bug_scanner ;;
+            bv) module_id=stack.beads_viewer ;;
+            *) module_id="stack.$tool" ;;
+        esac
+        acfs_legacy_module_selected "$module_id" || continue
         # SLB may have issues with --help exit code, try bare command first
         if [[ "$tool" == "slb" ]]; then
             if ! _smoke_run_as_target "command -v slb >/dev/null && (slb >/dev/null 2>&1 || slb --help >/dev/null 2>&1)"; then
@@ -11934,6 +12013,7 @@ run_smoke_test() {
     # phase flags and the presence of unrelated agent binaries are insufficient.
     local essential_cli
     for essential_cli in direnv git-lfs strace lsof dig nc; do
+        acfs_legacy_module_selected "cli.modern" || continue
         ((critical_total += 1))
         if _smoke_run_as_target "command -v $essential_cli >/dev/null"; then
             ((critical_passed += 1))
@@ -11945,9 +12025,8 @@ run_smoke_test() {
 
     # PostgreSQL keeps the manifest's optional semantics. An explicitly
     # requested database must pass the same live server check as phase resume.
-    if [[ "$SKIP_POSTGRES" == "true" ]]; then
-        echo "⚠️ PostgreSQL: skipped (optional)" >&2
-        ((warnings += 1))
+    if [[ "$SKIP_POSTGRES" == "true" ]] || ! acfs_legacy_module_selected "db.postgres18"; then
+        echo "PostgreSQL: skipped (optional)" >&2
     elif acfs_postgres_ready; then
         echo "✅ PostgreSQL: local server query succeeded" >&2
         if acfs_legacy_module_is_required "db.postgres18"; then
@@ -11964,9 +12043,8 @@ run_smoke_test() {
     fi
 
     # Non-critical: Vault installed
-    if [[ "$SKIP_VAULT" == "true" ]]; then
-        echo "⚠️ Vault: skipped (optional)" >&2
-        ((warnings += 1))
+    if [[ "$SKIP_VAULT" == "true" ]] || ! acfs_legacy_module_selected "tools.vault"; then
+        echo "Vault: skipped (optional)" >&2
     elif binary_installed "vault"; then
         echo "✅ Vault: installed" >&2
     else
@@ -11976,16 +12054,20 @@ run_smoke_test() {
 
     # Non-critical: Cloud CLIs installed
     if [[ "$SKIP_CLOUD" == "true" ]]; then
-        echo "⚠️ Cloud CLIs: skipped (optional)" >&2
-        ((warnings += 1))
+        echo "Cloud CLIs: skipped (optional)" >&2
     else
         local missing_cloud=()
-        binary_installed "wrangler" || missing_cloud+=("wrangler")
-        binary_installed "supabase" || missing_cloud+=("supabase")
-        binary_installed "vercel" || missing_cloud+=("vercel")
+        local selected_cloud=()
+        for tool in wrangler supabase vercel; do
+            acfs_legacy_module_selected "cloud.$tool" || continue
+            selected_cloud+=("$tool")
+            binary_installed "$tool" || missing_cloud+=("$tool")
+        done
 
-        if [[ ${#missing_cloud[@]} -eq 0 ]]; then
-            echo "✅ Cloud CLIs: wrangler, supabase, vercel" >&2
+        if [[ ${#selected_cloud[@]} -eq 0 ]]; then
+            echo "Cloud CLIs: not selected" >&2
+        elif [[ ${#missing_cloud[@]} -eq 0 ]]; then
+            echo "✅ Cloud CLIs: ${selected_cloud[*]}" >&2
         else
             echo "⚠️ Cloud CLIs: missing ${missing_cloud[*]} (optional)" >&2
             ((warnings += 1))

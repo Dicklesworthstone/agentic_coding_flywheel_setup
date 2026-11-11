@@ -541,6 +541,7 @@ EOF
 
 @test "installer: smoke rejects missing essential tools and required database until repaired" {
     eval "$(sed -n '/^run_smoke_test() {/,/^}/p' "$PROJECT_ROOT/install.sh")"
+    eval "$(sed -n '/^acfs_legacy_module_selected() {/,/^}/p' "$PROJECT_ROOT/install.sh")"
     TARGET_USER=tester
     TARGET_HOME="$BATS_TEST_TMPDIR/target"
     ACFS_BIN_DIR="$TARGET_HOME/.local/bin"

@@ -414,6 +414,25 @@ if args and args[0] == "init" and result.returncode == 0 and os.environ["ACFS_TE
     Path("concurrent-staged.txt").write_text("unstaged edit after staging\n")
 if args and args[0] == "init" and result.returncode == 0 and os.environ["ACFS_TEST_EXISTING_AGENTS"] == "1":
     Path("AGENTS.md").write_text("existing user instructions\n")
+if args and args[0] == "init" and result.returncode == 0 and os.environ.get("ACFS_TEST_COLLISION"):
+    path = Path(os.environ["ACFS_TEST_COLLISION"])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    kind = os.environ["ACFS_TEST_COLLISION_KIND"]
+    if kind == "file":
+        path.write_text("concurrent user work\n")
+    elif kind == "symlink":
+        path.symlink_to(os.environ["ACFS_TEST_COLLISION_TARGET"])
+    elif kind == "hardlink":
+        os.link(os.environ["ACFS_TEST_COLLISION_TARGET"], path)
+    elif kind == "fifo":
+        os.mkfifo(path)
+    else:
+        raise AssertionError("unknown collision fixture")
+if args and args[0] == "init" and result.returncode == 0 and os.environ.get("ACFS_TEST_REPLACE_ROOT") == "1":
+    project = Path.cwd()
+    project.rename(str(project) + "-retained")
+    project.mkdir()
+    (project / "other-user-work.txt").write_text("replacement project contents\n")
 sys.exit(result.returncode)
 ''')
         wrapper.chmod(0o700)
@@ -468,7 +487,128 @@ sys.exit(result.returncode)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.committed(), {"README.md", ".gitignore", ".ubsignore", "AGENTS.md"})
         self.assertTrue((self.project / ".claude/settings.local.json").is_file())
+        self.assertTrue((self.project / ".claude/commands").is_dir())
         self.assertEqual(self.git("check-ignore", ".claude/settings.local.json").returncode, 0)
+
+    def test_concurrent_generated_files_are_never_overwritten(self):
+        for index, name in enumerate(("README.md", ".gitignore", ".ubsignore")):
+            with self.subTest(path=name):
+                self.project = self.root / ("concurrent-file-" + str(index))
+                environment = self.env | {"ACFS_TEST_COLLISION": name, "ACFS_TEST_COLLISION_KIND": "file"}
+                result = self.create(environment=environment)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual((self.project / name).read_text(), "concurrent user work\n")
+                self.assertIn("Partial project left at:", result.stderr)
+                self.assertNotIn("Project myapp ready", result.stdout)
+                self.assertNotEqual(self.git("rev-parse", "--verify", "HEAD", check=False).returncode, 0)
+
+    def test_linked_outputs_cannot_overwrite_outside_files(self):
+        cases = [(name, "symlink") for name in
+                 ("README.md", ".gitignore", ".ubsignore", "AGENTS.md", ".claude/settings.local.json")]
+        cases += [(name, "hardlink") for name in ("README.md", ".gitignore", ".ubsignore")]
+        for index, (name, kind) in enumerate(cases):
+            with self.subTest(path=name, kind=kind):
+                self.project = self.root / ("linked-output-" + str(index))
+                outside = self.root / ("existing-outside-" + str(index))
+                outside.write_text("existing work outside the new project\n")
+                environment = self.env | {"ACFS_TEST_COLLISION": name, "ACFS_TEST_COLLISION_KIND": kind,
+                                          "ACFS_TEST_COLLISION_TARGET": str(outside)}
+                result = self.create(environment=environment)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(outside.read_text(), "existing work outside the new project\n")
+                self.assertTrue((self.project / name).exists())
+                self.assertNotIn("Project myapp ready", result.stdout)
+                self.assertNotEqual(self.git("rev-parse", "--verify", "HEAD", check=False).returncode, 0)
+
+    def test_fifo_outputs_fail_without_blocking_or_removing_them(self):
+        for index, name in enumerate(("README.md", ".gitignore", ".ubsignore", "AGENTS.md",
+                                      ".claude/settings.local.json")):
+            with self.subTest(path=name):
+                self.project = self.root / ("fifo-output-" + str(index))
+                environment = self.env | {"ACFS_TEST_COLLISION": name, "ACFS_TEST_COLLISION_KIND": "fifo"}
+                result = self.create(environment=environment)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertTrue(stat.S_ISFIFO((self.project / name).stat().st_mode))
+                self.assertNotIn("Project myapp ready", result.stdout)
+
+    def test_linked_claude_directories_do_not_create_outside_entries(self):
+        for index, name in enumerate((".claude", ".claude/commands")):
+            with self.subTest(path=name):
+                self.project = self.root / ("linked-directory-" + str(index))
+                outside = self.root / ("outside-directory-" + str(index))
+                outside.mkdir()
+                (outside / "user.txt").write_text("retained user work\n")
+                environment = self.env | {"ACFS_TEST_COLLISION": name, "ACFS_TEST_COLLISION_KIND": "symlink",
+                                          "ACFS_TEST_COLLISION_TARGET": str(outside)}
+                result = self.create(environment=environment)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual({path.name for path in outside.iterdir()}, {"user.txt"})
+                self.assertEqual((outside / "user.txt").read_text(), "retained user work\n")
+                self.assertNotIn("Project myapp ready", result.stdout)
+
+    def test_existing_claude_settings_are_preserved_outside_initial_commit(self):
+        for index, name in enumerate((".claude/settings.local.json", ".claude/settings.toml")):
+            with self.subTest(path=name):
+                self.project = self.root / ("existing-settings-" + str(index))
+                environment = self.env | {"ACFS_TEST_COLLISION": name, "ACFS_TEST_COLLISION_KIND": "file"}
+                result = self.create(environment=environment)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual((self.project / name).read_text(), "concurrent user work\n")
+                self.assertNotIn(name, self.committed())
+                self.assertTrue((self.project / ".claude/commands").is_dir())
+
+    def test_replaced_project_stops_before_writes_or_commit(self):
+        result = self.create(environment=self.env | {"ACFS_TEST_REPLACE_ROOT": "1"})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual({path.name for path in self.project.iterdir()}, {"other-user-work.txt"})
+        self.assertEqual((self.project / "other-user-work.txt").read_text(), "replacement project contents\n")
+        retained = Path(str(self.project) + "-retained")
+        self.assertTrue((retained / ".git").is_dir())
+        self.assertFalse((retained / "README.md").exists())
+        self.assertIn("Partial project left at: " + str(retained), result.stderr)
+        self.assertNotIn("Project myapp ready", result.stdout)
+
+    def test_linked_project_or_parent_is_rejected_before_git_init(self):
+        for parent_link in (False, True):
+            with self.subTest(parent_link=parent_link):
+                outside = self.root / ("initial-outside-" + str(parent_link))
+                outside.mkdir()
+                link = self.root / ("initial-link-" + str(parent_link))
+                link.symlink_to(outside, target_is_directory=True)
+                self.project = link / "new-project" if parent_link else link
+                result = self.create()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(list(outside.iterdir()), [])
+                self.assertTrue(link.is_symlink())
+                self.assertNotIn("Project myapp ready", result.stdout)
+
+    def test_second_run_leaves_the_completed_project_unchanged(self):
+        first = self.create()
+        self.assertEqual(first.returncode, 0, first.stderr)
+        before = self.repository_bytes(self.project)
+        second = self.create()
+        self.assertNotEqual(second.returncode, 0)
+        self.assertEqual(self.repository_bytes(self.project), before)
+        self.assertNotIn("Project myapp ready", second.stdout)
+
+    def test_relative_nested_project_path_remains_supported(self):
+        parent = self.root / "existing parent"
+        parent.mkdir()
+        self.project = parent / "new project"
+        result = subprocess.run([BASH, str(ROOT / "scripts/lib/newproj.sh"), "myapp",
+                                 "existing parent/new project", "--no-br"],
+                                env=self.env, cwd=self.root, text=True, capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.project / "README.md").read_text(), "# myapp\n")
+        self.assertEqual(self.committed(), {"README.md", ".gitignore", ".ubsignore", "AGENTS.md"})
+
+    def test_existing_empty_current_directory_remains_supported(self):
+        self.project.mkdir()
+        result = subprocess.run([BASH, str(ROOT / "scripts/lib/newproj.sh"), "myapp", ".", "--no-br"],
+                                env=self.env, cwd=self.project, text=True, capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.project / "README.md").read_text(), "# myapp\n")
+        self.assertEqual(self.committed(), {"README.md", ".gitignore", ".ubsignore", "AGENTS.md"})
 
     def test_repository_selectors_do_not_commit_another_project(self):
         existing = self.existing_project("existing-repository")
