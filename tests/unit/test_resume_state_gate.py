@@ -29,6 +29,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 STATE = Path(os.environ.get("ACFS_STATE_LIB_SOURCE", ROOT / "scripts/lib/state.sh"))
 RESUME_PATHS = ("forced", "default", "tty-read", "tty-gum")
+SOURCE_A = "a" * 64
+SOURCE_B = "b" * 64
 
 # Import the harness module, not its TestCase: unittest must discover only this
 # file's cases rather than silently rerunning all imported upgrade tests.
@@ -50,6 +52,12 @@ def checkpoint_bytes():
         "phase_durations": {},
         "sentinel": "original evidence",
     }, indent=2) + "\n").encode()
+
+
+def source_checkpoint(source=SOURCE_A):
+    state = json.loads(checkpoint_bytes())
+    state["source_ledger_sha256"] = source
+    return (json.dumps(state, indent=2) + "\n").encode()
 
 
 def clean_environment(home):
@@ -91,12 +99,13 @@ class ResumeCheckpointGateTests(unittest.TestCase):
 
     def run_resume(self, folder, path="forced", *, choice="resume", write_failure=False,
                    backup_failure=False, force_reinstall=False, version="new-version",
-                   extra="", on_prompt=None):
+                   source=None, extra="", on_prompt=None):
         tty = path.startswith("tty-")
         gum = path == "tty-gum"
         script = "\n".join([
             "set -euo pipefail",
             f"builtin source {shlex.quote(str(STATE))}",
+            f"state_bind_installer_source {shlex.quote(source)}" if source is not None else "",
             f"export ACFS_HOME={shlex.quote(str(folder))}",
             'export ACFS_STATE_FILE="$ACFS_HOME/state.json"',
             "export ACFS_STATE_LOCK_TIMEOUT=1",
@@ -203,6 +212,117 @@ mv() {
         self.assertEqual(state["version"], "new-version")
         self.assertEqual(state["completed_phases"], ["user_setup"])
         self.assertEqual(state["sentinel"], "original evidence")
+
+    def test_same_version_source_change_invalidates_finalize_in_all_resume_paths(self):
+        for path in RESUME_PATHS:
+            with self.subTest(path=path):
+                folder = self.fixture(path, content=source_checkpoint())
+                status, output = self.run_resume(
+                    folder, path, version="old-version", source=SOURCE_B)
+                self.assertEqual(status, 0, output)
+                state = json.loads((folder / "state.json").read_text())
+                self.assertEqual(state["completed_phases"], ["user_setup"])
+                self.assertEqual(state["version"], "old-version")
+                self.assertEqual(state["source_ledger_sha256"], SOURCE_A)
+                self.assertEqual(state["sentinel"], "original evidence")
+
+    def test_legacy_source_identity_requires_finalization_refresh(self):
+        for content in (checkpoint_bytes(), source_checkpoint(None)):
+            for path in RESUME_PATHS:
+                with self.subTest(path=path, content=content):
+                    folder = self.fixture(path, content=content)
+                    status, output = self.run_resume(
+                        folder, path, version="old-version", source=SOURCE_B)
+                    self.assertEqual(status, 0, output)
+                    state = json.loads((folder / "state.json").read_text())
+                    self.assertEqual(state["completed_phases"], ["user_setup"])
+                    self.assertIsNone(state.get("source_ledger_sha256"))
+
+    def test_matching_source_identity_needs_no_state_write(self):
+        for path in RESUME_PATHS:
+            with self.subTest(path=path):
+                before = source_checkpoint()
+                folder = self.fixture(path, content=before)
+                with (folder / "state.json.lock").open("w") as holder:
+                    fcntl.flock(holder, fcntl.LOCK_EX)
+                    status, output = self.run_resume(
+                        folder, path, version="old-version", source=SOURCE_A,
+                        write_failure=True)
+                self.assertEqual(status, 0, output)
+                self.assertFalse((folder / "write-failed").exists())
+                self.assertEqual((folder / "state.json").read_bytes(), before)
+
+    def test_source_invalidation_write_failure_refuses_resume(self):
+        for path in RESUME_PATHS:
+            with self.subTest(path=path):
+                before = source_checkpoint()
+                folder = self.fixture(path, content=before)
+                status, output = self.run_resume(
+                    folder, path, version="old-version", source=SOURCE_B,
+                    write_failure=True)
+                self.assertEqual(status, 3, output)
+                self.assertTrue((folder / "write-failed").exists())
+                self.assertEqual((folder / "state.json").read_bytes(), before)
+
+    def test_source_change_abort_and_fresh_preserve_original_checkpoint(self):
+        for path in ("tty-read", "tty-gum"):
+            for choice in ("abort", "fresh"):
+                with self.subTest(path=path, choice=choice):
+                    before = source_checkpoint()
+                    folder = self.fixture(path, content=before)
+                    status, output = self.run_resume(
+                        folder, path, version="old-version", source=SOURCE_B,
+                        choice=choice, write_failure=True)
+                    self.assertEqual(status, 2 if choice == "abort" else 1, output)
+                    self.assertFalse((folder / "write-failed").exists())
+                    if choice == "abort":
+                        self.assertEqual((folder / "state.json").read_bytes(), before)
+                    else:
+                        backups = list(folder.glob("state.json.backup.*"))
+                        self.assertEqual(len(backups), 1)
+                        self.assertEqual(backups[0].read_bytes(), before)
+
+    def test_malformed_checkpoint_identity_is_not_treated_as_current(self):
+        for source in ("", "main", "a" * 40, "A" * 64, [], {"sha": SOURCE_A}, 7):
+            with self.subTest(source=source):
+                before = source_checkpoint(source)
+                folder = self.fixture("malformed-source", content=before)
+                status, output = self.run_resume(
+                    folder, version="old-version", source=SOURCE_B)
+                self.assertEqual(status, 3, output)
+                self.assertEqual((folder / "state.json").read_bytes(), before)
+
+    def test_source_transition_preserves_updates_while_prompt_is_open(self):
+        for path in ("tty-read", "tty-gum"):
+            with self.subTest(path=path):
+                folder = self.fixture(path, content=source_checkpoint())
+
+                def update_checkpoint():
+                    script = "\n".join([
+                        "set -euo pipefail",
+                        f"builtin source {shlex.quote(str(STATE))}",
+                        f"export ACFS_STATE_FILE={shlex.quote(str(folder / 'state.json'))}",
+                        "state_update_with_args '.sentinel = \"saved while prompting\" | "
+                        ".phase_durations.agents = 17 | .failed_phase = \"agents\" | "
+                        ".failed_step = \"dependency\" | .failed_error = \"preserve evidence\"'",
+                    ])
+                    writer = subprocess.run(
+                        ["/bin/bash", "-p", "-c", script], text=True, capture_output=True,
+                        env=clean_environment(folder), start_new_session=True, timeout=4)
+                    self.assertEqual(writer.returncode, 0, writer.stdout + writer.stderr)
+
+                status, output = self.run_resume(
+                    folder, path, version="old-version", source=SOURCE_B,
+                    on_prompt=update_checkpoint)
+                self.assertEqual(status, 0, output)
+                state = json.loads((folder / "state.json").read_text())
+                self.assertEqual(state["completed_phases"], ["user_setup"])
+                self.assertEqual(state["source_ledger_sha256"], SOURCE_A)
+                self.assertEqual(state["sentinel"], "saved while prompting")
+                self.assertEqual(state["phase_durations"]["agents"], 17)
+                self.assertEqual(state["failed_phase"], "agents")
+                self.assertEqual(state["failed_step"], "dependency")
+                self.assertEqual(state["failed_error"], "preserve evidence")
 
     def test_all_resume_paths_reject_failed_version_write(self):
         for path in RESUME_PATHS:
@@ -347,6 +467,135 @@ state_update_with_args '
         self.assertEqual((folder / "state.json").read_bytes(), before)
 
 
+class ResumeSourceDeploymentTests(unittest.TestCase):
+    # Reuse fixture helpers without inheriting (and rerunning) their tests.
+    setUp = ResumeCheckpointGateTests.setUp
+    fixture = ResumeCheckpointGateTests.fixture
+
+    @classmethod
+    def setUpClass(cls):
+        ResumeCheckpointGateTests.setUpClass()
+
+    def run_steps(self, folder, body, *, inherited=None):
+        script = "\n".join([
+            "set -euo pipefail",
+            f"builtin source {shlex.quote(str(STATE))}",
+            f"export ACFS_HOME={shlex.quote(str(folder))}",
+            'export ACFS_STATE_FILE="$ACFS_HOME/state.json"',
+            "ACFS_VERSION=old-version",
+            "ACFS_FORCE_RESUME=true",
+            "ACFS_INTERACTIVE=false",
+            f"state_bind_installer_source {SOURCE_B}",
+            "acfs_verify_phase() { return 0; }",
+            'untouched_phase() { printf "unexpected phase\\n" >> "$ACFS_HOME/events"; }',
+            'deploy_runtime() { printf "deployed\\n" >> "$ACFS_HOME/events"; '
+            f'printf "%s\\n" {SOURCE_B} > "$ACFS_HOME/runtime"; }}',
+            body,
+        ])
+        environment = clean_environment(folder)
+        environment.update(inherited or {})
+        result = subprocess.run(
+            ["/bin/bash", "-p", "-c", script], text=True, capture_output=True,
+            env=environment, start_new_session=True, timeout=10)
+        (folder / "deployment-output.log").write_text(result.stdout + result.stderr)
+        return result
+
+    def test_targeted_resume_defers_refresh_then_full_resume_deploys_once(self):
+        folder = self.fixture("targeted-then-full", content=source_checkpoint())
+        (folder / "runtime").write_text(SOURCE_A + "\n")
+        targeted = self.run_steps(folder, r'''
+declare -a ONLY_MODULES=(agents.claude) ONLY_PHASES=() ACFS_EFFECTIVE_PLAN=(agents.claude)
+declare -A ACFS_MODULE_PHASE=([agents.claude]=7)
+confirm_resume
+run_phase user_setup "User setup" untouched_phase
+run_phase finalize "Finalize" deploy_runtime
+''')
+        self.assertEqual(targeted.returncode, 0, targeted.stdout + targeted.stderr)
+        state = json.loads((folder / "state.json").read_text())
+        self.assertEqual(state["completed_phases"], ["user_setup"])
+        self.assertEqual(state["source_ledger_sha256"], SOURCE_A)
+        self.assertEqual((folder / "runtime").read_text(), SOURCE_A + "\n")
+        self.assertFalse((folder / "events").exists())
+
+        full = self.run_steps(folder, r'''
+confirm_resume
+run_phase user_setup "User setup" untouched_phase
+run_phase finalize "Finalize" deploy_runtime
+''')
+        self.assertEqual(full.returncode, 0, full.stdout + full.stderr)
+        state = json.loads((folder / "state.json").read_text())
+        self.assertEqual(state["completed_phases"], ["user_setup", "finalize"])
+        self.assertEqual(state["source_ledger_sha256"], SOURCE_B)
+        self.assertEqual((folder / "runtime").read_text(), SOURCE_B + "\n")
+        self.assertEqual((folder / "events").read_text(), "deployed\n")
+
+        repeat = self.run_steps(folder, r'''
+confirm_resume
+run_phase finalize "Finalize" deploy_runtime
+''')
+        self.assertEqual(repeat.returncode, 0, repeat.stdout + repeat.stderr)
+        self.assertEqual((folder / "events").read_text(), "deployed\n")
+
+    def test_failed_finalization_keeps_old_identity_and_retries(self):
+        folder = self.fixture("failed-refresh", content=source_checkpoint())
+        failed = self.run_steps(folder, r'''
+confirm_resume
+failed_deployment() { return 7; }
+run_phase finalize "Finalize" failed_deployment
+''')
+        self.assertNotEqual(failed.returncode, 0, failed.stdout + failed.stderr)
+        state = json.loads((folder / "state.json").read_text())
+        self.assertNotIn("finalize", state["completed_phases"])
+        self.assertEqual(state["source_ledger_sha256"], SOURCE_A)
+        recovered = self.run_steps(folder, r'''
+confirm_resume
+run_phase finalize "Finalize" deploy_runtime
+''')
+        self.assertEqual(recovered.returncode, 0, recovered.stdout + recovered.stderr)
+        state = json.loads((folder / "state.json").read_text())
+        self.assertIn("finalize", state["completed_phases"])
+        self.assertEqual(state["source_ledger_sha256"], SOURCE_B)
+
+    def test_failed_completion_write_cannot_publish_new_identity(self):
+        folder = self.fixture("completion-write-fails", content=source_checkpoint())
+        failed = self.run_steps(folder, "\n".join([
+            "confirm_resume", "state_phase_start finalize", WRITE_FAILURE,
+            "state_phase_complete finalize",
+        ]))
+        self.assertNotEqual(failed.returncode, 0, failed.stdout + failed.stderr)
+        state = json.loads((folder / "state.json").read_text())
+        self.assertNotIn("finalize", state["completed_phases"])
+        self.assertEqual(state["source_ledger_sha256"], SOURCE_A)
+        self.assertTrue((folder / "write-failed").exists())
+
+    def test_source_binding_rejects_malformed_digests(self):
+        folder = self.fixture("invalid-binding", content=source_checkpoint())
+        for digest in ("", "main", "A" * 64, "a" * 40, "b" * 65, "x" * 64):
+            with self.subTest(digest=digest):
+                result = self.run_steps(folder, f"state_bind_installer_source {shlex.quote(digest)}")
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual((folder / "state.json").read_bytes(), source_checkpoint())
+
+    def test_inherited_identity_cannot_replace_verified_binding(self):
+        folder = self.fixture("inherited-source", content=source_checkpoint())
+        script = "\n".join([
+            "set -euo pipefail",
+            f"builtin source {shlex.quote(str(STATE))}",
+            '[[ -z "$_ACFS_STATE_SOURCE_LEDGER_SHA256" ]]',
+        ])
+        environment = clean_environment(folder)
+        environment.update({"_ACFS_STATE_SOURCE_LEDGER_SHA256": SOURCE_A,
+                            "ACFS_TRUSTED_INTERNAL_LEDGER_SHA256": SOURCE_A})
+        result = subprocess.run(
+            ["/bin/bash", "-p", "-c", script], text=True, capture_output=True,
+            env=environment, start_new_session=True, timeout=4)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        rebound = self.run_steps(folder, "confirm_resume", inherited=environment)
+        self.assertEqual(rebound.returncode, 0, rebound.stdout + rebound.stderr)
+        self.assertEqual(json.loads((folder / "state.json").read_text())["completed_phases"],
+                         ["user_setup"])
+
+
 class ResumeMainGateTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -434,6 +683,37 @@ ensure_base_deps() {
         state = json.loads((folder / "home/.acfs/state.json").read_text())
         self.assertEqual(state["version"], "new-version")
         self.assertEqual(state["completed_phases"], ["user_setup"])
+
+    def test_same_version_source_transition_is_required_before_main_continues(self):
+        for write_failure in (False, True):
+            with self.subTest(write_failure=write_failure):
+                result, events, folder = self.run_main("\n".join([
+                    self.real_state_setup(),
+                    "ACFS_VERSION=old-version",
+                    f"state_bind_installer_source {SOURCE_B}",
+                    f"printf '%s' {shlex.quote(source_checkpoint().decode())} > \"$ACFS_STATE_FILE\"",
+                    WRITE_FAILURE if write_failure else "",
+                    r'''
+ensure_base_deps() {
+    jq -e '.version == "old-version" and (.completed_phases | index("finalize") == null)' \
+        "$ACFS_STATE_FILE" >/dev/null || exit 31
+    trace mut:base
+    exit 0
+}
+''',
+                ]))
+                state_dir = folder / "home/.acfs"
+                if write_failure:
+                    self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertNotIn("mut:base", events)
+                    self.assertTrue((state_dir / "write-failed").exists())
+                    self.assertEqual((state_dir / "state.json").read_bytes(), source_checkpoint())
+                else:
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertIn("mut:base", events)
+                    state = json.loads((state_dir / "state.json").read_text())
+                    self.assertEqual(state["completed_phases"], ["user_setup"])
+                    self.assertEqual(state["source_ledger_sha256"], SOURCE_A)
 
 
 if __name__ == "__main__":

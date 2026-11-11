@@ -3155,6 +3155,13 @@ detect_environment() {
     if [[ -f "$ACFS_LIB_DIR/state.sh" ]]; then
         # shellcheck source=scripts/lib/state.sh
         source "$ACFS_LIB_DIR/state.sh"
+        # Bind resume to the verified runtime bytes, not a mutable branch or a
+        # version label shared by many commits. Local archives use this same
+        # identity without claiming an unrelated remote commit was installed.
+        if ! state_bind_installer_source "$ACFS_TRUSTED_INTERNAL_LEDGER_SHA256"; then
+            log_error "Unable to bind installation checkpoints to the verified source"
+            exit 1
+        fi
     fi
 
     # Source error pattern matcher (report.sh uses get_suggested_fix when available).

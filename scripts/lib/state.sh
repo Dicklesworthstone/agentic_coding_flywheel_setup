@@ -32,8 +32,12 @@ _ACFS_STATE_LOCKED=false
 _ACFS_STATE_LOCK_DEPTH=0
 _ACFS_STATE_LOCK_FILE=""
 _ACFS_STATE_LOCK_OWNER_PID=""
+# Installer identity is bound only after the orchestrator verifies its source
+# ledger. An exported digest or a remote branch name is not evidence about the
+# actual scripts being installed (particularly for local/offline archives).
+_ACFS_STATE_SOURCE_LEDGER_SHA256=""
 export -n _ACFS_STATE_SH_LOADED _ACFS_STATE_LOCKED _ACFS_STATE_LOCK_DEPTH \
-    _ACFS_STATE_LOCK_FILE _ACFS_STATE_LOCK_OWNER_PID
+    _ACFS_STATE_LOCK_FILE _ACFS_STATE_LOCK_OWNER_PID _ACFS_STATE_SOURCE_LEDGER_SHA256
 
 _ACFS_STATE_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if ! type -t local_progress_record_installer_phase >/dev/null 2>&1 && [[ -f "$_ACFS_STATE_SCRIPT_DIR/progress.sh" ]]; then
@@ -68,6 +72,7 @@ fi
 # {
 #   "schema_version": 3,                      # Schema version for compatibility
 #   "version": "0.1.0",                       # ACFS version that created this state
+#   "source_ledger_sha256": "...",            # Source last deployed by successful finalization
 #   "mode": "vibe",                           # Installation mode (vibe|safe)
 #   "started_at": "2025-01-15T10:30:00Z",     # When installation started
 #   "last_updated": "2025-01-15T10:42:00Z",   # Last state update timestamp
@@ -414,6 +419,15 @@ state_get_file() {
 # State File Operations
 # ============================================================
 
+# Bind the checksum ledger already verified by the installer orchestrator.
+# The state library also serves non-installer commands, which leave this unset.
+# Usage: state_bind_installer_source <verified-internal-ledger-sha256>
+state_bind_installer_source() {
+    local digest="${1:-}"
+    [[ "$digest" =~ ^[0-9a-f]{64}$ ]] || return 1
+    _ACFS_STATE_SOURCE_LEDGER_SHA256="$digest"
+}
+
 # Initialize a new state file with default values
 # Usage: state_init
 # Returns: 0 on success, 1 on failure
@@ -518,6 +532,7 @@ state_init() {
             '{
                 schema_version: $schema_version,
                 version: $ver,
+                source_ledger_sha256: null,
                 target_user: $user,
                 target_home: $home,
                 bin_dir: $bin_dir,
@@ -546,6 +561,7 @@ state_init() {
 {
   "schema_version": $ACFS_STATE_SCHEMA_VERSION,
   "version": "$state_version",
+  "source_ledger_sha256": null,
   "target_user": "$state_target_user",
   "target_home": "$resolved_target_home",
   "bin_dir": "${ACFS_BIN_DIR:-$resolved_target_home/.local/bin}",
@@ -1230,45 +1246,69 @@ confirm_resume() {
 
     local resume_version=""
     local state_version=""
+    local refresh_source=false
+    local state_source=""
     if command -v jq &>/dev/null; then
         if ! state_version=$(echo "$state" | jq -r '.version // "unknown"'); then
             _confirm_resume_log_warn "Cannot read the checkpoint version. Refusing to resume."
             return 3
         fi
     fi
+    if [[ -n "$_ACFS_STATE_SOURCE_LEDGER_SHA256" ]]; then
+        if ! state_source=$(printf '%s' "$state" | jq -r '
+            .source_ledger_sha256 |
+            if . == null then ""
+            elif type == "string" and test("^[0-9a-f]{64}$") then .
+            else error("invalid installer source identity") end
+        '); then
+            _confirm_resume_log_warn "Cannot read the checkpoint source identity. Refusing to resume."
+            return 3
+        fi
+        if [[ "$state_source" != "$_ACFS_STATE_SOURCE_LEDGER_SHA256" ]]; then
+            refresh_source=true
+            if [[ -n "$state_source" ]]; then
+                _confirm_resume_log_info "Verified installer source changed since finalization."
+            else
+                _confirm_resume_log_info "Previous finalization has no verified source identity."
+            fi
+        fi
+    fi
     if [[ -n "${ACFS_VERSION:-}" && -n "$state_version" && "$state_version" != "unknown" ]]; then
         if [[ "$ACFS_VERSION" != "$state_version" ]] && command -v jq &>/dev/null; then
             _confirm_resume_log_warn "Version mismatch: state=$state_version, running=$ACFS_VERSION"
-            _confirm_resume_log_info "Finalize will be re-run on resume to deploy updated scripts"
-            # This snapshot is only for the prompt. Commit the transition
-            # against freshly locked state after the user chooses to resume.
-            if ! state=$(echo "$state" | jq --arg ver "$ACFS_VERSION" '
-                .completed_phases = (.completed_phases | map(select(. != "finalize"))) |
-                .version = $ver
-            '); then
-                _confirm_resume_log_warn "Cannot prepare the checkpoint version update. Refusing to resume."
-                return 3
-            fi
             resume_version="$ACFS_VERSION"
+        fi
+    fi
+    if [[ -n "$resume_version" || "$refresh_source" == "true" ]]; then
+        _confirm_resume_log_info "Finalize will be re-run on resume to deploy updated scripts"
+        # This snapshot is only for the prompt. Commit invalidation against
+        # freshly locked state after the user chooses to resume. Source
+        # identity changes only when finalization actually succeeds.
+        if ! state=$(printf '%s' "$state" | jq --arg ver "$resume_version" '
+            .completed_phases = (.completed_phases | map(select(. != "finalize"))) |
+            if $ver != "" then .version = $ver else . end
+        '); then
+            _confirm_resume_log_warn "Cannot prepare the checkpoint source/version update. Refusing to resume."
+            return 3
+        fi
 
-            if ! extracted=$(echo "$state" | jq -r '
-                [
-                    (.completed_phases | length | tostring),
-                    (.completed_phases[-1] // "unknown"),
-                    (.started_at // "unknown"),
-                    (.failed_phase // ""),
-                    (.mode // "unknown")
-                ] | join("\u001f")
-            '); then
-                _confirm_resume_log_warn "Cannot read the updated checkpoint. Refusing to resume."
-                return 3
-            fi
-            IFS=$'\x1f' read -r completed_count last_phase started_at failed_phase mode <<< "$extracted"
+        if ! extracted=$(echo "$state" | jq -r '
+            [
+                (.completed_phases | length | tostring),
+                (.completed_phases[-1] // "unknown"),
+                (.started_at // "unknown"),
+                (.failed_phase // ""),
+                (.mode // "unknown")
+            ] | join("\u001f")
+        '); then
+            _confirm_resume_log_warn "Cannot read the updated checkpoint. Refusing to resume."
+            return 3
+        fi
+        IFS=$'\x1f' read -r completed_count last_phase started_at failed_phase mode <<< "$extracted"
 
-            last_phase_name="${ACFS_PHASE_NAMES[$last_phase]:-$last_phase}"
-            if [[ "$completed_count" -eq 0 && -n "$failed_phase" && "$failed_phase" != "null" ]]; then
-                last_phase_name="${ACFS_PHASE_NAMES[$failed_phase]:-$failed_phase}"
-            fi
+        last_phase_name="${ACFS_PHASE_NAMES[$last_phase]:-$last_phase}"
+        if [[ "$completed_count" -eq 0 && -n "$failed_phase" && "$failed_phase" != "null" ]]; then
+            last_phase_name="${ACFS_PHASE_NAMES[$failed_phase]:-$failed_phase}"
         fi
     fi
 
@@ -1277,7 +1317,7 @@ confirm_resume() {
         if [[ -z "$forced_resume_phase" || "$forced_resume_phase" == "unknown" ]]; then
             forced_resume_phase="the beginning"
         fi
-        _confirm_resume_commit_version "$resume_version" || return 3
+        _confirm_resume_commit_identity "$resume_version" "$refresh_source" || return 3
         _confirm_resume_log_info "Force resume requested."
         _confirm_resume_log_info "Resuming installation from: $forced_resume_phase"
         _confirm_resume_log_info "Progress: $completed_count/$total_phases phases completed"
@@ -1325,7 +1365,7 @@ confirm_resume() {
                     return 2
                     ;;
                 *)
-                    _confirm_resume_commit_version "$resume_version" || return 3
+                    _confirm_resume_commit_identity "$resume_version" "$refresh_source" || return 3
                     _confirm_resume_log_info "Resuming installation..."
                     return 0
                     ;;
@@ -1351,7 +1391,7 @@ confirm_resume() {
                     return 2
                     ;;
                 *)
-                    _confirm_resume_commit_version "$resume_version" || return 3
+                    _confirm_resume_commit_identity "$resume_version" "$refresh_source" || return 3
                     _confirm_resume_log_info "Resuming installation..."
                     return 0
                     ;;
@@ -1361,23 +1401,24 @@ confirm_resume() {
 
     # Non-interactive: silent resume (default behavior)
     echo "" >&2
-    _confirm_resume_commit_version "$resume_version" || return 3
+    _confirm_resume_commit_identity "$resume_version" "$refresh_source" || return 3
     _confirm_resume_log_info "Resuming installation (use --force-reinstall for fresh start)"
     echo "" >&2
     return 0
 }
 
-# Persist the required version transition before accepting a resume. Updating
+# Persist the required source/version transition before accepting a resume. Updating
 # the live document under the state lock preserves progress/failure records
 # written while an interactive prompt was open. A failed write must not leave
 # the caller using an old completed-finalize flag as evidence of current assets.
-_confirm_resume_commit_version() {
+_confirm_resume_commit_identity() {
     local version="${1:-}"
-    [[ -n "$version" ]] || return 0
+    local refresh_source="${2:-false}"
+    [[ -n "$version" || "$refresh_source" == "true" ]] || return 0
 
     if ! state_update_with_args '
         .completed_phases = (.completed_phases | map(select(. != "finalize"))) |
-        .version = $ver
+        if $ver != "" then .version = $ver else . end
     ' --arg ver "$version"; then
         _confirm_resume_log_warn "Cannot save the updated installation checkpoint. Refusing to resume."
         return 3
@@ -2215,7 +2256,8 @@ state_phase_complete() {
 
     # Add phase to completed list, record duration, clear current
     local new_state
-    if ! new_state=$(echo "$state" | jq --arg phase "$phase_id" --argjson dur "$duration" '
+    if ! new_state=$(echo "$state" | jq --arg phase "$phase_id" --argjson dur "$duration" \
+        --arg source "$_ACFS_STATE_SOURCE_LEDGER_SHA256" '
         # Preserve insertion order for resume UX while preventing duplicates.
         # NOTE: `unique` sorts arrays, which breaks "last completed phase" reporting.
         .completed_phases = (
@@ -2224,6 +2266,10 @@ state_phase_complete() {
         ) |
         .partial_phases = ((.partial_phases // []) | map(select(. != $phase))) |
         .phase_durations[$phase] = $dur |
+        # Publish the source identity with the completed deployment, never
+        # before it. Interrupted or narrowly targeted installs cannot claim
+        # that the current runtime assets were successfully deployed.
+        if $phase == "finalize" and $source != "" then .source_ledger_sha256 = $source else . end |
         .current_phase = null |
         .current_step = null |
         del(.phase_start_time)
