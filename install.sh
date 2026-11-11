@@ -11323,52 +11323,58 @@ finalize() {
         log_detail "Generated acfs modules are supplemental; continuing legacy finalize for full runtime deployment parity"
     fi
 
-    # Copy tmux config
-    log_detail "Installing tmux config"
-    try_step "Installing tmux config" install_asset "acfs/tmux/tmux.conf" "$ACFS_HOME/tmux/tmux.conf" || return 1
-    try_step "Setting tmux config ownership" $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/tmux/tmux.conf" || return 1
-
-    # Link to target user's tmux.conf if it doesn't exist
-    if [[ ! -f "$TARGET_HOME/.tmux.conf" ]]; then
-        try_step "Linking tmux.conf" run_as_target ln -sf "$ACFS_HOME/tmux/tmux.conf" "$TARGET_HOME/.tmux.conf" || return 1
-    fi
-
-    # Reload tmux config if server is running (fixes #66: prefix key works immediately)
-    # This handles the case where tmux started in an earlier phase before config was deployed
-    # Note: Use $TARGET_HOME, not ~, since ~ expands to the installer's user (often root)
-    run_as_target tmux source-file "$TARGET_HOME/.tmux.conf" 2>/dev/null || true
-
-    # Install onboard lessons + command
-    log_detail "Installing onboard lessons"
-    try_step "Creating onboard lessons directory" $SUDO mkdir -p "$ACFS_HOME/onboard/lessons" || return 1
-    local lesson_path
-    local lesson_name
-    local nullglob_was_set=0
-    if shopt -q nullglob; then
-        nullglob_was_set=1
-    fi
-    shopt -s nullglob
-    local lesson_files=("${ACFS_ASSETS_DIR}/onboard/lessons/"*.md)
-    if (( ! nullglob_was_set )); then
-        shopt -u nullglob
-    fi
-    if [[ ${#lesson_files[@]} -eq 0 ]]; then
-        log_error "No onboard lessons found in ${ACFS_ASSETS_DIR}/onboard/lessons"
-        return 1
-    fi
-    for lesson_path in "${lesson_files[@]}"; do
-        lesson_name=$(basename "$lesson_path")
-        try_step "Installing onboard lesson: $lesson_name" install_asset "acfs/onboard/lessons/$lesson_name" "$ACFS_HOME/onboard/lessons/$lesson_name" || return 1
-    done
-
-    log_detail "Installing onboard command"
-    try_step "Installing onboard script" install_asset "packages/onboard/onboard.sh" "$ACFS_HOME/onboard/onboard.sh" || return 1
-    try_step "Setting onboard permissions" $SUDO chmod 755 "$ACFS_HOME/onboard/onboard.sh" || return 1
-    try_step "Setting onboard ownership" acfs_chown_tree "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/onboard" || return 1
-
+    # Every selected command needs its destination, even when onboard is omitted.
     try_step "Creating bin directory ($ACFS_BIN_DIR)" acfs_ensure_primary_bin_dir || return 1
-    try_step "Linking onboard command" acfs_link_primary_bin_command "$ACFS_HOME/onboard/onboard.sh" "onboard" || return 1
-    try_step "Linking global onboard command" acfs_link_global_bin_command "$ACFS_HOME/onboard/onboard.sh" "onboard" || return 1
+
+    if acfs_legacy_module_selected "cli.modern"; then
+        # Copy tmux config
+        log_detail "Installing tmux config"
+        try_step "Installing tmux config" install_asset "acfs/tmux/tmux.conf" "$ACFS_HOME/tmux/tmux.conf" || return 1
+        try_step "Setting tmux config ownership" $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/tmux/tmux.conf" || return 1
+
+        # Link to target user's tmux.conf if it doesn't exist
+        if [[ ! -f "$TARGET_HOME/.tmux.conf" ]]; then
+            try_step "Linking tmux.conf" run_as_target ln -sf "$ACFS_HOME/tmux/tmux.conf" "$TARGET_HOME/.tmux.conf" || return 1
+        fi
+
+        # Reload tmux config if server is running (fixes #66: prefix key works immediately)
+        # This handles the case where tmux started in an earlier phase before config was deployed
+        # Note: Use $TARGET_HOME, not ~, since ~ expands to the installer's user (often root)
+        run_as_target tmux source-file "$TARGET_HOME/.tmux.conf" 2>/dev/null || true
+    fi
+
+    if acfs_legacy_module_selected "acfs.onboard"; then
+        # Install onboard lessons + command
+        log_detail "Installing onboard lessons"
+        try_step "Creating onboard lessons directory" $SUDO mkdir -p "$ACFS_HOME/onboard/lessons" || return 1
+        local lesson_path
+        local lesson_name
+        local nullglob_was_set=0
+        if shopt -q nullglob; then
+            nullglob_was_set=1
+        fi
+        shopt -s nullglob
+        local lesson_files=("${ACFS_ASSETS_DIR}/onboard/lessons/"*.md)
+        if (( ! nullglob_was_set )); then
+            shopt -u nullglob
+        fi
+        if [[ ${#lesson_files[@]} -eq 0 ]]; then
+            log_error "No onboard lessons found in ${ACFS_ASSETS_DIR}/onboard/lessons"
+            return 1
+        fi
+        for lesson_path in "${lesson_files[@]}"; do
+            lesson_name=$(basename "$lesson_path")
+            try_step "Installing onboard lesson: $lesson_name" install_asset "acfs/onboard/lessons/$lesson_name" "$ACFS_HOME/onboard/lessons/$lesson_name" || return 1
+        done
+
+        log_detail "Installing onboard command"
+        try_step "Installing onboard script" install_asset "packages/onboard/onboard.sh" "$ACFS_HOME/onboard/onboard.sh" || return 1
+        try_step "Setting onboard permissions" $SUDO chmod 755 "$ACFS_HOME/onboard/onboard.sh" || return 1
+        try_step "Setting onboard ownership" acfs_chown_tree "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/onboard" || return 1
+
+        try_step "Linking onboard command" acfs_link_primary_bin_command "$ACFS_HOME/onboard/onboard.sh" "onboard" || return 1
+        try_step "Linking global onboard command" acfs_link_global_bin_command "$ACFS_HOME/onboard/onboard.sh" "onboard" || return 1
+    fi
 
     # Install shell completions (acfs.zshrc adds ~/.acfs/completions to fpath
     # only when _acfs exists, so without this step `acfs <TAB>` never works)
@@ -11469,12 +11475,14 @@ finalize() {
         return 1
     fi
 
-    # Install acfs-update wrapper command
-    try_step "Installing acfs-update" install_asset "scripts/acfs-update" "$ACFS_HOME/bin/acfs-update" || return 1
-    try_step "Setting acfs-update permissions" $SUDO chmod 755 "$ACFS_HOME/bin/acfs-update" || return 1
-    try_step "Setting acfs-update ownership" $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/bin/acfs-update" || return 1
-    try_step "Linking acfs-update command" acfs_link_primary_bin_command "$ACFS_HOME/bin/acfs-update" "acfs-update" || return 1
-    try_step "Linking global acfs-update command" acfs_link_global_bin_command "$ACFS_HOME/bin/acfs-update" "acfs-update" || return 1
+    if acfs_legacy_module_selected "acfs.update"; then
+        # Install acfs-update wrapper command
+        try_step "Installing acfs-update" install_asset "scripts/acfs-update" "$ACFS_HOME/bin/acfs-update" || return 1
+        try_step "Setting acfs-update permissions" $SUDO chmod 755 "$ACFS_HOME/bin/acfs-update" || return 1
+        try_step "Setting acfs-update ownership" $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/bin/acfs-update" || return 1
+        try_step "Linking acfs-update command" acfs_link_primary_bin_command "$ACFS_HOME/bin/acfs-update" "acfs-update" || return 1
+        try_step "Linking global acfs-update command" acfs_link_global_bin_command "$ACFS_HOME/bin/acfs-update" "acfs-update" || return 1
+    fi
 
     # Install the flywheel agent-guide generator (if available) and generate
     # the canonical guide once. The guide lives only in ACFS-owned storage
@@ -11552,105 +11560,115 @@ finalize() {
         $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/CHANGELOG.md" 2>/dev/null || true
     fi
 
-    # Legacy: Install doctor as acfs binary (for backwards compat)
-    try_step "Installing acfs CLI" install_asset "scripts/lib/doctor.sh" "$ACFS_HOME/bin/acfs" || return 1
-    try_step "Setting acfs permissions" $SUDO chmod 755 "$ACFS_HOME/bin/acfs" || return 1
-    try_step "Setting acfs ownership" $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/bin/acfs" || return 1
-    try_step "Linking acfs command" acfs_link_primary_bin_command "$ACFS_HOME/bin/acfs" "acfs" || return 1
+    if acfs_legacy_module_selected "acfs.doctor"; then
+        # Install doctor as the acfs command entrypoint.
+        try_step "Installing acfs CLI" install_asset "scripts/lib/doctor.sh" "$ACFS_HOME/bin/acfs" || return 1
+        try_step "Setting acfs permissions" $SUDO chmod 755 "$ACFS_HOME/bin/acfs" || return 1
+        try_step "Setting acfs ownership" $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/bin/acfs" || return 1
+        try_step "Linking acfs command" acfs_link_primary_bin_command "$ACFS_HOME/bin/acfs" "acfs" || return 1
 
-    # Install global acfs wrapper (works for root and all users)
-    # This wrapper finds the target user from state and runs acfs as that user
-    try_step "Installing global acfs wrapper" install_asset "scripts/acfs-global" "/usr/local/bin/acfs" || return 1
-    try_step "Setting global acfs permissions" $SUDO chmod 755 "/usr/local/bin/acfs" || return 1
+        # Install global acfs wrapper (works for root and all users)
+        # This wrapper finds the target user from state and runs acfs as that user
+        try_step "Installing global acfs wrapper" install_asset "scripts/acfs-global" "/usr/local/bin/acfs" || return 1
+        try_step "Setting global acfs permissions" $SUDO chmod 755 "/usr/local/bin/acfs" || return 1
+    fi
 
     # Install DCG (Destructive Command Guard) hook automatically.
     #
     # This is especially important because ACFS config includes "dangerous mode"
     # aliases (e.g., `cc`) that can run commands without interactive approvals.
-    log_detail "Installing DCG (Destructive Command Guard) PreToolUse hook"
-    try_step_optional "Installing DCG hook" \
-        env "TARGET_USER=$TARGET_USER" "TARGET_HOME=$TARGET_HOME" \
-        "$ACFS_HOME/scripts/services-setup.sh" --install-claude-guard --yes || \
-        log_warn "DCG hook installation failed (optional)"
+    if acfs_legacy_module_selected "agents.claude" && acfs_legacy_module_selected "stack.dcg"; then
+        log_detail "Installing DCG (Destructive Command Guard) PreToolUse hook"
+        try_step_optional "Installing DCG hook" \
+            env "TARGET_USER=$TARGET_USER" "TARGET_HOME=$TARGET_HOME" \
+            "$ACFS_HOME/scripts/services-setup.sh" --install-claude-guard --yes || \
+            log_warn "DCG hook installation failed (optional)"
+    fi
 
-    # Configure workspace trust for coding agents (fixes #159)
+    # Configure workspace trust for selected coding agents (fixes #159).
     # In vibe/yolo mode, Claude Code requires explicit workspace trust to avoid
-    # interactive prompts. Set skipDangerousModePermissionPrompt and trust /data/projects + $HOME.
+    # interactive prompts. Set skipDangerousModePermissionPrompt for Claude.
     if [[ "$MODE" == "vibe" ]]; then
-        log_detail "Configuring workspace trust for coding agents..."
-        local claude_settings_file="$TARGET_HOME/.claude/settings.json"
-        if [[ -f "$claude_settings_file" ]] && command -v jq &>/dev/null; then
-            # Use run_as_target for the entire jq+mv pipeline so the temp file
-            # is created with target user ownership (not root). Previously the
-            # shell redirect "> $tmp_settings" ran as root, leaving a root-owned
-            # settings file that the target user couldn't modify later.
-            # A dotfiles-managed symlink must be edited in place: the jq+mv
-            # pipeline below would otherwise replace the symlink with a
-            # detached regular file and silently orphan the user's dotfiles.
-            if acfs_merge_existing_json_config_as_target \
-                    "$claude_settings_file" '.skipDangerousModePermissionPrompt = true'; then
-                log_detail "Claude workspace trust configured"
-            else
-                log_warn "Could not safely update $claude_settings_file; leaving it untouched"
-            fi
-        elif [[ ! -f "$claude_settings_file" ]]; then
-            # Create minimal settings with trust enabled
-            run_as_target mkdir -p "$TARGET_HOME/.claude" 2>/dev/null || true
-            run_as_target tee "$claude_settings_file" > /dev/null << 'CLAUDE_TRUST_EOF'
+        if acfs_legacy_module_selected "agents.claude"; then
+            log_detail "Configuring workspace trust for Claude Code..."
+            local claude_settings_file="$TARGET_HOME/.claude/settings.json"
+            if [[ -f "$claude_settings_file" ]] && command -v jq &>/dev/null; then
+                # Use run_as_target for the entire jq+mv pipeline so the temp file
+                # is created with target user ownership (not root). Previously the
+                # shell redirect "> $tmp_settings" ran as root, leaving a root-owned
+                # settings file that the target user couldn't modify later.
+                # A dotfiles-managed symlink must be edited in place: the jq+mv
+                # pipeline below would otherwise replace the symlink with a
+                # detached regular file and silently orphan the user's dotfiles.
+                if acfs_merge_existing_json_config_as_target \
+                        "$claude_settings_file" '.skipDangerousModePermissionPrompt = true'; then
+                    log_detail "Claude workspace trust configured"
+                else
+                    log_warn "Could not safely update $claude_settings_file; leaving it untouched"
+                fi
+            elif [[ ! -f "$claude_settings_file" ]]; then
+                # Create minimal settings with trust enabled
+                run_as_target mkdir -p "$TARGET_HOME/.claude" 2>/dev/null || true
+                run_as_target tee "$claude_settings_file" > /dev/null << 'CLAUDE_TRUST_EOF'
 {
   "skipDangerousModePermissionPrompt": true
 }
 CLAUDE_TRUST_EOF
-            log_detail "Claude settings created with workspace trust"
+                log_detail "Claude settings created with workspace trust"
+            fi
         fi
 
-        # Antigravity policy priming. The agy-locked launcher owns the forward
-        # settings path and the DCG hook registration; legacy Gemini trust files
-        # are intentionally not written for new installs.
-        local agy_locked_bin="$ACFS_BIN_DIR/agy-locked"
-        if [[ ! -x "$agy_locked_bin" && -x "$TARGET_HOME/.local/bin/agy-locked" ]]; then
-            agy_locked_bin="$TARGET_HOME/.local/bin/agy-locked"
-        fi
-        if [[ -x "$agy_locked_bin" ]]; then
-            if run_as_target "$agy_locked_bin" --acfs-prime-settings 2>/dev/null; then
-                log_detail "Antigravity locked settings and DCG hook primed"
-            else
-                log_warn "Antigravity locked settings priming failed"
+        if acfs_legacy_module_selected "agents.antigravity"; then
+            # Antigravity policy priming. The agy-locked launcher owns the forward
+            # settings path and the DCG hook registration; legacy Gemini trust files
+            # are intentionally not written for new installs.
+            local agy_locked_bin="$ACFS_BIN_DIR/agy-locked"
+            if [[ ! -x "$agy_locked_bin" && -x "$TARGET_HOME/.local/bin/agy-locked" ]]; then
+                agy_locked_bin="$TARGET_HOME/.local/bin/agy-locked"
             fi
-        else
-            log_warn "agy-locked launcher not found; Antigravity settings will be primed on first agy launch"
+            if [[ -x "$agy_locked_bin" ]]; then
+                if run_as_target "$agy_locked_bin" --acfs-prime-settings 2>/dev/null; then
+                    log_detail "Antigravity locked settings and DCG hook primed"
+                else
+                    log_warn "Antigravity locked settings priming failed"
+                fi
+            else
+                log_warn "agy-locked launcher not found; Antigravity settings will be primed on first agy launch"
+            fi
         fi
     fi
 
-    # Claude Code session retention (fixes #330). Applies to EVERY mode, not
-    # just vibe: the 30-day cleanupPeriodDays default silently deletes session
-    # transcripts before cass can index them. Merge non-destructively: the key
-    # is only written when absent, so an existing user-set value is respected.
-    log_detail "Configuring Claude Code session retention (cleanupPeriodDays)..."
-    local claude_retention_settings_file="$TARGET_HOME/.claude/settings.json"
-    if [[ -f "$claude_retention_settings_file" ]]; then
-        if command -v jq &>/dev/null; then
-            # Same run_as_target jq+mv pipeline as the workspace-trust step so
-            # the temp file is created with target-user ownership (not root).
-            # Edit a symlinked settings.json in place (see the workspace-trust
-            # merge above).
-            if acfs_merge_existing_json_config_as_target \
-                    "$claude_retention_settings_file" "$ACFS_CLAUDE_RETENTION_JQ_FILTER"; then
-                log_detail "Claude session retention configured (cleanupPeriodDays kept explicit; default 30-day pruning disabled)"
+    # Claude Code session retention (fixes #330). Applies to EVERY mode when
+    # Claude is selected: the 30-day cleanupPeriodDays default silently deletes
+    # session transcripts before cass can index them. Merge non-destructively:
+    # the key is only written when absent, so an existing value is respected.
+    if acfs_legacy_module_selected "agents.claude"; then
+        log_detail "Configuring Claude Code session retention (cleanupPeriodDays)..."
+        local claude_retention_settings_file="$TARGET_HOME/.claude/settings.json"
+        if [[ -f "$claude_retention_settings_file" ]]; then
+            if command -v jq &>/dev/null; then
+                # Same run_as_target jq+mv pipeline as the workspace-trust step so
+                # the temp file is created with target-user ownership (not root).
+                # Edit a symlinked settings.json in place (see the workspace-trust
+                # merge above).
+                if acfs_merge_existing_json_config_as_target \
+                        "$claude_retention_settings_file" "$ACFS_CLAUDE_RETENTION_JQ_FILTER"; then
+                    log_detail "Claude session retention configured (cleanupPeriodDays kept explicit; default 30-day pruning disabled)"
+                else
+                    log_warn "Could not update ~/.claude/settings.json with cleanupPeriodDays; Claude Code will prune session transcripts after 30 days"
+                fi
             else
-                log_warn "Could not update ~/.claude/settings.json with cleanupPeriodDays; Claude Code will prune session transcripts after 30 days"
+                log_warn "jq unavailable; skipped setting cleanupPeriodDays (Claude Code will prune session transcripts after 30 days)"
             fi
         else
-            log_warn "jq unavailable; skipped setting cleanupPeriodDays (Claude Code will prune session transcripts after 30 days)"
-        fi
-    else
-        run_as_target mkdir -p "$TARGET_HOME/.claude" 2>/dev/null || true
-        run_as_target tee "$claude_retention_settings_file" > /dev/null << CLAUDE_RETENTION_EOF
+            run_as_target mkdir -p "$TARGET_HOME/.claude" 2>/dev/null || true
+            run_as_target tee "$claude_retention_settings_file" > /dev/null << CLAUDE_RETENTION_EOF
 {
   "cleanupPeriodDays": $ACFS_CLAUDE_RETENTION_DAYS
 }
 CLAUDE_RETENTION_EOF
-        log_detail "Claude settings created with explicit session retention (cleanupPeriodDays=$ACFS_CLAUDE_RETENTION_DAYS)"
+            log_detail "Claude settings created with explicit session retention (cleanupPeriodDays=$ACFS_CLAUDE_RETENTION_DAYS)"
+        fi
     fi
 
     # Legacy state file (only if state.sh is unavailable)
