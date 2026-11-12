@@ -1914,5 +1914,289 @@ if (( ${#release[@]} )); then printf '%s\n' "${release[@]}"; fi
                 self.assertNotEqual(status, 0)
 
 
+
+class MissingRuntimeRepairTests(unittest.TestCase):
+    """Repair selected runtimes through real dispatch, pins and executable probes."""
+
+    COMMAND = r'''#!/bin/bash
+set -eu
+printf 'command:%s:%s\n' "${0##*/}" "$*" >> "$TEST_ROOT/events"
+if [[ "${0##*/}" == rustup && "${1:-}" == run ]]; then
+    [[ "${2:-}" == nightly && "${RUSTUP_AUTO_INSTALL:-}" == 0 ]] || exit 17
+    [[ "${TEST_NIGHTLY_PRESENT:-true}" == true ]] || exit 18
+    shift 2
+    exec "$@"
+fi
+if [[ "${0##*/}" == rustup && "${1:-}" == toolchain && "${2:-}" == list ]]; then
+    printf 'stable-fixture\n'
+    exit 0
+fi
+printf 'fixture 1.0.0\n'
+exit "${TEST_PROBE_EXIT:-0}"
+'''
+
+    INSTALLER = r'''#!/bin/bash
+set -eu
+printf 'install:%s\n' "$TEST_RUNTIME" >> "$TEST_ROOT/events"
+printf '%s\n' "$@" > "$TEST_ROOT/args-$TEST_RUNTIME"
+printf 'HOME=%s\nCARGO_HOME=%s\nRUSTUP_HOME=%s\nRUSTUP_TOOLCHAIN=%s\nUV_INSTALL_DIR=%s\nUV_NO_MODIFY_PATH=%s\nUV_UNMANAGED_INSTALL=%s\n' \
+    "$HOME" "${CARGO_HOME:-}" "${RUSTUP_HOME:-}" "${RUSTUP_TOOLCHAIN:-}" \
+    "${UV_INSTALL_DIR:-}" "${UV_NO_MODIFY_PATH:-}" "${UV_UNMANAGED_INSTALL:-}" \
+    > "$TEST_ROOT/context-$TEST_RUNTIME"
+[[ "${TEST_INSTALLER_EXIT:-0}" == 0 ]] || exit "$TEST_INSTALLER_EXIT"
+[[ "${TEST_PAYLOAD:-good}" != missing ]] || exit 0
+case "$TEST_RUNTIME" in
+    bun) install_bin="$BUN_INSTALL/bin"; commands=(bun) ;;
+    uv) install_bin="$UV_INSTALL_DIR"; commands=(uv uvx) ;;
+    rust) install_bin="$CARGO_HOME/bin"; commands=(rustup cargo rustc) ;;
+    *) exit 19 ;;
+esac
+mkdir -p "$install_bin"
+for command_name in "${commands[@]}"; do
+    cat "$TEST_ROOT/fixture-command" > "$install_bin/$command_name"
+    chmod 0755 "$install_bin/$command_name"
+done
+'''
+
+    SETUP = r'''
+eval "$runtime_target_runner"
+ACFS_REPO_ROOT="$REPO_ROOT"
+_UPDATE_STATE_LIBRARY="$REPO_ROOT/scripts/lib/state.sh"
+_UPDATE_MANIFEST_INDEX="$REPO_ROOT/scripts/generated/manifest_index.sh"
+FORCE_MODE="${TEST_FORCE:-true}"
+DRY_RUN="${TEST_DRY_RUN:-false}"
+UPDATE_RUNTIME="${TEST_UPDATE_RUNTIME:-true}"
+UPDATE_CMD_TIMEOUT=3
+update_current_user() { printf '%s\n' "$TEST_CURRENT_USER"; }
+update_getent_passwd_entry() {
+    [[ "$1" == fixture ]] || return 1
+    printf 'fixture:x:2001:2001:Fixture:%s:/bin/bash\n' "$TARGET_HOME"
+}
+# Keep execution in this fixture's account. For the cross-account case only
+# the privilege transport is substituted; the real target command environment
+# and cwd are still used, and caller identity outside that transport is intact.
+if [[ "$TEST_CURRENT_USER" != fixture ]]; then
+    update_run_in_target_context() (
+        update_current_user() { printf 'fixture\n'; }
+        eval "$runtime_target_runner"
+        update_run_in_target_context "$@"
+    )
+fi
+# Never discover or update real host runtimes. Installed fixture executables
+# must still exist and run; the fresh-install rollback stub alone is not proof.
+update_binary_path() {
+    local candidate=""
+    for candidate in "${ACFS_BIN_DIR:-$TARGET_HOME/.local/bin}/$1" \
+        "$TARGET_HOME/.bun/bin/$1" "$TARGET_HOME/.cargo/bin/$1"; do
+        [[ -x "$candidate" && ! -d "$candidate" ]] || continue
+        printf '%s\n' "$candidate"
+        return 0
+    done
+    return 1
+}
+update_private_installer_tmpdir() { return 0; }
+capture_version_before() { VERSION_BEFORE["$1"]=fixture; }
+capture_version_after() { return 1; }
+for runtime in bun uv rust; do
+    KNOWN_INSTALLERS[$runtime]="https://fixture.invalid/$runtime.sh"
+done
+'''
+
+    ALL_RUNTIMES = r'''
+for runtime in bun uv rust; do
+    export TEST_RUNTIME="$runtime"
+    "update_$runtime"
+done
+result
+'''
+
+    def setUp(self):
+        # Retain inert scripts, logs and resulting binaries for diagnosis.
+        self.base = Path(tempfile.mkdtemp(prefix="acfs-runtime-repair-"))
+        self.home = self.base / "target home"
+        self.acfs = self.home / ".acfs"
+        self.acfs.mkdir(parents=True)
+        (self.base / "installer.sh").write_text(self.INSTALLER)
+        (self.base / "fixture-command").write_text(self.COMMAND)
+        actual = hashlib.sha256(self.INSTALLER.encode()).hexdigest()
+        self.env = {
+            "PATH": "/usr/bin:/bin", "HOME": str(self.home),
+            "TARGET_USER": "fixture", "TARGET_HOME": str(self.home),
+            "TEST_CURRENT_USER": "fixture", "TEST_ROOT": str(self.base),
+            "REPO_ROOT": str(ROOT), "TMPDIR": str(self.base),
+            "UPDATE_TEST_LIBRARY": os.environ.get(
+                "ACFS_UPDATE_TEST_LIBRARY", str(ROOT / "scripts/lib/update.sh")),
+            "TEST_PIN": actual, "TEST_ACTUAL": actual, "TEST_NEW_ACTUAL": actual,
+            "NO_COLOR": "1", "ACFS_INTERACTIVE": "false",
+        }
+        self.selection("lang.bun", "lang.uv", "lang.rust")
+
+    def selection(self, *modules):
+        (self.acfs / "state.json").write_text(json.dumps({
+            "schema_version": 3, "target_user": "fixture",
+            "target_home": str(self.home),
+            "module_selection": {"schema_version": 1, "selected_modules": list(modules)},
+        }))
+
+    def shell(self, body=None, **env):
+        prefix = r'''
+source "$UPDATE_TEST_LIBRARY"
+runtime_target_runner="$(declare -f update_run_in_target_context)"
+''' + COMMON + self.SETUP
+        result = subprocess.run(
+            ["/bin/bash", "--noprofile", "--norc", "-c", prefix + (body or self.ALL_RUNTIMES)],
+            env=self.env | env, cwd=self.base, text=True, capture_output=True, timeout=25,
+        )
+        output = result.stdout + result.stderr
+        self.assertEqual(result.returncode, 0, output + "\nArtifacts: " + str(self.base))
+        return output
+
+    def events(self):
+        path = self.base / "events"
+        return path.read_text().splitlines() if path.exists() else []
+
+    def context(self, tool):
+        return dict(line.split("=", 1) for line in
+                    (self.base / f"context-{tool}").read_text().splitlines())
+
+    def test_force_installs_and_verifies_all_selected_missing_runtimes(self):
+        output = self.shell()
+        self.assertIn("COUNTS=3,0,0,0", output)
+        self.assertEqual([event for event in self.events() if event.startswith("install:")],
+                         ["install:bun", "install:uv", "install:rust"])
+        for tool in ("bun", "uv", "cargo", "rustc"):
+            self.assertIn(f"command:{tool}:--version", self.events())
+        self.assertEqual((self.base / "args-rust").read_text().splitlines(),
+                         ["-y", "--default-toolchain", "nightly", "--no-modify-path"])
+
+    def test_normal_update_preserves_skip_for_absent_runtimes(self):
+        self.assertIn("COUNTS=0,3,0,0", self.shell(TEST_FORCE="false"))
+        self.assertEqual(self.events(), [])
+
+    def test_force_never_provisions_runtimes_outside_saved_selection(self):
+        self.selection("stack.ntm")
+        self.assertIn("COUNTS=0,0,0,0", self.shell())
+        self.assertEqual(self.events(), [])
+
+    def test_category_selection_still_disables_runtime_repair(self):
+        self.assertIn("COUNTS=0,0,0,0", self.shell(TEST_UPDATE_RUNTIME="false"))
+        self.assertEqual(self.events(), [])
+
+    def test_dry_run_never_downloads_or_probes_missing_runtimes(self):
+        self.assertIn("COUNTS=0,3,0,0", self.shell(TEST_DRY_RUN="true"))
+        self.assertEqual(self.events(), [])
+
+    def test_successful_installer_without_payload_is_a_failure(self):
+        self.assertIn("COUNTS=0,0,3,0", self.shell(TEST_PAYLOAD="missing"))
+        self.assertEqual(self.events().count("smoke"), 3)
+        self.assertFalse(any(event.startswith("command:") for event in self.events()))
+
+    def test_runtime_probe_exit_95_is_not_a_checksum_refusal(self):
+        self.assertIn("COUNTS=0,0,3,0", self.shell(TEST_PROBE_EXIT="95"))
+        self.assertEqual(self.events().count("smoke"), 3)
+
+    def test_native_installer_failure_is_not_reclassified_as_a_pin_failure(self):
+        self.assertIn("COUNTS=0,0,3,0", self.shell(TEST_INSTALLER_EXIT="95"))
+        self.assertNotIn("smoke", self.events())
+        self.assertFalse(any(event.startswith("command:") for event in self.events()))
+
+    def test_checksum_blocks_remain_visible_for_each_runtime(self):
+        self.assertIn("COUNTS=0,0,3,3", self.shell(TEST_PIN="1" * 64))
+        self.assertEqual(self.events().count("download"), 3)
+        self.assertFalse(any(event.startswith("install:") for event in self.events()))
+
+    def test_force_still_honors_holds_before_downloading(self):
+        output = self.shell(r'''
+update_tool_hold_details() {
+    UPDATE_LAST_HOLD_TOOL="$1"
+    UPDATE_LAST_HOLD_DETAILS='owner=fixture reason=maintenance'
+    return 0
+}
+''' + self.ALL_RUNTIMES)
+        self.assertIn("COUNTS=0,3,0,0", output)
+        self.assertEqual(self.events(), [])
+
+    def test_missing_nightly_cannot_be_reported_as_usable_rust(self):
+        self.selection("lang.rust")
+        self.assertIn("COUNTS=0,0,1,0", self.shell(TEST_NIGHTLY_PRESENT="false"))
+
+    def test_force_repairs_nightly_when_rustup_already_exists(self):
+        self.selection("lang.rust")
+        bin_dir = self.home / ".cargo/bin"
+        bin_dir.mkdir(parents=True)
+        for tool in ("rustup", "cargo", "rustc"):
+            binary = bin_dir / tool
+            binary.write_text(self.COMMAND)
+            binary.chmod(0o755)
+        output = self.shell('export TEST_RUNTIME=rust; update_rust; result')
+        self.assertIn("COUNTS=3,0,0,0", output)
+        self.assertIn("command:rustup:update nightly", self.events())
+        self.assertNotIn("install:rust", self.events())
+
+    def test_existing_rust_hold_blocks_native_updates_and_forced_nightly_repair(self):
+        self.selection("lang.rust")
+        bin_dir = self.home / ".cargo/bin"
+        bin_dir.mkdir(parents=True)
+        for tool in ("rustup", "cargo", "rustc"):
+            binary = bin_dir / tool
+            binary.write_text(self.COMMAND)
+            binary.chmod(0o755)
+        output = self.shell(r'''
+update_tool_hold_details() {
+    [[ "$1" == rust ]] || return 1
+    UPDATE_LAST_HOLD_TOOL=rust
+    UPDATE_LAST_HOLD_DETAILS='owner=fixture reason=maintenance'
+    return 0
+}
+update_rust
+result
+printf 'HELD=%s\n' "$HELD_COUNT"
+''')
+        self.assertIn("COUNTS=0,1,0,0", output)
+        self.assertIn("HELD=1", output)
+        self.assertEqual(self.events(), [])
+
+    def test_uv_repairs_the_configured_bin_without_disabling_self_update(self):
+        self.selection("lang.uv")
+        bin_dir = self.home / "custom bin"
+        self.assertIn("COUNTS=1,0,0,0", self.shell(
+            ACFS_BIN_DIR=str(bin_dir), UV_UNMANAGED_INSTALL=str(self.base / "caller bin")))
+        self.assertEqual(self.context("uv")["UV_INSTALL_DIR"], str(bin_dir))
+        self.assertEqual(self.context("uv")["UV_NO_MODIFY_PATH"], "1")
+        self.assertEqual(self.context("uv")["UV_UNMANAGED_INSTALL"], "")
+        self.assertTrue((bin_dir / "uv").is_file())
+
+    def test_same_account_relative_rust_homes_keep_the_callers_directory(self):
+        self.selection("lang.rust")
+        self.assertIn("COUNTS=1,0,0,0", self.shell(
+            CARGO_HOME="custom cargo", RUSTUP_HOME="custom rustup"))
+        self.assertEqual(self.context("rust")["CARGO_HOME"], str(self.base / "custom cargo"))
+        self.assertEqual(self.context("rust")["RUSTUP_HOME"], str(self.base / "custom rustup"))
+        self.assertTrue((self.base / "custom cargo/bin/cargo").is_file())
+
+    def test_cross_account_repair_ignores_the_callers_rust_homes(self):
+        self.selection("lang.rust")
+        foreign_cargo = self.base / "caller cargo"
+        self.assertIn("COUNTS=1,0,0,0", self.shell(
+            TEST_CURRENT_USER="operator", CARGO_HOME=str(foreign_cargo),
+            RUSTUP_HOME=str(self.base / "caller rustup"), RUSTUP_TOOLCHAIN="caller-toolchain"))
+        self.assertEqual(self.context("rust")["CARGO_HOME"], str(self.home / ".cargo"))
+        self.assertEqual(self.context("rust")["RUSTUP_HOME"], str(self.home / ".rustup"))
+        self.assertEqual(self.context("rust")["RUSTUP_TOOLCHAIN"], "")
+        self.assertFalse(foreign_cargo.exists())
+
+    def test_repaired_bun_can_install_the_selected_cloud_dependency(self):
+        self.selection("lang.bun", "cloud.vercel")
+        output = self.shell(r'''
+export TEST_RUNTIME=bun
+update_bun
+update_cloud
+printf 'OUTCOME=%s,%s\n' "$SUCCESS_COUNT" "$FAIL_COUNT"
+''')
+        self.assertIn("OUTCOME=2,0", output)
+        self.assertIn("command:bun:install -g --trust vercel@latest", self.events())
+        self.assertEqual([event for event in self.events() if event.startswith("install:")],
+                         ["install:bun"])
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

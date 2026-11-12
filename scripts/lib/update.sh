@@ -1511,7 +1511,7 @@ update_finish_cmd_skip() {
 update_is_pin_failure() {
     [[ "${1:-}" == "$UPDATE_EXIT_CHECKSUM" ]] || return 1
     case "${2:-}" in
-        update_run_verified_installer|update_run_verified_installer_with_env) return 0 ;;
+        update_run_verified_installer|update_run_verified_installer_with_env|update_install_missing_runtime) return 0 ;;
         update_run_verified_installer_with_target_tmpdir|_run_claude_installer_with_timeout) return 0 ;;
         update_run_pcr_installer_and_verify|update_run_slb_verified_install|update_migrate_bun_claude|update_run_asb_installer) return 0 ;;
         *) return 1 ;;
@@ -7530,6 +7530,77 @@ check_reboot_required() {
     fi
 }
 
+# A failed first install can leave a selected runtime absent. --force repairs
+# it through the same checksum/hold/account boundary used for other tools.
+# Fresh installers do not have a retained binary for the generic rollback
+# verifier, so readiness must be established before run_cmd records success.
+# shellcheck disable=SC2317,SC2329  # invoked indirectly via run_cmd()
+update_install_missing_runtime() {
+    local tool="${1:-}" target_user="" target_home="" current_user=""
+    local installer_env="" binary_path="" rustup_bin="" env_bin=""
+    local cargo_home="" rustup_home="" runtime_command="" bin_dir=""
+    local -a installer_args=()
+    case "$tool" in bun|uv|rust) ;; *) return 1 ;; esac
+
+    target_user="$(update_target_user)" || return 1
+    target_home="$(update_target_home "$target_user")" || return 1
+    [[ -n "$target_home" && "$target_home" == /* && "$target_home" != / ]] || return 1
+
+    case "$tool" in
+        uv)
+            bin_dir="$(update_preferred_user_bin_dir)" || return 1
+            [[ -n "$bin_dir" && "$bin_dir" == /* && "$bin_dir" != / ]] || return 1
+            # Keep uv self-update enabled, and leave ACFS shell configuration
+            # to the shell modules. A caller's unmanaged-install override must
+            # not redirect this repair outside the target installation.
+            installer_env="UV_INSTALL_DIR=$bin_dir"$'\n'"UV_NO_MODIFY_PATH=1"$'\n'"UV_UNMANAGED_INSTALL="
+            ;;
+        rust)
+            current_user="$(update_current_user)" || return 1
+            cargo_home="$target_home/.cargo"
+            rustup_home="$target_home/.rustup"
+            if [[ "$target_user" == "$current_user" ]]; then
+                cargo_home="$(update_maintenance_absolute_path "${CARGO_HOME:-$cargo_home}")" || return 1
+                rustup_home="$(update_maintenance_absolute_path "${RUSTUP_HOME:-$rustup_home}")" || return 1
+            fi
+            installer_env="CARGO_HOME=$cargo_home"$'\n'"RUSTUP_HOME=$rustup_home"
+            if [[ "$target_user" != "$current_user" ]]; then
+                installer_env+=$'\n'"RUSTUP_TOOLCHAIN="
+            fi
+            # The manifest's sh -s -- sentinel is not a rustup-init argument
+            # when the verified script is executed from a file.
+            installer_args=(-y --default-toolchain nightly --no-modify-path)
+            ;;
+    esac
+
+    update_run_verified_installer_with_env "$tool" "$installer_env" "${installer_args[@]}" || return $?
+
+    if [[ "$tool" == rust ]]; then
+        rustup_bin="$(update_rust_binary_path rustup 2>/dev/null || true)"
+        env_bin="$(update_system_binary_path env 2>/dev/null || true)"
+        if [[ -z "$rustup_bin" || ! -x "$rustup_bin" || -d "$rustup_bin" || -z "$env_bin" ]]; then
+            printf 'Rust installer completed without a usable rustup executable.\n' >&2
+            return 1
+        fi
+        for runtime_command in cargo rustc; do
+            binary_path="$(update_rust_binary_path "$runtime_command" 2>/dev/null || true)"
+            if [[ -z "$binary_path" || ! -x "$binary_path" || -d "$binary_path" ]] \
+                || ! update_run_rust_in_target_context "$env_bin" RUSTUP_AUTO_INSTALL=0 \
+                    "$rustup_bin" run nightly "$binary_path" --version; then
+                printf 'Rust installer completed but nightly %s verification failed.\n' "$runtime_command" >&2
+                return 1
+            fi
+        done
+    else
+        binary_path="$(update_binary_path "$tool" 2>/dev/null || true)"
+        if [[ -z "$binary_path" || ! -x "$binary_path" || -d "$binary_path" ]] \
+            || ! update_run_bounded_in_target_context "$binary_path" --version; then
+            printf '%s installer completed but runtime verification failed.\n' "$tool" >&2
+            return 1
+        fi
+    fi
+}
+
 update_bun() {
     if [[ "$UPDATE_RUNTIME" != "true" ]]; then
         return 0
@@ -7543,7 +7614,11 @@ update_bun() {
     bun_bin="$(update_binary_path bun 2>/dev/null || true)"
 
     if [[ -z "$bun_bin" ]]; then
-        log_item "skip" "Bun" "not installed"
+        if [[ "$FORCE_MODE" == "true" ]]; then
+            run_cmd "Bun (install)" update_install_missing_runtime bun
+        else
+            log_item "skip" "Bun" "not installed"
+        fi
         return 0
     fi
 
@@ -8498,13 +8573,25 @@ update_rust() {
     update_load_module_selection || return 1
     state_module_is_selected lang.rust || return 0
 
+    # Native rustup updates and forced nightly repair must honor the same
+    # per-tool hold as the verified fresh-install path.
+    if update_tool_hold_details rust; then
+        log_item "skip" "Rust" "HELD: $UPDATE_LAST_HOLD_DETAILS"
+        update_note_held_tool rust
+        return 0
+    fi
+
     log_section "Rust Toolchain"
 
     local rustup_bin=""
     rustup_bin="$(update_rust_binary_path rustup 2>/dev/null || true)"
 
     if [[ -z "$rustup_bin" ]]; then
-        log_item "skip" "Rust" "not installed"
+        if [[ "$FORCE_MODE" == "true" ]]; then
+            run_cmd "Rust (install)" update_install_missing_runtime rust
+        else
+            log_item "skip" "Rust" "not installed"
+        fi
         return 0
     fi
 
@@ -8514,8 +8601,10 @@ update_rust() {
     # Update stable toolchain
     run_cmd "Rust stable" update_run_rust_in_target_context "$rustup_bin" update stable
 
-    # Check if nightly is installed and update it too
-    if update_run_rust_in_target_context "$rustup_bin" toolchain list 2>/dev/null | grep "^nightly" >/dev/null; then
+    # --force also repairs the manifest's required nightly toolchain when a
+    # partial first install left only rustup or stable behind.
+    if [[ "$FORCE_MODE" == "true" ]] \
+        || update_run_rust_in_target_context "$rustup_bin" toolchain list 2>/dev/null | grep "^nightly" >/dev/null; then
         run_cmd "Rust nightly" update_run_rust_in_target_context "$rustup_bin" update nightly
     fi
 
@@ -8590,7 +8679,11 @@ update_uv() {
     uv_bin="$(update_binary_path uv 2>/dev/null || true)"
 
     if [[ -z "$uv_bin" ]]; then
-        log_item "skip" "uv" "not installed"
+        if [[ "$FORCE_MODE" == "true" ]]; then
+            run_cmd "uv (install)" update_install_missing_runtime uv
+        else
+            log_item "skip" "uv" "not installed"
+        fi
         return 0
     fi
 

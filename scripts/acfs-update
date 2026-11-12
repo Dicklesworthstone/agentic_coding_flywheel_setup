@@ -939,6 +939,7 @@ exec_as_target_user() {
   local runuser_bin=""
   local sudo_bin=""
   local true_bin=""
+  local current_user=""
 
   sanitized_state_file="$(sanitize_abs_nonroot_path "${ACFS_STATE_FILE:-}" 2>/dev/null || true)"
   sanitized_system_state_file="$(sanitize_abs_nonroot_path "${ACFS_SYSTEM_STATE_FILE:-}" 2>/dev/null || true)"
@@ -947,6 +948,17 @@ exec_as_target_user() {
   sanitized_bin_dir="$(sanitize_abs_nonroot_path "${ACFS_BIN_DIR:-}" 2>/dev/null || true)"
 
   validate_target_user_or_die "$user"
+
+  current_user="$(resolve_current_user)" || {
+    echo "Error: unable to resolve the calling account for acfs-update" >&2
+    return 1
+  }
+  if [[ "$current_user" != "$user" ]]; then
+    # The library runs as the target after this handoff, so it cannot identify
+    # caller-owned Rust stores by UID any more. Clear only those selectors at
+    # the account boundary; direct same-account updates keep their overrides.
+    env_args+=(-u CARGO_HOME -u RUSTUP_HOME -u RUSTUP_TOOLCHAIN)
+  fi
 
   if [[ -n "$sanitized_target_home" ]]; then
     if [[ -n "$sanitized_state_file" ]] && ! state_file_matches_target_home "$sanitized_state_file" "$sanitized_target_home"; then

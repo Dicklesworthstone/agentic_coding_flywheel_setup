@@ -5,6 +5,7 @@ accounting are real. Only passwd home metadata points at isolated fixture homes;
 no account, package, toolchain or network service is changed. A transport fixture
 can hide sudo to exercise the real runuser fallback. All artifacts are retained.
 """
+import json
 import os
 from pathlib import Path
 import pwd
@@ -343,6 +344,95 @@ update_rust
         self.assertTrue((cargo_home / "self-update").is_file())
         self.assertFalse((self.home / "relative rust").exists())
         self.assertFalse((self.home / "relative cargo").exists())
+
+    def run_wrapper_rust_update(self, *, cross=False, overrides=None):
+        if cross:
+            if os.geteuid() != 0 or not shutil.which("runuser"):
+                self.skipTest("public wrapper cross-account regression requires root and runuser")
+        acfs_home = self.home / ".acfs"
+        self.owned_dir(acfs_home / "bin")
+        self.owned_dir(acfs_home / "scripts/lib")
+        self.write_input(acfs_home / "state.json", json.dumps({
+            "schema_version": 3, "target_user": self.account.pw_name,
+            "target_home": str(self.home),
+            "module_selection": {"schema_version": 1, "selected_modules": ["lang.rust"]},
+        }))
+        # The complete public wrapper performs owner detection and the real
+        # account handoff. Its deployed entrypoint invokes the actual Rust
+        # updater against inert tools; no self-update or other category runs.
+        bindings = {
+            "UPDATE_TEST_LIBRARY": str(self.library), "TEST_ROOT": str(self.base),
+            "TEST_USER": self.account.pw_name, "TEST_UID": str(self.account.pw_uid),
+            "TEST_GID": str(self.account.pw_gid), "TEST_HOME": str(self.home),
+            "TARGET_USER": self.account.pw_name, "TARGET_HOME": str(self.home),
+            "TEST_DRY_RUN": "false", "TEST_ABORT": "false",
+            "TEST_TIMEOUT": "5", "TEST_TRANSPORT": "default",
+        }
+        entrypoint = acfs_home / "scripts/lib/update.sh"
+        prefix = "#!/bin/bash\n" + "\n".join(
+            f"export {name}={shlex.quote(value)}" for name, value in bindings.items()) + "\n"
+        self.write_input(entrypoint, prefix + COMMON + r'''
+update_rust
+printf 'COUNTS=%s,%s,%s\n' "$SUCCESS_COUNT" "$SKIP_COUNT" "$FAIL_COUNT"
+''')
+        entrypoint.chmod(0o755)
+        wrapper = acfs_home / "bin/acfs-update"
+        self.write_input(wrapper, Path(os.environ.get(
+            "ACFS_UPDATE_TEST_WRAPPER", ROOT / "scripts/acfs-update")).read_text())
+        wrapper.chmod(0o755)
+        env = {
+            "PATH": "/usr/bin:/bin", "HOME": str(self.caller if cross else self.home),
+            "TARGET_USER": self.account.pw_name, "TARGET_HOME": str(self.home),
+            "ACFS_SYSTEM_STATE_FILE": str(self.base / "absent-system-state.json"),
+            "TMPDIR": str(self.tmp), "NO_COLOR": "1", "ACFS_INTERACTIVE": "false",
+        }
+        env.update(overrides or {})
+        kwargs = {}
+        if not cross and os.geteuid() == 0:
+            kwargs.update(user=self.account.pw_uid, group=self.account.pw_gid, extra_groups=[])
+        result = subprocess.run(
+            ["/bin/bash", "--noprofile", "--norc", str(wrapper)],
+            env=env, cwd=self.work, text=True, capture_output=True, timeout=25, **kwargs,
+        )
+        (self.base / "wrapper-stdout").write_text(result.stdout)
+        (self.base / "wrapper-stderr").write_text(result.stderr)
+        self.assertEqual(result.returncode, 0,
+                         result.stdout + result.stderr + "\nArtifacts: " + str(self.base))
+        return result.stdout + result.stderr
+
+    def test_public_wrapper_discards_foreign_rust_homes_before_account_handoff(self):
+        foreign_rust = self.caller / "foreign-rust"
+        foreign_cargo = self.caller / "foreign-cargo"
+        self.prepare_rust_homes(foreign_rust, foreign_cargo, nightly=False)
+        self.write_tools(foreign_cargo / "bin", "foreign")
+        output = self.run_wrapper_rust_update(cross=True, overrides={
+            "RUSTUP_HOME": str(foreign_rust), "CARGO_HOME": str(foreign_cargo),
+            "RUSTUP_TOOLCHAIN": "foreign-override",
+        })
+        self.assertIn("COUNTS=3,0,0", output)
+        self.assert_target_events(self.events())
+        for event in self.events():
+            self.assertEqual(event[4:7], ["<unset>"] * 3, event)
+            self.assertEqual(event[8], "default", event)
+        self.assertEqual(sorted(p.name for p in foreign_rust.iterdir()), ["toolchains.txt"])
+        self.assertEqual(sorted(p.name for p in foreign_cargo.iterdir()), ["bin"])
+        self.assertTrue((self.rust_home / "updated-nightly").is_file())
+
+    def test_public_wrapper_preserves_same_account_rust_overrides(self):
+        rust_home, cargo_home = self.work / "owner rust", self.work / "owner cargo"
+        self.prepare_rust_homes(rust_home, cargo_home)
+        self.write_tools(cargo_home / "bin", "owner")
+        output = self.run_wrapper_rust_update(overrides={
+            "RUSTUP_HOME": str(rust_home), "CARGO_HOME": str(cargo_home),
+            "RUSTUP_TOOLCHAIN": "owner-override",
+        })
+        self.assertIn("COUNTS=3,0,0", output)
+        self.assert_target_events(self.events())
+        for event in self.events():
+            self.assertEqual(event[4:7], [str(rust_home), str(cargo_home), "owner-override"], event)
+            self.assertEqual(event[8], "owner", event)
+        self.assertTrue((cargo_home / "self-update").is_file())
+        self.assertFalse((self.cargo_home / "self-update").exists())
 
     def test_version_probe_is_targeted_and_cannot_auto_install(self):
         output = self.run_update(cross=True, command="get_version rust",
