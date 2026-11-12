@@ -16,6 +16,128 @@ teardown() {
     common_teardown
 }
 
+
+@test "state: both parsers preserve safe and vibe modes with legacy and scoped checkpoints" {
+    local python_fallback=false parser install_mode scoped
+    command() {
+        if [[ "$python_fallback" == true && "$1" == -v && "$2" == jq ]]; then
+            return 1
+        fi
+        builtin command "$@"
+    }
+    for parser in jq python; do
+        python_fallback=false
+        [[ "$parser" != python ]] || python_fallback=true
+        for install_mode in safe vibe; do
+            for scoped in false true; do
+                jq -n --arg mode "$install_mode" --argjson scoped "$scoped" '
+                    {mode:$mode} + if $scoped then {
+                        module_selection:{schema_version:1,selected_modules:["lang.bun"]}
+                    } else {} end' > "$ACFS_STATE_FILE"
+                cp "$ACFS_STATE_FILE" "$BATS_TEST_TMPDIR/mode-before-read.json"
+                state_load_module_selection "$ACFS_STATE_FILE"
+                [[ "$ACFS_STATE_INSTALL_MODE" == "$install_mode" ]]
+                if [[ "$scoped" == true ]]; then
+                    [[ "$ACFS_STATE_SELECTION_MODE" == scoped ]]
+                    state_module_is_selected lang.bun
+                else
+                    [[ "$ACFS_STATE_SELECTION_MODE" == legacy ]]
+                fi
+                run cmp "$ACFS_STATE_FILE" "$BATS_TEST_TMPDIR/mode-before-read.json"
+                assert_success
+            done
+        done
+    done
+}
+
+@test "state: missing legacy modes and missing checkpoints clear a previous mode" {
+    local python_fallback=false parser checkpoint
+    command() {
+        if [[ "$python_fallback" == true && "$1" == -v && "$2" == jq ]]; then
+            return 1
+        fi
+        builtin command "$@"
+    }
+    for parser in jq python; do
+        python_fallback=false
+        [[ "$parser" != python ]] || python_fallback=true
+        printf '%s\n' '{"mode":"safe"}' > "$ACFS_STATE_FILE"
+        printf '%s\n' '{}' > "$ACFS_HOME/legacy.json"
+        printf '%s\n' '{"module_selection":{"schema_version":1,"selected_modules":["lang.bun"]}}' > "$ACFS_HOME/scoped.json"
+        for checkpoint in "$ACFS_HOME/legacy.json" "$ACFS_HOME/scoped.json" "$ACFS_HOME/not-installed.json"; do
+            state_load_module_selection "$ACFS_STATE_FILE"
+            [[ "$ACFS_STATE_INSTALL_MODE" == safe ]]
+            state_load_module_selection "$checkpoint"
+            [[ -z "$ACFS_STATE_INSTALL_MODE" ]]
+        done
+    done
+}
+
+@test "state: both parsers reject invalid install modes without retaining earlier policy" {
+    local python_fallback=false parser invalid_mode scoped
+    command() {
+        if [[ "$python_fallback" == true && "$1" == -v && "$2" == jq ]]; then
+            return 1
+        fi
+        builtin command "$@"
+    }
+    for parser in jq python; do
+        python_fallback=false
+        [[ "$parser" != python ]] || python_fallback=true
+        for invalid_mode in null false 0 '[]' '{}' '""' '"unknown"' '"safe\nvibe"'; do
+            for scoped in false true; do
+                printf '%s\n' '{"mode":"safe","module_selection":{"schema_version":1,"selected_modules":["lang.bun"]}}' > "$ACFS_HOME/valid-mode.json"
+                state_load_module_selection "$ACFS_HOME/valid-mode.json"
+                [[ "$ACFS_STATE_INSTALL_MODE" == safe ]]
+                jq -n --argjson mode "$invalid_mode" --argjson scoped "$scoped" '
+                    {mode:$mode} + if $scoped then {
+                        module_selection:{schema_version:1,selected_modules:["lang.bun"]}
+                    } else {} end' > "$ACFS_STATE_FILE"
+                cp "$ACFS_STATE_FILE" "$BATS_TEST_TMPDIR/invalid-mode-before-read.json"
+                if state_load_module_selection "$ACFS_STATE_FILE"; then
+                    return 1
+                fi
+                [[ "$ACFS_STATE_SELECTION_MODE" == invalid ]]
+                [[ -z "$ACFS_STATE_INSTALL_MODE" ]]
+                [[ "${#ACFS_STATE_SELECTED_MODULES[@]}" -eq 0 ]]
+                run cmp "$ACFS_STATE_FILE" "$BATS_TEST_TMPDIR/invalid-mode-before-read.json"
+                assert_success
+            done
+        done
+    done
+}
+
+
+@test "state: accepted mode changes persist without narrowing scoped or legacy intent" {
+    local scoped
+    for scoped in false true; do
+        jq -n --argjson scoped "$scoped" '
+            {mode:"safe",operator_note:"retain me",completed_phases:["user_setup"]} +
+            if $scoped then {
+                module_selection:{schema_version:1,selected_modules:["lang.bun"],requested_modules:[]}
+            } else {} end' > "$ACFS_STATE_FILE"
+        MODE=vibe
+        state_record_module_selection lang.bun
+        run jq -e --argjson scoped "$scoped" '
+            .mode == "vibe" and .operator_note == "retain me" and
+            .completed_phases == ["user_setup"] and
+            (if $scoped then .module_selection.selected_modules == ["lang.bun"]
+             else has("module_selection") | not end)' "$ACFS_STATE_FILE"
+        assert_success
+
+        unset MODE
+        cp "$ACFS_STATE_FILE" "$BATS_TEST_TMPDIR/accepted-mode.json"
+        state_record_module_selection lang.bun
+        run cmp "$ACFS_STATE_FILE" "$BATS_TEST_TMPDIR/accepted-mode.json"
+        assert_success
+
+        MODE=safe
+        state_record_module_selection lang.bun
+        state_load_module_selection "$ACFS_STATE_FILE"
+        [[ "$ACFS_STATE_INSTALL_MODE" == safe ]]
+    done
+}
+
 @test "state: init creates valid json" {
     run state_init
     assert_success

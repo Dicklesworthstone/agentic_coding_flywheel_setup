@@ -436,6 +436,7 @@ DRY_RUN=false
 PRINT_MODE=false
 PIN_REF_MODE=false
 MODE="vibe"
+ACFS_MODE_EXPLICIT=false
 SKIP_POSTGRES=false
 SKIP_VAULT=false
 SKIP_CLOUD=false
@@ -2672,6 +2673,7 @@ EOF
                         log_fatal "Invalid --mode '$MODE' (expected: vibe or safe)"
                         ;;
                 esac
+                ACFS_MODE_EXPLICIT=true
                 shift 2
                 ;;
             --skip-postgres)
@@ -12515,6 +12517,11 @@ acfs_load_installation_selection() {
 }
 
 acfs_apply_saved_installation_selection() {
+    # A new shell starts in vibe mode. Preserve the installation's accepted
+    # policy unless --mode was explicit; a later profile mode can still override.
+    if [[ "${ACFS_MODE_EXPLICIT:-false}" != true && -n "${ACFS_STATE_INSTALL_MODE:-}" ]]; then
+        MODE="$ACFS_STATE_INSTALL_MODE"
+    fi
     ACFS_SAVED_SELECTION_ACTIVE=false
     ACFS_SAVED_SELECTION_MODULES=()
     ACFS_SAVED_REQUESTED_MODULES=()
@@ -12530,14 +12537,10 @@ acfs_apply_saved_installation_selection() {
     fi
 }
 
-# Preview the same saved default without requiring privileges or checkpoint
-# repair. Explicit selectors are already a complete request for inspection.
+# Preview the same saved defaults without requiring privileges or checkpoint
+# repair. Explicit selectors still inherit mode unless they override it.
 acfs_preview_installation_selection() {
     type -t state_resolve_target_home >/dev/null 2>&1 || return 0
-    if [[ -n "${ACFS_CLI_PROFILE:-}" || "${ACFS_INTERACTIVE:-false}" == true ]] \
-        || [[ ${#ONLY_MODULES[@]} -gt 0 || ${#ONLY_PHASES[@]} -gt 0 ]]; then
-        return 0
-    fi
     local preview_home="" preview_acfs_home="" preview_state_file=""
     preview_home="$(state_resolve_target_home 2>/dev/null || true)"
     if [[ -z "$preview_home" ]]; then

@@ -1176,6 +1176,73 @@ EOF
     assert_failure
 }
 
+@test "acfs_run_verification_shell: mode survives cleared transports and is exported to children" {
+    # These are transport boundaries, not evidence of a privilege transition.
+    # The actual guardian and native check still run with GNU timeout.
+    run_as_root_shell() {
+        printf 'context:root\n'
+        /usr/bin/env -i PATH=/usr/bin:/bin /bin/bash --noprofile --norc -p -c "$1"
+    }
+    run_as_target_shell() {
+        printf 'context:target_user\n'
+        /usr/bin/env -i PATH=/usr/bin:/bin /bin/bash --noprofile --norc -p -c "$1"
+    }
+    run_as_current_shell() {
+        printf 'context:current\n'
+        /usr/bin/env -i PATH=/usr/bin:/bin /bin/bash --noprofile --norc -p -c "$1"
+    }
+
+    local mode context expected
+    local check_cmd='printf "shell:%s\n" "$MODE"; /bin/bash -p -c '\''printf "child:%s\n" "$MODE"'\'''
+    for mode in safe vibe; do
+        MODE="$mode"
+        export -n MODE
+        for context in root target_user current; do
+            run acfs_run_verification_shell "$context" "$check_cmd"
+            assert_success
+            printf -v expected 'context:%s\nshell:%s\nchild:%s' "$context" "$mode" "$mode"
+            assert_output "$expected"
+        done
+    done
+}
+
+@test "acfs_run_verification_shell: authored user check honors safe and preserves vibe failures" {
+    source "$PROJECT_ROOT/scripts/generated/manifest_index.sh"
+    # Define the account boundary inside the authored shell; never exercise
+    # the host account or sudoers, while using the shipped mode predicate.
+    local check_cmd='runuser() { printf "passwordless check\n"; return 41; }; '
+    check_cmd+="${ACFS_MODULE_VERIFY_COMMAND[users.ubuntu.1]}"
+    run_as_root_shell() {
+        /usr/bin/env -i PATH=/usr/bin:/bin /bin/bash --noprofile --norc -p -c "$1"
+    }
+
+    MODE=safe
+    export -n MODE
+    run acfs_run_verification_shell root "$check_cmd"
+    assert_success
+    assert_output ""
+
+    MODE=vibe
+    run acfs_run_verification_shell root "$check_cmd"
+    assert_equal "$status" 41
+    assert_output "passwordless check"
+}
+
+@test "acfs_run_verification_shell: invalid mode fails before entering any transport" {
+    local marker="$BATS_TEST_TMPDIR/invalid-mode-transport"
+    run_as_root_shell() { touch "$marker"; }
+    run_as_target_shell() { touch "$marker"; }
+    run_as_current_shell() { touch "$marker"; }
+    MODE=unsupported
+    export -n MODE
+    local context
+    for context in root target_user current; do
+        run acfs_run_verification_shell "$context" true
+        assert_failure
+        [[ ! -e "$marker" ]] || fail "Invalid mode reached $context transport"
+    done
+}
+
 # Use the real timeout and strict-shell runners. The fixture scales only the
 # declared 120-second production allowance to keep a regression test short;
 # its TERM-resistant child still exercises timeout's real kill escalation.

@@ -41,12 +41,13 @@ _ACFS_STATE_REINSTALL_SELECTION_FILE=""
 declare -ga _ACFS_STATE_REINSTALL_MODULES=()
 declare -ga _ACFS_STATE_REINSTALL_REQUESTED_MODULES=()
 ACFS_STATE_SELECTION_MODE=invalid
+ACFS_STATE_INSTALL_MODE=""
 declare -ga ACFS_STATE_SELECTED_MODULES=()
 declare -ga ACFS_STATE_REQUESTED_MODULES=()
 export -n _ACFS_STATE_SH_LOADED _ACFS_STATE_LOCKED _ACFS_STATE_LOCK_DEPTH \
     _ACFS_STATE_LOCK_FILE _ACFS_STATE_LOCK_OWNER_PID _ACFS_STATE_SOURCE_LEDGER_SHA256 \
     _ACFS_STATE_REINSTALL_SELECTION_MODE _ACFS_STATE_REINSTALL_SELECTION_FILE \
-    ACFS_STATE_SELECTION_MODE
+    ACFS_STATE_SELECTION_MODE ACFS_STATE_INSTALL_MODE
 
 _ACFS_STATE_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if ! type -t local_progress_record_installer_phase >/dev/null 2>&1 && [[ -f "$_ACFS_STATE_SCRIPT_DIR/progress.sh" ]]; then
@@ -534,6 +535,7 @@ state_requested_modules_for_plan() {
 # path: absent legacy identity is allowed, but conflicting explicit fields fail.
 state_load_module_selection() {
     ACFS_STATE_SELECTION_MODE=invalid
+    ACFS_STATE_INSTALL_MODE=""
     declare -ga ACFS_STATE_SELECTED_MODULES=()
     declare -ga ACFS_STATE_REQUESTED_MODULES=()
     local state_file="${1:-}"
@@ -585,7 +587,11 @@ state_load_module_selection() {
             ) then
                 error("checkpoint does not belong to the resolved target")
             else . end |
-            if has("module_selection") | not then "legacy"
+            if has("mode") and (.mode != "safe" and .mode != "vibe") then
+                error("invalid installation mode")
+            else . end |
+            (.mode // "") as $install_mode |
+            if has("module_selection") | not then "legacy", $install_mode
             else .module_selection | . as $selection |
                 if type != "object" or .schema_version != 1 then
                     error("unsupported module selection schema")
@@ -608,7 +614,7 @@ state_load_module_selection() {
                 elif any((.requested_modules // [])[];
                     . as $module | $selection.selected_modules | index($module) == null) then
                     error("requested_modules must be a subset of selected_modules")
-                else "scoped", .selected_modules[], "--requested--", (.requested_modules // [])[] end
+                else "scoped", $install_mode, .selected_modules[], "--requested--", (.requested_modules // [])[] end
             end
         ' -- "$state_file"); then
             printf 'Invalid ACFS module selection in %s\n' "$state_file" >&2
@@ -629,8 +635,12 @@ try:
         for key, expected in (("target_home", sys.argv[3]), ("target_user", sys.argv[4])):
             if (key in state or sys.argv[5] != "true") and state.get(key) != expected:
                 raise ValueError("checkpoint does not belong to the resolved target")
+    install_mode = state.get("mode", "")
+    if "mode" in state and install_mode not in ("safe", "vibe"):
+        raise ValueError("invalid installation mode")
     if "module_selection" not in state:
         print("legacy")
+        print(install_mode)
     else:
         selection = state["module_selection"]
         if not isinstance(selection, dict) or type(selection.get("schema_version")) not in (int, float) or selection["schema_version"] != 1:
@@ -646,6 +656,7 @@ try:
         if len(set(requested)) != len(requested):
             raise ValueError("duplicate module ID in requested_modules")
         print("scoped")
+        print(install_mode)
         print("\n".join(modules))
         print("--requested--")
         if requested:
@@ -665,10 +676,13 @@ ACFS_SELECTION_PY
     local -a records=()
     mapfile -t records <<< "$parsed"
     case "${records[0]:-}" in
-        legacy) ACFS_STATE_SELECTION_MODE=legacy ;;
+        legacy)
+            ACFS_STATE_SELECTION_MODE=legacy
+            ACFS_STATE_INSTALL_MODE="${records[1]:-}"
+            ;;
         scoped)
             local record="" reading_requests=false
-            for record in "${records[@]:1}"; do
+            for record in "${records[@]:2}"; do
                 if [[ "$record" == --requested-- ]]; then
                     reading_requests=true
                 elif [[ "$reading_requests" == true ]]; then
@@ -678,6 +692,7 @@ ACFS_SELECTION_PY
                 fi
             done
             ACFS_STATE_SELECTION_MODE=scoped
+            ACFS_STATE_INSTALL_MODE="${records[1]:-}"
             ;;
         *) return 1 ;;
     esac
@@ -730,8 +745,16 @@ state_validate_module_selection_catalog() {
 # read/validate/write cycle. Narrow --only repairs add intent, never erase it.
 state_record_module_selection() {
     local state_file="" merged="" previous="" status=0
+    local install_mode="${MODE:-}" update_mode=false
     local -a requested_modules=()
     state_module_selection_json "$@" >/dev/null || return 1
+    case "$install_mode" in
+        ""|safe|vibe) ;;
+        *)
+            printf '%s\n' 'Invalid installation mode; refusing to update the checkpoint.' >&2
+            return 1
+            ;;
+    esac
     state_file=$(state_get_file) || return 1
     [[ -f "$state_file" ]] || return 1
     _state_acquire_lock || return 1
@@ -739,20 +762,32 @@ state_record_module_selection() {
         _state_release_lock
         return 1
     fi
+    # MODE is the accepted policy for this invocation. Preserve saved policy
+    # for library callers that only update scope and do not provide a mode.
+    if [[ -n "$install_mode" && "$install_mode" != "$ACFS_STATE_INSTALL_MODE" ]]; then
+        update_mode=true
+    fi
     if [[ "$ACFS_STATE_SELECTION_MODE" == legacy ]]; then
+        if [[ "$update_mode" == true ]]; then
+            state_update_with_args '.mode = $mode' --arg mode "$install_mode" || status=1
+            if [[ "$status" -eq 0 ]]; then
+                state_load_module_selection "$state_file" || status=1
+            fi
+        fi
         _state_release_lock
-        return 0
+        return "$status"
     fi
     mapfile -t requested_modules < <(state_requested_modules_for_plan "$@")
     previous=$(state_module_selection_json --requested "${ACFS_STATE_REQUESTED_MODULES[@]}" -- \
         "${ACFS_STATE_SELECTED_MODULES[@]}") || status=1
     merged=$(state_module_selection_json --requested "${ACFS_STATE_REQUESTED_MODULES[@]}" \
         "${requested_modules[@]}" -- "${ACFS_STATE_SELECTED_MODULES[@]}" "$@") || status=1
-    if [[ "$status" -eq 0 && "$merged" != "$previous" ]]; then
+    if [[ "$status" -eq 0 && ( "$merged" != "$previous" || "$update_mode" == true ) ]]; then
         state_update_with_args '
             .module_selection.selected_modules = $selection.selected_modules |
-            .module_selection.requested_modules = $selection.requested_modules' \
-            --argjson selection "$merged" || status=1
+            .module_selection.requested_modules = $selection.requested_modules |
+            if $mode == "" then . else .mode = $mode end' \
+            --argjson selection "$merged" --arg mode "$install_mode" || status=1
         if [[ "$status" -eq 0 ]]; then
             state_load_module_selection "$state_file" || status=1
         fi

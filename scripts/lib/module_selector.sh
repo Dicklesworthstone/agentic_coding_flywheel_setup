@@ -415,6 +415,15 @@ acfs_interactive_module_selector() {
 }
 
 _acfs_interactive_module_selector_on_tty() {
+    local selector_entry_mode="${MODE:-vibe}"
+    case "$selector_entry_mode" in
+        vibe|safe) ;;
+        *)
+            log_error "Invalid installation mode: $selector_entry_mode"
+            return 1
+            ;;
+    esac
+
     while true; do
         echo ""
         echo "╔═══════════════════════════════════════════════════════════════╗"
@@ -514,7 +523,9 @@ _acfs_interactive_module_selector_on_tty() {
                     ACFS_SELECTED_PROFILE=""
                     ACFS_CLI_PROFILE=""
                     ACFS_EXPLICIT_TARGETED_SELECTION=false
-                    MODE="vibe"
+                    # Abandon the reviewed profile's mode, preserving the
+                    # saved or CLI mode that was active before this menu.
+                    MODE="$selector_entry_mode"
                     break
                     ;;
                 3)

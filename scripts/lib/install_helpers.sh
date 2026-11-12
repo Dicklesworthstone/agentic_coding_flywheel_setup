@@ -1853,9 +1853,17 @@ _acfs_force_reinstall_enabled() {
 acfs_run_verification_shell() {
     local run_as="${1:-}"
     local check_cmd="${2:-}"
+    local install_mode="${MODE:-vibe}"
     local timeout_bin="" bash_bin="" sleep_bin="" bounded_cmd=""
 
     [[ -n "$check_cmd" ]] || return 1
+    case "$install_mode" in
+        safe|vibe) ;;
+        *)
+            log_error "Invalid installation mode for installed-state verification"
+            return 1
+            ;;
+    esac
     case "$run_as" in
         root|target_user|target|current) ;;
         *) return 1 ;;
@@ -1875,18 +1883,20 @@ acfs_run_verification_shell() {
     # guardian until escalation and execute the actual check in a strict child.
     # Privileged mode prevents either new shell from loading ambient startup
     # hooks/functions. Authored checks may still define/source their helpers.
+    # Pass validated mode as argv data: parent shell variables may not be
+    # exported, and sudo may clear even an exported MODE before verification.
     # Disabling job control keeps that child in timeout's process group.
     printf -v bounded_cmd '%q ' "$timeout_bin" --kill-after=2s 120s \
         "$bash_bin" --noprofile --norc -p -c '
             set +e
             set +m
             trap '\''trap "" HUP INT QUIT TERM; while :; do "$3" 1; done'\'' HUP INT QUIT TERM
-            "$2" --noprofile --norc -p -c '\''set -euo pipefail; eval "$1"'\'' _ "$1" &
+            "$2" --noprofile --norc -p -c '\''set -euo pipefail; export MODE="$2"; eval "$1"'\'' _ "$1" "$4" &
             probe_pid=$!
             probe_status=0
             wait "$probe_pid" || probe_status=$?
             exit "$probe_status"
-        ' _ "$check_cmd" "$bash_bin" "$sleep_bin"
+        ' _ "$check_cmd" "$bash_bin" "$sleep_bin" "$install_mode"
     case "$run_as" in
         root) run_as_root_shell "$bounded_cmd" </dev/null ;;
         target_user|target) run_as_target_shell "$bounded_cmd" </dev/null ;;

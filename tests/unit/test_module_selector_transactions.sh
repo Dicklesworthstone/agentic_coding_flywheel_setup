@@ -220,6 +220,55 @@ test_profile_reselection_clears_all_filters() {
     expect_plan 'base.core cloud.deploy'
 }
 
+test_profile_reselection_restores_incoming_safe_mode() {
+    local profile="" expected_profile="" input="" replay=""
+    for profile in minimal agents-only custom; do
+        fixture || return 1
+        MODE=safe
+        case "$profile" in
+            minimal)
+                expected_profile=minimal
+                input=$'1\n2\n3\n1'
+                ;;
+            agents-only)
+                expected_profile=agents-only
+                input=$'1\n2\n4\n1'
+                ;;
+            custom)
+                expected_profile=""
+                input=$'1\n2\n7\ndone\n1'
+                ;;
+        esac
+        # Choose vibe, abandon its review, then choose a profile without a
+        # mode. The original safe policy must survive every restart path.
+        _acfs_interactive_module_selector_on_tty <<< "$input" >/dev/null || return 1
+        [[ "$MODE" == safe && "$ACFS_SELECTED_PROFILE" == "$expected_profile" ]] || return 1
+        replay="$(acfs_format_reproducible_cli_command)" || return 1
+        [[ "$replay" == *"--mode safe"* ]] || return 1
+    done
+}
+
+test_profile_reselection_allows_later_explicit_mode_choice() {
+    fixture || return 1
+    MODE=safe
+    _acfs_interactive_module_selector_on_tty <<< $'3\n2\n1\n1' >/dev/null || return 1
+    [[ "$MODE" == vibe && "$ACFS_SELECTED_PROFILE" == vibe ]] || return 1
+
+    fixture || return 1
+    MODE=vibe
+    _acfs_interactive_module_selector_on_tty <<< $'3\n2\n2\n1' >/dev/null || return 1
+    [[ "$MODE" == safe && "$ACFS_SELECTED_PROFILE" == safe ]]
+}
+
+test_interactive_selector_rejects_invalid_entry_mode() {
+    fixture || return 1
+    MODE=unexpected
+    if _acfs_interactive_module_selector_on_tty <<< $'1\n1' >/dev/null 2>&1; then
+        return 1
+    fi
+    [[ "$MODE" == unexpected && -z "$ACFS_SELECTED_PROFILE" ]]
+}
+
 test_invalid_plan_clears_readiness() {
     fixture || return 1
     ONLY_MODULES=(missing.module)
@@ -260,6 +309,9 @@ for test in \
     test_eof_cancels_instead_of_proceeding \
     test_failed_profile_does_not_authorize_previous_plan \
     test_profile_reselection_clears_all_filters \
+    test_profile_reselection_restores_incoming_safe_mode \
+    test_profile_reselection_allows_later_explicit_mode_choice \
+    test_interactive_selector_rejects_invalid_entry_mode \
     test_invalid_plan_clears_readiness \
     test_empty_plan_cannot_be_customized \
     test_no_deps_preserves_explicit_expert_behavior; do

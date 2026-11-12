@@ -760,6 +760,8 @@ class ScopedInstallerResumeTests(unittest.TestCase):
         setup += [
             "state_init",
             "state_phase_complete languages" if completed else "",
+            # A new installer process starts with its own default mode.
+            "MODE=vibe; ACFS_MODE_EXPLICIT=false",
             "ACFS_EFFECTIVE_PLAN=(); ACFS_PLAN_REASON=()",
             'cp "$ACFS_STATE_FILE" "$TEST_ROOT/custom-state.json"\n'
             'ACFS_STATE_FILE="$TEST_ROOT/custom-state.json"' if custom else "",
@@ -769,6 +771,7 @@ class ScopedInstallerResumeTests(unittest.TestCase):
 confirm_or_exit() { trace approved; }
 ensure_base_deps() { trace mut:base; }
 record_scope() {
+    trace "mode:$MODE"
     local module
     local -a required=()
     for module in "${ACFS_EFFECTIVE_PLAN[@]}"; do
@@ -856,6 +859,7 @@ acfs_verify_phase() { record_scope; exit 0; }
             ("foreign-default", 'state_update \'.target_home = "/another/home"\'', False),
             ("foreign-custom", 'state_update \'.target_user = "someone_else"\'', True),
             ("null-identity", "state_update '.target_user = null'", False),
+            ("invalid-mode", "state_update '.mode = null'", False),
         )
         for name, alter, custom in cases:
             for flag in ("--resume", "--force-reinstall"):
@@ -902,6 +906,77 @@ acfs_verify_phase() { record_scope; exit 0; }
                     self.assertFalse(any(event.startswith("mut:") for event in events), events)
                     self.assertNotIn("root", events)
                     self.assert_unchanged(folder)
+
+
+    def test_saved_safe_mode_survives_retry_force_and_explicit_selection(self):
+        for arguments in ((), ("--resume",), ("--force-reinstall",),
+                          ("--only", "agents.grok"), ("--only-phase", "agents"),
+                          ("--profile", "full")):
+            with self.subTest(arguments=arguments):
+                result, events, folder = self.run_scoped(arguments)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn("mode:safe", events)
+                checkpoint = json.loads((folder / "home/.acfs/state.json").read_text())
+                self.assertEqual(checkpoint["mode"], "safe")
+
+    def test_explicit_cli_and_profile_modes_override_saved_policy_and_are_recorded(self):
+        cases = (
+            (("--resume", "--mode", "vibe"), "", "vibe"),
+            (("--resume", "--mode", "safe"), 'state_update \'.mode = "vibe"\'', "safe"),
+            (("--profile", "vibe"), "", "vibe"),
+            (("--profile", "safe"), 'state_update \'.mode = "vibe"\'', "safe"),
+        )
+        for arguments, alter, expected in cases:
+            with self.subTest(arguments=arguments):
+                result, events, folder = self.run_scoped(arguments, alter=alter)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn(f"mode:{expected}", events)
+                checkpoint = json.loads((folder / "home/.acfs/state.json").read_text())
+                self.assertEqual(checkpoint["mode"], expected)
+
+    def test_legacy_safe_policy_is_restored_and_absent_policy_uses_default(self):
+        for alter, expected in (
+                ("state_update 'del(.module_selection)'", "safe"),
+                ("state_update 'del(.mode)'", "vibe")):
+            with self.subTest(alter=alter):
+                result, events, folder = self.run_scoped(("--resume",), alter=alter)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn(f"mode:{expected}", events)
+                checkpoint = json.loads((folder / "home/.acfs/state.json").read_text())
+                self.assertEqual(checkpoint["mode"], expected)
+                if expected == "safe":
+                    self.assertNotIn("module_selection", checkpoint)
+
+    def test_saved_and_explicit_modes_match_targeted_previews_without_state_writes(self):
+        cases = (
+            ((), "safe", "lang.bun"),
+            (("--only", "agents.grok"), "safe", "agents.grok"),
+            (("--profile", "full"), "safe", "stack.ntm"),
+            (("--mode", "vibe"), "vibe", "lang.bun"),
+            (("--profile", "vibe"), "vibe", "stack.ntm"),
+        )
+        for flag in ("--print-plan", "--dry-run"):
+            for selectors, expected, included in cases:
+                with self.subTest(flag=flag, selectors=selectors):
+                    result, events, folder = self.run_scoped((flag, *selectors))
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertIn(f"mode:{expected}", events)
+                    self.assertIn(included, self.scope_event(events, "resolved"))
+                    self.assertFalse(any(event.startswith("mut:") for event in events), events)
+                    for event in ("root", "user", "paths", "install_lock", "upgrade"):
+                        self.assertNotIn(event, events)
+                    self.assert_unchanged(folder)
+
+    def test_mode_override_is_not_saved_when_resume_is_declined(self):
+        # The approval boundary is inert; actual state reads and main ordering
+        # still run, so an early mode write would alter the checkpoint.
+        result, events, folder = self.run_scoped(
+            ("--mode", "vibe"),
+            alter='confirm_resume() { trace "declined-mode:$MODE"; return 2; }')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("declined-mode:vibe", events)
+        self.assertNotIn("mut:base", events)
+        self.assert_unchanged(folder)
 
 
 if __name__ == "__main__":
