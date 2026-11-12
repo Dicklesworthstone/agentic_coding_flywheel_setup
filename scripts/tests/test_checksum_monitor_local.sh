@@ -26,6 +26,106 @@ fi
 STATE_TMP="$(mktemp -d "${TMPDIR:-/tmp}/acfs-monitor-test.XXXXXX")"
 printf 'Retaining checksum monitor test fixtures: %s\n' "$STATE_TMP" >&2
 
+# A service umask protects newly created paths; it cannot repair state left
+# writable by an older deployment. Exercise the real initialization and file
+# writers without a repository, verifier, issue delivery or publication.
+# BEGIN MONITOR_STATE_BOOTSTRAP_REGRESSIONS
+for inherited_umask in 000 002 022 077; do
+    (
+        set -euo pipefail
+        fixture_root="$STATE_TMP/state-bootstrap-$inherited_umask"
+        mkdir -m 700 "$fixture_root" "$fixture_root/home"
+        export HOME="$fixture_root/home"
+        export ACFS_MONITOR_REPO="$fixture_root/no-live-repository"
+        unset ACFS_MONITOR_STATE ACFS_NTFY_TOPIC
+        ACFS_MONITOR_LIBRARY_ONLY=1
+        umask "$inherited_umask"
+        # shellcheck source=../checksum-monitor-local.sh
+        source "$MONITOR"
+        [[ "$STATE" == INIT && ! -e "$LOCK_FILE" ]] \
+            || fail 'library initialization acquired a publication lock'
+        _open_monitor_lock || fail 'fresh private state could not open its lock'
+        _monitor_lock_is_current || fail 'fresh monitor lock has no stable identity'
+        _prepare_monitor_log || fail 'fresh private state could not open its log'
+        _write_monitor_notice_record "$FAIL_STREAK_FILE" $'3\n' \
+            || fail 'fresh state could not record its failure streak'
+        _write_monitor_notice_record "$FAIL_ALERT_FILE" $'1234567890\tfixture\n' \
+            || fail 'fresh state could not record its GitHub cooldown'
+        _write_monitor_notice_record "$FAIL_PUSH_ALERT_FILE" $'1234567890\tfixture\n' \
+            || fail 'fresh state could not record its private cooldown'
+        _write_monitor_notice_record "$RECOVERY_PENDING_FILE" $'3\n' \
+            || fail 'fresh state could not record pending recovery'
+        for path in "$HOME/.local" "$HOME/.local/state" "$STATE_DIR" "$LOG_DIR"; do
+            [[ -d "$path" && ! -L "$path" && "$(stat -c '%a:%u' "$path")" == "700:$EUID" ]] \
+                || fail "fresh state directory inherited unsafe permissions from umask $inherited_umask"
+        done
+        for path in "$LOCK_FILE" "$LOG_FILE" "$FAIL_STREAK_FILE" "$FAIL_ALERT_FILE" \
+            "$FAIL_PUSH_ALERT_FILE" "$RECOVERY_PENDING_FILE"; do
+            [[ -f "$path" && ! -L "$path" && "$(stat -c '%a:%u:%h' "$path")" == "600:$EUID:1" ]] \
+                || fail "fresh state record inherited unsafe permissions from umask $inherited_umask"
+        done
+        [[ ! -e "$AUTHORIZATION_FILE" ]] || fail 'fresh state created checksum authorization'
+        _close_monitor_log
+        exec 9>&-
+    )
+    printf 'PASS: private state bootstrap under inherited umask %s\n' "$inherited_umask"
+done
+
+(
+    set -euo pipefail
+    fixture_root="$STATE_TMP/historical-writable-state"
+    mkdir -m 700 "$fixture_root" "$fixture_root/home"
+    export HOME="$fixture_root/home" ACFS_MONITOR_REPO="$fixture_root/no-live-repository"
+    export ACFS_MONITOR_STATE="$fixture_root/retained-state"
+    unset ACFS_NTFY_TOPIC
+    ACFS_MONITOR_LIBRARY_ONLY=1
+    # shellcheck source=../checksum-monitor-local.sh
+    source "$MONITOR"
+    printf 'historical lock bytes\n' > "$LOCK_FILE"
+    printf '3\n' > "$FAIL_STREAK_FILE"
+    printf 'private-authorization-must-stay-untrusted\n' > "$AUTHORIZATION_FILE"
+    printf 'retained-original-response\n' > "$STATE_DIR/retained-evidence"
+    chmod 775 "$STATE_DIR" "$LOG_DIR"
+    chmod 664 "$LOCK_FILE" "$FAIL_STREAK_FILE"
+    chmod 600 "$AUTHORIZATION_FILE" "$STATE_DIR/retained-evidence"
+    retained_state="$STATE_DIR"
+    retained_files=("$LOCK_FILE" "$FAIL_STREAK_FILE" "$AUTHORIZATION_FILE" "$STATE_DIR/retained-evidence")
+    retained_digests="$(sha256sum "${retained_files[@]}")"
+    retained_metadata="$(stat -c '%F:%a:%u:%h:%i' "$STATE_DIR" "$LOG_DIR" "${retained_files[@]}")"
+    # Model the newly installed service's mask around a historical state
+    # directory. Neither sourcing nor refusal may silently chmod old evidence.
+    umask 077
+    # shellcheck source=../checksum-monitor-local.sh
+    source "$MONITOR"
+    _alert_fail_closed_streak() { return 0; }
+    refusal_status=0
+    ( checksum_monitor_main ) > "$fixture_root/refusal.log" 2>&1 || refusal_status=$?
+    [[ "$refusal_status" == 1 ]] || fail 'historical writable state reached monitor execution'
+    grep -qF 'state_refusal=state_directory.group_or_world_writable' "$fixture_root/refusal.log" \
+        || fail 'historical writable state lost its startup refusal diagnosis'
+    [[ ! -e "$LOG_FILE" ]] || fail 'historical state refusal wrote a run log through unsafe state'
+    [[ "$(sha256sum "${retained_files[@]}")" == "$retained_digests" \
+        && "$(stat -c '%F:%a:%u:%h:%i' "$STATE_DIR" "$LOG_DIR" "${retained_files[@]}")" == "$retained_metadata" ]] \
+        || fail 'service umask or refused initialization changed historical authority or evidence'
+
+    # Recovery prepares a separate fresh state root. Original writable files
+    # remain available for review, and their approval is never imported.
+    export ACFS_MONITOR_STATE="$fixture_root/fresh-state"
+    # shellcheck source=../checksum-monitor-local.sh
+    source "$MONITOR"
+    _open_monitor_lock && _monitor_lock_is_current && _prepare_monitor_log \
+        || fail 'fresh private state could not recover the startup boundary'
+    [[ ! -e "$AUTHORIZATION_FILE" && ! -e "$FAIL_STREAK_FILE" ]] \
+        || fail 'fresh state inherited historical authorization or bookkeeping'
+    [[ "$(sha256sum "${retained_files[@]}")" == "$retained_digests" \
+        && "$(stat -c '%F:%a:%u:%h:%i' "$retained_state" "$retained_state/logs" "${retained_files[@]}")" == "$retained_metadata" ]] \
+        || fail 'fresh-state recovery modified retained historical evidence'
+    _close_monitor_log
+    exec 9>&-
+)
+printf 'PASS: historical writable state stays refused; fresh state preserves old evidence and grants no authority\n'
+# END MONITOR_STATE_BOOTSTRAP_REGRESSIONS
+
 # Sourcing forces PATH to the monitor's system prefixes; run in a subshell so
 # the assertions below keep this shell's environment.
 (
@@ -791,6 +891,7 @@ recovery_case() (
             RUN_TS=20261108T121500Z
             # A fresh shell-source loses process-local state but must retain
             # the delivery obligation even though the failure counter is zero.
+            # shellcheck source=../checksum-monitor-local.sh
             source "$MONITOR"
             # Sourcing reinstalls the production transport, so replace it
             # before invoking any helper that can deliver a notification.
@@ -875,7 +976,9 @@ recovery_case() (
         queue-write-failure|ack-write-failure)
             notice_writer="$(declare -f _write_monitor_notice_record)"
             notice_writer="${notice_writer/#_write_monitor_notice_record /fixture_write_monitor_notice_record }"
-            eval "$notice_writer"
+            [[ "$notice_writer" == 'fixture_write_monitor_notice_record ()'* ]] \
+                || fail 'could not capture the actual monitor notice writer'
+            eval "$notice_writer" # ubs:ignore[bash.security.eval_variable,bash.security.eval-variable] -- Clones only the sourced monitor function via declare -f for queue/ack fault injection.
             fault="$1"
             _write_monitor_notice_record() {
                 if [[ "$1" == "$RECOVERY_PENDING_FILE" ]]; then
@@ -2328,7 +2431,7 @@ printf 'PASS: monitor refusal codec boundaries\n'
         PUBLICATION_SNAPSHOT_FILE=""
         PUBLICATION_SNAPSHOT_SHA256=""
         VALIDATED_PUBLICATION_TREE=""
-        cd "$case_root/repo"
+        cd "$case_root/repo" || fail 'could not enter the raw publication fixture repository'
         git -c init.templateDir= init --quiet --initial-branch=main
         mkdir -p .git/info
         git config user.name 'Publication Fixture'
@@ -2565,7 +2668,7 @@ RETAIN
             commit -qm 'Clean generated base'
         git branch master
     ) || fail 'could not prepare clean integration base'
-    integration_cases=(pending external-only approved review-unavailable approved-review-unavailable push-rejected fetch-error
+    integration_cases=(pending external-only approved review-unavailable approved-review-unavailable push-rejected push-ambiguous-accepted fetch-error
         authorization-revoked-before-commit authorization-revoked-before-push evidence-changed-before-push evidence-changed-after-push
         subset-approved subset-review-unavailable subset-stale subset-malformed subset-push-rejected
         subset-grant-replaced-before-push subset-mode-changed-before-push subset-grant-replaced-before-consumption)
@@ -2634,7 +2737,7 @@ RETAIN
             }' "$case_root/state/observations.jsonl" > "$integration_report"
             integration_digest="$(external_authorization_digest "$integration_report" omp)"
             case "$integration_case" in
-                approved|approved-review-unavailable|push-rejected|authorization-revoked-before-commit|authorization-revoked-before-push)
+                approved|approved-review-unavailable|push-rejected|push-ambiguous-accepted|authorization-revoked-before-commit|authorization-revoked-before-push)
                     printf 'authorize:%s\n' "$integration_digest" > "$AUTHORIZATION_FILE"
                     chmod 600 "$AUTHORIZATION_FILE"
                     ;;
@@ -2689,6 +2792,22 @@ RETAIN
                     'gh issue comment 457 '*) return 0 ;;
                     *) fail 'publication recovery attempted an unexpected command' ;;
                 esac
+            }
+            # A server can accept both refs before the client loses its final
+            # response. Preserve the real atomic push and change only its
+            # reported status; remote readback must resolve the ambiguity.
+            integration_bounded_runner="$(declare -f run_bounded)"
+            integration_bounded_runner="${integration_bounded_runner/#run_bounded /fixture_run_bounded }"
+            [[ "$integration_bounded_runner" == 'fixture_run_bounded ()'* ]] \
+                || fail 'could not capture the actual bounded command runner'
+            run_bounded() {
+                if [[ "$integration_case" == push-ambiguous-accepted \
+                    && "${2:-}:${3:-}:${4:-}:${5:-}" == git:-c:core.hooksPath=/dev/null:push ]]; then
+                    fixture_run_bounded "$@" || return "$?"
+                    printf 'accepted atomic push; client response lost\n' >> "$case_root/state/ambiguous-push"
+                    return 75
+                fi
+                fixture_run_bounded "$@"
             }
             # Delegate to the real remote reader before changing private state.
             # These deterministic interleavings occur after the last staging
@@ -2804,10 +2923,11 @@ RETAIN
             {
                 printf '#!/usr/bin/env bash\nset -euo pipefail\nsource %q\n' "$integration_monitor"
                 printf 'BUN_BIN=%q\n' "$integration_bun"
+                printf '%s\n' "$integration_bounded_runner"
                 printf '%s\n' "$integration_remote_reader"
                 printf '%s\n' "$integration_state_advancer"
                 declare -f fail record_external_review _alert_fail_closed_streak run_failure_bounded \
-                    read_remote_heads advance_state write_fixture_download_evidence run_clean_bounded run_bun_clean_bounded
+                    run_bounded read_remote_heads advance_state write_fixture_download_evidence run_clean_bounded run_bun_clean_bounded
                 printf 'checksum_monitor_main\n'
             } > "$case_root/state/runner.sh"
             monitor_exit=0
@@ -2822,7 +2942,9 @@ RETAIN
             [[ "$(wc -l < "$case_root/state/network-calls")" -eq 1 ]] || fail "$integration_case did not observe exactly once"
             if [[ "$monitor_exit" -eq 0 ]]; then
                 expected_health=DEFERRED
-                if [[ "$integration_case" == approved ]]; then expected_health=HEALTHY; fi
+                if [[ "$integration_case" == approved || "$integration_case" == push-ambiguous-accepted ]]; then
+                    expected_health=HEALTHY
+                fi
                 [[ "$(cat "$FAIL_STREAK_FILE")" == 0 && -f "$RECOVERY_PENDING_FILE" && ! -s "$RECOVERY_PENDING_FILE" ]] \
                     || fail "$integration_case did not clear the accepted outage and acknowledge recovery"
                 [[ "$(grep -c 'gh issue comment 457 ' "$case_root/state/recovery-calls")" == 1 ]] \
@@ -2989,7 +3111,7 @@ RETAIN
                             == 'acfs-checksum-monitor|acfs-checksum-monitor' ]] \
                             || fail "$integration_case published under a name other than acfs-checksum-monitor"
                     fi
-                    if [[ "$integration_case" == approved ]]; then
+                    if [[ "$integration_case" == approved || "$integration_case" == push-ambiguous-accepted ]]; then
                         [[ "${published_hashes[omp]}" == "$omp_actual" \
                             && "$(cat "$AUTHORIZATION_FILE")" == "used:$integration_digest:$remote_main" ]] \
                             || fail 'approved external publication was not accepted and consumed exactly once'
@@ -3002,6 +3124,57 @@ RETAIN
                         || fail "$integration_case accepted a dirty clone"
                     ;;
             esac
+            if [[ "$integration_case" == push-ambiguous-accepted ]]; then
+                [[ "$(wc -l < "$case_root/state/ambiguous-push")" == 1 ]] \
+                    || fail 'ambiguous accepted publication repeated the atomic push'
+                [[ "$(git --git-dir="$case_root/remote.git" rev-list --count "$integration_base..$remote_main")" == 1 \
+                    && "$(git -C "$case_root/repo" rev-parse HEAD)" == "$remote_main" ]] \
+                    || fail 'ambiguous accepted publication created or selected a different commit'
+                journals=("$case_root/state"/publication-*.journal)
+                [[ "${#journals[@]}" == 1 && -f "${journals[0]}" ]] \
+                    || fail 'ambiguous publication lost its single attempt journal'
+                grep -qFx $'push-exit\t75' "${journals[0]}" \
+                    || fail 'ambiguous publication hid the failing transport status'
+                grep -qFx "remote-observed"$'\t'"$remote_main"$'\t'"$remote_master"$'\treconciled-after-ambiguous-exit' \
+                    "${journals[0]}" || fail 'ambiguous publication was not reconciled against both actual remote refs'
+                grep -q 'push=reconciled-after-ambiguous-exit' "$case_root/state/full-run.log" \
+                    || fail 'accepted ambiguous publication lost its recovery outcome'
+            fi
+            if [[ "$integration_case" == push-rejected || "$integration_case" == subset-push-rejected ]]; then
+                # A rejected push leaves an unpublished local commit. The next
+                # run must preserve it, its approval and original observations,
+                # not reset the clone or replay stale publication authority.
+                rejected_head="$(git -C "$case_root/repo" rev-parse HEAD)"
+                [[ "$rejected_head" != "$integration_base" \
+                    && -z "$(git -C "$case_root/repo" status --porcelain --untracked-files=all)" ]] \
+                    || fail 'rejected publication did not retain its clean local candidate commit'
+                rejected_evidence=("$AUTHORIZATION_FILE" "$case_root/state"/verify-*.json
+                    "$case_root/state"/downloads-*/evidence-index.*.json
+                    "$case_root/state"/downloads-*/acfs-observations.*/*/body
+                    "$case_root/state"/downloads-*/acfs-observations.*/*/body.wire
+                    "$case_root/state"/downloads-*/acfs-observations.*/*/body.headers
+                    "$case_root/state"/downloads-*/acfs-observations.*/*/metadata.json)
+                rejected_digests="$(sha256sum "${rejected_evidence[@]}")" \
+                    || fail 'could not bind retained rejected-publication evidence'
+                rejected_metadata="$(stat -c '%F:%a:%u:%h:%i' "${rejected_evidence[@]}")" \
+                    || fail 'could not bind rejected-publication evidence identities'
+                retry_exit=0
+                bash "$case_root/state/runner.sh" > "$case_root/state/refused-retry.log" 2>&1 || retry_exit=$?
+                [[ "$retry_exit" != 0 ]] || fail 'retry accepted an unpublished local candidate as a clean base'
+                grep -qF 'local HEAD is not the fetched remote base' "$case_root/state/refused-retry.log" \
+                    || fail 'rejected-publication retry did not stop at the clean-base boundary'
+                [[ "$(git -C "$case_root/repo" rev-parse HEAD)" == "$rejected_head" \
+                    && "$(git --git-dir="$case_root/remote.git" rev-parse main)" == "$integration_base" \
+                    && "$(git --git-dir="$case_root/remote.git" rev-parse master)" == "$integration_base" ]] \
+                    || fail 'rejected-publication retry discarded or published the local candidate'
+                [[ "$(sha256sum "${rejected_evidence[@]}")" == "$rejected_digests" \
+                    && "$(stat -c '%F:%a:%u:%h:%i' "${rejected_evidence[@]}")" == "$rejected_metadata" ]] \
+                    || fail 'rejected-publication retry consumed approval or changed original evidence'
+                [[ "$(wc -l < "$case_root/state/network-calls")" == 1 \
+                    && ! -e "$case_root/state/recovery-calls" ]] \
+                    || fail 'rejected-publication retry reobserved installers or announced recovery'
+                printf 'PASS: refused publication retry preserves candidate, authorization and evidence: %s\n' "$integration_case"
+            fi
             printf 'PASS: full publication state machine: %s\n' "$integration_case"
         ) || exit 1
     done
@@ -3326,7 +3499,7 @@ printf 'PASS: checksum monitor accepts newer same-major Bun and deduplicates fai
             { print }
         ' "$REPO_ROOT/checksums.yaml" > "$seed/repo/checksums.yaml"
         command cp "$REPO_ROOT/scripts/lib/security.sh" "$seed/repo/scripts/lib/security.sh"
-        cd "$seed/repo"
+        cd "$seed/repo" || fail 'could not enter the transport seed repository'
         git -c init.templateDir= init --quiet --initial-branch=main
         git add -- checksums.yaml scripts/lib/security.sh
         git -c core.hooksPath=/dev/null -c user.name='Transport Fixture' \
@@ -3365,6 +3538,7 @@ printf 'PASS: checksum monitor accepts newer same-major Bun and deduplicates fai
         jq -e '(.mismatches | map(.name) | sort) == ["br","ntm","omp"] and (.errors|length) == 0 and (.skipped|length) == 0' \
             "$report" >/dev/null
         ACFS_MONITOR_LIBRARY_ONLY=1
+        # shellcheck source=../checksum-monitor-local.sh
         source "$MONITOR"
         CURRENT_CHECKSUMS_SHA256="$(sha256_file checksums.yaml)"
         VERIFICATION_REPORT_SHA256="$(sha256_file "$report")"
@@ -3389,8 +3563,9 @@ printf 'PASS: checksum monitor accepts newer same-major Bun and deduplicates fai
         command cp "$transport_root/seed-$seed_kind/report.json" "$case_root/report.json"
         export HOME="$case_root/home" ACFS_MONITOR_STATE="$case_root/state" ACFS_MONITOR_REPO="$case_root/repo"
         ACFS_MONITOR_LIBRARY_ONLY=1
+        # shellcheck source=../checksum-monitor-local.sh
         source "$MONITOR"
-        cd "$case_root/repo"
+        cd "$case_root/repo" || fail 'could not enter the transport selection fixture repository'
         # No issue or notification can leave the fixture. The real review
         # formatter still writes its private proposed body for inspection.
         run_bounded() {
@@ -3483,6 +3658,8 @@ printf 'PASS: checksum monitor accepts newer same-major Bun and deduplicates fai
         fi
         original_authorization=''
         [[ ! -e "$AUTHORIZATION_FILE" ]] || original_authorization="$(cat "$AUTHORIZATION_FILE")"
+        trusted_changed=''
+        external_changed=''
         prepare_checksum_candidate "$report"
         require_download_evidence_current
         [[ "$STATE" == AUTHORIZED && "$trusted_changed" == br && "$external_changed" == ntm,omp ]]

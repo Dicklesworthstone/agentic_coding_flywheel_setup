@@ -74,6 +74,7 @@ import os
 from pathlib import Path
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -82,9 +83,15 @@ unit = Path(sys.argv[1])
 unit_text = unit.read_text()
 pre_lines = [line.partition("=")[2] for line in unit_text.splitlines() if line.startswith("ExecStartPre=")]
 start_line = next(line.partition("=")[2] for line in unit_text.splitlines() if line.startswith("ExecStart="))
+service_umask = int(next(line.partition("=")[2] for line in unit_text.splitlines()
+                         if line.startswith("UMask=")), 8)
 canonical_url = "https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup.git"
 root = Path(tempfile.mkdtemp(prefix="acfs-service-bootstrap-tests-"))
 root.chmod(0o700)
+# A permissive fixture parent makes ignoring the service's mask observable,
+# independent of the developer shell or CI runner's own umask. All fixtures
+# remain underneath the private retained root.
+os.umask(0o002)
 print(f"Retaining checksum monitor service fixtures: {root}", flush=True)
 base_env = {"PATH": "/usr/bin:/bin", "HOME": str(root), "LANG": "C", "LC_ALL": "C",
             "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -92,9 +99,9 @@ base_env = {"PATH": "/usr/bin:/bin", "HOME": str(root), "LANG": "C", "LC_ALL": "
             "GIT_COMMITTER_NAME": "ACFS service fixture", "GIT_COMMITTER_EMAIL": "fixture@example.invalid"}
 
 
-def run(arguments, *, cwd=None, environment=None, check=True):
+def run(arguments, *, cwd=None, environment=None, check=True, umask=-1):
     result = subprocess.run(arguments, cwd=cwd, env=base_env if environment is None else environment,
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20)
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20, umask=umask)
     if check and result.returncode:
         raise AssertionError((arguments, result.returncode, result.stderr.decode(errors="replace")))
     return result
@@ -107,9 +114,18 @@ def git(repo, *arguments, check=True):
 def commit(repo, label):
     script = repo / "scripts/checksum-monitor-local.sh"
     script.parent.mkdir(exist_ok=True)
-    script.write_text("#!/usr/bin/env bash\nprintf '%s\\n' '" + label + "' > \"$EXECUTION_MARKER\"\n")
+    # This inert monitor records the actual ExecStart creation policy. It
+    # neither loads production helpers nor contacts a network or publisher.
+    script.write_text("#!/usr/bin/env bash\nset -eu\n"
+                      'mkdir -p -- "$EXECUTION_STATE/logs"\n'
+                      'printf "private fixture lock\\n" > "$EXECUTION_STATE/monitor.lock"\n'
+                      'printf "private fixture log\\n" > "$EXECUTION_STATE/logs/run.log"\n'
+                      "printf '%s\\n' '" + label + "' > \"$EXECUTION_MARKER\"\n")
     script.chmod(0o755)
-    git(repo, "add", "--", "scripts/checksum-monitor-local.sh")
+    policy = repo / "checksums.yaml"
+    policy.write_text("fixture: " + label + "\n")
+    policy.chmod(0o644)
+    git(repo, "add", "--", "scripts/checksum-monitor-local.sh", "checksums.yaml")
     git(repo, "commit", "-qm", label)
 
 
@@ -152,6 +168,7 @@ for scenario in scenarios:
         if scenario == "staged_dirty":
             git(checkout, "add", "--", "scripts/checksum-monitor-local.sh")
     marker = case / "executed"
+    state = home / ".local/state/acfs-monitor"
     hook_marker = case / "unexpected-hook"
     hooks = case / "hooks"
     hooks.mkdir()
@@ -159,11 +176,13 @@ for scenario in scenarios:
     hook.write_text("#!/usr/bin/env bash\nprintf 'unexpected hook' > '" + str(hook_marker) + "'\n")
     hook.chmod(0o755)
     git(checkout, "config", "core.hooksPath", str(hooks))
-    environment = {**base_env, "HOME": str(home), "EXECUTION_MARKER": str(marker)}
+    environment = {**base_env, "HOME": str(home), "EXECUTION_MARKER": str(marker),
+                   "EXECUTION_STATE": str(state)}
     before_head = git(checkout, "rev-parse", "HEAD").stdout.decode().strip()
     before_index = git(checkout, "write-tree").stdout.decode().strip()
     before_script = fingerprint(checkout / "scripts/checksum-monitor-local.sh")
-    row = {"scenario": scenario, "commands": [], "executed": False}
+    row = {"scenario": scenario, "commands": [], "executed": False,
+           "service_umask": format(service_umask, "04o")}
     successful = True
     for line in pre_lines:
         arguments = command(line, home, canonical)
@@ -174,13 +193,19 @@ for scenario in scenarios:
             poison = case / "bash-environment"
             poison.write_text("printf 'unexpected BASH_ENV' > '" + str(hook_marker) + "'\n")
             command_env = {**environment, "BASH_ENV": str(poison), "ENV": str(poison)}
-        result = run(arguments, environment=command_env, check=False)
+        result = run(arguments, environment=command_env, check=False, umask=service_umask)
         row["commands"].append({"arguments": arguments, "exit": result.returncode,
                                 "stdout": result.stdout.decode(errors="replace"),
                                 "stderr": result.stderr.decode(errors="replace")})
         if result.returncode:
             successful = False
             break
+        if "fetch" in arguments:
+            # The unit mask applies to ExecStartPre as well as ExecStart.
+            # Neither path may silently inherit the fixture's 0002 policy.
+            fetch_head = checkout / ".git/FETCH_HEAD"
+            assert stat.S_IMODE(fetch_head.stat().st_mode) == 0o600, row
+            row["fetch_head_mode"] = "0600"
         if "merge" in arguments:
             if scenario == "head_moves_after_merge":
                 commit(checkout, "unreviewed-after-merge")
@@ -197,7 +222,8 @@ for scenario in scenarios:
                 original.rename(case / "retained-bootstrap-ref")
                 original.write_text("ref: refs/heads/absent-fixture\n")
     if successful:
-        result = run(command(start_line, home, canonical), environment=environment, check=False)
+        result = run(command(start_line, home, canonical), environment=environment,
+                     check=False, umask=service_umask)
         row.update(executed=True, execution_exit=result.returncode,
                    execution_marker=marker.read_text() if marker.exists() else None)
     expected_execution = scenario in ("exact", "behind", "post_guard_ambient_hook")
@@ -207,8 +233,22 @@ for scenario in scenarios:
         expected_label = "canonical-new\n" if scenario == "behind" else "canonical-base\n"
         assert row["execution_exit"] == 0 and row["execution_marker"] == expected_label, row
         assert git(checkout, "rev-parse", "HEAD").stdout == git(checkout, "rev-parse", "refs/remotes/acfs-bootstrap/main").stdout
+        for directory in (home / ".local", home / ".local/state", state, state / "logs"):
+            assert stat.S_IMODE(directory.stat().st_mode) == 0o700, directory
+        for record in (marker, state / "monitor.lock", state / "logs/run.log"):
+            assert stat.S_IMODE(record.stat().st_mode) == 0o600, record
+        row["private_state_created"] = True
+        # Private checkout modes retain Git's executable distinction. A
+        # canonical fast-forward must still execute the new monitor itself.
+        script_mode = stat.S_IMODE((checkout / "scripts/checksum-monitor-local.sh").stat().st_mode)
+        policy_mode = stat.S_IMODE((checkout / "checksums.yaml").stat().st_mode)
+        assert script_mode & stat.S_IXUSR and not policy_mode & stat.S_IXUSR, row
+        if scenario == "behind":
+            assert (script_mode, policy_mode) == (0o700, 0o600), (script_mode, policy_mode)
+            row["fast_forward_modes"] = {"monitor": "0700", "policy": "0600"}
     else:
         assert not marker.exists(), "refused checkout reached its monitor script"
+        assert not state.exists(), "refused checkout created monitor state"
     if scenario in ("ahead", "diverged", "tracked_dirty", "staged_dirty"):
         assert git(checkout, "rev-parse", "HEAD").stdout.decode().strip() == before_head
         assert git(checkout, "write-tree").stdout.decode().strip() == before_index

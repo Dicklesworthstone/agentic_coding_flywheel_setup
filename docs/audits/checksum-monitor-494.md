@@ -434,6 +434,143 @@ Encoded traversal at GitHub's server was not demonstrated; the percent-path
 restriction is a canonical authority policy, not such a claim. All 48 current
 installer URLs, including 35 trusted-owner URLs, already satisfy this rule.
 
+## November 12 follow-up: checksum publication #509
+
+Source review for [#509][issue509] used main at
+`b05b9a00b86a5299111416fd763a32c68d2af023`. The monitor host, installed units,
+current execution status, and private authorization records were not inspected.
+The comprehensive plans and relevant beads retain checksum verification and
+explicit external authorization as requirements; the older `bd-3f8du` review
+remains separate and is not closed by this incident investigation.
+
+The reported RCH pin has already been corrected by
+[`83c8358f`][rchpublication]. `checksums.yaml` now contains
+`4fa975453d469ba6a27896bb77416dc588ae15dac8420ed02e03bf72b5980a52`, replacing
+`0c811c50aea03ca9e25cac5379f6c5d4fe3eea7414e9fa537a4c8f5d73cbf0c1`.
+The corresponding [RCH source change][rchsource509] adds optional RABS recovery
+tools to installer checks and build/install handling. No upstream installer execution
+or new checksum authorization is part of this follow-up.
+
+### Published evidence and failure classification
+
+All timestamps are UTC. Public notices identify failed runs; they do not
+provide independent access to the host's original files or journal.
+
+| Time | Published evidence | Implication |
+| --- | --- | --- |
+| November 9, 04:15:54 | [#457 notice][statefirst509], run `20261109T041553Z`: `state_directory.group_or_world_writable`; safe lock opening and failure-count persistence refused. | A monitor invocation failed at the state/lock gate before installer observation. |
+| November 9, 20:21:14 | [`42a22591`][transport509] requires bound direct-response evidence for automatic trust. | This policy change follows the explicit state failure by more than sixteen hours. |
+| November 10, 17:11:36 | RCH [`b726f82f`][rchsource509] changes `install.sh`. | The installer changed while the public record already showed state failures. |
+| November 12, 08:53:15 | [#457 notice][statelast509], run `20261112T085314Z`, reports the same state-directory refusal. | The inspected failure sequence continued through this run. |
+| November 12, 08:54:37–08:55:12 | [#511][issue511] surfaces four external observations; [`83c8358f`][rchpublication] publishes RCH with the same report/index identifiers and no selected external authorization. | Trusted RCH publication recovered while `atuin`, `grok`, `ohmyzsh`, and `omp` remained deferred. |
+| November 12, 08:57:24 | [`a46ecbf9`][serviceumask509] adds service `UMask=0077` and a test assertion. | The source requests a restrictive service umask. Its account of host modes and manual repair is a maintainer assertion, not independently inspected host evidence. |
+| November 12, 20:31:57 | [`b05b9a00`][mailpublication509] publishes `mcp_agent_mail`, recording the four earlier external tools plus `uv` as deferred. | A second trusted-owner publication is present in source history after the reported incident. |
+
+The most specific published cause is an executing monitor refusing unsafe
+local state. It predates the transport hardening and does not support blaming
+that policy change for the onset. Distinguish the remaining stages:
+
+- **Observation:** A state/lock refusal is not a failed download. Inspect a
+  completed run's report and retained evidence before attributing a failure
+  to network access, decoding, or hashing.
+- **Transport:** Eligible trusted-owner URLs with complete bound direct
+  responses remain automatically publishable. Redirected or ambiguous
+  responses require review; missing, changed, or unsafe evidence fails closed.
+- **Authorization:** Deferred observations need the required exact private
+  authorization. An open review issue does not prove whether a valid approval
+  currently exists on the host. Neither this audit nor a historical digest
+  grants it.
+- **Publication:** A local commit or successful push exit is insufficient.
+  The monitor publishes both remote refs atomically and independently reads
+  them back before recording acceptance. Later failures must be diagnosed
+  from that run's journal and live refs.
+
+### Host-side diagnosis and recovery
+
+Run these read-only checks as the user-service owner. Adjust the checkout
+path and set `ACFS_MONITOR_STATE` to the installed service's actual override,
+if any. Inspect unit output privately because local drop-ins can contain
+sensitive configuration.
+
+```bash
+systemctl --user is-enabled acfs-checksum-monitor.timer
+systemctl --user is-active acfs-checksum-monitor.timer
+systemctl --user list-timers --all acfs-checksum-monitor.timer
+systemctl --user cat acfs-checksum-monitor.service acfs-checksum-monitor.timer
+systemctl --user show acfs-checksum-monitor.service \
+  -p FragmentPath -p DropInPaths -p UMask -p Result -p ExecMainStatus \
+  -p ExecMainStartTimestamp -p ExecMainExitTimestamp
+journalctl --user --unit acfs-checksum-monitor.service --utc \
+  --since '2026-11-09 00:00:00 UTC' --output short-iso --no-pager
+git -C "$HOME/acfs-monitor" status --short --branch
+git -C "$HOME/acfs-monitor" rev-parse HEAD
+git -C "$HOME/acfs-monitor" ls-remote --heads origin \
+  refs/heads/main refs/heads/master
+bash "$HOME/acfs-monitor/scripts/checksum-monitor-local.sh" --check-state
+bash "$HOME/acfs-monitor/scripts/checksum-monitor-local.sh" \
+  --diagnose 20261112T085314Z
+```
+
+`--check-state` reports metadata in JSON; a successful diagnostic exit can
+still report `result: refused` or `incomplete`. Even `no_refusal_observed`
+does not certify record contents, authorization, or current health. The
+explicit historical run above can be unavailable; repeat `--diagnose` with
+the exact run ID from the current journal. Diagnostics do not run the monitor.
+
+1. Preserve the existing state, evidence, publication journal, and checkout.
+   Identify the exact refused component and why its ownership or mode changed.
+   Do not recursively chmod the tree, delete the lock, or reset counters.
+   Coordinate any repair with the timer and active process so the lock inode
+   is not replaced while another process can hold it.
+2. If existing state cannot be trusted, quiesce the service deliberately and
+   configure a fresh owner-controlled private state directory rather than
+   blessing old records by changing their modes. Preserve the old evidence;
+   do not copy its authorization or recovery records into the new directory.
+   Fresh observations and any required human review must establish authority
+   again. A state-path change must not allow two monitor instances to overlap.
+3. Compare the installed unit and drop-ins with the reviewed service template
+   before installing it and reloading the user manager. `UMask=0077` does not
+   repair existing state. A checkout update alone neither installs the unit
+   nor establishes host recovery.
+4. If a push failed or its result is ambiguous, preserve the clone and compare
+   its journaled commit with **both** live remote refs. Do not reset away an
+   unpublished commit or replay its old authorization. A rejected push can
+   leave the clone ahead, which the service bootstrap correctly refuses.
+   Recover a clean canonical checkout deliberately and re-observe when the
+   publication was not accepted or its base moved, retaining the original
+   clone and evidence for review.
+5. Inspect the next scheduled run through `REMOTE_VERIFIED` and its terminal
+   state. Confirm intended remote bytes, retained provenance, and actionable
+   deferred-review delivery. Pending review must remain `DEFERRED`, rather
+   than being reported as `HEALTHY`.
+
+### Immutable installer-source assessment
+
+At the inspected base, 36 of 48 manifest URLs contain `main`, `master`, or
+`HEAD` path components. Full commit URLs plus retained SHA-256 checks would
+reduce the race between upstream installer changes and ACFS pin publication.
+Tags need an explicit immutability guarantee: RCH's November 6
+[`v2.1.36` release][rchrelease509] is marked `immutable: false`, and its
+installer asset predates the November 10 changes. Substituting it would omit
+newer installer fixes.
+
+A safe migration needs coordinated changes to installer URL defaults in
+`security.sh`, `checksums.yaml`, explicit `verified_installer.url` entries,
+and generated artifacts. Runtime loading honors manifest URLs, but
+`--update-checksums` starts from built-in defaults; changing only the manifest
+can be undone by refresh. Manifest validation enforces explicit URL equality,
+and the candidate validator intentionally refuses URL changes. Preserve those
+guards and review the migration as a source-policy change.
+
+Discovery must also be separated from the served immutable source: monitoring
+only a fixed commit cannot discover its successor. Define authenticated
+advancement, retained review evidence, and acceptable security-fix latency
+before piloting suitable sources. Pinning RCH's installer alone does not pin
+its downstream binary: its default version selection still follows the latest
+release. This migration can reduce recurring mismatches, but it does not fix
+unsafe monitor state and is not required to republish the already corrected
+RCH pin.
+
 ## Primary source links
 
 - [ACFS policy at the audit base][basepolicy], [manifest][basemanifest], and
@@ -462,3 +599,13 @@ installer URLs, including 35 trusted-owner URLs, already satisfy this rule.
 [groksource]: https://raw.githubusercontent.com/xai-org/grok-build/bb7f39d5858cbf5e00de639367f59debbdcb0138/crates/codegen/xai-grok-pager/scripts/install.sh
 [grokdeployed]: https://x.ai/cli/install.sh
 [grokchangelog]: https://x.ai/changelog/build
+[issue509]: https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/issues/509
+[issue511]: https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/issues/511
+[statefirst509]: https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/issues/457#issuecomment-6732094002
+[statelast509]: https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/issues/457#issuecomment-6819151606
+[transport509]: https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/commit/42a225916e3b9132d5084ce5b87d32b8314f77c7
+[rchsource509]: https://github.com/Dicklesworthstone/remote_compilation_helper/commit/b726f82f6584c709d1146094377578937f189e95
+[rchpublication]: https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/commit/83c8358f2d29b6575b25a0728e3899d1ac7af2a8
+[serviceumask509]: https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/commit/a46ecbf9500a84e1fe4041e9563938abfb925395
+[mailpublication509]: https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/commit/b05b9a00b86a5299111416fd763a32c68d2af023
+[rchrelease509]: https://api.github.com/repos/Dicklesworthstone/remote_compilation_helper/releases/tags/v2.1.36
