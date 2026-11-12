@@ -1024,6 +1024,9 @@ fi
         for missing in ("timeout", "bash"):
             with self.subTest(missing=missing):
                 output = self.shell(r'''
+# Validate the real checkpoint and module scope before injecting a missing
+# interpreter at the installer-deadline boundary exercised by this test.
+update_load_module_selection
 update_system_binary_path() {
     [[ "$1" != "$TEST_MISSING_SYSTEM_COMMAND" ]] || return 1
     if [[ -x "/usr/bin/$1" ]]; then printf '/usr/bin/%s\n' "$1"; else printf '/bin/%s\n' "$1"; fi

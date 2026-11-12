@@ -8,11 +8,16 @@ failure accounting with external installers, package commands, service checks,
 and the watchdog replaced by fixture endpoints. No network or real install runs.
 """
 import contextlib
+import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
 import pwd
+import re
 import select
+import shlex
+import shutil
 import signal
 import subprocess
 import tempfile
@@ -65,17 +70,6 @@ sync_acfs_global_wrapper() {
 }
 '''
 GLOBAL_SYNC = 'sync_acfs_global_wrapper "${TEST_SOURCE_REF:-}" "$TEST_ROOT/global-acfs"'
-ACTIVATION_SETUP = r'''
-UPDATE_SELF=true
-BOOTSTRAP_SELF_UPDATE=false
-SCRIPT_DIR="$TEST_DEPLOYED/scripts/lib"
-is_expected_acfs_origin_url() { [[ "$1" == "$TEST_ORIGIN" ]]; }
-log_section() { :; }
-log_item() { :; }
-# All deployment and re-execution code is real; only system-wide link updates
-# are excluded from this disposable installation.
-sync_acfs_global_command_links() { :; }
-'''
 
 
 class AtomicDeploymentTests(unittest.TestCase):
@@ -204,12 +198,12 @@ class AtomicDeploymentTests(unittest.TestCase):
         self.assertEqual(deployed.read_text(), new)
         self.assert_runtime_files("scripts/lib/nightly_update.sh", "scripts/nightly-update.sh")
 
-    def test_self_update_and_shell_preserve_running_runtime_readers(self):
+    def test_security_refresh_and_shell_preserve_running_runtime_readers(self):
         old = ("#!/bin/bash\nset -euo pipefail\nprintf 'old-ready\\n'\n"
                "IFS= read -r release\n" + "# unread script body\n" * 16384
                + "printf 'old-finished\\n'\n")
         new = "#!/bin/bash\nprintf 'new-version\\n'\n"
-        cases = (("security", "scripts/lib/security.sh", "scripts/lib/security.sh", "update_acfs_self"),
+        cases = (("security", "scripts/lib/security.sh", "scripts/lib/security.sh", "update_refresh_installed_security"),
                  ("zsh", "acfs/zsh/acfs.zshrc", "zsh/acfs.zshrc", "update_shell"))
         for name, source_rel, deployed_rel, phase in cases:
             with self.subTest(phase=phase):
@@ -239,7 +233,7 @@ class AtomicDeploymentTests(unittest.TestCase):
                 self.assertEqual(list(self.stage.iterdir()), [])
 
     def test_phase_failure_and_dry_run_preserve_existing_runtime(self):
-        cases = (("security", "scripts/lib/security.sh", "scripts/lib/security.sh", "update_acfs_self"),
+        cases = (("security", "scripts/lib/security.sh", "scripts/lib/security.sh", "update_refresh_installed_security"),
                  ("zsh", "acfs/zsh/acfs.zshrc", "zsh/acfs.zshrc", "update_shell"))
         for name, source_rel, deployed_rel, phase in cases:
             for dry_run in (False, True):
@@ -270,7 +264,7 @@ class AtomicDeploymentTests(unittest.TestCase):
                     if not dry_run:
                         self.assertNotIn("Synced ", log.read_text() if log.exists() else "")
 
-    def test_fetched_runtime_remains_pinned_through_shell_update(self):
+    def test_fetched_runtime_refresh_remains_pinned_through_shell_update(self):
         files = (("stack", "scripts/lib/stack.sh", "scripts/lib/stack.sh"),
                  ("security", "scripts/lib/security.sh", "scripts/lib/security.sh"),
                  ("zsh", "acfs/zsh/acfs.zshrc", "zsh/acfs.zshrc"),
@@ -314,7 +308,10 @@ report_runtime() {
     done
     printf '%s-global=%s\n' "$1" "$(bash "$TEST_ROOT/global-acfs")"
 }
-update_acfs_self
+git -C "$TEST_SOURCE" fetch --quiet origin main
+_ACFS_RUNTIME_SOURCE_REF="$(git -C "$TEST_SOURCE" rev-parse --verify 'FETCH_HEAD^{commit}')"
+sync_acfs_deployed "$_ACFS_RUNTIME_SOURCE_REF" || exit $?
+sync_acfs_global_wrapper "$_ACFS_RUNTIME_SOURCE_REF" || exit $?
 report_runtime after-self
 update_shell
 report_runtime after-shell
@@ -510,9 +507,11 @@ mv() {
         for operation in ("ls-tree", "show"):
             with self.subTest(operation=operation):
                 setup = r'''
-git() {
-    if [[ "$3" == "$TEST_GIT_FAILURE" ]]; then printf 'partial\n'; return 73; fi
-    command git "$@"
+update_bootstrap_git() {
+    # Inject failure at the authenticated Git boundary; the updater must not
+    # consult an arbitrary shell function named git.
+    if [[ "$1" == "$TEST_GIT_FAILURE" ]]; then printf 'partial\n'; return 73; fi
+    update_git_at "$ACFS_REPO_ROOT" "$@"
 }
 '''
                 self.invoke(GLOBAL_SYNC, setup, success=False,
@@ -614,7 +613,7 @@ update_sudo_prefix() {
                 self.assertEqual(list(root.rglob(".acfs-deploy.*")), [])
                 self.assertEqual(list(self.stage.iterdir()), [])
 
-    def test_self_update_retries_failed_global_wrapper_after_fast_forward(self):
+    def test_global_wrapper_retry_after_checkout_fast_forward(self):
         self.write(self.repo, "VERSION", "base\n")
         self.write(self.repo, "scripts/acfs-global", "old wrapper\n")
         self.commit_source()
@@ -623,6 +622,8 @@ update_sudo_prefix() {
         self.write(self.repo, "VERSION", "fresh\n")
         self.write(self.repo, "scripts/acfs-global", "new wrapper\n")
         self.commit_source()
+        self.git(checkout, "fetch", "--quiet", "origin", "main")
+        self.git(checkout, "merge", "--quiet", "--ff-only", "origin/main")
         deployed = self.write(self.base, "global-acfs", "old wrapper\n", 0o755)
         before = deployed.stat()
         setup = PHASE_SETUP + r'''
@@ -636,15 +637,15 @@ cp() {
     command cp "$@"
 }
 '''
-        self.invoke("update_acfs_self", setup, success=False, TEST_SOURCE=str(checkout))
+        self.invoke("sync_acfs_global_wrapper", setup, success=False, TEST_SOURCE=str(checkout))
         self.assertEqual(self.git(checkout, "rev-parse", "HEAD"), self.git(self.repo, "rev-parse", "HEAD"))
         self.assertEqual(deployed.read_text(), "old wrapper\n")
         after = deployed.stat()
         self.assertEqual((after.st_ino, after.st_mode, after.st_mtime_ns),
                          (before.st_ino, before.st_mode, before.st_mtime_ns))
-        # The checkout is now current. The next invocation must repair the
-        # wrapper even without requesting the shell-update phase.
-        self.invoke("update_acfs_self", PHASE_SETUP, TEST_SOURCE=str(checkout))
+        # A failed publication must remain repairable from the same immutable
+        # checkout, without another source change or the shell-update phase.
+        self.invoke("sync_acfs_global_wrapper", PHASE_SETUP, TEST_SOURCE=str(checkout))
         self.assertEqual(deployed.read_text(), "new wrapper\n")
         self.assertEqual(deployed.stat().st_mode & 0o777, 0o755)
         self.assertEqual(list(self.base.rglob(".acfs-deploy.*")), [])
@@ -885,174 +886,145 @@ if update_shell; then exit 0; else exit "$?"; fi
                 self.assertEqual(process.returncode, failure, (stdout + stderr).decode())
                 self.assertNotIn(b"unexpected", stdout + stderr)
 
-    def assert_self_update_activates_replacement(self, fast_forward):
-        # The replacement sources the actual updater and exercises its real
-        # completed-update guard. Its receipt proves exec retained argv, PID,
-        # the open lock descriptor, and exclusion of a separate lock owner.
-        replacement = "#!/bin/bash\n" + COMMON + ACTIVATION_SETUP + r'''
-_acfs_update_acquire_lock "$TEST_ROOT"
-[[ "$TEST_ROOT/." -ef /proc/self/fd/9 ]] || exit 81
-lock_status=0
-/usr/bin/flock -n -E 75 "$TEST_ROOT" true || lock_status=$?
-[[ "$lock_status" == 75 ]] || exit 82
-update_acfs_self "$@"
-printf '%s\0' "$BASHPID" "$ACFS_SELF_UPDATE_DONE" \
-    "$_ACFS_UPDATE_LOCK_PID" "$lock_status" "$@" > "$TEST_ROOT/activation-receipt"
-printf 'replacement-activated\n'
-'''
+    def assert_atomic_updater_publication(self, fetched_revision):
+        # These deliberately tiny scripts cover only immutable per-file
+        # publication. BootstrapHandoffTests covers complete current/fetched
+        # generation activation, PID, lock and exact argument preservation.
+        replacement = "#!/bin/bash\nprintf 'replacement-activated\\n'\n"
         old = "#!/bin/bash\nprintf 'old-updater-file\\n'\n"
-        self.write(self.repo, "scripts/lib/update.sh", old if fast_forward else replacement, 0o755)
+        self.write(self.repo, "scripts/lib/update.sh", old if fetched_revision else replacement, 0o755)
         self.commit_source()
         checkout = self.base / "checkout"
         self.git(self.base, "clone", "--quiet", str(self.repo), str(checkout))
-        if fast_forward:
+        checkout_head = self.git(checkout, "rev-parse", "HEAD")
+        if fetched_revision:
             self.write(self.repo, "scripts/lib/update.sh", replacement, 0o755)
             self.commit_source()
+            self.git(checkout, "fetch", "--quiet", "origin", "main")
+        revision = self.git(self.repo, "rev-parse", "HEAD")
         deployed = self.write(self.acfs, "scripts/lib/update.sh", old, 0o755)
         original_inode = deployed.stat().st_ino
-        arguments = ["--only", "self", "argument with spaces", "", "line\nbreak", "--literal=$(unused)"]
-        body = COMMON + ACTIVATION_SETUP + r'''
-ACFS_SELF_UPDATE_DONE=false
-_acfs_update_acquire_lock "$TEST_ROOT"
-update_acfs_self "$@"
-printf 'old-updater-continued\n'
-'''
-        process = self.start(["/bin/bash", "--noprofile", "--norc", "-c", body,
-                              "acfs-activation-fixture", *arguments],
-                             TEST_SOURCE=str(checkout), TEST_ORIGIN=str(self.repo))
-        stdout, stderr = process.communicate(timeout=20)
-        output = (stdout + stderr).decode()
-        self.assertEqual(process.returncode, 0, output)
-        self.assertIn("replacement-activated\n", output)
-        self.assertNotIn("old-updater-continued", output)
-        receipt = (self.base / "activation-receipt").read_bytes().split(b"\0")
-        expected = [str(process.pid), "true", str(process.pid), "75", *arguments]
-        self.assertEqual(receipt, [value.encode() for value in expected] + [b""])
+        self.sync(TEST_SOURCE=str(checkout), TEST_SOURCE_REF=revision)
+        launched = subprocess.run([str(deployed)], env=self.env, capture_output=True,
+                                  text=True, timeout=5)
+        self.assertEqual(launched.returncode, 0, launched.stdout + launched.stderr)
+        self.assertEqual(launched.stdout, "replacement-activated\n")
         self.assertEqual(deployed.read_text(), replacement)
         self.assertNotEqual(deployed.stat().st_ino, original_inode)
         self.assertEqual(deployed.stat().st_mode & 0o777, 0o755)
-        self.assertEqual(self.git(checkout, "rev-parse", "HEAD"),
-                         self.git(self.repo, "rev-parse", "HEAD"))
+        self.assertEqual(self.git(checkout, "rev-parse", "HEAD"), checkout_head,
+                         "publishing an immutable blob must not change the source checkout")
         self.assertEqual(self.git(checkout, "status", "--porcelain"), "")
         self.assert_runtime_files("scripts/lib/update.sh")
 
-    def test_current_checkout_activates_replacement_with_same_pid_lock_and_arguments(self):
-        self.assert_self_update_activates_replacement(fast_forward=False)
+    def test_atomic_updater_publication_from_current_revision(self):
+        self.assert_atomic_updater_publication(fetched_revision=False)
 
-    def test_fast_forward_activates_replacement_with_same_pid_lock_and_arguments(self):
-        self.assert_self_update_activates_replacement(fast_forward=True)
+    def test_atomic_updater_publication_from_fetched_revision(self):
+        self.assert_atomic_updater_publication(fetched_revision=True)
 
-    def test_self_update_does_not_reexecute_unchanged_dry_run_or_completed_sync(self):
+    def test_atomic_updater_publication_skips_unchanged_or_missing_source(self):
         replacement = "#!/bin/bash\nprintf 'unexpected-activation\\n'\nexit 83\n"
-        old = "#!/bin/bash\nprintf 'old-updater-file\\n'\n"
-        for state in ("unchanged", "dry-run", "completed"):
+        for state in ("unchanged", "missing"):
             with self.subTest(state=state):
                 root, source, runtime, env = self.phase_tree(state)
-                self.write(source, "scripts/lib/update.sh", replacement, 0o755)
+                self.write(source, "VERSION", "fixture\n")
+                if state == "unchanged":
+                    self.write(source, "scripts/lib/update.sh", replacement, 0o755)
                 self.git(source, "init", "--quiet", "--initial-branch=main")
                 self.commit_tree(source, "fixture")
                 self.git(source, "remote", "add", "origin", str(source))
-                deployed = self.write(runtime, "scripts/lib/update.sh",
-                                      replacement if state == "unchanged" else old, 0o755)
+                deployed = self.write(runtime, "scripts/lib/update.sh", replacement, 0o755)
                 before = deployed.stat()
-                body = ACTIVATION_SETUP + r'''
-ACFS_SELF_UPDATE_DONE="$TEST_ALREADY_DONE"
-update_acfs_self
-printf 'updater-continued\n'
-'''
-                output = self.shell(body, **env, TEST_ORIGIN=str(source),
-                                    TEST_DRY_RUN="true" if state == "dry-run" else "false",
-                                    TEST_ALREADY_DONE="true" if state == "completed" else "false")
-                self.assertIn("updater-continued\n", output)
+                output = self.sync(**env)
                 self.assertNotIn("unexpected-activation", output)
-                self.assertEqual(deployed.read_text(), old if state == "dry-run" else replacement)
-                if state != "completed":
-                    after = deployed.stat()
-                    self.assertEqual((after.st_ino, after.st_mode, after.st_mtime_ns),
-                                     (before.st_ino, before.st_mode, before.st_mtime_ns))
+                self.assertEqual(deployed.read_text(), replacement)
+                after = deployed.stat()
+                self.assertEqual((after.st_ino, after.st_mode, after.st_mtime_ns),
+                                 (before.st_ino, before.st_mode, before.st_mtime_ns))
                 self.assertFalse((root / "activation-receipt").exists())
                 self.assertEqual(list(runtime.rglob(".acfs-deploy.*")), [])
                 self.assertEqual(self.git(source, "status", "--porcelain"), "")
 
-    def test_self_update_does_not_activate_after_copy_or_wrapper_failure(self):
+    def test_atomic_updater_and_wrapper_copy_failures_preserve_previous_files(self):
         replacement = "#!/bin/bash\nprintf 'unexpected-activation\\n'\nexit 83\n"
         old = "#!/bin/bash\nprintf 'old-updater-file\\n'\n"
         for step in ("copy", "wrapper"):
             with self.subTest(step=step):
                 root, source, runtime, env = self.phase_tree(step)
                 self.write(source, "scripts/lib/update.sh", replacement, 0o755)
+                self.write(source, "scripts/acfs-global", replacement, 0o755)
                 self.git(source, "init", "--quiet", "--initial-branch=main")
                 self.commit_tree(source, "fixture")
                 self.git(source, "remote", "add", "origin", str(source))
                 deployed = self.write(runtime, "scripts/lib/update.sh", old, 0o755)
+                wrapper = self.write(root, "global-acfs", old, 0o755)
                 before = deployed.stat()
-                setup = ('cp() { printf "partial" > "${@: -1}"; return 73; }\n' if step == "copy"
-                         else 'sync_acfs_global_wrapper() { return 73; }\n')
-                body = COMMON + ACTIVATION_SETUP + setup + r'''
-ACFS_SELF_UPDATE_DONE=false
-if update_acfs_self; then printf 'unexpected-continuation\n'; else exit "$?"; fi
-'''
+                wrapper_before = wrapper.stat()
+                setup = 'cp() { printf "partial" > "${@: -1}"; return 73; }\n'
+                operation = "sync_acfs_deployed" if step == "copy" else "sync_acfs_global_wrapper"
+                body = COMMON + PHASE_SETUP + setup + (
+                    f'if {operation}; then printf "unexpected-continuation\\n"; else exit "$?"; fi\n')
                 process = self.start(["/bin/bash", "-c", body], **env, TEST_ORIGIN=str(source))
                 stdout, stderr = process.communicate(timeout=15)
                 output = (stdout + stderr).decode()
-                self.assertEqual(process.returncode, 1 if step == "copy" else 73, output)
+                self.assertEqual(process.returncode, 1, output)
                 self.assertNotIn("unexpected-", output)
-                self.assertEqual(deployed.read_text(), old if step == "copy" else replacement)
-                if step == "copy":
-                    after = deployed.stat()
-                    self.assertEqual((after.st_ino, after.st_mode, after.st_mtime_ns),
-                                     (before.st_ino, before.st_mode, before.st_mtime_ns))
+                self.assertEqual(deployed.read_text(), old)
+                self.assertEqual(wrapper.read_text(), old)
+                after = deployed.stat()
+                wrapper_after = wrapper.stat()
+                self.assertEqual((after.st_ino, after.st_mode, after.st_mtime_ns),
+                                 (before.st_ino, before.st_mode, before.st_mtime_ns))
+                self.assertEqual((wrapper_after.st_ino, wrapper_after.st_mode, wrapper_after.st_mtime_ns),
+                                 (wrapper_before.st_ino, wrapper_before.st_mode, wrapper_before.st_mtime_ns))
                 self.assertFalse((root / "activation-receipt").exists())
                 self.assertEqual(list(runtime.rglob(".acfs-deploy.*")), [])
                 self.assertEqual(list(self.stage.iterdir()), [])
 
-    def test_self_update_reports_failed_exec_when_execfail_is_enabled(self):
-        replacement = f"#!{self.base}/missing-interpreter\n"
-        self.write(self.repo, "scripts/lib/update.sh", replacement, 0o755)
-        self.commit_source()
-        self.git(self.repo, "remote", "add", "origin", str(self.repo))
-        deployed = self.write(self.acfs, "scripts/lib/update.sh", "#!/bin/bash\nexit 0\n", 0o755)
-        body = COMMON + ACTIVATION_SETUP + r'''
-ACFS_SELF_UPDATE_DONE=false
-shopt -s execfail
-if update_acfs_self; then printf 'unexpected-continuation\n'; else exit "$?"; fi
-'''
-        process = self.start(["/bin/bash", "-c", body], TEST_ORIGIN=str(self.repo))
-        stdout, stderr = process.communicate(timeout=15)
-        output = (stdout + stderr).decode()
-        self.assertNotEqual(process.returncode, 0, output)
-        self.assertNotIn("unexpected-continuation", output)
-        self.assertEqual(deployed.read_text(), replacement)
-        self.assert_runtime_files("scripts/lib/update.sh")
-
-    def test_self_update_stops_when_early_security_refresh_fails(self):
+    def test_bootstrap_preparation_failure_stops_before_publication_or_execution(self):
         self.write(self.repo, "VERSION", "fixture one\n")
         self.commit_source()
         checkout = self.base / "checkout"
         subprocess.run(["git", "clone", "--quiet", str(self.repo), str(checkout)], env=self.env,
                        check=True, capture_output=True, timeout=5)
+        deployed = self.write(self.acfs, "scripts/lib/update.sh", "previous working updater\n", 0o755)
+        before = deployed.read_bytes(), deployed.stat()
         body = r'''
 UPDATE_SELF=true
 BOOTSTRAP_SELF_UPDATE=false
 ACFS_SELF_UPDATE_DONE=false
 SCRIPT_DIR="$TEST_ROOT/no-updater"
 is_expected_acfs_origin_url() { return 0; }
-update_refresh_installed_security() { printf 'refresh attempted\n'; return 73; }
+update_bootstrap_files() {
+    if [[ "$1" == prepare ]]; then printf 'preparation attempted\n' >&2; return 73; fi
+    printf 'unexpected publication\n' >&2
+    return 91
+}
+update_bootstrap_exec() { printf 'unexpected execution\n'; return 92; }
 sync_acfs_deployed() { printf 'unexpected deployment\n'; }
 sync_acfs_global_wrapper() { printf 'unexpected wrapper\n'; }
 sync_acfs_global_command_links() { printf 'unexpected links\n'; }
-if update_acfs_self; then exit 0; else exit "$?"; fi
+if update_bootstrap_handoff "$TEST_REVISION"; then exit 0; else exit "$?"; fi
 '''
         for state in ("current", "fast-forward"):
             with self.subTest(checkout=state):
                 if state == "fast-forward":
                     self.write(self.repo, "VERSION", "fixture two\n")
                     self.commit_source()
-                process = self.start(["/bin/bash", "-c", COMMON + body], TEST_SOURCE=str(checkout))
+                self.git(checkout, "fetch", "--quiet", "origin", "main")
+                original_head = self.git(checkout, "rev-parse", "HEAD")
+                process = self.start(["/bin/bash", "-c", COMMON + body], TEST_SOURCE=str(checkout),
+                                     TEST_REVISION=self.git(self.repo, "rev-parse", "HEAD"))
                 stdout, stderr = process.communicate(timeout=15)
-                self.assertEqual(process.returncode, 73, (stdout + stderr).decode())
-                self.assertIn(b"refresh attempted", stdout)
+                self.assertEqual(process.returncode, 1, (stdout + stderr).decode())
+                self.assertIn(b"preparation attempted", stderr)
                 self.assertNotIn(b"unexpected", stdout + stderr)
+                self.assertEqual(self.git(checkout, "rev-parse", "HEAD"), original_head)
+                self.assertEqual(deployed.read_bytes(), before[0])
+                after = deployed.stat()
+                self.assertEqual((after.st_ino, after.st_mode, after.st_mtime_ns),
+                                 (before[1].st_ino, before[1].st_mode, before[1].st_mtime_ns))
 
     def test_source_ref_extraction_failure_is_not_an_optional_skip(self):
         self.write(self.repo, "scripts/lib/stack.sh", "committed script\n", 0o755)
@@ -1060,12 +1032,12 @@ if update_acfs_self; then exit 0; else exit "$?"; fi
         deployed = self.write(self.acfs, "scripts/lib/stack.sh", "old script\n", 0o755)
         original = deployed.stat()
         self.sync(r'''
-git() {
-    if [[ "$3" == show && "$4" == HEAD:scripts/lib/stack.sh ]]; then
+update_bootstrap_git() {
+    if [[ "$1" == show && "$2" == HEAD:scripts/lib/stack.sh ]]; then
         printf 'partial source\n'
         return 73
     fi
-    command git "$@"
+    update_git_at "$ACFS_REPO_ROOT" "$@"
 }
 ''', success=False, TEST_SOURCE_REF="HEAD")
         self.assertEqual(deployed.read_text(), "old script\n")
@@ -1080,9 +1052,9 @@ git() {
         deployed = self.write(self.acfs, "scripts/lib/stack.sh", "old script\n", 0o755)
         original_inode = deployed.stat().st_ino
         self.sync(r'''
-git() {
-    if [[ "$3" == ls-tree && "${@: -1}" == scripts/lib/stack.sh ]]; then return 77; fi
-    command git "$@"
+update_bootstrap_git() {
+    if [[ "$1" == ls-tree && "${@: -1}" == scripts/lib/stack.sh ]]; then return 77; fi
+    update_git_at "$ACFS_REPO_ROOT" "$@"
 }
 ''', success=False, TEST_SOURCE_REF="HEAD")
         self.assertEqual(deployed.read_text(), "old script\n")
@@ -1093,18 +1065,21 @@ git() {
     def test_fetched_refresh_propagates_failure_without_later_actions(self):
         self.write(self.repo, "VERSION", "fixture\n")
         self.commit_source()
-        subprocess.run(["git", "-C", str(self.repo), "update-ref", "refs/remotes/origin/main", "HEAD"],
-                       env=self.env, check=True, capture_output=True, timeout=5)
+        self.git(self.repo, "remote", "add", "origin", str(self.repo))
+        self.git(self.repo, "fetch", "--quiet", "origin", "main")
+        revision = self.git(self.repo, "rev-parse", "HEAD")
         body = r'''
-sync_acfs_deployed() { return "$TEST_FAILURE"; }
-sync_acfs_global_wrapper() { printf 'unexpected wrapper\n'; }
-sync_acfs_global_command_links() { printf 'unexpected links\n'; }
+update_bootstrap_handoff() {
+    [[ "$1" == "$TEST_REVISION" ]] || return 91
+    return "$TEST_FAILURE"
+}
 log_item() { if [[ "$1" == ok ]]; then printf 'unexpected success log\n'; fi; }
 if _acfs_refresh_security_from_fetched_remote; then exit 0; else exit "$?"; fi
 '''
         for failure in (73, 143):
             with self.subTest(status=failure):
-                process = self.start(["/bin/bash", "-c", COMMON + body], TEST_FAILURE=str(failure))
+                process = self.start(["/bin/bash", "-c", COMMON + body], TEST_FAILURE=str(failure),
+                                     TEST_REVISION=revision)
                 stdout, stderr = process.communicate(timeout=15)
                 self.assertEqual(process.returncode, failure, (stdout + stderr).decode())
                 self.assertEqual(stdout, b"")
@@ -1115,9 +1090,7 @@ if _acfs_refresh_security_from_fetched_remote; then exit 0; else exit "$?"; fi
         self.write(self.repo, "VERSION", "fixture\n")
         self.commit_source()
         body = r'''
-sync_acfs_deployed() { printf 'unexpected deployment\n'; }
-sync_acfs_global_wrapper() { printf 'unexpected wrapper\n'; }
-sync_acfs_global_command_links() { printf 'unexpected links\n'; }
+update_bootstrap_handoff() { printf 'unexpected handoff\n'; }
 log_item() { if [[ "$1" == ok ]]; then printf 'unexpected success log\n'; fi; }
 if _acfs_refresh_security_from_fetched_remote; then exit 0; else exit "$?"; fi
 '''
@@ -1129,7 +1102,7 @@ if _acfs_refresh_security_from_fetched_remote; then exit 0; else exit "$?"; fi
                             _ACFS_RUNTIME_SOURCE_REF="untrusted-inherited-ref")
         self.assertEqual(output, "selected:\n")
 
-    def assert_dirty_fallback_stays_pinned_through_shell_update(self, checkout_is_runtime):
+    def assert_fetched_refresh_stays_pinned_through_shell_update(self, checkout_is_runtime):
         source_paths = (
             "VERSION", "scripts/lib/doctor.sh", "scripts/lib/security.sh", "scripts/lib/stack.sh",
             "scripts/acfs-global", "checksums.yaml", "acfs/zsh/acfs.zshrc",
@@ -1184,7 +1157,10 @@ sync_acfs_zsh_loader() { :; }
 cleanup_unmanaged_atuin_init() { :; }
 sync_acfs_global_wrapper() { printf '%s\n' "${1:-}" >> "$TEST_ROOT/global-wrapper-refs"; }
 sync_acfs_global_command_links() { :; }
-update_acfs_self
+git -C "$ACFS_REPO_ROOT" fetch origin main --quiet
+_ACFS_RUNTIME_SOURCE_REF="$(git -C "$ACFS_REPO_ROOT" rev-parse --verify 'FETCH_HEAD^{commit}')"
+sync_acfs_deployed "$_ACFS_RUNTIME_SOURCE_REF" || exit $?
+sync_acfs_global_wrapper "$_ACFS_RUNTIME_SOURCE_REF" || exit $?
 printf 'fallback-complete\n'
 IFS= read -r release
 # A second fetch can move origin/main between updater phases. The already
@@ -1217,13 +1193,13 @@ update_shell
         self.assertEqual(list(self.stage.iterdir()), [])
         self.assertEqual(list(self.acfs.rglob(".acfs-deploy.*")), [])
 
-    def test_dirty_fallback_stays_pinned_through_shell_update(self):
-        self.assert_dirty_fallback_stays_pinned_through_shell_update(checkout_is_runtime=False)
+    def test_fetched_refresh_stays_pinned_through_shell_update_with_dirty_checkout(self):
+        self.assert_fetched_refresh_stays_pinned_through_shell_update(checkout_is_runtime=False)
 
     def test_dirty_checkout_runtime_preserves_remapped_assets_and_tracked_edits(self):
-        self.assert_dirty_fallback_stays_pinned_through_shell_update(checkout_is_runtime=True)
+        self.assert_fetched_refresh_stays_pinned_through_shell_update(checkout_is_runtime=True)
 
-    def test_self_update_propagates_failure_in_completed_and_current_checkouts(self):
+    def test_admitted_self_update_propagates_sync_failure(self):
         self.write(self.repo, "VERSION", "fixture\n")
         self.commit_source()
         subprocess.run(["git", "-C", str(self.repo), "remote", "add", "origin", str(self.repo)],
@@ -1231,19 +1207,20 @@ update_shell
         body = r'''
 UPDATE_SELF=true
 BOOTSTRAP_SELF_UPDATE=false
-ACFS_SELF_UPDATE_DONE="$TEST_ALREADY_DONE"
+ACFS_SELF_UPDATE_DONE=true
+# This unit starts at the admitted child boundary; complete admission and
+# current/fast-forward source selection are covered by BootstrapHandoffTests.
+_ACFS_BOOTSTRAP_REF="$(git -C "$ACFS_REPO_ROOT" rev-parse HEAD)"
 is_expected_acfs_origin_url() { return 0; }
 update_refresh_installed_security() { :; }
 sync_acfs_deployed() { return "$TEST_FAILURE"; }
 if update_acfs_self; then exit 0; else exit "$?"; fi
 '''
-        for already_done in ("true", "false"):
-            for failure in (73, 143):
-                with self.subTest(already_done=already_done, status=failure):
-                    process = self.start(["/bin/bash", "-c", COMMON + body],
-                                         TEST_ALREADY_DONE=already_done, TEST_FAILURE=str(failure))
-                    stdout, stderr = process.communicate(timeout=15)
-                    self.assertEqual(process.returncode, failure, (stdout + stderr).decode())
+        for failure in (73, 143):
+            with self.subTest(status=failure):
+                process = self.start(["/bin/bash", "-c", COMMON + body], TEST_FAILURE=str(failure))
+                stdout, stderr = process.communicate(timeout=15)
+                self.assertEqual(process.returncode, failure, (stdout + stderr).decode())
 
     def test_source_ref_mode_lookup_failure_does_not_publish_private_staging_mode(self):
         self.write(self.repo, "acfs/tmux/tmux.conf", "new config\n")
@@ -1255,9 +1232,9 @@ if update_acfs_self; then exit 0; else exit "$?"; fi
             subprocess.run(["git", "-C", str(self.repo), *args], env=self.env, check=True,
                            capture_output=True, timeout=5)
         self.sync(r'''
-git() {
-    if [[ "$3" == ls-tree ]]; then return 77; fi
-    command git "$@"
+update_bootstrap_git() {
+    if [[ "$1" == ls-tree ]]; then return 77; fi
+    update_git_at "$ACFS_REPO_ROOT" "$@"
 }
 ''', success=False, TEST_SOURCE_REF="HEAD")
         self.assertEqual(deployed.read_text(), "old config\n")
@@ -1505,6 +1482,7 @@ printf 'checkpoint-accepted\n' >> "$TEST_EVENTS"
             "ACFS_SYSTEM_STATE_FILE": str(self.base / "missing system checkpoint.json"),
         }
         env.pop("TARGET_USER")
+        # ubs:ignore[python.taint.command] - the trusted test harness chooses the wrapper under test, not external user input.
         result = subprocess.run(
             ["/bin/bash", str(wrapper_path), "--stack-only"], env=env,
             text=True, capture_output=True, timeout=20,
@@ -1827,6 +1805,1013 @@ printf 'checkpoint-accepted\n' >> "$TEST_EVENTS"
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(marker.read_text(), "keep directory content\n")
         self.assertFalse((self.acfs / "scripts/lib/update.sh").exists())
+
+
+class BootstrapHandoffTests(unittest.TestCase):
+    """Complete immutable runtime preparation and stranded-install recovery.
+
+    Candidates are real local Git commits containing the production runtime
+    and its complete checksum inventory. Fixture ledgers bind those exact test
+    inputs; corruption cases change bytes after constructing their ledger.
+    No public network endpoint or real tool installer is used. Keep artifacts.
+    """
+
+    origin = "https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup.git"
+    ledger_path = "scripts/generated/internal_checksums.sh"
+
+    @classmethod
+    def setUpClass(cls):
+        if os.name != "posix" or not Path("/proc/self/fd").is_dir():
+            raise unittest.SkipTest("requires Linux, Bash, Git and flock")
+        cls.user = pwd.getpwuid(os.geteuid()).pw_name
+        cls.artifacts = Path(tempfile.mkdtemp(prefix="acfs-bootstrap-handoff-"))
+        cls.artifacts.chmod(0o700)
+        print("Bootstrap handoff artifacts:", cls.artifacts, flush=True)
+        cls.snapshot = cls.artifacts / "source-snapshot"
+        cls.snapshot.mkdir(mode=0o700)
+        cls.source = Path(os.environ.get("ACFS_UPDATE_TEST_LIBRARY", ROOT / "scripts/lib/update.sh"))
+        cls.ledger_template = (ROOT / cls.ledger_path).read_text()
+        cls.inventory = re.findall(r'^  \[([^\]]+)\]="[0-9a-f]{64}"$',
+                                   cls.ledger_template, re.MULTILINE)
+        if len(cls.inventory) < 100 or len(set(cls.inventory)) != len(cls.inventory):
+            raise AssertionError("review the bootstrap fixture's canonical ledger inventory")
+        for relative in cls.inventory:
+            original = cls.source if relative == "scripts/lib/update.sh" else ROOT / relative
+            destination = cls.snapshot / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(original.read_bytes())
+            destination.chmod(original.stat().st_mode & 0o777)
+        cls.render_fixture_ledger(cls.snapshot)
+        cls.git_env = {
+            "PATH": "/usr/bin:/bin", "HOME": str(cls.artifacts),
+            "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_TERMINAL_PROMPT": "0", "LC_ALL": "C",
+        }
+        cls.git(cls.snapshot, "init", "--quiet", "--initial-branch=main")
+        cls.commit(cls.snapshot, "Complete production bootstrap fixture")
+        cls.revision = cls.git(cls.snapshot, "rev-parse", "HEAD")
+
+    @classmethod
+    def git(cls, directory, *arguments):
+        result = subprocess.run(
+            ["/usr/bin/git", "-c", "core.hooksPath=/dev/null", "-C", str(directory),
+             *arguments], env=cls.git_env, capture_output=True, text=True, timeout=15,
+        )
+        if result.returncode:
+            raise AssertionError(result.stdout + result.stderr)
+        return result.stdout.strip()
+
+    @classmethod
+    def commit(cls, directory, message):
+        # Commits exist only in disposable fixture repositories, never in ROOT.
+        cls.git(directory, "add", "--all")
+        cls.git(directory, "-c", "user.name=ACFS Bootstrap Test", "-c",
+                "user.email=bootstrap-test@example.invalid", "commit", "--quiet", "-m", message)
+
+    @classmethod
+    def render_fixture_ledger(cls, directory):
+        """Bind test-input bytes; never regenerate repository outputs here."""
+        def record(match):
+            relative = match.group(1)
+            content = (directory / relative).read_bytes()
+            return f'  [{relative}]="{hashlib.sha256(content).hexdigest()}"'
+        ledger = re.sub(r'^  \[([^\]]+)\]="[0-9a-f]{64}"$', record,
+                        cls.ledger_template, flags=re.MULTILINE)
+        (directory / cls.ledger_path).write_text(ledger)
+
+    def setUp(self):
+        self.base = Path(tempfile.mkdtemp(prefix="case-", dir=self.artifacts))
+        self.home = self.base / "target home"
+        self.home.mkdir(mode=0o700)
+        self.acfs = self.home / ".acfs"
+        self.acfs.mkdir(mode=0o700)
+        self.repo = self.base / "checkout"
+        self.git(self.base, "clone", "--quiet", "--no-hardlinks",
+                 str(self.snapshot), str(self.repo))
+        self.git(self.repo, "remote", "set-url", "origin", self.origin)
+        self.state = self.acfs / "state.json"
+        self.checkpoint()
+        self.events = self.base / "installer-events"
+        self.env = self.git_env | {
+            "HOME": str(self.home), "TARGET_HOME": str(self.home),
+            "ACFS_HOME": str(self.acfs), "ACFS_REPO_ROOT": str(self.repo),
+            "ACFS_STATE_FILE": str(self.state), "UPDATE_TEST_LIBRARY": str(self.source),
+            "NO_COLOR": "1", "ACFS_INTERACTIVE": "false",
+            "ACFS_GLOBAL_BIN_DIR": str(self.base / "global-bin"),
+            "TEST_EVENTS": str(self.events),
+        }
+        self.processes = []
+        self.addCleanup(self.stop_processes)
+
+    def stop_processes(self):
+        for process in self.processes:
+            if process.poll() is None:
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(process.pid, signal.SIGKILL)
+            process.communicate(timeout=5)
+
+    def nested_case(self):
+        case = BootstrapHandoffTests("runTest")
+        case.setUp()
+        self.addCleanup(case.stop_processes)
+        return case
+
+    def checkpoint(self, *, mode="safe", path=None, legacy=False):
+        document = {
+            "schema_version": 3, "target_user": self.user, "target_home": str(self.home),
+            "mode": mode, "completed_phases": ["base", "finalize"],
+            "module_selection": {
+                "schema_version": 1, "selected_modules": ["acfs.update", "stack.ntm"],
+                "requested_modules": ["stack.ntm"],
+            },
+            "fixture_identity": "must remain byte-for-byte intact",
+        }
+        if legacy:
+            for key in ("module_selection", "target_user", "target_home"):
+                document.pop(key)
+        target = path or self.state
+        target.write_text(json.dumps(document, indent=2) + "\n")
+        target.chmod(0o600)
+        return target
+
+    def old_runtime(self, state_library="missing", *, self_managed=False):
+        if self_managed:
+            saved = self.home / "initial-runtime"
+            self.acfs.rename(saved)
+            self.git(self.base, "clone", "--quiet", "--no-hardlinks",
+                     str(self.snapshot), str(self.acfs))
+            self.acfs.chmod(0o700)
+            self.repo = self.acfs
+            self.git(self.repo, "remote", "set-url", "origin", self.origin)
+            exclude = self.repo / ".git/info/exclude"
+            exclude.write_text(exclude.read_text() + "\n/state.json\n/.update-runtime/\n/logs/\n")
+            self.state.write_bytes((saved / "state.json").read_bytes())
+            self.state.chmod(0o600)
+            self.env["ACFS_REPO_ROOT"] = str(self.repo)
+        destination = self.acfs / "scripts/lib/update.sh"
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text("#!/bin/bash\nprintf 'previous updater is usable\\n'\n")
+        destination.chmod(0o755)
+        reader = destination.with_name("state.sh")
+        if reader.exists():
+            reader.rename(self.base / "retained-original-state.sh")
+        if state_library == "outdated":
+            reader.write_text("# Legacy deployed state library, before saved module scope.\n"
+                              "_ACFS_STATE_SH_LOADED=1\n_state_acquire_lock() { :; }\n")
+            reader.chmod(0o644)
+        return destination
+
+    @staticmethod
+    def file_identity(path):
+        stat = path.stat()
+        return path.read_bytes(), stat.st_ino, stat.st_mode, stat.st_mtime_ns, stat.st_uid, stat.st_gid
+
+    def call(self, *arguments, code=0, timeout=30, **overrides):
+        result = subprocess.run(
+            ["/bin/bash", "--noprofile", "--norc", "-c",
+             'source "$UPDATE_TEST_LIBRARY"\nupdate_bootstrap_files "$@"\n',
+             "bootstrap-fixture", *map(str, arguments)],
+            env=self.env | overrides, capture_output=True, text=True, timeout=timeout,
+        )
+        if code is not None:
+            self.assertEqual(result.returncode, code, result.stdout + result.stderr)
+        return result
+
+    def prepare(self, *, revision=None, state=None, code=0):
+        result = self.call("prepare", self.repo, revision or self.revision,
+                           self.home, self.user, state or self.state, code=code)
+        return Path(result.stdout.strip()) if result.returncode == 0 else result
+
+    def activate(self, generation, *, state=None, code=0):
+        return self.call("activate", generation, self.home, self.user,
+                         state or self.state, code=code)
+
+    def current(self, *, code=0):
+        result = self.call("current", self.home, self.user, code=code)
+        return Path(result.stdout.strip()) if result.returncode == 0 else result
+
+    def assert_no_installer(self):
+        self.assertFalse(self.events.exists(), "bootstrap crossed the tool-installation boundary")
+
+    def test_effective_origin_rewrite_is_rejected_before_fetch_or_runtime_mutation(self):
+        previous = self.old_runtime("outdated")
+        before = self.file_identity(previous)
+        checkpoint = self.file_identity(self.state)
+        self.git(self.repo, "config", f"url.{self.snapshot}.insteadOf", self.origin)
+        self.assertEqual(self.git(self.repo, "config", "--get", "remote.origin.url"), self.origin)
+        self.assertEqual(self.git(self.repo, "remote", "get-url", "origin"), str(self.snapshot))
+        fetch_head = self.repo / ".git/FETCH_HEAD"
+        self.assertFalse(fetch_head.exists())
+        result = subprocess.run(
+            ["/bin/bash", "--noprofile", "--norc", "-c",
+             'source "$UPDATE_TEST_LIBRARY"\nACFS_REPO_ROOT="$TEST_CHECKOUT"\n'
+             'update_bootstrap_fetch_revision\n'],
+            env=self.env | {"TEST_CHECKOUT": str(self.repo)},
+            capture_output=True, text=True, timeout=30,
+        )
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("origin", (result.stdout + result.stderr).lower())
+        self.assertFalse(fetch_head.exists(), "rejected transport was nevertheless fetched")
+        self.assertFalse((self.acfs / ".update-runtime").exists())
+        self.assertEqual(self.file_identity(previous), before)
+        self.assertEqual(self.file_identity(self.state), checkpoint)
+        self.assert_no_installer()
+
+    def stranded_entry(self, library="missing", *, self_managed=False):
+        """New entrypoint published by an old deployer with stale dependencies."""
+        entry = self.old_runtime(library, self_managed=self_managed)
+        updater = self.source.read_text()
+        boundary = '\nif [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then\n    main "$@"\nfi'
+        self.assertEqual(updater.count(boundary), 1, "review the public-main fixture boundary")
+        # Actual main/admission/selection/deployment; only external tool work,
+        # global links and reporting are fixture boundaries. These committed
+        # candidate bytes are verified by the real bootstrap before exec.
+        hooks = SELECTION_DISPATCH + r'''
+sync_acfs_global_wrapper() { :; }
+sync_acfs_global_command_links() { :; }
+update_root_agents_md() { :; }
+print_summary() {
+    local lock_status=0
+    /usr/bin/flock -n -E 75 "$TARGET_HOME" true || lock_status=$?
+    printf '%s\0' "$BASHPID" "${_ACFS_UPDATE_LOCK_PID:-}" "$lock_status" \
+        "$HOME" "$(update_target_user)" "$(update_target_home "$(update_target_user)")" \
+        "$ACFS_STATE_FILE" "$ACFS_STATE_SELECTION_MODE" "$ACFS_STATE_INSTALL_MODE" \
+        "${ACFS_STATE_SELECTED_MODULES[*]}" "$_ACFS_BOOTSTRAP_REF" \
+        "${ACFS_UPDATE_ARGS[@]}" > "$TEST_ROOT/handoff-receipt"
+}
+'''
+        candidate = updater.replace(boundary, "\n" + hooks + boundary)
+        source_entry = self.repo / "scripts/lib/update.sh"
+        source_entry.write_text(candidate)
+        source_entry.chmod(0o755)
+        source_reader = self.repo / "scripts/lib/state.sh"
+        source_reader.write_bytes((self.snapshot / "scripts/lib/state.sh").read_bytes())
+        source_reader.chmod(0o644)
+        self.render_fixture_ledger(self.repo)
+        self.commit(self.repo, "Actual-main bootstrap integration candidate")
+        revision = self.git(self.repo, "rev-parse", "HEAD")
+        # The initial actual-main process accepts exactly this fixture origin.
+        # No exported authorization bypass or production trust rule is added.
+        self.git(self.repo, "remote", "set-url", "origin", str(self.repo))
+        if self_managed:
+            source_reader.rename(self.base / "retained-candidate-state.sh")
+            if library == "outdated":
+                source_reader.write_text("_ACFS_STATE_SH_LOADED=1\n_state_acquire_lock() { :; }\n")
+                source_reader.chmod(0o644)
+        else:
+            entry.write_text(candidate)
+            entry.chmod(0o755)
+        self.env.update({
+            "TEST_ROOT": str(self.base), "TEST_BIN": str(self.home / ".local/bin"),
+            "TEST_SOURCE": str(self.repo), "TEST_PRESENT": "", "TEST_FAILURE": "",
+        })
+        return entry, revision
+
+    def main_process(self, entry, *arguments):
+        body = r'''
+source "$1"
+shift
+is_expected_acfs_origin_url() { [[ "$1" == "${TEST_ORIGIN:-$TEST_SOURCE}" ]]; }
+_acfs_update_acquire_lock "$TARGET_HOME"
+main "$@"
+'''
+        process = subprocess.Popen(
+            ["/bin/bash", "--noprofile", "--norc", "-c", body,
+             "bootstrap-main-fixture", str(entry), *arguments],
+            env=self.env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, start_new_session=True,
+        )
+        self.processes.append(process)
+        return process
+
+    def complete_adjacent_scope_libraries(self):
+        for relative in ("scripts/lib/state.sh", "scripts/lib/progress.sh",
+                         "scripts/generated/manifest_index.sh"):
+            destination = self.acfs / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes((self.snapshot / relative).read_bytes())
+            destination.chmod(0o644)
+
+    def test_prepare_validates_full_revision_without_publishing_or_rewriting_checkpoint(self):
+        previous = self.old_runtime("outdated")
+        before = self.file_identity(previous)
+        checkpoint = self.file_identity(self.state)
+        generation = self.prepare()
+        self.assertTrue(generation.is_dir())
+        self.assertEqual(self.file_identity(previous), before)
+        self.assertEqual(self.file_identity(self.state), checkpoint)
+        self.current(code=3)
+        for relative in self.inventory:
+            self.assertEqual((generation / relative).read_bytes(),
+                             (self.snapshot / relative).read_bytes(), relative)
+        self.assertEqual(self.call("inspect", generation, self.home, self.user).stdout.splitlines(),
+                         [str(self.repo), self.revision])
+        self.assert_no_installer()
+
+    def test_missing_and_outdated_legacy_libraries_recover_in_both_layouts(self):
+        for layout in ("separate", "self-managed"):
+            for library in ("missing", "outdated"):
+                for mode in ("safe", "vibe"):
+                    with self.subTest(layout=layout, library=library, mode=mode):
+                        case = self.nested_case()
+                        case.checkpoint(mode=mode)
+                        previous = case.old_runtime(library, self_managed=layout == "self-managed")
+                        before = case.file_identity(previous)
+                        checkpoint = case.file_identity(case.state)
+                        tracked_before = case.git(case.repo, "diff", "--binary")
+                        generation = case.prepare()
+                        case.activate(generation)
+                        self.assertEqual(case.current(), generation)
+                        self.assertEqual(case.file_identity(previous), before)
+                        self.assertEqual(case.file_identity(case.state), checkpoint)
+                        self.assertEqual(case.git(case.repo, "diff", "--binary"), tracked_before)
+                        self.assertEqual((generation / "scripts/lib/state.sh").read_bytes(),
+                                         (self.snapshot / "scripts/lib/state.sh").read_bytes())
+                        result = subprocess.run(["/bin/bash", str(previous)], env=case.env,
+                                                capture_output=True, text=True, timeout=5)
+                        self.assertEqual((result.returncode, result.stdout),
+                                         (0, "previous updater is usable\n"))
+                        case.assert_no_installer()
+
+    def test_default_legacy_checkpoint_without_identity_remains_legacy(self):
+        self.old_runtime()
+        self.checkpoint(legacy=True, mode="safe")
+        before = self.file_identity(self.state)
+        generation = self.prepare()
+        self.activate(generation)
+        self.assertEqual(self.current(), generation)
+        self.assertEqual(self.file_identity(self.state), before)
+
+    def test_custom_checkpoint_is_bound_without_touching_default_checkpoint(self):
+        self.old_runtime()
+        custom = self.checkpoint(path=self.home / "saved scope.json", mode="vibe")
+        default_before, custom_before = self.file_identity(self.state), self.file_identity(custom)
+        generation = self.prepare(state=custom)
+        self.activate(generation, state=custom)
+        self.assertEqual(self.file_identity(self.state), default_before)
+        self.assertEqual(self.file_identity(custom), custom_before)
+        self.assertEqual(self.current(), generation)
+
+    def test_dirty_source_files_cannot_replace_immutable_candidate_bytes(self):
+        self.old_runtime()
+        untrusted = self.repo / "scripts/lib/state.sh"
+        untrusted.write_text("printf 'dirty source executed' > \"$TEST_EVENTS\"\nexit 87\n")
+        generation = self.prepare()
+        self.assertEqual((generation / "scripts/lib/state.sh").read_bytes(),
+                         (self.snapshot / "scripts/lib/state.sh").read_bytes())
+        self.assertIn("dirty source executed", untrusted.read_text())
+        self.assert_no_installer()
+
+    def test_nonimmutable_or_ambiguous_revisions_are_refused(self):
+        previous = self.old_runtime()
+        before = self.file_identity(previous)
+        for revision in ("HEAD", "main", "origin/main", self.revision[:12],
+                         "--help", self.revision + ":scripts/lib/state.sh", "0" * 40):
+            with self.subTest(revision=revision):
+                result = self.prepare(revision=revision, code=None)
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(self.file_identity(previous), before)
+                self.current(code=3)
+        self.assert_no_installer()
+
+    def test_invalid_checkpoints_fail_before_activation(self):
+        previous = self.old_runtime("outdated")
+        before = self.file_identity(previous)
+        valid = json.loads(self.state.read_text())
+        cases = {
+            "malformed": '{"module_selection":',
+            "not-object": "[]\n",
+            "duplicate-field": '{"schema_version":3,"schema_version":1}',
+            "unsupported-checkpoint-schema": {**valid, "schema_version": 99},
+            "boolean-checkpoint-schema": {**valid, "schema_version": True},
+            "unsupported-selection": {**valid, "module_selection": {
+                "schema_version": 2, "selected_modules": ["stack.ntm"]}},
+            "empty": {**valid, "module_selection": {"schema_version": 1, "selected_modules": []}},
+            "unknown": {**valid, "module_selection": {"schema_version": 1,
+                                                    "selected_modules": ["stack.unknown"]}},
+            "foreign-user": {**valid, "target_user": "another-user"},
+            "foreign-home": {**valid, "target_home": str(self.base / "other-home")},
+            "invalid-mode": {**valid, "mode": "unsafe"},
+        }
+        for name, document in cases.items():
+            with self.subTest(checkpoint=name):
+                self.state.write_text(document if isinstance(document, str) else json.dumps(document))
+                state_before = self.file_identity(self.state)
+                result = self.prepare(code=None)
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(self.file_identity(self.state), state_before)
+                self.assertEqual(self.file_identity(previous), before)
+                self.current(code=3)
+        self.assert_no_installer()
+
+    def test_checkpoint_changes_between_prepare_and_activate_do_not_replace_previous_runtime(self):
+        self.old_runtime()
+        accepted = self.prepare()
+        self.activate(accepted)
+        candidate = self.prepare()
+        pointer = self.acfs / ".update-runtime/current"
+        before = self.file_identity(pointer)
+        self.checkpoint(mode="vibe")
+        state_before = self.file_identity(self.state)
+        result = self.activate(candidate, code=None)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.file_identity(pointer), before)
+        self.assertEqual(self.file_identity(self.state), state_before)
+        self.assertEqual(self.current(), accepted)
+        self.assert_no_installer()
+
+    def test_activation_rejects_replaced_home_while_lock_still_holds_old_inode(self):
+        self.old_runtime("outdated")
+        previous = self.prepare()
+        self.activate(previous)
+        candidate = self.prepare()
+        body = r'''
+source "$UPDATE_TEST_LIBRARY"
+_acfs_update_acquire_lock "$TARGET_HOME" || exit $?
+printf 'home-locked\n'
+IFS= read -r release
+if update_bootstrap_files activate "$@"; then
+    printf 'unexpected-activation\n'
+else
+    exit "$?"
+fi
+'''
+        process = subprocess.Popen(
+            ["/bin/bash", "--noprofile", "--norc", "-c", body,
+             "bootstrap-home-swap-fixture", str(candidate), str(self.home),
+             self.user, str(self.state)],
+            env=self.env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, start_new_session=True,
+        )
+        self.processes.append(process)
+        ready, _, _ = select.select([process.stdout], [], [], 5)
+        self.assertTrue(ready, "fixture did not acquire the installation lock")
+        self.assertEqual(process.stdout.readline(), b"home-locked\n")
+        retained = self.base / "retained-locked-home"
+        self.home.rename(retained)
+        shutil.copytree(retained, self.home)
+        self.assertNotEqual(retained.stat().st_ino, self.home.stat().st_ino)
+        pointer = self.acfs / ".update-runtime/current"
+        pointer_before = self.file_identity(pointer)
+        checkpoint = self.file_identity(self.state)
+        stdout, stderr = process.communicate(input=b"resume\n", timeout=15)
+        self.assertNotEqual(process.returncode, 0, (stdout + stderr).decode())
+        self.assertIn(b"held update lock", stderr)
+        self.assertNotIn(b"unexpected-activation", stdout + stderr)
+        self.assertEqual(self.file_identity(pointer), pointer_before)
+        self.assertEqual(self.file_identity(self.state), checkpoint)
+        self.assertEqual(self.current(), previous)
+        self.assert_no_installer()
+
+    def test_active_generation_refresh_uses_cache_without_rewriting_runtime(self):
+        self.old_runtime()
+        deployed_ledger = self.acfs / "checksums.yaml"
+        deployed_ledger.write_bytes((self.snapshot / "checksums.yaml").read_bytes()
+                                    + b"\n# separate deployed ledger\n")
+        deployed_before = self.file_identity(deployed_ledger)
+        generation = self.prepare()
+        self.activate(generation)
+        before = {path: self.file_identity(path) for path in generation.rglob("*") if path.is_file()}
+        downloaded = self.base / "refreshed-checksums.yaml"
+        downloaded.write_bytes((self.snapshot / "checksums.yaml").read_bytes()
+                               + b"\n# authenticated refresh fixture\n")
+        body = r'''
+source "$UPDATE_TEST_LIBRARY"
+update_bootstrap_use "$TEST_GENERATION" "$TARGET_HOME" "$TEST_USER" || exit $?
+update_curl() {
+    local output="" url="${*: -1}"
+    while (( $# )); do
+        if [[ "$1" == -o ]]; then output="$2"; break; fi
+        shift
+    done
+    [[ "$url" == "https://api.github.com/repos/Dicklesworthstone/agentic_coding_flywheel_setup/contents/checksums.yaml?ref=main" ]] || return 91
+    [[ -n "$output" ]] || return 92
+    /bin/cp "$TEST_DOWNLOAD" "$output"
+}
+refresh_checksums true || exit $?
+update_resolve_checksums_file
+'''
+        result = subprocess.run(
+            ["/bin/bash", "--noprofile", "--norc", "-c", body],
+            env=self.env | {"TEST_GENERATION": str(generation), "TEST_USER": self.user,
+                            "TEST_DOWNLOAD": str(downloaded)},
+            capture_output=True, text=True, timeout=30,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        cache = self.home / ".local/state/acfs/checksums.remote.yaml"
+        self.assertEqual(result.stdout.strip(), str(cache))
+        self.assertEqual(cache.read_bytes(), downloaded.read_bytes())
+        self.assertEqual(self.file_identity(deployed_ledger), deployed_before)
+        self.assertEqual({path: self.file_identity(path) for path in before}, before)
+        self.assertEqual(self.git(self.repo, "status", "--porcelain"), "")
+        self.assertEqual(self.current(), generation)
+        self.assert_no_installer()
+
+    def test_missing_custom_checkpoint_does_not_fall_back_to_default(self):
+        self.old_runtime()
+        before = self.file_identity(self.state)
+        result = self.prepare(state=self.home / "absent custom.json", code=None)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.file_identity(self.state), before)
+        self.current(code=3)
+
+    def test_double_slash_checkpoint_cannot_hide_invalid_state_as_absent(self):
+        previous = self.old_runtime("outdated")
+        before = self.file_identity(previous)
+        ambiguous = "//" + str(self.state).lstrip("/")
+        for document in ('{"schema_version":99}',
+                         '{"schema_version":3,"schema_version":1}'):
+            with self.subTest(checkpoint=document):
+                self.state.write_text(document)
+                checkpoint = self.file_identity(self.state)
+                result = self.prepare(state=ambiguous, code=None)
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn("unsafe absolute path", result.stderr)
+                self.assertEqual(self.file_identity(self.state), checkpoint)
+                self.assertEqual(self.file_identity(previous), before)
+                self.current(code=3)
+        self.assert_no_installer()
+
+    def test_changed_generation_is_rejected_before_activation(self):
+        self.old_runtime()
+        previous = self.prepare()
+        self.activate(previous)
+        pointer = self.acfs / ".update-runtime/current"
+        pointer_before = self.file_identity(pointer)
+        for corruption in ("bytes", "symlink", "fifo", "writable", "writable-parent"):
+            with self.subTest(corruption=corruption):
+                generation = self.prepare()
+                library = generation / "scripts/lib/state.sh"
+                if corruption == "bytes":
+                    library.write_text("printf 'unauthenticated execution' > \"$TEST_EVENTS\"\n")
+                elif corruption in ("symlink", "fifo"):
+                    library.rename(generation / "retained-state.sh")
+                    if corruption == "symlink":
+                        target = self.base / "untrusted-state.sh"
+                        target.write_text("printf 'symlink executed' > \"$TEST_EVENTS\"\n")
+                        library.symlink_to(target)
+                    else:
+                        os.mkfifo(library, 0o600)
+                elif corruption == "writable-parent":
+                    # ubs:ignore[py.security.file-permissions] - deliberately unsafe private fixture; activation must reject it.
+                    library.parent.chmod(0o777)
+                else:
+                    # ubs:ignore[py.security.file-permissions] - deliberately unsafe private fixture; activation must reject it.
+                    library.chmod(0o666)
+                result = self.activate(generation, code=None)
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(self.file_identity(pointer), pointer_before)
+                self.assertEqual(self.current(), previous)
+        self.assert_no_installer()
+
+    def test_source_ledger_mismatch_is_not_repaired_or_published(self):
+        previous = self.old_runtime()
+        before = self.file_identity(previous)
+        source = self.repo / "scripts/lib/state.sh"
+        source.write_bytes(source.read_bytes() + b"\n# changed without a new ledger\n")
+        self.commit(self.repo, "Invalid fixture with unchanged checksum ledger")
+        result = self.prepare(revision=self.git(self.repo, "rev-parse", "HEAD"), code=None)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.file_identity(previous), before)
+        self.current(code=3)
+        self.assert_no_installer()
+
+    def test_required_missing_library_is_not_an_optional_asset(self):
+        previous = self.old_runtime()
+        before = self.file_identity(previous)
+        (self.repo / "scripts/lib/state.sh").rename(self.repo / "retained-state.sh")
+        self.commit(self.repo, "Invalid fixture missing a required library")
+        result = self.prepare(revision=self.git(self.repo, "rev-parse", "HEAD"), code=None)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.file_identity(previous), before)
+        self.current(code=3)
+
+    def test_bash_syntax_failure_preserves_previous_runtime(self):
+        previous = self.old_runtime()
+        before = self.file_identity(previous)
+        (self.repo / "scripts/lib/state.sh").write_text("if broken syntax\n")
+        self.render_fixture_ledger(self.repo)
+        self.commit(self.repo, "Authenticated fixture with invalid Bash syntax")
+        result = self.prepare(revision=self.git(self.repo, "rev-parse", "HEAD"), code=None)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.file_identity(previous), before)
+        self.current(code=3)
+
+    def test_pointer_cannot_escape_generation_directory(self):
+        self.old_runtime()
+        generation = self.prepare()
+        pointer = self.acfs / ".update-runtime/current"
+        for name in ("../outside", str(generation), ".", "generation-../../outside"):
+            with self.subTest(generation=name):
+                pointer.write_text(json.dumps({"schema": 1, "generation": name}))
+                pointer.chmod(0o600)
+                result = self.call("current", self.home, self.user, code=None)
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assert_no_installer()
+
+    def test_generation_is_bound_to_target_identity(self):
+        self.old_runtime()
+        generation = self.prepare()
+        other_home = self.base / "other-home"
+        other_home.mkdir(mode=0o700)
+        for home, user in ((other_home, self.user), (self.home, "root" if self.user != "root" else "nobody")):
+            with self.subTest(home=str(home), user=user):
+                result = self.call("inspect", generation, home, user, code=None)
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.current(code=3)
+
+    def test_interrupted_candidate_probe_keeps_previous_generation_and_checkpoint(self):
+        previous = self.old_runtime("outdated")
+        before = self.file_identity(previous)
+        state_before = self.file_identity(self.state)
+        previous_generation = self.prepare()
+        self.activate(previous_generation)
+        pointer = self.acfs / ".update-runtime/current"
+        pointer_before = self.file_identity(pointer)
+        ready, hold = self.base / "probe-ready", self.base / "probe-hold"
+        os.mkfifo(ready, 0o600)
+        os.mkfifo(hold, 0o600)
+        reader = self.repo / "scripts/lib/state.sh"
+        # An authenticated fixture blocks during the actual fresh-shell scope
+        # probe. No production hook, timing race or mock preparation is used.
+        reader.write_text(reader.read_text() +
+                          f"\nprintf '%s\\n' \"$BASHPID\" > {shlex.quote(str(ready))}\n"
+                          f"IFS= read -r fixture_release < {shlex.quote(str(hold))}\n")
+        self.render_fixture_ledger(self.repo)
+        self.commit(self.repo, "Candidate with synchronized dependency probe")
+        descriptor = os.open(ready, os.O_RDONLY | os.O_NONBLOCK)
+        self.addCleanup(os.close, descriptor)
+        process = subprocess.Popen(
+            ["/bin/bash", "--noprofile", "--norc", "-c",
+             'source "$UPDATE_TEST_LIBRARY"\nupdate_bootstrap_files "$@"\n',
+             "bootstrap-interrupt-fixture", "prepare", str(self.repo),
+             self.git(self.repo, "rev-parse", "HEAD"), str(self.home), self.user, str(self.state)],
+            env=self.env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, start_new_session=True,
+        )
+        self.processes.append(process)
+        readable, _, _ = select.select([descriptor], [], [], 20)
+        self.assertTrue(readable, "candidate did not reach its dependency probe")
+        self.assertTrue(os.read(descriptor, 128).strip().isdigit())
+        os.killpg(process.pid, signal.SIGTERM)
+        stdout, stderr = process.communicate(timeout=10)
+        self.assertNotEqual(process.returncode, 0, (stdout + stderr).decode())
+        self.assertEqual(self.file_identity(previous), before)
+        self.assertEqual(self.file_identity(self.state), state_before)
+        self.assertEqual(self.file_identity(pointer), pointer_before)
+        self.assertEqual(self.current(), previous_generation)
+        self.assert_no_installer()
+
+    def test_killed_preparation_parent_releases_lock_while_probe_is_still_alive(self):
+        self.old_runtime("outdated")
+        previous = self.prepare()
+        self.activate(previous)
+        pointer = self.acfs / ".update-runtime/current"
+        pointer_before = self.file_identity(pointer)
+        checkpoint = self.file_identity(self.state)
+        ready, hold = self.base / "parent-kill-ready", self.base / "parent-kill-hold"
+        os.mkfifo(ready, 0o600)
+        os.mkfifo(hold, 0o600)
+        reader = self.repo / "scripts/lib/state.sh"
+        reader.write_text(reader.read_text() +
+                          f"\nprintf '%s\\n' \"$BASHPID\" > {shlex.quote(str(ready))}\n"
+                          f"IFS= read -r fixture_release < {shlex.quote(str(hold))}\n")
+        self.render_fixture_ledger(self.repo)
+        self.commit(self.repo, "Candidate with a live orphanable scope probe")
+        descriptor = os.open(ready, os.O_RDONLY | os.O_NONBLOCK)
+        self.addCleanup(os.close, descriptor)
+        body = ('source "$UPDATE_TEST_LIBRARY"\n'
+                'ACFS_REPO_ROOT="$TEST_SOURCE"\n'
+                'update_bootstrap_handoff "$TEST_REVISION"\n')
+        process = subprocess.Popen(
+            ["/bin/bash", "--noprofile", "--norc", "-c", body],
+            env=self.env | {"TEST_SOURCE": str(self.repo),
+                            "TEST_REVISION": self.git(self.repo, "rev-parse", "HEAD")},
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            start_new_session=True,
+        )
+        self.processes.append(process)
+        try:
+            readable, _, _ = select.select([descriptor], [], [], 20)
+            self.assertTrue(readable, "candidate did not reach its dependency probe")
+            probe_pid = int(os.read(descriptor, 128).strip())
+            os.kill(process.pid, signal.SIGKILL)
+            self.assertEqual(process.wait(timeout=5), -signal.SIGKILL)
+            os.kill(probe_pid, 0)  # Keep the orphan alive until after the lock assertion.
+            contender = subprocess.run(
+                ["/usr/bin/flock", "-n", "-E", "75", str(self.home), "/bin/true"],
+                env=self.env, capture_output=True, text=True, timeout=5,
+            )
+            self.assertEqual(contender.returncode, 0, contender.stdout + contender.stderr)
+            os.kill(probe_pid, 0)
+            self.assertEqual(self.file_identity(pointer), pointer_before)
+            self.assertEqual(self.file_identity(self.state), checkpoint)
+            self.assertEqual(self.current(), previous)
+            self.assert_no_installer()
+        finally:
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(process.pid, signal.SIGKILL)
+            process.communicate(timeout=5)
+
+
+    @unittest.skipIf(os.geteuid() == 0, "actual entrypoint uses root's fixed /root home")
+    def test_actual_main_core_repair_handles_stranded_layouts_without_installers(self):
+        for layout in ("separate", "self-managed"):
+            for library in ("missing", "outdated"):
+                with self.subTest(layout=layout, library=library):
+                    case = self.nested_case()
+                    entry, revision = case.stranded_entry(
+                        library, self_managed=layout == "self-managed")
+                    checkpoint = case.file_identity(case.state)
+                    tracked_before = case.git(case.repo, "diff", "--binary")
+                    process = case.main_process(entry, "--yes", "--repair-runtime")
+                    stdout, stderr = process.communicate(timeout=45)
+                    self.assertEqual(process.returncode, 0, (stdout + stderr).decode())
+                    self.assertIn(revision.encode(), stdout + stderr)
+                    self.assertEqual(case.file_identity(case.state), checkpoint)
+                    self.assertEqual(case.git(case.repo, "diff", "--binary"), tracked_before)
+                    generation = case.current()
+                    self.assertEqual((generation / "scripts/lib/state.sh").read_bytes(),
+                                     (self.snapshot / "scripts/lib/state.sh").read_bytes())
+                    case.assert_no_installer()
+                    # Later canonical invocation, without the parent's origin
+                    # fixture, must recognize the complete active generation.
+                    check = subprocess.run(
+                        ["/bin/bash", str(entry), "--check-runtime"], env=case.env,
+                        capture_output=True, text=True, timeout=15,
+                    )
+                    self.assertEqual(check.returncode, 0, check.stdout + check.stderr)
+                    self.assertIn(revision, check.stdout)
+                    self.assertEqual(case.file_identity(case.state), checkpoint)
+
+    @unittest.skipIf(os.geteuid() == 0, "actual entrypoint uses root's fixed /root home")
+    def test_automatic_recovery_reexec_preserves_pid_lock_scope_mode_identity_and_arguments(self):
+        arguments = ["--yes", "--quiet", "--stack-only", "--force", "--abort-on-failure"]
+        for self_managed, mode in ((False, "safe"), (True, "vibe")):
+            with self.subTest(self_managed=self_managed, mode=mode):
+                case = self.nested_case()
+                case.checkpoint(mode=mode)
+                entry, revision = case.stranded_entry("outdated", self_managed=self_managed)
+                checkpoint = case.file_identity(case.state)
+                process = case.main_process(entry, *arguments)
+                stdout, stderr = process.communicate(timeout=45)
+                self.assertEqual(process.returncode, 0, (stdout + stderr).decode())
+                receipt = (case.base / "handoff-receipt").read_bytes().split(b"\0")
+                expected = [str(process.pid), str(process.pid), "75", str(case.home), self.user,
+                            str(case.home), str(case.state), "scoped", mode,
+                            "acfs.update stack.ntm", revision, *arguments]
+                self.assertEqual(receipt, [value.encode() for value in expected] + [b""])
+                self.assertEqual(case.file_identity(case.state), checkpoint)
+                installer_events = [line for line in case.events.read_text().splitlines()
+                                    if line.startswith("installer:")]
+                self.assertEqual(len(installer_events), 1, installer_events)
+                self.assertEqual(installer_events[0].split()[0], "installer:ntm", installer_events)
+
+    @unittest.skipIf(os.geteuid() == 0, "actual entrypoint uses root's fixed /root home")
+    def test_public_coherence_check_is_read_only_without_reader_and_while_locked(self):
+        entry, _ = self.stranded_entry()
+        checkpoint = self.file_identity(self.state)
+        for command in (entry, self.repo / "scripts/lib/update.sh"):
+            with self.subTest(entry=str(command)):
+                absent = subprocess.run(["/bin/bash", str(command), "--check-runtime"], env=self.env,
+                                        capture_output=True, text=True, timeout=15)
+                self.assertNotEqual(absent.returncode, 0, absent.stdout + absent.stderr)
+                self.assertIn("state.sh", absent.stderr)
+                self.assertFalse((self.acfs / ".update-runtime").exists())
+                self.assertEqual(self.file_identity(self.state), checkpoint)
+        process = self.main_process(entry, "--yes", "--repair-runtime")
+        stdout, stderr = process.communicate(timeout=45)
+        self.assertEqual(process.returncode, 0, (stdout + stderr).decode())
+        pointer = self.acfs / ".update-runtime/current"
+        pointer_before = self.file_identity(pointer)
+        home_fd = os.open(self.home, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            fcntl.flock(home_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            checked = subprocess.run(["/bin/bash", str(entry), "--check-runtime"], env=self.env,
+                                     capture_output=True, text=True, timeout=15)
+            self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
+            self.assertIn("runtime verified", checked.stdout)
+        finally:
+            os.close(home_fd)
+        self.assertEqual(self.file_identity(pointer), pointer_before)
+        self.assertEqual(self.file_identity(self.state), checkpoint)
+        self.assert_no_installer()
+
+    @unittest.skipIf(os.geteuid() == 0, "actual entrypoint uses root's fixed /root home")
+    def test_unsafe_installed_library_is_never_sourced_by_diagnostics(self):
+        entry, _ = self.stranded_entry()
+        library = entry.with_name("state.sh")
+        malicious = self.base / "untrusted-state.sh"
+        malicious.write_text("printf 'untrusted library executed\\n' > \"$TEST_EVENTS\"\n")
+        library.symlink_to(malicious)
+        result = subprocess.run(["/bin/bash", str(entry), "--check-runtime"], env=self.env,
+                                capture_output=True, text=True, timeout=15)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse((self.acfs / ".update-runtime").exists())
+        self.assert_no_installer()
+
+
+    def test_entry_publication_replaces_only_updater_after_complete_activation(self):
+        entry = self.old_runtime("outdated")
+        reader = entry.with_name("state.sh")
+        before = self.file_identity(entry)
+        reader_before = self.file_identity(reader)
+        checkpoint = self.file_identity(self.state)
+        generation = self.prepare()
+        self.call("entry-check", generation, self.home, self.user)
+        self.assertEqual(self.file_identity(entry), before)
+        premature = self.call("entry", generation, self.home, self.user, code=None)
+        self.assertNotEqual(premature.returncode, 0, premature.stdout + premature.stderr)
+        self.assertEqual(self.file_identity(entry), before)
+        self.activate(generation)
+        self.call("entry", generation, self.home, self.user)
+        self.assertEqual(entry.read_bytes(), (generation / "scripts/lib/update.sh").read_bytes())
+        self.assertEqual(entry.stat().st_mode & 0o777, 0o755)
+        self.assertNotEqual(entry.stat().st_ino, before[1])
+        self.assertEqual(self.file_identity(reader), reader_before)
+        self.assertEqual(self.file_identity(self.state), checkpoint)
+        self.assert_no_installer()
+
+    def test_unsafe_entrypoint_preflight_preserves_previous_generation(self):
+        entry = self.old_runtime()
+        previous = self.prepare()
+        self.activate(previous)
+        candidate = self.prepare()
+        pointer = self.acfs / ".update-runtime/current"
+        before = self.file_identity(pointer)
+        retained = self.base / "retained-updater.sh"
+        entry.rename(retained)
+        entry.symlink_to(retained)
+        result = self.call("entry-check", candidate, self.home, self.user, code=None)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue(entry.is_symlink())
+        self.assertEqual(self.file_identity(pointer), before)
+        self.assertEqual(self.current(), previous)
+        self.assert_no_installer()
+
+    @unittest.skipIf(os.geteuid() == 0, "actual entrypoint uses root's fixed /root home")
+    def test_bootstrap_exec_reports_failed_launch_and_preserves_prepared_runtime(self):
+        # The old per-file exec helper trusted the installed shebang. The
+        # generation handoff resolves system Bash instead; exercise failure at
+        # that actual launch boundary without bypassing preparation or admission.
+        entry = self.old_runtime("outdated")
+        entry_before = self.file_identity(entry)
+        checkpoint = self.file_identity(self.state)
+        generation = self.prepare()
+        self.activate(generation)
+        pointer = self.acfs / ".update-runtime/current"
+        pointer_before = self.file_identity(pointer)
+        body = r'''
+source "$UPDATE_TEST_LIBRARY"
+shopt -s execfail
+update_system_binary_path() {
+    if [[ "$1" == bash ]]; then
+        printf '%s\n' "$TEST_MISSING_BASH"
+    else
+        command -v "$1"
+    fi
+}
+if update_bootstrap_exec "$@"; then
+    printf 'unexpected-continuation\n'
+else
+    exit "$?"
+fi
+'''
+        result = subprocess.run(
+            ["/bin/bash", "--noprofile", "--norc", "-c", body,
+             "bootstrap-failed-exec-fixture", str(generation), str(self.home), self.user],
+            env=self.env | {"TEST_MISSING_BASH": str(self.base / "missing-system-bash")},
+            capture_output=True, text=True, timeout=30,
+        )
+        self.assertEqual(result.returncode, 127, result.stdout + result.stderr)
+        self.assertNotIn("unexpected-continuation", result.stdout + result.stderr)
+        self.assertIn("missing-system-bash", result.stderr)
+        self.assertEqual(self.file_identity(entry), entry_before)
+        self.assertEqual(self.file_identity(self.state), checkpoint)
+        self.assertEqual(self.file_identity(pointer), pointer_before)
+        self.assertEqual(self.current(), generation)
+        launch = subprocess.run(["/bin/bash", str(generation / "scripts/lib/update.sh"), "--help"],
+                                env=self.env, capture_output=True, text=True, timeout=15)
+        self.assertEqual(launch.returncode, 0, launch.stdout + launch.stderr)
+        self.assert_no_installer()
+
+    def test_new_bootstrap_exec_preserves_arbitrary_arguments_and_lock(self):
+        self.old_runtime()
+        updater = self.source.read_text()
+        boundary = '\nif [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then\n    main "$@"\nfi'
+        self.assertEqual(updater.count(boundary), 1)
+        # An authenticated fixture operation accepts arbitrary argv before
+        # main's option parser. Production exec/admission/state loading remain
+        # real; unsupported strings are not invented public updater options.
+        dispatch = r'''
+if [[ "${BASH_SOURCE[0]}" == "${0}" && "${1:-}" == --fixture-handoff ]]; then
+    update_bootstrap_admit "$@" || exit $?
+    update_load_module_selection || exit $?
+    lock_status=0
+    /usr/bin/flock -n -E 75 "$TARGET_HOME" true || lock_status=$?
+    printf '%s\0' "$BASHPID" "$_ACFS_UPDATE_LOCK_PID" "$lock_status" \
+        "$ACFS_SELF_UPDATE_DONE" "$ACFS_STATE_SELECTION_MODE" "$ACFS_STATE_INSTALL_MODE" \
+        "${ACFS_STATE_SELECTED_MODULES[*]}" "$@" > "$HOME/raw-handoff-receipt"
+    exit 0
+fi
+'''
+        (self.repo / "scripts/lib/update.sh").write_text(updater.replace(boundary, dispatch + boundary))
+        self.render_fixture_ledger(self.repo)
+        self.commit(self.repo, "Candidate for exact argv and lock handoff")
+        generation = self.prepare(revision=self.git(self.repo, "rev-parse", "HEAD"))
+        self.activate(generation)
+        arguments = ["--fixture-handoff", "argument with spaces", "", "line\nbreak",
+                     "--literal=$(unused)", "'quoted'", "--no-self-update"]
+        body = 'source "$UPDATE_TEST_LIBRARY"\nupdate_bootstrap_exec "$@"\n'
+        process = subprocess.Popen(
+            ["/bin/bash", "--noprofile", "--norc", "-c", body, "bootstrap-exec-fixture",
+             str(generation), str(self.home), self.user, *arguments],
+            env=self.env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, start_new_session=True,
+        )
+        self.processes.append(process)
+        stdout, stderr = process.communicate(timeout=30)
+        self.assertEqual(process.returncode, 0, (stdout + stderr).decode())
+        expected = [str(process.pid), str(process.pid), "75", "true", "scoped", "safe",
+                    "acfs.update stack.ntm", *arguments]
+        self.assertEqual((self.home / "raw-handoff-receipt").read_bytes().split(b"\0"),
+                         [value.encode() for value in expected] + [b""])
+        self.assert_no_installer()
+
+    @unittest.skipIf(os.geteuid() == 0, "actual entrypoint uses root's fixed /root home")
+    def test_healthy_current_and_fast_forward_handoff_uses_complete_candidate(self):
+        arguments = ["--yes", "--quiet", "--stack-only", "--force"]
+        for fast_forward in (False, True):
+            with self.subTest(fast_forward=fast_forward):
+                case = self.nested_case()
+                entry, revision = case.stranded_entry()
+                case.complete_adjacent_scope_libraries()
+                upstream = case.repo
+                if fast_forward:
+                    checkout = case.base / "previous-checkout"
+                    case.git(case.base, "clone", "--quiet", "--no-hardlinks",
+                             str(self.snapshot), str(checkout))
+                    case.git(checkout, "remote", "set-url", "origin", str(upstream))
+                    case.repo = checkout
+                    case.env.update(ACFS_REPO_ROOT=str(checkout), TEST_SOURCE=str(checkout),
+                                    TEST_ORIGIN=str(upstream))
+                    self.assertEqual(case.git(checkout, "rev-parse", "HEAD"), self.revision)
+                checkpoint = case.file_identity(case.state)
+                process = case.main_process(entry, *arguments)
+                stdout, stderr = process.communicate(timeout=45)
+                self.assertEqual(process.returncode, 0, (stdout + stderr).decode())
+                self.assertEqual(case.git(case.repo, "rev-parse", "HEAD"), revision)
+                self.assertEqual(case.git(case.repo, "status", "--porcelain"), "")
+                receipt = (case.base / "handoff-receipt").read_bytes().split(b"\0")
+                self.assertEqual(receipt[:3], [str(process.pid).encode(), str(process.pid).encode(), b"75"])
+                self.assertEqual(receipt[10], revision.encode())
+                self.assertEqual(receipt[11:], [argument.encode() for argument in arguments] + [b""])
+                self.assertEqual(case.file_identity(case.state), checkpoint)
+                generation = case.current()
+                self.assertEqual((generation / "scripts/lib/state.sh").read_bytes(),
+                                 (self.snapshot / "scripts/lib/state.sh").read_bytes())
+                # A later --no-self-update invocation uses the active runtime
+                # without preparing another generation or entering an exec loop.
+                pointer = case.acfs / ".update-runtime/current"
+                pointer_before = case.file_identity(pointer)
+                generations = sorted(pointer.parent.glob("generation-*"))
+                later = subprocess.run(
+                    ["/bin/bash", str(entry), *arguments, "--no-self-update"],
+                    env=case.env, capture_output=True, text=True, timeout=20,
+                )
+                self.assertEqual(later.returncode, 0, later.stdout + later.stderr)
+                self.assertEqual(case.file_identity(pointer), pointer_before)
+                self.assertEqual(sorted(pointer.parent.glob("generation-*")), generations)
+
+    @unittest.skipIf(os.geteuid() == 0, "actual entrypoint uses root's fixed /root home")
+    def test_repair_dry_run_preserves_runtime_checkout_and_checkpoint(self):
+        entry, _ = self.stranded_entry("outdated")
+        entry_before = self.file_identity(entry)
+        checkpoint = self.file_identity(self.state)
+        head = self.git(self.repo, "rev-parse", "HEAD")
+        process = self.main_process(entry, "--yes", "--repair-runtime", "--dry-run")
+        stdout, stderr = process.communicate(timeout=15)
+        self.assertEqual(process.returncode, 0, (stdout + stderr).decode())
+        self.assertEqual(self.file_identity(entry), entry_before)
+        self.assertEqual(self.file_identity(self.state), checkpoint)
+        self.assertEqual(self.git(self.repo, "rev-parse", "HEAD"), head)
+        self.assertFalse((self.acfs / ".update-runtime").exists())
+        self.assert_no_installer()
+
+    @unittest.skipIf(os.geteuid() == 0, "actual entrypoint uses root's fixed /root home")
+    def test_ordinary_startup_rejects_unsupported_checkpoint_before_tool_work(self):
+        entry, _ = self.stranded_entry()
+        self.complete_adjacent_scope_libraries()
+        state = json.loads(self.state.read_text())
+        state["schema_version"] = 99
+        self.state.write_text(json.dumps(state))
+        checkpoint = self.file_identity(self.state)
+        process = self.main_process(entry, "--yes", "--no-self-update", "--stack-only", "--force")
+        stdout, stderr = process.communicate(timeout=15)
+        self.assertNotEqual(process.returncode, 0, (stdout + stderr).decode())
+        self.assertEqual(self.file_identity(self.state), checkpoint)
+        self.assertFalse((self.acfs / ".update-runtime").exists())
+        self.assert_no_installer()
 
 
 if __name__ == "__main__":

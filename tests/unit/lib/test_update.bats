@@ -1142,7 +1142,7 @@ EOF
     assert_equal "$(cat "$checksums_file")" "cached-good-checksums"
 }
 
-@test "self-update hash comparisons use trusted update_sha256_file helper" {
+@test "legacy per-file refresh hash comparisons use trusted update_sha256_file helper" {
     local update="$PROJECT_ROOT/scripts/lib/update.sh"
 
     run grep -F 'repo_sec_hash=$(update_sha256_file "$repo_security" 2>/dev/null) || true' "$update"
@@ -1151,15 +1151,9 @@ EOF
     run grep -F 'installed_sec_hash=$(update_sha256_file "$installed_security" 2>/dev/null) || true' "$update"
     assert_success
 
-    run grep -F 'old_hash=$(update_sha256_file "$update_script" 2>/dev/null) || true' "$update"
-    assert_success
-
-    run grep -F 'new_hash=$(update_sha256_file "$update_script" 2>/dev/null) || true' "$update"
-    assert_success
-
-    run grep -F 'sha256sum "$update_script"' "$update"
-    assert_failure
-
+    # Complete bootstrap handoffs no longer decide admission from one
+    # updater hash. The retained per-file refresh helpers still use the
+    # trusted resolver; full generation integrity has executable coverage.
     run grep -F 'sha256sum "$repo_security"' "$update"
     assert_failure
 
@@ -1763,7 +1757,10 @@ _setup_stack_agent_mail_gate_fixture() {
 @test "update_stack fails MCP Agent Mail and CAAM loudly when minisign is missing and cannot be installed (#375)" {
     _setup_stack_agent_mail_gate_fixture
     update_tool_hold_details() { UPDATE_LAST_HOLD_DETAILS=""; UPDATE_LAST_HOLD_TOOL=""; return 1; }
-    update_system_binary_path() { return 1; }
+    update_system_binary_path() {
+        [[ "${1:-}" != minisign ]] || return 1
+        _update_early_system_binary_path "$@"
+    }
     update_sudo_prefix() { return 1; }
 
     run update_stack
@@ -2061,7 +2058,7 @@ _setup_stack_agent_mail_gate_fixture() {
     [[ ! -f "$HOME/apr-ran" ]]
 }
 
-@test "self-update preserves dirty tracked files even when they match upstream history" {
+@test "incomplete bootstrap preserves dirty tracked files even when they match upstream history" {
     local temp_root
     local seed_repo
     local origin_repo
@@ -2102,8 +2099,9 @@ _setup_stack_agent_mail_gate_fixture() {
     git -C "$work_repo" show "$intermediate_commit:scripts/lib/update.sh" > "$work_repo/scripts/lib/update.sh"
 
     ACFS_REPO_ROOT="$work_repo"
-    ACFS_HOME="$work_repo"
-    SCRIPT_DIR="$work_repo/scripts/lib"
+    ACFS_HOME="$HOME/.acfs"
+    mkdir -p "$ACFS_HOME/scripts/lib"
+    printf "previous-update\n" > "$ACFS_HOME/scripts/lib/update.sh"
     UPDATE_LOG_FILE="/dev/null"
     UPDATE_SELF=true
     ACFS_SELF_UPDATE_DONE=false
@@ -2113,23 +2111,26 @@ _setup_stack_agent_mail_gate_fixture() {
     RED="" GREEN="" YELLOW="" CYAN="" BOLD="" DIM="" NC=""
 
     log_item() { printf "%s|%s|%s\n" "$1" "$2" "${3:-}"; }
-    is_expected_acfs_origin_url() { return 0; }
-    sync_acfs_deployed() { return 0; }
-    sync_acfs_global_wrapper() { return 0; }
-    sync_acfs_global_command_links() { return 0; }
-    update_runtime_acfs_home() { printf "%s\n" "$work_repo"; }
+    is_expected_acfs_origin_url() { [[ "$1" == "$origin_repo" ]]; }
+    update_target_home() { printf "%s\n" "$HOME"; }
+    sync_acfs_deployed() { : > "$HOME/unexpected-deployment"; return 90; }
+    sync_acfs_global_wrapper() { : > "$HOME/unexpected-wrapper"; return 91; }
 
     local_head="$(git -C "$work_repo" rev-parse HEAD)"
     remote_head="$(git -C "$work_repo" rev-parse origin/main)"
 
     run update_acfs_self
-    assert_success
-    assert_output --partial "warn|ACFS self-update|BLOCKED:"
+    assert_failure
+    assert_output --partial "missing or nonregular Git source: scripts/generated/internal_checksums.sh"
 
     [[ "$(git -C "$work_repo" rev-parse HEAD)" == "$local_head" ]]
     [[ "$local_head" != "$remote_head" ]]
     [[ "$(cat "$work_repo/scripts/lib/update.sh")" == "intermediate-update" ]]
     [[ -n "$(git -C "$work_repo" status --porcelain --untracked-files=no)" ]]
+    [[ "$(cat "$ACFS_HOME/scripts/lib/update.sh")" == previous-update ]]
+    [[ ! -e "$ACFS_HOME/.update-runtime/current" ]]
+    [[ ! -e "$HOME/unexpected-deployment" ]]
+    [[ ! -e "$HOME/unexpected-wrapper" ]]
 }
 
 @test "self-update preserves incomplete-bootstrap files without explicit opt-in" {
@@ -2165,19 +2166,19 @@ _setup_stack_agent_mail_gate_fixture() {
     NO_COLOR=1
     RED="" GREEN="" YELLOW="" CYAN="" BOLD="" DIM="" NC=""
 
-    is_expected_acfs_origin_url() { return 0; }
+    is_expected_acfs_origin_url() { [[ "$1" == "$origin_repo" ]]; }
     log_item() { printf "%s|%s|%s\n" "$1" "$2" "${3:-}"; }
 
     run update_acfs_self
     assert_success
-    assert_output --partial "skip|ACFS self-update|incomplete git bootstrap detected"
+    assert_output --partial "skip|ACFS self-update|incomplete git bootstrap; use --bootstrap-self-update to opt in"
     [[ "$(cat "$work_repo/colliding-file")" == "local-bytes" ]]
 
     run git -C "$work_repo" rev-parse HEAD
     assert_failure
 }
 
-@test "self-update recovers incomplete bootstrap after explicit opt-in" {
+@test "explicit bootstrap opt-in does not publish an incomplete runtime" {
     local temp_root
     local seed_repo
     local origin_repo
@@ -2211,18 +2212,20 @@ _setup_stack_agent_mail_gate_fixture() {
     NO_COLOR=1
     RED="" GREEN="" YELLOW="" CYAN="" BOLD="" DIM="" NC=""
 
-    is_expected_acfs_origin_url() { return 0; }
-    update_refresh_installed_security() { :; }
-    sync_acfs_deployed() { :; }
+    is_expected_acfs_origin_url() { [[ "$1" == "$origin_repo" ]]; }
+    update_target_home() { printf "%s\n" "$HOME"; }
+    sync_acfs_deployed() { : > "$HOME/unexpected-deployment"; return 90; }
     log_item() { printf "%s|%s|%s\n" "$1" "$2" "${3:-}"; }
 
     run update_acfs_self
-    assert_success
-    assert_output --partial "ok|ACFS vtest|already up to date"
-    [[ "$(cat "$work_repo/colliding-file")" == "remote-bytes" ]]
+    assert_failure
+    assert_output --partial "missing or nonregular Git source: scripts/generated/internal_checksums.sh"
+    [[ "$(cat "$work_repo/colliding-file")" == "local-bytes" ]]
+    [[ ! -e "$HOME/.acfs/.update-runtime/current" ]]
+    [[ ! -e "$HOME/unexpected-deployment" ]]
 
     run git -C "$work_repo" rev-parse --verify HEAD
-    assert_success
+    assert_failure
 }
 
 @test "apt_lock_is_held: uses plain fuser when accessible" {
@@ -9745,7 +9748,7 @@ EOF
 
     temp_root="$(create_temp_dir)"
     repo_root="$temp_root/repo"
-    deployed_home="$temp_root/deployed-acfs"
+    deployed_home="$HOME/.acfs"
     log_file="$temp_root/update.log"
 
     mkdir -p \
@@ -9781,6 +9784,7 @@ EOF
     DRY_RUN=false
 
     update_runtime_acfs_home() { printf '%s\n' "$deployed_home"; }
+    update_target_home() { printf '%s\n' "$HOME"; }
 
     run sync_acfs_deployed
     assert_success
@@ -9846,13 +9850,13 @@ EOF
     assert_success
 }
 
-@test "sync_acfs_deployed strips group/other write from the runtime it owns" {
+@test "runtime mode repair precedes scoped deployment into safe paths" {
     local temp_root repo_root deployed_home
     mode_of() { stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"; }
 
     temp_root="$(create_temp_dir)"
     repo_root="$temp_root/repo"
-    deployed_home="$temp_root/deployed-acfs"
+    deployed_home="$HOME/.acfs"
     mkdir -p "$repo_root/scripts/lib" "$deployed_home/scripts/lib" "$deployed_home/.git/objects"
 
     # What a self-managed checkout looks like after `git pull` under a
@@ -9871,7 +9875,17 @@ EOF
     UPDATE_LOG_FILE="$temp_root/update.log"
     DRY_RUN=false
     update_runtime_acfs_home() { printf '%s\n' "$deployed_home"; }
+    update_target_home() { printf '%s\n' "$HOME"; }
 
+    # Scope validation refuses a shared-writable deployment. Test the mode
+    # repair primitive explicitly before retrying deployment with safe paths.
+    run sync_acfs_deployed
+    assert_failure
+    [[ "$(mode_of "$deployed_home")" == "775" ]]
+    [[ ! -e "$deployed_home/scripts/lib/swarm_inventory.sh" ]]
+
+    run update_normalize_runtime_modes "$deployed_home"
+    assert_success
     run sync_acfs_deployed
     assert_success
 
@@ -9970,7 +9984,7 @@ EOF
     [[ "$(mode_of "$runtime/.git/HEAD")" == "664" ]]
 }
 
-@test "self-update syncs deployed scripts when repo is already current" {
+@test "deployment syncs current immutable runtime assets and executable modes" {
     local temp_root
     local seed_repo
     local origin_repo
@@ -9982,7 +9996,7 @@ EOF
     seed_repo="$temp_root/seed"
     origin_repo="$temp_root/origin.git"
     work_repo="$temp_root/work"
-    deployed_home="$temp_root/deployed-acfs"
+    deployed_home="$HOME/.acfs"
     log_file="$temp_root/update.log"
 
     mkdir -p "$seed_repo/scripts/lib" "$deployed_home/scripts/lib" "$deployed_home/bin"
@@ -10008,14 +10022,14 @@ EOF
     NO_COLOR=1
     RED="" GREEN="" YELLOW="" CYAN="" BOLD="" DIM="" NC=""
 
-    is_expected_acfs_origin_url() { return 0; }
     update_runtime_acfs_home() { printf '%s\n' "$deployed_home"; }
-    update_refresh_installed_security() { :; }
+    update_target_home() { printf '%s\n' "$HOME"; }
     log_item() { printf "%s|%s|%s\n" "$1" "$2" "${3:-}"; }
 
-    run update_acfs_self
+    local source_ref
+    source_ref="$(git -C "$work_repo" rev-parse HEAD)"
+    run sync_acfs_deployed "$source_ref"
     assert_success
-    assert_output --partial "ok|ACFS vtest|already up to date"
     run cat "$deployed_home/scripts/lib/stack.sh"
     assert_success
     assert_output "fresh-stack-lib"
@@ -10023,11 +10037,11 @@ EOF
     assert_success
     assert_output "fresh-acfs-doctor"
     [[ -x "$deployed_home/bin/acfs" ]]
-    run grep -F "Synced scripts/lib/stack.sh -> $deployed_home/scripts/lib/stack.sh" "$log_file"
+    run grep -F "Synced $source_ref:scripts/lib/stack.sh -> $deployed_home/scripts/lib/stack.sh" "$log_file"
     assert_success
 }
 
-@test "self-update deploys CHANGELOG.md where acfs changelog reads it" {
+@test "deployment copies immutable CHANGELOG.md where acfs changelog reads it" {
     local temp_root
     local seed_repo
     local origin_repo
@@ -10039,7 +10053,7 @@ EOF
     seed_repo="$temp_root/seed"
     origin_repo="$temp_root/origin.git"
     work_repo="$temp_root/work"
-    deployed_home="$temp_root/deployed-acfs"
+    deployed_home="$HOME/.acfs"
     log_file="$temp_root/update.log"
 
     # Neither install.sh nor update.sh used to deploy it, so `acfs changelog`
@@ -10066,20 +10080,21 @@ EOF
     NO_COLOR=1
     RED="" GREEN="" YELLOW="" CYAN="" BOLD="" DIM="" NC=""
 
-    is_expected_acfs_origin_url() { return 0; }
     update_runtime_acfs_home() { printf '%s\n' "$deployed_home"; }
-    update_refresh_installed_security() { :; }
+    update_target_home() { printf '%s\n' "$HOME"; }
     log_item() { printf "%s|%s|%s\n" "$1" "$2" "${3:-}"; }
 
-    run update_acfs_self
+    local source_ref
+    source_ref="$(git -C "$work_repo" rev-parse HEAD)"
+    run sync_acfs_deployed "$source_ref"
     assert_success
     run cmp -s "$seed_repo/CHANGELOG.md" "$deployed_home/CHANGELOG.md"
     assert_success
-    run grep -F "Synced CHANGELOG.md -> $deployed_home/CHANGELOG.md" "$log_file"
+    run grep -F "Synced $source_ref:CHANGELOG.md -> $deployed_home/CHANGELOG.md" "$log_file"
     assert_success
 }
 
-@test "self-update dirty skip syncs deployed scripts from fetched remote" {
+@test "fetched deployment preserves dirty checkout and keeps every runtime file pinned" {
     local temp_root
     local seed_repo
     local origin_repo
@@ -10088,15 +10103,15 @@ EOF
     local log_file
     local local_head
     local selected_head
-    local global_wrapper_args
+    local global_wrapper_path
 
     temp_root="$(create_temp_dir)"
     seed_repo="$temp_root/seed"
     origin_repo="$temp_root/origin.git"
     work_repo="$temp_root/work"
-    deployed_home="$temp_root/deployed-acfs"
+    deployed_home="$HOME/.acfs"
     log_file="$temp_root/update.log"
-    global_wrapper_args="$temp_root/global-wrapper-args"
+    global_wrapper_path="$temp_root/global-wrapper"
 
     mkdir -p "$seed_repo/scripts/lib" "$seed_repo/scripts/generated" "$deployed_home/bin" "$deployed_home/scripts/lib" "$deployed_home/scripts/generated"
     git -C "$seed_repo" init -b main >/dev/null
@@ -10141,28 +10156,32 @@ EOF
     NO_COLOR=1
     RED="" GREEN="" YELLOW="" CYAN="" BOLD="" DIM="" NC=""
 
-    is_expected_acfs_origin_url() { return 0; }
+    is_expected_acfs_origin_url() { [[ "$1" == "$origin_repo" ]]; }
     update_runtime_acfs_home() { printf '%s\n' "$deployed_home"; }
-    update_refresh_installed_security() { :; }
-    sync_acfs_global_wrapper() { printf '%s\n' "$*" > "$global_wrapper_args"; }
+    update_target_home() { printf '%s\n' "$HOME"; }
     log_item() { printf "%s|%s|%s\n" "$1" "$2" "${3:-}"; }
 
-    run update_acfs_self
+    # Exercise the immutable per-file deployment boundary. Admission and
+    # same-PID execution require the complete fixtures in deployment tests.
+    sync_fetched_runtime() {
+        local source_ref
+        source_ref="$(update_bootstrap_fetch_revision)" || return $?
+        [[ "$source_ref" == "$selected_head" ]] || return 1
+        update_bootstrap_advance_checkout "$source_ref" || return $?
+        sync_acfs_deployed "$source_ref" || return $?
+        sync_acfs_global_wrapper "$source_ref" "$global_wrapper_path"
+    }
+    run sync_fetched_runtime
     assert_success
-    # The dirty-skip warning now quantifies the staleness and names the fix
-    # command, so assert on the parts that carry the meaning rather than the
-    # exact sentence: it must warn, say it is BLOCKED, and list what is dirty.
-    assert_output --partial "warn|ACFS self-update|BLOCKED:"
-    assert_output --partial "Locally modified:"
-    assert_output --partial "git stash push -m acfs-local"
+    assert_output --partial "warn|ACFS checkout|preserving branch and tracked modifications"
     [[ "$(git -C "$work_repo" rev-parse HEAD)" == "$local_head" ]]
     [[ "$(bash "$work_repo/scripts/lib/doctor.sh")" == "base-acfs-doctor" ]]
     [[ "$(cat "$work_repo/scripts/lib/stack.sh")" == "base-stack-lib" ]]
     [[ "$(cat "$work_repo/scripts/generated/install_stack.sh")" == "base-generated" ]]
     [[ "$(cat "$work_repo/scripts/lib/update.sh")" == "local-dirty-update" ]]
-    run cat "$global_wrapper_args"
+    run "$global_wrapper_path"
     assert_success
-    assert_output "$selected_head"
+    assert_output "remote-global-acfs"
 
     run "$deployed_home/bin/acfs"
     assert_success
@@ -10238,7 +10257,7 @@ EOF
 
     temp_root="$(create_temp_dir)"
     repo_root="$temp_root/repo"
-    deployed_home="$temp_root/deployed-acfs"
+    deployed_home="$HOME/.acfs"
     log_file="$temp_root/update.log"
 
     mkdir -p "$repo_root/scripts/lib" "$deployed_home/bin"
@@ -10252,6 +10271,7 @@ EOF
     DRY_RUN=false
 
     update_runtime_acfs_home() { printf '%s\n' "$deployed_home"; }
+    update_target_home() { printf '%s\n' "$HOME"; }
 
     run sync_acfs_deployed
     assert_success
@@ -10300,7 +10320,7 @@ EOF
     local log_file
 
     temp_root="$(create_temp_dir)"
-    deployed_home="$temp_root/deployed-acfs"
+    deployed_home="$HOME/.acfs"
     global_bin="$temp_root/global-bin"
     log_file="$temp_root/update.log"
 
@@ -10314,6 +10334,7 @@ EOF
     DRY_RUN=false
 
     update_runtime_acfs_home() { printf '%s\n' "$deployed_home"; }
+    update_target_home() { printf '%s\n' "$HOME"; }
 
     run sync_acfs_global_command_links
     assert_success
@@ -10351,8 +10372,8 @@ EOF
     log_item() { printf "%s|%s|%s\n" "$1" "$2" "${3:-}"; }
 
     run update_acfs_self
-    assert_success
-    assert_output --partial "info|ACFS self-update|already completed"
+    assert_failure
+    assert_output --partial "warn|ACFS self-update|unexpected origin remote: https://example.invalid/not-acfs.git"
     [[ ! -f "$deployed_home/scripts/lib/stack.sh" ]]
 }
 
@@ -15079,7 +15100,11 @@ setup_opencode_update_fixture() {
         [[ "${1:-}" == "opencode" ]] && printf '%s\n' "$HOME/.local/bin/opencode"
     }
     update_system_binary_path() {
-        [[ "${1:-}" == "timeout" ]] && printf '/usr/bin/timeout\n'
+        if [[ "${1:-}" == timeout ]]; then
+            printf '/usr/bin/timeout\n'
+        else
+            _update_early_system_binary_path "$@"
+        fi
     }
     get_version() { printf 'unknown\n'; }
     capture_version_before() { :; }
@@ -15097,7 +15122,12 @@ setup_opencode_update_fixture() {
 
     run update_agents
 
-    [[ ! -f "$HOME/opencode-calls" ]]
+    # Other agent maintenance may prepare the target bin directory. The
+    # mise-owned OpenCode command itself must never be invoked for an upgrade.
+    if [[ -f "$HOME/opencode-calls" ]]; then
+        run grep -F -- "$HOME/.local/bin/opencode" "$HOME/opencode-calls"
+        assert_failure
+    fi
     grep -q "\[skip\] OpenCode - managed by a mise wrapper" "$HOME/update.log"
 }
 

@@ -24,7 +24,7 @@ SOURCE = Path(os.environ.get("ACFS_UPDATE_TEST_LIBRARY", ROOT / "scripts/lib/upd
 
 
 def snapshot_update_runtime(directory, update_source):
-    """Keep the actual updater and its scope reader/catalog together."""
+    """Keep the actual updater and its bootstrap dependencies together."""
     for relative in ("scripts", "scripts/lib", "scripts/generated"):
         path = directory / relative
         path.mkdir()
@@ -32,6 +32,7 @@ def snapshot_update_runtime(directory, update_source):
     sources = {
         "scripts/lib/update.sh": update_source,
         "scripts/lib/state.sh": (ROOT / "scripts/lib/state.sh").read_text(),
+        "scripts/lib/progress.sh": (ROOT / "scripts/lib/progress.sh").read_text(),
         "scripts/generated/manifest_index.sh":
             (ROOT / "scripts/generated/manifest_index.sh").read_text(),
     }

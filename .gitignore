@@ -287,6 +287,7 @@ packages/manifest/test-*.ts
 # the self-update check from seeing a dirty worktree.
 /bin/
 /state.json
+/.update-runtime/
 /onboard_progress.json
 /onboard/docs/
 /onboard/lessons/

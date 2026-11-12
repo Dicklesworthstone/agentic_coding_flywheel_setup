@@ -44,7 +44,7 @@ _acfs_update_wants_lock() {
     local arg
     for arg in "$@"; do
         case "$arg" in
-            --help | -h) return 1 ;;
+            --help | -h | --check-runtime) return 1 ;;
         esac
     done
     return 0
@@ -317,6 +317,7 @@ _acfs_discover_repo_root() {
 
     # Search well-known locations for a git-based ACFS checkout
     local -a candidates=(
+        "${ACFS_REPO_ROOT:-}"
         "/data/projects/agentic_coding_flywheel_setup"
         "/dp/agentic_coding_flywheel_setup"
     )
@@ -342,6 +343,10 @@ ACFS_SELF_UPDATE_DONE="${ACFS_SELF_UPDATE_DONE:-false}"
 # A fetched-runtime fallback selects one immutable revision for this run.
 # Do not inherit a previous invocation's selection from the environment.
 _ACFS_RUNTIME_SOURCE_REF=""
+# Established only by validating a private generation, never by an exported
+# selection marker. Keep the source revision through every later deployment.
+_ACFS_BOOTSTRAP_ROOT=""
+_ACFS_BOOTSTRAP_REF=""
 
 if [[ -f "$ACFS_REPO_ROOT/VERSION" ]]; then
     ACFS_VERSION="$(cat "$ACFS_REPO_ROOT/VERSION" 2>/dev/null || echo "$ACFS_VERSION")"
@@ -415,6 +420,8 @@ UPDATE_STACK=true
 UPDATE_SHELL=true
 UPDATE_SELF=true
 BOOTSTRAP_SELF_UPDATE=false
+REPAIR_RUNTIME=false
+CHECK_RUNTIME=false
 FORCE_MODE=false
 DRY_RUN=false
 VERBOSE=false
@@ -576,13 +583,17 @@ update_source_stack_lib() {
     fi
 
     runtime_acfs_home="$(update_runtime_acfs_home 2>/dev/null || true)"
-    candidates+=("$SCRIPT_DIR/stack.sh")
-    [[ -n "$runtime_acfs_home" ]] && candidates+=("$runtime_acfs_home/scripts/lib/stack.sh")
-    candidates+=(
-        "$ACFS_REPO_ROOT/scripts/lib/stack.sh"
-        "/data/projects/agentic_coding_flywheel_setup/scripts/lib/stack.sh"
-        "/dp/agentic_coding_flywheel_setup/scripts/lib/stack.sh"
-    )
+    if [[ -n "$_ACFS_BOOTSTRAP_ROOT" ]]; then
+        candidates=("$_ACFS_BOOTSTRAP_ROOT/scripts/lib/stack.sh")
+    else
+        candidates+=("$SCRIPT_DIR/stack.sh")
+        [[ -n "$runtime_acfs_home" ]] && candidates+=("$runtime_acfs_home/scripts/lib/stack.sh")
+        candidates+=(
+            "$ACFS_REPO_ROOT/scripts/lib/stack.sh"
+            "/data/projects/agentic_coding_flywheel_setup/scripts/lib/stack.sh"
+            "/dp/agentic_coding_flywheel_setup/scripts/lib/stack.sh"
+        )
+    fi
 
     for candidate in "${candidates[@]}"; do
         [[ -n "$candidate" && -r "$candidate" ]] || continue
@@ -822,7 +833,7 @@ update_runtime_shell_home() {
 update_load_module_selection() {
     [[ "$UPDATE_MODULE_SELECTION_READY" == "true" ]] && return 0
 
-    local acfs_home="" candidate=""
+    local acfs_home="" target_user="" target_home=""
     acfs_home="$(update_runtime_acfs_home 2>/dev/null || true)"
     if [[ -z "$acfs_home" ]]; then
         echo "Unable to resolve the target installation's module selection" >&2
@@ -832,53 +843,50 @@ update_load_module_selection() {
     if ! declare -F state_load_module_selection >/dev/null \
         || ! declare -F state_module_is_selected >/dev/null \
         || ! declare -F state_validate_module_selection_catalog >/dev/null; then
-        local -a candidates=("$_UPDATE_STATE_LIBRARY" "$acfs_home/scripts/lib/state.sh")
-        [[ -z "${ACFS_REPO_ROOT:-}" ]] || candidates+=("$ACFS_REPO_ROOT/scripts/lib/state.sh")
-        for candidate in "${candidates[@]}"; do
-            [[ -f "$candidate" ]] || continue
-            # Use the state reader shipped beside the updater, following the
-            # same deployed-library discovery as stack.sh and holds.sh.
-            # shellcheck source=/dev/null
-            if source "$candidate" \
-                && declare -F state_load_module_selection >/dev/null \
-                && declare -F state_module_is_selected >/dev/null \
-                && declare -F state_validate_module_selection_catalog >/dev/null; then
-                break
-            fi
-        done
+        # Loading an old reader first sets its include guard and prevents a
+        # newer fallback from defining the missing functions. Direct runs
+        # repair incomplete dependencies before reaching this loader.
+        if [[ -z "$_ACFS_BOOTSTRAP_ROOT" ]]; then
+            update_bootstrap_files local "$(cd "${_UPDATE_STATE_LIBRARY%/scripts/lib/state.sh}" && pwd -P)" || return 1
+        fi
+        # shellcheck source=state.sh
+        source "$_UPDATE_STATE_LIBRARY" || return 1
     fi
 
     if ! declare -F state_load_module_selection >/dev/null \
         || ! declare -F state_module_is_selected >/dev/null \
         || ! declare -F state_validate_module_selection_catalog >/dev/null; then
-        echo "The ACFS module-selection reader is unavailable; refusing to expand the installation" >&2
+        echo "Missing state.sh functions: state_load_module_selection, state_module_is_selected, state_validate_module_selection_catalog; use --repair-runtime from a current ACFS checkout" >&2
+        return 1
+    fi
+    target_user="$(update_target_user 2>/dev/null || true)"
+    target_home="$(update_target_home "$target_user" 2>/dev/null || true)"
+    if [[ -z "$target_user" || -z "$target_home" ]]; then
+        echo "Cannot bind the checkpoint to the update target" >&2
         return 1
     fi
     local state_file="$acfs_home/state.json"
     local explicit_state_file="${ACFS_STATE_FILE:-}"
+    # Apply the bootstrap's strict, read-only JSON/path checks on ordinary
+    # runs too, including --no-self-update and already activated generations.
+    # The shared reader below remains authoritative for identity and scope.
+    update_bootstrap_files checkpoint "${explicit_state_file:-$state_file}" || return 1
     if [[ -n "$explicit_state_file" ]]; then
         if [[ "$explicit_state_file" != /* || "$explicit_state_file" == / ]]; then
             echo "ACFS_STATE_FILE must name an absolute checkpoint file" >&2
             return 1
         fi
         if [[ "$explicit_state_file" != "$state_file" ]]; then
-            local target_user="" target_home=""
-            target_user="$(update_target_user 2>/dev/null || true)"
-            target_home="$(update_target_home "$target_user" 2>/dev/null || true)"
-            if [[ -z "$target_user" || -z "$target_home" ]]; then
-                echo "Cannot bind the explicit checkpoint to the update target" >&2
-                return 1
-            fi
             # Validate identity and selection in the same read. A missing or
             # unrelated explicit checkpoint must never become a legacy update.
             state_load_module_selection "$explicit_state_file" "$target_home" "$target_user" || return 1
         else
             # The wrapper exports this default even for older installations
             # with no checkpoint. Preserve their documented legacy behavior.
-            state_load_module_selection "$state_file" || return 1
+            state_load_module_selection "$state_file" "$target_home" "$target_user" allow-legacy-identity || return 1
         fi
     else
-        state_load_module_selection "$state_file" || return 1
+        state_load_module_selection "$state_file" "$target_home" "$target_user" allow-legacy-identity || return 1
     fi
 
     if [[ "${ACFS_STATE_SELECTION_MODE:-invalid}" == "scoped" ]]; then
@@ -910,6 +918,9 @@ update_load_module_selection() {
         fi
         mapfile -t known_modules <<< "$catalog"
         state_validate_module_selection_catalog "${known_modules[@]}" || return 1
+    fi
+    if [[ -n "${ACFS_STATE_INSTALL_MODE:-}" ]]; then
+        export MODE="$ACFS_STATE_INSTALL_MODE"
     fi
     UPDATE_MODULE_SELECTION_READY=true
 }
@@ -1143,6 +1154,11 @@ is_expected_acfs_origin_url() {
 update_runtime_provenance_line() {
     local runtime_root="" cmp_bin="" git_bin="" matches=""
 
+    if [[ -n "$_ACFS_BOOTSTRAP_ROOT" ]]; then
+        printf 'Runtime: %s (verified complete generation at %s; source %s)\n' \
+            "$_ACFS_BOOTSTRAP_ROOT" "$_ACFS_BOOTSTRAP_REF" "$ACFS_REPO_ROOT"
+        return 0
+    fi
     runtime_root="$(cd "$SCRIPT_DIR/../.." 2>/dev/null && pwd)" || return 1
     [[ -n "$runtime_root" && -n "${ACFS_REPO_ROOT:-}" && "$runtime_root" != "$ACFS_REPO_ROOT" ]] || return 1
     [[ -f "$SCRIPT_DIR/update.sh" ]] || return 1
@@ -3914,14 +3930,14 @@ sync_acfs_deployed() {
         local deployed_rel="$2"
 
         [[ -d "$deployed_root/.git" ]] || return 1
-        git -C "$deployed_root" ls-files --error-unmatch -- "$deployed_rel" >/dev/null 2>&1
+        update_git_at "$deployed_root" ls-files --error-unmatch -- "$deployed_rel" >/dev/null 2>&1
     }
 
     _acfs_deployed_source_mode() {
         local repo_rel="$1"
 
         [[ -n "$source_ref" ]] || return 0
-        git -C "$ACFS_REPO_ROOT" ls-tree "$source_ref" -- "$repo_rel" 2>/dev/null | awk 'NR == 1 { print $1 }'
+        update_bootstrap_git ls-tree "$source_ref" -- "$repo_rel" 2>/dev/null | awk 'NR == 1 { print $1 }'
     }
 
     _acfs_deployed_target_mode_override() {
@@ -3985,7 +4001,7 @@ sync_acfs_deployed() {
                     log_to_file "Failed to create source staging file for ${source_ref}:${repo_rel}"
                     exit 1
                 fi
-                if ! git -C "$ACFS_REPO_ROOT" show "${source_ref}:${repo_rel}" > "$source_tmp" 2>/dev/null; then
+                if ! update_bootstrap_git show "${source_ref}:${repo_rel}" > "$source_tmp" 2>/dev/null; then
                     log_to_file "Failed to extract $source_label"
                     exit 1
                 fi
@@ -4163,7 +4179,7 @@ sync_acfs_deployed() {
     local generated_allowed=false
     local generated_tree=""
     if [[ -n "$source_ref" ]]; then
-        if ! generated_tree="$(git -C "$ACFS_REPO_ROOT" ls-tree -r --name-only "$source_ref" -- scripts/generated 2>/dev/null)"; then
+        if ! generated_tree="$(update_bootstrap_git ls-tree -r --name-only "$source_ref" -- scripts/generated 2>/dev/null)"; then
             log_to_file "Unable to enumerate generated runtime assets from $source_ref"
             return 1
         fi
@@ -4201,7 +4217,7 @@ sync_acfs_deployed() {
 
     for generated_script in "${generated_paths[@]}"; do
         if [[ -n "$source_ref" ]]; then
-            if ! git -C "$ACFS_REPO_ROOT" cat-file -e "${source_ref}:${generated_script}" 2>/dev/null; then
+            if ! update_bootstrap_git cat-file -e "${source_ref}:${generated_script}" 2>/dev/null; then
                 continue
             fi
         elif [[ ! -f "$ACFS_REPO_ROOT/$generated_script" || -L "$ACFS_REPO_ROOT/$generated_script" ]]; then
@@ -4217,7 +4233,7 @@ sync_acfs_deployed() {
             [[ "$lesson_file" == acfs/onboard/lessons/*.md ]] || continue
             lesson_name="$(basename "$lesson_file")"
             _acfs_sync_deployed_file "$lesson_file" "onboard/lessons/$lesson_name" || return $?
-        done < <(git -C "$ACFS_REPO_ROOT" ls-tree -r --name-only "$source_ref" -- acfs/onboard/lessons 2>/dev/null || true)
+        done < <(update_bootstrap_git ls-tree -r --name-only "$source_ref" -- acfs/onboard/lessons 2>/dev/null || true)
     else
         for lesson_file in "$ACFS_REPO_ROOT/acfs/onboard/lessons/"*.md; do
             [[ -f "$lesson_file" ]] || continue
@@ -4323,7 +4339,7 @@ sync_acfs_global_wrapper() (
 
     if [[ -n "$source_ref" ]]; then
         source_label="${source_ref}:$repo_rel"
-        if ! source_mode="$(git -C "$ACFS_REPO_ROOT" ls-tree "$source_ref" -- "$repo_rel" 2>/dev/null | awk 'NR == 1 { print $1 }')"; then
+        if ! source_mode="$(update_bootstrap_git ls-tree "$source_ref" -- "$repo_rel" 2>/dev/null | awk 'NR == 1 { print $1 }')"; then
             log_to_file "Failed to read source mode for $source_label"
             exit 1
         fi
@@ -4339,7 +4355,7 @@ sync_acfs_global_wrapper() (
             log_to_file "Failed to create source staging file for $source_label"
             exit 1
         fi
-        if ! git -C "$ACFS_REPO_ROOT" show "${source_ref}:$repo_rel" > "$source_tmp" 2>/dev/null; then
+        if ! update_bootstrap_git show "${source_ref}:$repo_rel" > "$source_tmp" 2>/dev/null; then
             log_to_file "Failed to extract $source_label"
             exit 1
         fi
@@ -4460,7 +4476,7 @@ update_dir_is_git_checkout() {
     local dir="$1"
     [[ -n "$dir" && -d "$dir" ]] || return 1
     command -v git >/dev/null 2>&1 || return 1
-    [[ "$(git -C "$dir" rev-parse --is-inside-work-tree 2>/dev/null)" == "true" ]]
+    [[ "$(update_git_at "$dir" rev-parse --is-inside-work-tree 2>/dev/null)" == "true" ]]
 }
 
 update_resolve_checksums_file() {
@@ -4471,6 +4487,12 @@ update_resolve_checksums_file() {
     default_acfs_home="$(update_runtime_acfs_home 2>/dev/null || true)"
     [[ -n "$default_acfs_home" ]] && installed_checksums="$default_acfs_home/checksums.yaml"
 
+    # A validated generation is the immutable baseline. A deliberately
+    # refreshed remote ledger may supersede it through the existing cache.
+    if [[ -n "$_ACFS_BOOTSTRAP_ROOT" ]]; then
+        installed_checksums="$_ACFS_BOOTSTRAP_ROOT/checksums.yaml"
+    fi
+
     # On git-checkout installs refresh_checksums() maintains a state-dir cache
     # of the latest remote ledger instead of touching the tracked file. Prefer
     # that cache when it is valid and not older than the tracked candidates.
@@ -4478,7 +4500,11 @@ update_resolve_checksums_file() {
     if [[ -n "$remote_cache" && -f "$remote_cache" && ! -L "$remote_cache" && -r "$remote_cache" ]] \
         && update_checksums_file_has_required_metadata "$remote_cache" 2>/dev/null; then
         local newer_tracked=""
-        for newer_tracked in "$installed_checksums" "${ACFS_REPO_ROOT:+${ACFS_REPO_ROOT}/checksums.yaml}"; do
+        local -a tracked_candidates=("$installed_checksums")
+        if [[ -z "$_ACFS_BOOTSTRAP_ROOT" ]]; then
+            tracked_candidates+=("${ACFS_REPO_ROOT:+${ACFS_REPO_ROOT}/checksums.yaml}")
+        fi
+        for newer_tracked in "${tracked_candidates[@]}"; do
             [[ -n "$newer_tracked" && -f "$newer_tracked" && "$newer_tracked" -nt "$remote_cache" ]] && break
             newer_tracked=""
         done
@@ -4486,6 +4512,11 @@ update_resolve_checksums_file() {
             printf '%s\n' "$remote_cache"
             return 0
         fi
+    fi
+
+    if [[ -n "$_ACFS_BOOTSTRAP_ROOT" ]]; then
+        printf '%s\n' "$installed_checksums"
+        return 0
     fi
 
     if [[ -n "${ACFS_REPO_ROOT:-}" ]] && [[ -r "${ACFS_REPO_ROOT}/checksums.yaml" ]]; then
@@ -4739,11 +4770,10 @@ refresh_checksums() {
         return 1
     fi
 
-    # Git-checkout installs track checksums.yaml in the repo; overwriting it in
-    # place dirties the work tree and breaks the internal-checksum ledger
-    # (issue #364). Write the fetched ledger to a state-dir cache instead and
-    # let update_resolve_checksums_file()/security.sh prefer that cache.
-    if update_dir_is_git_checkout "$checksums_local"; then
+    # Both Git checkouts and active generations retain an immutable baseline.
+    # Put a deliberately refreshed installer ledger in the state-dir cache
+    # that update_resolve_checksums_file()/security.sh can actually consume.
+    if [[ -n "$_ACFS_BOOTSTRAP_ROOT" ]] || update_dir_is_git_checkout "$checksums_local"; then
         local cache_target=""
         cache_target="$(update_remote_checksums_cache_file 2>/dev/null || true)"
         if [[ -z "$cache_target" ]]; then
@@ -4840,10 +4870,14 @@ update_require_security() {
     primary_bin="$(update_runtime_primary_bin_dir 2>/dev/null || true)"
     runtime_acfs_home="$(update_runtime_acfs_home 2>/dev/null || true)"
     local -a security_candidates=()
-    [[ -n "$primary_bin" ]] && security_candidates+=("$primary_bin/security.sh")
-    [[ -n "$runtime_acfs_home" ]] && security_candidates+=("$runtime_acfs_home/scripts/lib/security.sh")
-    if [[ -n "${ACFS_REPO_ROOT:-}" ]]; then
-        security_candidates+=("${ACFS_REPO_ROOT}/scripts/lib/security.sh")
+    if [[ -n "$_ACFS_BOOTSTRAP_ROOT" ]]; then
+        security_candidates=("$_ACFS_BOOTSTRAP_ROOT/scripts/lib/security.sh")
+    else
+        [[ -n "$primary_bin" ]] && security_candidates+=("$primary_bin/security.sh")
+        [[ -n "$runtime_acfs_home" ]] && security_candidates+=("$runtime_acfs_home/scripts/lib/security.sh")
+        if [[ -n "${ACFS_REPO_ROOT:-}" ]]; then
+            security_candidates+=("${ACFS_REPO_ROOT}/scripts/lib/security.sh")
+        fi
     fi
 
     for candidate in "${security_candidates[@]}"; do
@@ -4884,7 +4918,7 @@ update_require_security() {
         export CHECKSUMS_FILE="$resolved_checksums_file"
     fi
     # shellcheck disable=SC1090,SC1091  # runtime-resolved absolute path source
-    source "$security_script"
+    source "$security_script" || return 1
     load_checksums || return 1
     update_sync_known_installer_urls_from_checksums "${CHECKSUMS_FILE:-}"
 
@@ -5616,10 +5650,14 @@ update_require_holds() {
     local runtime_acfs_home=""
     runtime_acfs_home="$(update_runtime_acfs_home 2>/dev/null || true)"
     local -a holds_candidates=()
-    [[ -n "$SCRIPT_DIR" ]] && holds_candidates+=("$SCRIPT_DIR/holds.sh")
-    [[ -n "$runtime_acfs_home" ]] && holds_candidates+=("$runtime_acfs_home/scripts/lib/holds.sh")
-    if [[ -n "${ACFS_REPO_ROOT:-}" ]]; then
-        holds_candidates+=("${ACFS_REPO_ROOT}/scripts/lib/holds.sh")
+    if [[ -n "$_ACFS_BOOTSTRAP_ROOT" ]]; then
+        holds_candidates=("$_ACFS_BOOTSTRAP_ROOT/scripts/lib/holds.sh")
+    else
+        [[ -n "$SCRIPT_DIR" ]] && holds_candidates+=("$SCRIPT_DIR/holds.sh")
+        [[ -n "$runtime_acfs_home" ]] && holds_candidates+=("$runtime_acfs_home/scripts/lib/holds.sh")
+        if [[ -n "${ACFS_REPO_ROOT:-}" ]]; then
+            holds_candidates+=("${ACFS_REPO_ROOT}/scripts/lib/holds.sh")
+        fi
     fi
 
     for candidate in "${holds_candidates[@]}"; do
@@ -6790,27 +6828,15 @@ update_refresh_installed_security() {
 # ------------------------------------------------------------
 _acfs_refresh_security_from_fetched_remote() {
     local source_ref=""
-    if ! source_ref="$(git -C "$ACFS_REPO_ROOT" rev-parse --verify 'origin/main^{commit}' 2>/dev/null)" || [[ -z "$source_ref" ]]; then
-        log_item "fail" "ACFS runtime" "unable to resolve fetched origin/main"
-        log_to_file "Unable to resolve fetched origin/main for runtime deployment"
+    if ! source_ref="$(update_bootstrap_git rev-parse --verify 'FETCH_HEAD^{commit}')" || [[ -z "$source_ref" ]]; then
+        log_item "fail" "ACFS runtime" "unable to resolve fetched main"
         return 1
     fi
-
-    # Deploy directly from the fetched immutable commit. Do not copy into the
-    # checkout: this path exists precisely because that checkout is dirty or
-    # on the wrong branch, and its tracked bytes belong to the operator.
-    sync_acfs_deployed "$source_ref" || return $?
-    sync_acfs_global_wrapper "$source_ref" || return $?
-    # update_shell runs later in this same process. Keep it on this revision
-    # even if origin/main moves, rather than redeploying the stale checkout.
-    _ACFS_RUNTIME_SOURCE_REF="$source_ref"
-    sync_acfs_global_command_links
-    log_item "ok" "ACFS runtime" "refreshed from origin/main without modifying the checkout"
-    log_to_file "Refreshed deployed ACFS runtime from origin/main without modifying the checkout"
+    update_bootstrap_handoff "$source_ref" "$@"
 }
 
 _acfs_remote_main_head() {
-    git -C "$ACFS_REPO_ROOT" ls-remote --heads origin main 2>/dev/null | awk 'NR==1 { print $1 }'
+    update_bootstrap_git ls-remote --heads origin main 2>/dev/null | awk 'NR==1 { print $1 }'
 }
 
 # Describe what a real self-update would do, using only local objects and the
@@ -6822,11 +6848,11 @@ _acfs_self_update_preview() {
     local range="${local_head:0:12}..${remote_head:0:12}"
     local preview="" commit_count=""
 
-    if git -C "$ACFS_REPO_ROOT" cat-file -e "${remote_head}^{commit}" 2>/dev/null; then
-        if git -C "$ACFS_REPO_ROOT" merge-base --is-ancestor "$local_head" "$remote_head" 2>/dev/null; then
-            commit_count="$(git -C "$ACFS_REPO_ROOT" rev-list --count "${local_head}..${remote_head}" 2>/dev/null || true)"
+    if update_bootstrap_git cat-file -e "${remote_head}^{commit}" 2>/dev/null; then
+        if update_bootstrap_git merge-base --is-ancestor "$local_head" "$remote_head" 2>/dev/null; then
+            commit_count="$(update_bootstrap_git rev-list --count "${local_head}..${remote_head}" 2>/dev/null || true)"
             preview="would fast-forward main $range (${commit_count:-?} commits)"
-        elif git -C "$ACFS_REPO_ROOT" merge-base --is-ancestor "$remote_head" "$local_head" 2>/dev/null; then
+        elif update_bootstrap_git merge-base --is-ancestor "$remote_head" "$local_head" 2>/dev/null; then
             printf 'local main is ahead of origin/main (%s); nothing to pull\n' "${remote_head:0:12}"
             return 0
         else
@@ -6840,32 +6866,769 @@ _acfs_self_update_preview() {
     fi
 
     # The real run refuses to pull over tracked local modifications.
-    if [[ -n "$(git --no-optional-locks -C "$ACFS_REPO_ROOT" status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
+    if [[ -n "$(update_bootstrap_git status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
         preview+="; tracked local modifications would block the pull"
     fi
     printf '%s; nothing fetched or pulled\n' "$preview"
 }
 
-# Activate a successfully deployed updater even when Git was already current.
-# In that case another pull or a previous partial update may have advanced the
-# checkout without replacing the installed updater. Keep the original process
-# (and its update lock) through exec, forwarding every argument unchanged.
-_acfs_reexec_updated_script() {
-    local update_script="$1" old_hash="$2" new_hash=""
-    shift 2
+# Keep the bootstrap inside this file: legacy deployers publish update.sh
+# before they know about its new dependencies. Preparation never changes the
+# active generation. Receipts are inert data, and interrupted generations stay
+# private for diagnosis instead of replacing a working updater.
+update_bootstrap_files() {
+    local python_bin="" bash_bin="" git_bin=""
+    python_bin="$(update_system_binary_path python3)" || return 127
+    bash_bin="$(update_system_binary_path bash)" || return 127
+    git_bin="$(update_system_binary_path git 2>/dev/null || true)"
+    "$python_bin" -I - "$bash_bin" "$git_bin" "$@" <<'ACFS_UPDATE_BOOTSTRAP_PY'
+import errno
+import hashlib
+import json
+import os
+import pwd
+import re
+import secrets
+import stat
+import subprocess
+import sys
 
-    if [[ -f "$update_script" ]]; then
-        new_hash=$(update_sha256_file "$update_script" 2>/dev/null) || true
+# The synchronous parent owns the update lock. A killed parent must not leave
+# an orphaned preparation process retaining its inherited open description.
+locked_home = None
+try:
+    inherited = os.fstat(9)
+    if os.environ.get("_ACFS_UPDATE_LOCK_PID") and stat.S_ISDIR(inherited.st_mode):
+        locked_home = (inherited.st_dev, inherited.st_ino)
+    os.close(9)
+except OSError as error:
+    if error.errno != errno.EBADF:
+        raise
+
+BASH, GIT, action, *args = sys.argv[1:]
+LEDGER = "scripts/generated/internal_checksums.sh"
+REQUIRED = {
+    "scripts/lib/update.sh", "scripts/lib/state.sh", "scripts/lib/progress.sh",
+    "scripts/generated/manifest_index.sh", "scripts/lib/security.sh",
+    "scripts/lib/logging.sh", "scripts/lib/github_api.sh", "scripts/lib/tools.sh",
+    "scripts/lib/holds.sh", "scripts/lib/stack.sh", "scripts/lib/nightly_update.sh",
+    "scripts/lib/notify.sh", "checksums.yaml", "VERSION", "acfs.manifest.yaml",
+}
+FUNCTIONS = ("state_load_module_selection", "state_module_is_selected",
+             "state_validate_module_selection_catalog")
+FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+owners = {0, os.geteuid()}
+target_uid, target_gid = os.geteuid(), os.getegid()
+clean_env = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C", "NO_COLOR": "1"}
+
+def fail(message):
+    raise ValueError(message)
+
+def absolute(path):
+    if (not isinstance(path, str) or not path.startswith("/") or path.startswith("//") or path == "/"
+            or os.path.normpath(path) != path or any(ord(c) < 32 for c in path)):
+        fail("unsafe absolute path: " + repr(path))
+    return path
+
+def relative(path):
+    if (not isinstance(path, str) or not re.fullmatch(r"[A-Za-z0-9_./-]+", path)
+            or any(part in ("", ".", "..") for part in path.split("/"))):
+        fail("unsafe runtime path: " + repr(path))
+    return path
+
+def check(info, path, directory=False, private=False):
+    kind = stat.S_ISDIR if directory else stat.S_ISREG
+    if not kind(info.st_mode) or info.st_uid not in owners or info.st_mode & 0o022:
+        fail("unsafe ownership, permissions or type: " + path)
+    if private and info.st_mode & 0o077:
+        fail("runtime generation is not private: " + path)
+
+def directory(path, *, private=False, check_ancestors=True):
+    absolute(path)
+    fd = os.open("/", FLAGS)
+    try:
+        parts = path[1:].split("/")
+        for i, part in enumerate(parts):
+            child = os.open(part, FLAGS, dir_fd=fd)
+            os.close(fd)
+            fd = child
+            info = os.fstat(fd)
+            if check_ancestors and i < len(parts) - 1:
+                # Trusted sticky temporary roots are allowed outside the
+                # runtime boundary; other writable ancestors allow swaps.
+                if info.st_uid not in owners or (info.st_mode & 0o022 and not info.st_mode & stat.S_ISVTX):
+                    fail("unsafe runtime ancestor: " + "/".join(parts[:i + 1]))
+        check(os.fstat(fd), path, directory=True, private=private)
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+def child_dir(parent, name, *, create=False):
+    relative(name)
+    if "/" in name:
+        fail("expected one directory component")
+    if create:
+        try:
+            os.mkdir(name, 0o700, dir_fd=parent)
+            created = os.open(name, FLAGS, dir_fd=parent)
+            os.fchown(created, target_uid, target_gid)
+            os.fchmod(created, 0o700)
+            os.close(created)
+            os.fsync(parent)
+        except FileExistsError:
+            pass
+    fd = os.open(name, FLAGS, dir_fd=parent)
+    try:
+        check(os.fstat(fd), name, directory=True)
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+def parent_fd(root, path, *, create=False):
+    parts = relative(path).split("/")
+    fd = os.dup(root)
+    try:
+        for part in parts[:-1]:
+            child = child_dir(fd, part, create=create)
+            os.close(fd)
+            fd = child
+        return fd, parts[-1]
+    except BaseException:
+        os.close(fd)
+        raise
+
+def read(root, path, bound=16 * 1024 * 1024, *, private=False, required_mode=None,
+         literal_name=False):
+    if literal_name:
+        # Checkpoint basenames are operator-selected, not inventory paths.
+        # Accept spaces while retaining the same dirfd/type/ownership checks.
+        if (not path or path in (".", "..") or "/" in path
+                or any(ord(c) < 32 for c in path)):
+            fail("unsafe checkpoint filename")
+        parent, name = os.dup(root), path
+    else:
+        parent, name = parent_fd(root, path)
+    try:
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=parent)
+        try:
+            before = os.fstat(fd)
+            check(before, path, private=private)
+            if required_mode is not None and stat.S_IMODE(before.st_mode) != required_mode:
+                fail("generation permission mismatch: " + path)
+            if before.st_size > bound:
+                fail("runtime input exceeds byte bound: " + path)
+            with os.fdopen(os.dup(fd), "rb") as stream:
+                data = stream.read(bound + 1)
+            after = os.fstat(fd)
+            linked = os.stat(name, dir_fd=parent, follow_symlinks=False)
+            def identity(info):
+                return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,
+                        info.st_size, info.st_mtime_ns, info.st_ctime_ns, info.st_nlink)
+            if (len(data) > bound or identity(before) != identity(after)
+                    or (after.st_dev, after.st_ino) != (linked.st_dev, linked.st_ino)):
+                fail("runtime input changed while reading: " + path)
+            return data
+        finally:
+            os.close(fd)
+    finally:
+        os.close(parent)
+
+def write(root, path, data, mode=0o600):
+    parent, name = parent_fd(root, path, create=True)
+    try:
+        fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                     mode, dir_fd=parent)
+        with os.fdopen(fd, "wb") as stream:
+            os.fchown(stream.fileno(), target_uid, target_gid)
+            os.fchmod(stream.fileno(), mode)
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.fsync(parent)
+    finally:
+        os.close(parent)
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+def blob_digest(data, oid):
+    if not isinstance(oid, str) or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", oid):
+        fail("invalid Git blob identity")
+    return hashlib.new("sha1" if len(oid) == 40 else "sha256",
+                       b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
+
+def check_store_binding():
+    fd = directory(store_path, private=True)
+    try:
+        if (os.fstat(fd).st_dev, os.fstat(fd).st_ino) != (os.fstat(store_fd).st_dev, os.fstat(store_fd).st_ino):
+            fail("runtime store changed during bootstrap")
+    finally:
+        os.close(fd)
+
+def object_json(data):
+    def pairs(items):
+        result = {}
+        for key, value in items:
+            if key in result:
+                fail("duplicate JSON field: " + key)
+            result[key] = value
+        return result
+    value = json.loads(data, object_pairs_hook=pairs)
+    if not isinstance(value, dict):
+        fail("expected one JSON object")
+    return value
+
+def ledger_entries(data):
+    if len(data) > 65536:
+        fail("internal checksum ledger exceeds 64 KiB")
+    result, phase = {}, "schema"
+    lines = data.decode("utf-8").splitlines()
+    if len(lines) > 256:
+        fail("internal checksum ledger exceeds its line bound")
+    for line in lines:
+        if not line or line.startswith("#"):
+            continue
+        if phase == "schema" and line == "ACFS_INTERNAL_CHECKSUMS_SCHEMA=1":
+            phase = "array"
+        elif phase == "array" and line == "declare -gA ACFS_INTERNAL_CHECKSUMS=(":
+            phase = "entries"
+        elif phase == "entries" and line == ")":
+            phase = "count"
+        elif phase == "entries":
+            match = re.fullmatch(r'  \[([A-Za-z0-9_./-]+)\]="([0-9a-f]{64})"', line)
+            if not match or match[1] in result:
+                fail("invalid or duplicate internal checksum entry")
+            path = relative(match[1])
+            if any(part.startswith(".") for part in path.split("/")):
+                fail("internal checksum entry targets private metadata")
+            result[path] = match[2]
+        elif phase == "count" and line == "ACFS_INTERNAL_CHECKSUMS_COUNT=" + str(len(result)):
+            phase = "done"
+        else:
+            fail("invalid internal checksum ledger grammar")
+    if phase != "done" or not REQUIRED <= result.keys() or LEDGER in result:
+        fail("internal checksum ledger is incomplete")
+    return result
+
+def syntax(path):
+    result = subprocess.run([BASH, "--noprofile", "--norc", "-n", path], env=clean_env,
+                            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                            stderr=subprocess.PIPE, timeout=30, close_fds=True)
+    if result.returncode:
+        fail("Bash syntax validation failed: " + path)
+
+def checkpoint(path):
+    absolute(path)
+    try:
+        fd = directory(os.path.dirname(path))
+    except FileNotFoundError:
+        # The shared scope reader permits only an absent DEFAULT checkpoint.
+        # A missing explicit checkpoint still fails its identity validation.
+        return {"path": path, "sha256": None}
+    try:
+        try:
+            data = read(fd, os.path.basename(path), 1024 * 1024, literal_name=True)
+        except FileNotFoundError:
+            return {"path": path, "sha256": None}
+    finally:
+        os.close(fd)
+    state = object_json(data)
+    if "schema_version" in state and (type(state["schema_version"]) is not int
+                                      or state["schema_version"] not in (1, 2, 3)):
+        fail("unsupported installation checkpoint schema")
+    if "mode" in state and state["mode"] not in ("safe", "vibe"):
+        fail("invalid installation checkpoint mode")
+    return {"path": path, "sha256": digest(data)}
+
+def inspect_generation(path):
+    absolute(path)
+    name = os.path.basename(path)
+    if os.path.dirname(path) != store_path or not re.fullmatch(r"generation-[0-9a-f]{12}-[0-9a-f]{24}", name):
+        fail("generation is outside the target runtime store")
+    fd = child_dir(store_fd, name)
+    check(os.fstat(fd), path, directory=True, private=True)
+    try:
+        receipt = object_json(read(fd, ".bootstrap.json", 131072, private=True, required_mode=0o600))
+        if (type(receipt.get("schema")) is not int or receipt["schema"] != 1
+                or receipt.get("target_home") != home or receipt.get("target_user") != user
+                or not isinstance(receipt.get("files"), dict) or not isinstance(receipt.get("ref"), str)
+                or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", receipt["ref"])):
+            fail("generation receipt does not match the target identity")
+        absolute(receipt.get("repo"))
+        expected = ledger_entries(read(fd, LEDGER, 65536, private=True))
+        inventory = receipt["files"]
+        if inventory.keys() != (expected.keys() | {LEDGER}):
+            fail("generation receipt has an incomplete inventory")
+        total = 0
+        for path, entry in inventory.items():
+            if not isinstance(entry, dict) or entry.get("git_mode") not in ("100644", "100755"):
+                fail("generation source mode mismatch: " + path)
+            data = read(fd, path, private=True,
+                        required_mode=0o700 if entry["git_mode"] == "100755" else 0o600)
+            total += len(data)
+            if (total > 64 * 1024 * 1024 or entry.get("sha256") != digest(data)
+                    or (path != LEDGER and entry["sha256"] != expected[path])):
+                fail("generation digest or mode mismatch: " + path)
+            oid = entry.get("blob", "")
+            if blob_digest(data, oid) != oid:
+                fail("generation Git blob mismatch: " + path)
+        actual = set()
+        for base, directories, files, walk_fd in os.fwalk(".", dir_fd=fd, follow_symlinks=False):
+            check(os.fstat(walk_fd), base, directory=True, private=True)
+            for child in directories:
+                check(os.stat(child, dir_fd=walk_fd, follow_symlinks=False), child,
+                      directory=True, private=True)
+            actual.update(os.path.normpath(os.path.join(base, child)) for child in files)
+        if actual != inventory.keys() | {".bootstrap.json"}:
+            fail("generation contains unexpected runtime files")
+        return receipt
+    finally:
+        os.close(fd)
+
+def entry_parent(*, create=False):
+    fd = os.dup(acfs_fd)
+    try:
+        for component in ("scripts", "lib"):
+            try:
+                child = child_dir(fd, component, create=create)
+            except FileNotFoundError:
+                os.close(fd)
+                return None
+            os.close(fd)
+            fd = child
+        try:
+            read(fd, "update.sh")
+        except FileNotFoundError:
+            pass
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+try:
+    if action == "checkpoint":
+        path, = args
+        checkpoint(path)
+        sys.exit(0)
+    if action == "local":
+        root = absolute(args[0])
+        fd = directory(root, check_ancestors=False)
+        missing = []
+        for path in ("scripts/lib/state.sh", "scripts/lib/progress.sh", "scripts/generated/manifest_index.sh"):
+            try:
+                data = read(fd, path)
+            except FileNotFoundError:
+                missing.append(path)
+                continue
+            syntax(root + "/" + path)
+            if path.endswith("/state.sh"):
+                text = data.decode("utf-8")
+                missing.extend(path + ": " + name for name in FUNCTIONS
+                               if not re.search(r"^" + name + r"\(\)\s*\{", text, re.M))
+        os.close(fd)
+        if missing:
+            print("ACFS bootstrap: missing/outdated dependencies: " + ", ".join(missing), file=sys.stderr)
+            sys.exit(2)
+        sys.exit(0)
+    if action == "prepare":
+        repo, ref, home, user, state_file = args
+    elif action in ("inspect", "activate", "entry-check", "entry"):
+        generation, home, user, *extra = args
+        if action == "activate":
+            state_file, = extra
+    elif action == "current":
+        home, user = args
+    else:
+        fail("unknown bootstrap operation")
+    absolute(home)
+    account = pwd.getpwnam(user)
+    target_uid, target_gid = account.pw_uid, account.pw_gid
+    if os.geteuid() != target_uid:
+        # The public wrapper switches to the installed account first. Never
+        # execute a target-writable generation as a more privileged account.
+        fail("run runtime recovery as the installed account, not another user or root")
+    owners.add(target_uid)
+    home_fd = directory(home)
+    if locked_home is not None and locked_home != (os.fstat(home_fd).st_dev, os.fstat(home_fd).st_ino):
+        fail("bootstrap target home no longer matches the held update lock")
+    try:
+        acfs_fd = child_dir(home_fd, ".acfs", create=action == "prepare")
+    except FileNotFoundError:
+        if action == "current":
+            sys.exit(3)
+        raise
+    store_path = home + "/.acfs/.update-runtime"
+    try:
+        store_fd = child_dir(acfs_fd, ".update-runtime", create=action == "prepare")
+    except FileNotFoundError:
+        if action == "current":
+            sys.exit(3)
+        raise
+    check(os.fstat(store_fd), store_path, directory=True, private=True)
+    if action == "current":
+        try:
+            pointer = object_json(read(store_fd, "current", 4096, private=True))
+        except FileNotFoundError:
+            sys.exit(3)
+        if (set(pointer) != {"schema", "generation"} or type(pointer["schema"]) is not int
+                or pointer["schema"] != 1):
+            fail("invalid current-generation receipt")
+        generation = store_path + "/" + relative(pointer["generation"])
+        inspect_generation(generation)
+        check_store_binding()
+        print(generation)
+    elif action == "prepare":
+        absolute(repo)
+        if not GIT:
+            fail("system Git is required to prepare an authenticated runtime")
+        if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", ref):
+            fail("bootstrap requires one immutable commit ID")
+        repo_fd = directory(repo)
+        git_fd = child_dir(repo_fd, ".git")
+        git_env = dict(clean_env, GIT_NO_REPLACE_OBJECTS="1", GIT_CONFIG_NOSYSTEM="1",
+                       GIT_CONFIG_GLOBAL="/dev/null", GIT_OPTIONAL_LOCKS="0")
+        def git(*command):
+            result = subprocess.run([GIT, "--no-replace-objects", "-c", "core.fsmonitor=false",
+                                     "--git-dir=/proc/self/fd/" + str(git_fd), *command],
+                                    env=git_env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE, pass_fds=(git_fd,), timeout=30)
+            if result.returncode:
+                fail("cannot read immutable Git source for " + command[-1])
+            return result.stdout
+        if git("rev-parse", "--verify", ref + "^{commit}").decode().strip() != ref:
+            fail("source revision is not the requested commit")
+        def blob(path):
+            relative(path)
+            tree = git("ls-tree", "-z", ref, "--", path)
+            match = re.fullmatch(rb"(100644|100755) blob ([0-9a-f]{40}|[0-9a-f]{64})\t" + re.escape(path.encode()) + rb"\0", tree)
+            if not match:
+                fail("missing or nonregular Git source: " + path)
+            mode, oid = (part.decode() for part in match.groups())
+            size = int(git("cat-file", "-s", oid))
+            if not 0 <= size <= 16 * 1024 * 1024:
+                fail("Git source exceeds byte bound: " + path)
+            data = git("cat-file", "blob", oid)
+            if len(data) != size or blob_digest(data, oid) != oid:
+                fail("Git source changed: " + path)
+            return data, {"sha256": digest(data), "blob": oid, "git_mode": mode}
+        ledger, ledger_info = blob(LEDGER)
+        expected = ledger_entries(ledger)
+        saved_checkpoint = checkpoint(state_file)
+        name = "generation-" + ref[:12] + "-" + secrets.token_hex(12)
+        stage_fd = child_dir(store_fd, name, create=True)
+        generation = store_path + "/" + name
+        write(stage_fd, LEDGER, ledger)
+        inventory = {LEDGER: ledger_info}
+        total = len(ledger)
+        for path, expected_hash in expected.items():
+            data, entry = blob(path)
+            total += len(data)
+            if total > 64 * 1024 * 1024 or entry["sha256"] != expected_hash:
+                fail("internal checksum mismatch or bundle too large: " + path)
+            write(stage_fd, path, data, 0o700 if entry["git_mode"] == "100755" else 0o600)
+            inventory[path] = entry
+            if path.endswith(".sh"):
+                syntax(generation + "/" + path)
+        probe_env = dict(clean_env, HOME=home, TARGET_HOME=home, ACFS_STATE_FILE=state_file,
+                         ACFS_BOOTSTRAP_PROBE="1")
+        probe = r'''
+exec 9<&-
+source "$1/scripts/lib/update.sh"
+if ! declare -F update_bootstrap_admit >/dev/null || ! declare -F update_bootstrap_files >/dev/null; then
+    printf '%s\n' 'Source revision lacks the complete updater bootstrap protocol' >&2
+    exit 1
+fi
+BOOTSTRAP_PROBE_HOME="$2" BOOTSTRAP_PROBE_USER="$3"
+update_target_user() { printf '%s\n' "$BOOTSTRAP_PROBE_USER"; }
+update_target_home() { [[ "$1" == "$BOOTSTRAP_PROBE_USER" ]] && printf '%s\n' "$BOOTSTRAP_PROBE_HOME"; }
+HOME="$2" TARGET_HOME="$2" TARGET_USER="$3" ACFS_REPO_ROOT="$1"
+update_load_module_selection
+'''
+        result = subprocess.run([BASH, "--noprofile", "--norc", "-c", probe, "bootstrap",
+                                 generation, home, user], env=probe_env, stdin=subprocess.DEVNULL,
+                                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, close_fds=True, timeout=30)
+        if result.returncode:
+            fail("candidate scope validation failed: " + result.stderr.decode("utf-8", "replace")[:4096].strip())
+        if checkpoint(state_file) != saved_checkpoint:
+            fail("checkpoint changed during bootstrap preparation")
+        receipt = {"schema": 1, "ref": ref, "repo": repo, "target_home": home,
+                   "target_user": user, "checkpoint": saved_checkpoint, "files": inventory}
+        write(stage_fd, ".bootstrap.json", json.dumps(receipt, sort_keys=True).encode() + b"\n")
+        os.fsync(stage_fd)
+        os.fsync(store_fd)
+        inspect_generation(generation)
+        check_store_binding()
+        print(generation)
+    else:
+        receipt = inspect_generation(generation)
+        if action == "inspect":
+            check_store_binding()
+            print(receipt["repo"])
+            print(receipt["ref"])
+        elif action in ("entry-check", "entry"):
+            parent = entry_parent(create=action == "entry")
+            if action == "entry":
+                pointer = object_json(read(store_fd, "current", 4096, private=True))
+                if pointer != {"schema": 1, "generation": os.path.basename(generation)}:
+                    fail("activate the verified generation before publishing its entrypoint")
+                saved = receipt.get("checkpoint", {})
+                if checkpoint(saved.get("path")) != saved:
+                    fail("checkpoint changed before entrypoint publication")
+                generation_fd = child_dir(store_fd, os.path.basename(generation))
+                data = read(generation_fd, "scripts/lib/update.sh", private=True)
+                if digest(data) != receipt["files"]["scripts/lib/update.sh"]["sha256"]:
+                    fail("candidate updater changed before entrypoint publication")
+                temporary = ".acfs-bootstrap-entry-" + secrets.token_hex(12)
+                write(parent, temporary, data, 0o755)
+                check_store_binding()
+                current_parent = entry_parent()
+                if current_parent is None or (os.fstat(parent).st_dev, os.fstat(parent).st_ino) != (
+                        os.fstat(current_parent).st_dev, os.fstat(current_parent).st_ino):
+                    fail("entrypoint directory changed before publication")
+                os.replace(temporary, "update.sh", src_dir_fd=parent, dst_dir_fd=parent)
+                os.fsync(parent)
+            if parent is not None:
+                os.close(parent)
+        else:
+            if checkpoint(state_file) != receipt.get("checkpoint"):
+                fail("checkpoint changed since bootstrap preparation; previous runtime retained")
+            try:
+                read(store_fd, "current", 4096, private=True)
+            except FileNotFoundError:
+                pass
+            temporary = ".current-" + secrets.token_hex(12)
+            pointer = {"schema": 1, "generation": os.path.basename(generation)}
+            write(store_fd, temporary, json.dumps(pointer, sort_keys=True).encode() + b"\n")
+            check_store_binding()
+            os.replace(temporary, "current", src_dir_fd=store_fd, dst_dir_fd=store_fd)
+            os.fsync(store_fd)
+except (OSError, ValueError, KeyError, IndexError, TypeError, UnicodeError, subprocess.SubprocessError) as error:
+    print("ACFS bootstrap: " + str(error), file=sys.stderr)
+    sys.exit(1)
+ACFS_UPDATE_BOOTSTRAP_PY
+}
+
+# Never let inherited Git selectors, replacement objects, hooks or maintenance
+# redirect a pinned deployment or keep the updater's lock alive in a child.
+update_git_at() (
+    local root="$1" name="" git_bin=""
+    shift
+    exec 9<&-
+    for name in "${!GIT_@}"; do unset "$name"; done
+    git_bin="$(update_system_binary_path git)" || return 127
+    export GIT_NO_REPLACE_OBJECTS=1 GIT_OPTIONAL_LOCKS=0
+    "$git_bin" --no-replace-objects -C "$root" \
+        -c core.fsmonitor=false -c core.hooksPath=/dev/null \
+        -c maintenance.auto=false -c gc.auto=0 "$@"
+)
+
+update_bootstrap_git() {
+    update_git_at "$ACFS_REPO_ROOT" "$@"
+}
+
+update_bootstrap_fetch_revision() {
+    local origin="" revision=""
+    if [[ ! -d "$ACFS_REPO_ROOT/.git" ]]; then
+        echo "Recovery requires a current ACFS Git checkout; run its scripts/lib/update.sh --repair-runtime --yes as the installed account" >&2
+        return 1
     fi
-    if [[ -n "$old_hash" && -n "$new_hash" && "$old_hash" != "$new_hash" ]]; then
-        log_to_file "update.sh changed, re-executing with new version..."
-        echo ""
-        echo -e "${CYAN}update.sh was updated, restarting with new version...${NC}"
-        echo ""
-        export ACFS_SELF_UPDATE_DONE=true
-        exec "$update_script" "$@" || return $?
+    # get-url applies insteadOf: a canonical-looking raw config value is not
+    # proof that Git will contact the expected authenticated remote.
+    origin="$(update_bootstrap_git remote get-url origin)" || return 1
+    if ! is_expected_acfs_origin_url "$origin"; then
+        echo "Refusing ACFS bootstrap from unexpected origin: $(acfs_strip_url_userinfo "$origin")" >&2
+        return 1
     fi
-    return 0
+    update_bootstrap_git -c fetch.fsckObjects=true fetch --quiet origin main || return 1
+    revision="$(update_bootstrap_git rev-parse --verify 'FETCH_HEAD^{commit}')" || return 1
+    [[ "$revision" =~ ^[0-9a-f]{40}$|^[0-9a-f]{64}$ ]] || return 1
+    printf '%s\n' "$revision"
+}
+
+update_bootstrap_use() {
+    local generation="$1" target_home="$2" target_user="$3" receipt=""
+    local -a fields=()
+    receipt="$(exec 9<&-; update_bootstrap_files inspect "$generation" "$target_home" "$target_user")" || return 1
+    mapfile -t fields <<< "$receipt"
+    [[ "${#fields[@]}" == 2 ]] || return 1
+    ACFS_REPO_ROOT="${fields[0]}"
+    _ACFS_BOOTSTRAP_ROOT="$generation"
+    _ACFS_BOOTSTRAP_REF="${fields[1]}"
+    _ACFS_RUNTIME_SOURCE_REF="$_ACFS_BOOTSTRAP_REF"
+    _UPDATE_STATE_LIBRARY="$generation/scripts/lib/state.sh"
+    _UPDATE_MANIFEST_INDEX="$generation/scripts/generated/manifest_index.sh"
+    ACFS_VERSION="$(cat "$generation/VERSION")"
+    ACFS_VERSION_DISPLAY="v${ACFS_VERSION}+${_ACFS_BOOTSTRAP_REF:0:7}"
+}
+
+update_bootstrap_exec() {
+    local generation="$1" target_home="$2" target_user="$3" bash_bin=""
+    shift 3
+    update_bootstrap_use "$generation" "$target_home" "$target_user" || return 1
+    _acfs_update_acquire_lock "$target_home" || return $?
+    bash_bin="$(update_system_binary_path bash)" || return 127
+    # Freeze the same resolved installation across exec. Preserve an empty
+    # TARGET_USER: resolving it anew via passwd would discard an explicit HOME.
+    export HOME="$target_home" TARGET_HOME="$target_home" TARGET_USER="${TARGET_USER:-}"
+    export ACFS_HOME="$target_home/.acfs" ACFS_REPO_ROOT
+    export ACFS_STATE_FILE="${ACFS_STATE_FILE:-$target_home/.acfs/state.json}"
+    export _ACFS_UPDATE_HANDOFF_PID="$BASHPID" ACFS_SELF_UPDATE_DONE=true
+    exec "$bash_bin" "$generation/scripts/lib/update.sh" "$@"
+}
+
+update_bootstrap_entry_is_tracked() {
+    update_git_at "$1/.acfs" ls-files --error-unmatch -- scripts/lib/update.sh >/dev/null 2>&1
+}
+
+update_bootstrap_advance_checkout() {
+    local revision="$1" head="" branch="" dirty=""
+    head="$(update_bootstrap_git rev-parse --verify HEAD 2>/dev/null || true)"
+    if [[ -z "$head" ]]; then
+        [[ "$BOOTSTRAP_SELF_UPDATE" == "true" ]] || return 0
+        # Explicit tarball/bootstrap opt-in retains its existing semantics,
+        # but this operation is reached only AFTER complete preparation.
+        update_bootstrap_git checkout -f -B main "$revision" || return 1
+        return 0
+    fi
+    branch="$(update_bootstrap_git branch --show-current)" || return 1
+    dirty="$(update_bootstrap_git status --porcelain --untracked-files=no)" || return 1
+    if [[ "$branch" == main && -z "$dirty" ]]; then
+        if ! update_bootstrap_git merge --ff-only "$revision" >&2; then
+            log_item "warn" "ACFS checkout" "cannot fast-forward; using the verified runtime without replacing tracked files"
+        fi
+    else
+        log_item "warn" "ACFS checkout" "preserving branch and tracked modifications; using the verified runtime"
+    fi
+}
+
+update_bootstrap_entry_ready() {
+    local generation="$1" target_home="$2" target_user="$3"
+    update_bootstrap_files entry-check "$generation" "$target_home" "$target_user" || return 1
+    if update_bootstrap_entry_is_tracked "$target_home"; then
+        # A self-managed checkout cannot receive an independent file copy.
+        # Either its safe fast-forward installed this protocol, or an existing
+        # protocol entry can dispatch into the verified generation.
+        if ! grep -Fqx 'update_bootstrap_admit() {' "$target_home/.acfs/scripts/lib/update.sh"; then
+            echo "Tracked legacy updater cannot dispatch the repaired runtime; reconcile the checkout on main and retry --repair-runtime" >&2
+            return 1
+        fi
+    fi
+}
+
+update_bootstrap_publish_entry() {
+    local generation="$1" target_home="$2" target_user="$3"
+    if ! update_bootstrap_entry_is_tracked "$target_home"; then
+        update_bootstrap_files entry "$generation" "$target_home" "$target_user" || return 1
+    fi
+}
+
+update_bootstrap_prepare_handoff() {
+    local revision="$1" target_home="$2" target_user="$3" generation="" state_file=""
+    state_file="${ACFS_STATE_FILE:-$target_home/.acfs/state.json}"
+    # Bash's command-substitution wrapper must release its inherited copy too;
+    # closing only Python's descriptor leaves an orphan shell holding the lock.
+    generation="$(exec 9<&-; update_bootstrap_files prepare "$ACFS_REPO_ROOT" "$revision" \
+        "$target_home" "$target_user" "$state_file")" || return 1
+    # Check publication paths before advancing even a clean checkout.
+    update_bootstrap_files entry-check "$generation" "$target_home" "$target_user" || return 1
+    _acfs_update_acquire_lock "$target_home" || return $?
+    update_bootstrap_advance_checkout "$revision" || return 1
+    update_bootstrap_entry_ready "$generation" "$target_home" "$target_user" || return 1
+    _acfs_update_acquire_lock "$target_home" || return $?
+    update_bootstrap_files activate "$generation" "$target_home" "$target_user" "$state_file" || return 1
+    update_bootstrap_publish_entry "$generation" "$target_home" "$target_user" || return 1
+    _ACFS_PREPARED_GENERATION="$generation"
+}
+
+update_bootstrap_handoff() {
+    local revision="$1" target_user="" target_home=""
+    shift
+    target_user="$(update_target_user)" || return 1
+    target_home="$(update_target_home "$target_user")" || return 1
+    _acfs_update_acquire_lock "$target_home" || return $?
+    if [[ "$_ACFS_BOOTSTRAP_REF" == "$revision" && -n "$_ACFS_BOOTSTRAP_ROOT" ]]; then
+        sync_acfs_deployed "$revision" || return $?
+        sync_acfs_global_wrapper "$revision" || return $?
+        sync_acfs_global_command_links
+        return 0
+    fi
+    update_bootstrap_prepare_handoff "$revision" "$target_home" "$target_user" || return 1
+    update_bootstrap_exec "$_ACFS_PREPARED_GENERATION" "$target_home" "$target_user" "$@"
+}
+
+update_bootstrap_repair() {
+    local target_home="$1" target_user="$2" revision=""
+    shift 2
+    if [[ "$DRY_RUN" == "true" ]]; then
+        printf 'Would prepare and validate a complete ACFS runtime for %s; no files changed or fetched.\n' "$target_home"
+        return 0
+    fi
+    _acfs_update_acquire_lock "$target_home" || return $?
+    revision="$(exec 9<&-; update_bootstrap_fetch_revision)" || return 1
+    update_bootstrap_prepare_handoff "$revision" "$target_home" "$target_user" || return 1
+    if [[ "$REPAIR_RUNTIME" == "true" ]]; then
+        printf 'ACFS runtime repaired at %s for %s. Checkpoint preserved; run acfs update --yes to resume scoped updates.\n' "$revision" "$target_home"
+        return 0
+    fi
+    update_bootstrap_exec "$_ACFS_PREPARED_GENERATION" "$target_home" "$target_user" "$@"
+}
+
+# This admission path must remain independent of state.sh. In particular an
+# older deployer can publish this updater before deploying its new reader.
+update_bootstrap_admit() {
+    local target_user="" target_home="" generation="" running_root="" rc=0 bash_bin=""
+    target_user="$(update_target_user)" || return 1
+    target_home="$(update_target_home "$target_user")" || return 1
+    running_root="$(cd "$SCRIPT_DIR/../.." && pwd -P)" || return 1
+    if [[ "$REPAIR_RUNTIME" == "true" ]]; then
+        update_bootstrap_repair "$target_home" "$target_user" "$@"
+        return $?
+    fi
+    if [[ -e "$target_home/.acfs/.update-runtime/current" || -L "$target_home/.acfs/.update-runtime/current" ]]; then
+        generation="$(exec 9<&-; update_bootstrap_files current "$target_home" "$target_user")" || return 1
+        update_bootstrap_use "$generation" "$target_home" "$target_user" || return 1
+        if [[ "$CHECK_RUNTIME" == "true" ]]; then
+            printf 'ACFS runtime verified: %s (%s)\n' "$generation" "$_ACFS_BOOTSTRAP_REF"
+            return 0
+        fi
+        if [[ "$running_root" != "$generation" ]]; then
+            _acfs_update_acquire_lock "$target_home" || return $?
+            bash_bin="$(update_system_binary_path bash)" || return 127
+            export HOME="$target_home" TARGET_HOME="$target_home" TARGET_USER="${TARGET_USER:-}"
+            export ACFS_HOME="$target_home/.acfs" ACFS_REPO_ROOT
+            export ACFS_STATE_FILE="${ACFS_STATE_FILE:-$target_home/.acfs/state.json}"
+            # A routine dispatch must still fetch on this invocation. Only a
+            # validated preparation in this same PID may suppress that fetch.
+            unset _ACFS_UPDATE_HANDOFF_PID
+            export ACFS_SELF_UPDATE_DONE=false
+            exec "$bash_bin" "$generation/scripts/lib/update.sh" "$@"
+        fi
+        if [[ "${_ACFS_UPDATE_HANDOFF_PID:-}" != "$BASHPID" ]]; then
+            ACFS_SELF_UPDATE_DONE=false
+        fi
+        return 0
+    fi
+    if [[ "$CHECK_RUNTIME" == "true" ]]; then
+        # A diagnostic run from a healthy checkout must inspect the deployed
+        # installation, not accidentally report its own adjacent libraries.
+        update_bootstrap_files local "$target_home/.acfs" || return $?
+        printf 'ACFS deployed module-selection libraries are available; no activated runtime generation.\n'
+        return 0
+    fi
+    if update_bootstrap_files local "$running_root"; then
+        ACFS_SELF_UPDATE_DONE=false
+        return 0
+    else
+        rc=$?
+    fi
+    [[ "$rc" == 2 ]] || return "$rc"
+    if [[ "$UPDATE_SELF" != "true" || "$DRY_RUN" == "true" ]]; then
+        echo "Incomplete updater dependencies; run --repair-runtime --yes from a current ACFS checkout" >&2
+        return 1
+    fi
+    update_bootstrap_repair "$target_home" "$target_user" "$@"
 }
 
 # ------------------------------------------------------------
@@ -6876,285 +7639,60 @@ _acfs_reexec_updated_script() {
 # ------------------------------------------------------------
 update_acfs_self() {
     log_section "ACFS Self-Update"
-
-    # Skip if disabled
     if [[ "$UPDATE_SELF" != "true" ]]; then
         log_item "skip" "ACFS self-update" "disabled via --no-self-update"
         return 0
     fi
-
-    # Skip if already done (prevents infinite re-exec loops)
-    if [[ "$ACFS_SELF_UPDATE_DONE" == "true" ]]; then
-        log_item "info" "ACFS self-update" "already completed"
-        if [[ -d "$ACFS_REPO_ROOT/.git" ]]; then
-            local done_origin_url=""
-            done_origin_url=$(git -C "$ACFS_REPO_ROOT" remote get-url origin 2>/dev/null || true)
-            if is_expected_acfs_origin_url "$done_origin_url"; then
-                sync_acfs_deployed || return $?
-                sync_acfs_global_wrapper || return $?
-                sync_acfs_global_command_links
-            fi
-        fi
+    # Admission validates the receipt and the same-process handoff before
+    # accepting this marker. An environment variable alone cannot skip work.
+    if [[ "$ACFS_SELF_UPDATE_DONE" == "true" && -n "$_ACFS_BOOTSTRAP_REF" ]]; then
+        log_item "info" "ACFS self-update" "verified runtime active at $_ACFS_BOOTSTRAP_REF"
+        sync_acfs_deployed "$_ACFS_BOOTSTRAP_REF" || return $?
+        sync_acfs_global_wrapper "$_ACFS_BOOTSTRAP_REF" || return $?
+        sync_acfs_global_command_links
         return 0
     fi
 
-    # Recovery for orphaned git init (issue #200)
-    if [[ -d "$ACFS_REPO_ROOT/.git" ]] && ! git -C "$ACFS_REPO_ROOT" rev-parse HEAD &>/dev/null; then
-        if [[ "$BOOTSTRAP_SELF_UPDATE" != "true" ]]; then
-            log_item "skip" "ACFS self-update" "incomplete git bootstrap detected; skipping to avoid replacing local files (use --bootstrap-self-update to opt in)"
-            return 0
-        fi
-        if [[ "$DRY_RUN" == "true" ]]; then
-            log_item "skip" "ACFS self-update" "dry-run: would recover incomplete git bootstrap"
-            return 0
-        fi
-        log_to_file "Detected incomplete git bootstrap — attempting recovery..."
-        local actual_origin
-        actual_origin=$(git -C "$ACFS_REPO_ROOT" remote get-url origin 2>/dev/null || true)
-        if is_expected_acfs_origin_url "$actual_origin"; then
-            if ! git -C "$ACFS_REPO_ROOT" fetch origin main --quiet 2>/dev/null; then
-                log_item "warn" "ACFS self-update" "git recovery fetch failed; leaving existing .git untouched"
-                return 0
-            fi
-
-            if git -C "$ACFS_REPO_ROOT" checkout -f -B main --track origin/main; then
-                log_to_file "Git bootstrap recovery succeeded"
-            else
-                log_item "warn" "ACFS self-update" "git recovery checkout failed; leaving existing .git untouched"
-                return 0
-            fi
-        else
-            log_item "warn" "ACFS self-update" "unexpected origin during git recovery: $(acfs_strip_url_userinfo "${actual_origin:-<unset>}")"
-            return 0
-        fi
-    fi
-
-    # Check if ACFS repo exists and is a git repo.
-    # If installed via tarball (no .git dir), require an explicit opt-in before
-    # converting the install into a git checkout. Automatic bootstrap can
-    # overwrite local files under ~/.acfs, which is too surprising for routine
-    # update and nightly flows.
     if [[ ! -d "$ACFS_REPO_ROOT/.git" ]]; then
         if [[ "$BOOTSTRAP_SELF_UPDATE" != "true" ]]; then
-            log_item "skip" "ACFS self-update" "installed tree is not a git checkout; skipping to avoid overwriting local files (use --bootstrap-self-update to opt in)"
+            log_item "skip" "ACFS self-update" "installed tree is not a git checkout (use --bootstrap-self-update to opt in)"
             return 0
         fi
-
         if [[ "$DRY_RUN" == "true" ]]; then
-            log_item "skip" "ACFS self-update" "dry-run: would bootstrap git checkout from https://github.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}.git"
+            log_item "skip" "ACFS self-update" "dry-run: would prepare a complete Git bootstrap"
             return 0
         fi
-
-        log_to_file "No .git directory found at $ACFS_REPO_ROOT — bootstrapping git repo for self-update..."
-
-        # Check if git is available before attempting bootstrap
-        if ! command -v git &>/dev/null; then
-            log_item "skip" "ACFS self-update" "git not found, cannot bootstrap"
-            return 0
-        fi
-
-        if ! git -C "$ACFS_REPO_ROOT" init -b main 2>/dev/null; then
-            log_item "warn" "ACFS self-update" "git init failed at $ACFS_REPO_ROOT"
-            return 0
-        fi
-
-        local expected_origin
-        expected_origin="https://github.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}.git"
-        if ! git -C "$ACFS_REPO_ROOT" remote add origin "$expected_origin" 2>/dev/null; then
-            # Remote may already exist from a partial prior run; verify it points to the right URL
-            local existing_url
-            existing_url=$(git -C "$ACFS_REPO_ROOT" remote get-url origin 2>/dev/null) || true
-            if ! is_expected_acfs_origin_url "$existing_url"; then
-                log_item "warn" "ACFS self-update" "unexpected origin remote: $(acfs_strip_url_userinfo "$existing_url")"
-                return 0
-            fi
-        fi
-
-        if ! git -C "$ACFS_REPO_ROOT" fetch origin main --quiet 2>/dev/null; then
-            log_item "warn" "ACFS self-update" "git fetch failed during bootstrap (network issue?)"
-            return 0
-        fi
-
-        # Use a forced checkout so the working tree is updated to match
-        # origin/main exactly (tarball files are replaced with the real repo state).
-        # -f is required because the tarball-installed files appear as untracked
-        # and git refuses to overwrite them without force.
-        if ! git -C "$ACFS_REPO_ROOT" checkout -f -B main --track origin/main; then
-            log_item "warn" "ACFS self-update" "git checkout failed during bootstrap"
-            return 0
-        fi
-
-        log_item "ok" "ACFS" "git repo bootstrapped from tarball install"
-        log_to_file "ACFS git repo initialized at $ACFS_REPO_ROOT — continuing with self-update"
+        update_bootstrap_git init -b main || return 1
+        update_bootstrap_git remote add origin "https://github.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}.git" || return 1
     fi
 
-    # Check if git is available
-    if ! command -v git &>/dev/null; then
-        log_item "skip" "ACFS self-update" "git not found"
-        return 0
-    fi
-
-    # Security: verify we are pulling from the expected ACFS origin.
-    # Do this for normal runs too (not only bootstrap mode) to prevent
-    # accidental or malicious self-update from an unexpected remote.
-    local origin_url
-    origin_url=$(git -C "$ACFS_REPO_ROOT" remote get-url origin 2>/dev/null || true)
-    if [[ -z "$origin_url" ]]; then
-        log_item "warn" "ACFS self-update" "origin remote not configured"
-        return 0
-    fi
+    local origin_url="" local_head="" remote_head=""
+    origin_url="$(update_bootstrap_git remote get-url origin 2>/dev/null || true)"
     if ! is_expected_acfs_origin_url "$origin_url"; then
         log_item "warn" "ACFS self-update" "unexpected origin remote: $(acfs_strip_url_userinfo "$origin_url")"
-        return 0
+        return 1
     fi
-
-    # Get current branch
-    local current_branch=""
-    current_branch=$(git -C "$ACFS_REPO_ROOT" branch --show-current 2>/dev/null) || true
-    if [[ -z "$current_branch" ]] || [[ "$current_branch" == "HEAD" ]]; then
-        log_item "warn" "ACFS self-update" "failed to get current branch"
-        return 0
-    fi
-
-    # Main is the only working branch. The legacy mirror is publication-only
-    # and must never become an updater target or local operating mode.
-    if [[ "$current_branch" != "main" ]]; then
-        log_item "skip" "ACFS self-update" "not on main branch (on: $current_branch)"
-        if update_is_read_only_mode; then
-            return 0
-        fi
-        # Still fetch and refresh security files so checksums stay fresh
-        if git -C "$ACFS_REPO_ROOT" fetch origin main --quiet 2>/dev/null; then
-            _acfs_refresh_security_from_fetched_remote || return $?
-        fi
-        return 0
-    fi
-
-    local local_head=""
-    local remote_head=""
-    local_head=$(git -C "$ACFS_REPO_ROOT" rev-parse HEAD 2>/dev/null) || true
-
+    local_head="$(update_bootstrap_git rev-parse --verify HEAD 2>/dev/null || true)"
     if update_is_read_only_mode; then
-        remote_head="$(_acfs_remote_main_head)"
+        remote_head="$(exec 9<&-; _acfs_remote_main_head)"
         if [[ -z "$local_head" ]] || [[ -z "$remote_head" ]]; then
-            log_item "warn" "ACFS self-update" "failed to compare versions in dry-run"
+            log_item "skip" "ACFS self-update" "dry-run: would prepare and validate the fetched runtime before changing the checkout"
             return 0
         fi
-
         if [[ "$local_head" == "$remote_head" ]]; then
             log_item "ok" "ACFS $ACFS_VERSION_DISPLAY" "already up to date"
         else
-            # A preview is not an update: report it as skipped work, with the
-            # detail always visible, so the summary never counts it as updated.
             log_item "skip" "ACFS self-update" \
                 "dry-run: $(_acfs_self_update_preview "$local_head" "$remote_head")"
         fi
         return 0
     fi
-
-    # Save current update.sh hash for re-exec detection
-    local update_script="$SCRIPT_DIR/update.sh"
-    local old_hash=""
-    if [[ -f "$update_script" ]]; then
-        old_hash=$(update_sha256_file "$update_script" 2>/dev/null) || true
-    fi
-
-    # Fetch latest from origin
-    log_to_file "Fetching from origin..."
-    if ! git -C "$ACFS_REPO_ROOT" fetch origin main --quiet 2>/dev/null; then
-        log_item "warn" "ACFS self-update" "git fetch failed (network issue?)"
+    if [[ -z "$local_head" && "$BOOTSTRAP_SELF_UPDATE" != "true" ]]; then
+        log_item "skip" "ACFS self-update" "incomplete git bootstrap; use --bootstrap-self-update to opt in"
         return 0
     fi
-
-    # Compare local HEAD with remote
-    local_head=$(git -C "$ACFS_REPO_ROOT" rev-parse HEAD 2>/dev/null) || true
-    remote_head=$(git -C "$ACFS_REPO_ROOT" rev-parse "origin/main" 2>/dev/null) || true
-
-    if [[ -z "$local_head" ]] || [[ -z "$remote_head" ]]; then
-        log_item "warn" "ACFS self-update" "failed to compare versions"
-        return 0
-    fi
-
-    if [[ "$local_head" == "$remote_head" ]]; then
-        log_item "ok" "ACFS $ACFS_VERSION_DISPLAY" "already up to date"
-        update_refresh_installed_security || return $?
-        sync_acfs_deployed || return $?
-        sync_acfs_global_wrapper || return $?
-        sync_acfs_global_command_links
-        _acfs_reexec_updated_script "$update_script" "$old_hash" "$@" || return $?
-        return 0
-    fi
-
-    # Show what's coming
-    local commit_count
-    commit_count=$(git -C "$ACFS_REPO_ROOT" rev-list --count "HEAD..origin/main" 2>/dev/null) || commit_count="?"
-    log_to_file "Found $commit_count new commit(s)"
-
-    # Skip full git pull if tracked files have local modifications to avoid
-    # merge conflicts. Use --untracked-files=no because ~/.acfs/ contains
-    # runtime state files (state.json, logs/, cache/, autofix/) that are
-    # not in the git repo — these must not block self-update since
-    # git pull --ff-only never touches untracked files.
-    #
-    # Even when we can't pull, we STILL extract security-critical files
-    # (checksums.yaml, security.sh) from the fetched remote and sync deployed
-    # runtime helpers from that fetched ref. Without this, machines with local
-    # modifications run with stale checksums or stale ~/.acfs scripts
-    # indefinitely, causing constant installer failures.
-    if [[ -n "$(git -C "$ACFS_REPO_ROOT" status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
-        # A dirty file matching an older upstream blob is not proof that ACFS
-        # owns the change; it may be intentional local work. Never force a
-        # checkout over tracked modifications. Quantify the staleness, preserve
-        # every byte, and leave reconciliation to the operator.
-        local _behind_count=""
-        local _dirty_files=""
-        _behind_count="$(git -C "$ACFS_REPO_ROOT" rev-list --count "HEAD..$remote_head" 2>/dev/null || echo "?")"
-        _dirty_files="$(git -C "$ACFS_REPO_ROOT" status --porcelain --untracked-files=no 2>/dev/null \
-            | awk '{print $2}' | paste -sd, - 2>/dev/null)"
-        log_item "warn" "ACFS self-update" \
-            "BLOCKED: ${_behind_count} commits behind and not updating. Locally modified: ${_dirty_files:-unknown}"
-        log_item "warn" "ACFS self-update" \
-            "fix: cd $ACFS_REPO_ROOT && git stash push -m acfs-local && git pull --ff-only origin main"
-        log_to_file "Self-update skipped: ${_behind_count} commits behind; tracked modifications: ${_dirty_files:-unknown}"
-        _acfs_refresh_security_from_fetched_remote || return $?
-        return 0
-    fi
-
-    # Pull updates only from the canonical branch.
-    log_to_file "Pulling updates..."
-    if ! git -C "$ACFS_REPO_ROOT" pull --ff-only origin main 2>/dev/null; then
-        log_item "warn" "ACFS self-update" "ff-only pull failed (branch divergence?); refreshing fetched runtime files"
-        log_to_file "Self-update skipped: git pull --ff-only failed — refreshing fetched runtime files"
-        _acfs_refresh_security_from_fetched_remote || return $?
-        return 0
-    fi
-
-    # Refresh version display with new commit hash after pull
-    local _new_short_hash=""
-    _new_short_hash=$(git -C "$ACFS_REPO_ROOT" rev-parse --short HEAD 2>/dev/null) || true
-    if [[ -n "$_new_short_hash" ]]; then
-        # Re-read VERSION in case it changed
-        if [[ -f "$ACFS_REPO_ROOT/VERSION" ]]; then
-            ACFS_VERSION="$(cat "$ACFS_REPO_ROOT/VERSION" 2>/dev/null || echo "$ACFS_VERSION")"
-        fi
-        ACFS_VERSION_DISPLAY="v${ACFS_VERSION}+${_new_short_hash}"
-    fi
-
-    log_item "ok" "ACFS $ACFS_VERSION_DISPLAY" "updated ($commit_count commits)"
-    log_to_file "ACFS updated from $local_head to $remote_head"
-
-    update_refresh_installed_security || return $?
-
-    # Sync critical scripts from repo to ~/.acfs/ so the deployed copies
-    # stay fresh.  This MUST happen before the re-exec check below, because
-    # $update_script points to ~/.acfs/scripts/lib/update.sh — if we don't
-    # copy the new version there first, the hash comparison won't trigger
-    # the re-exec and future runs will use the old code.
-    sync_acfs_deployed || return $?
-    sync_acfs_global_wrapper || return $?
-    sync_acfs_global_command_links
-
-    _acfs_reexec_updated_script "$update_script" "$old_hash" "$@"
+    remote_head="$(exec 9<&-; update_bootstrap_fetch_revision)" || return 1
+    update_bootstrap_handoff "$remote_head" "$@"
 }
 
 # Prevent needrestart from hanging apt on Ubuntu 22.04+. The apt hook
@@ -10519,6 +11057,9 @@ SKIP OPTIONS (exclude categories from update):
   --no-stack         Skip Agent Flywheel stack tool updates
 
 BEHAVIOR OPTIONS:
+  --check-runtime    Read-only check of the target's deployed updater dependencies
+  --repair-runtime   Validate and activate a complete runtime, then stop without
+                     updating tools or changing the installation checkpoint
   --bootstrap-self-update
                      Convert a non-git or incomplete ACFS install into a git checkout,
                      replacing repository files; copy or commit local edits first
@@ -10581,12 +11122,15 @@ EXAMPLES:
   # Explicitly convert a non-git or incomplete install into a git checkout
   acfs-update --bootstrap-self-update
 
+  # Recover missing/outdated updater libraries from a current ACFS checkout
+  bash scripts/lib/update.sh --repair-runtime --yes
+
   # Strict mode: stop on first error
   acfs-update --abort-on-failure
 
 WHAT EACH CATEGORY UPDATES:
-  self:     ACFS itself (git pull) - runs FIRST to ensure latest update logic
-            If update.sh changes, automatically re-executes with new version
+  self:     ACFS itself - validates the complete runtime at one fetched revision,
+            then fast-forwards a clean main checkout and re-executes that runtime
             Non-git/incomplete installs skip this unless --bootstrap-self-update is used;
             that opt-in replaces repository files, so preserve local edits first
   apt:      System packages via apt update && apt upgrade && apt autoremove
@@ -11237,6 +11781,14 @@ main() {
                 BOOTSTRAP_SELF_UPDATE=true
                 shift
                 ;;
+            --repair-runtime)
+                REPAIR_RUNTIME=true
+                shift
+                ;;
+            --check-runtime)
+                CHECK_RUNTIME=true
+                shift
+                ;;
             --force)
                 FORCE_MODE=true
                 shift
@@ -11276,6 +11828,19 @@ main() {
                 ;;
         esac
     done
+
+    if [[ "$REPAIR_RUNTIME" == true && "$CHECK_RUNTIME" == true ]]; then
+        echo "--repair-runtime and --check-runtime are mutually exclusive" >&2
+        return 1
+    fi
+
+    # No reader, checkpoint migration, log initialization or optional tool may
+    # run until the updater has a complete runtime. Diagnostics are read-only;
+    # explicit repair stops immediately after publishing the verified runtime.
+    update_bootstrap_admit "${ACFS_UPDATE_ARGS[@]}" || return $?
+    if [[ "$REPAIR_RUNTIME" == true || "$CHECK_RUNTIME" == true ]]; then
+        return 0
+    fi
 
     # Guard against running as root (unless ACFS is actually installed in /root)
     # This check is placed after argument parsing so --yes works correctly

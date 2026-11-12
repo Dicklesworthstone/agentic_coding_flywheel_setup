@@ -344,8 +344,8 @@ dry_run_self_update_output=$(
 
         log_item() { printf "%s|%s|%s\n" "$1" "$2" "$3"; }
 
-        git() {
-            if [[ "$*" == *"fetch origin main"* ]]; then
+        update_bootstrap_git() {
+            if [[ " $* " == *" fetch "* ]]; then
                 echo "FETCH_CALLED=yes"
                 return 99
             fi
@@ -359,7 +359,7 @@ dry_run_self_update_output=$(
                     printf "main\n"
                     return 0
                     ;;
-                *"rev-parse HEAD"*)
+                *"rev-parse --verify HEAD"*)
                     printf "1111111111111111111111111111111111111111\n"
                     return 0
                     ;;
@@ -430,8 +430,8 @@ self_update_preview_output=$(
         FAIL_COUNT=0
         NO_COLOR=1
         RED="" GREEN="" YELLOW="" CYAN="" BOLD="" DIM="" NC=""
-        git() {
-            case "$*" in
+        update_bootstrap_git() {
+            case " $* " in
                 *"remote get-url origin"*)
                     printf "https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup.git\n"; return 0 ;;
                 *"ls-remote --heads origin main"*)
@@ -439,7 +439,7 @@ self_update_preview_output=$(
                 *" fetch "*|*" pull "*|*" merge "*|*" reset "*|*" checkout "*)
                     echo "MUTATING_GIT_CALL=$*"; return 99 ;;
             esac
-            command git "$@"
+            command git -C "$ACFS_REPO_ROOT" "$@"
         }
         log_item() {
             printf "%s|%s|%s\n" "$1" "$2" "${3:-}"
@@ -476,12 +476,15 @@ else
 fi
 
 # ============================================================
-section "Test 3f2: ACFS self-update re-exec marker does not count as skipped work"
+section "Test 3f2: An inherited self-update marker cannot bypass origin validation"
 # ============================================================
 self_update_done_output=$(
     bash -c '
         source "'"$UPDATE_SH"'"
 
+        temp_root="${TMPDIR:-/tmp}/acfs-update-forged-marker.$$"
+        mkdir -p "$temp_root/.git"
+        ACFS_REPO_ROOT="$temp_root"
         QUIET=true
         UPDATE_SELF=true
         ACFS_SELF_UPDATE_DONE=true
@@ -492,23 +495,39 @@ self_update_done_output=$(
         NO_COLOR=1
         RED="" GREEN="" YELLOW="" CYAN="" BOLD="" DIM="" NC=""
 
-        update_acfs_self
+        update_bootstrap_git() {
+            if [[ "$*" == "remote get-url origin" ]]; then
+                : > "$temp_root/origin-checked"
+                printf "https://example.invalid/untrusted.git\n"
+                return 0
+            fi
+            printf "unexpected git call: %s\n" "$*" >&2
+            return 98
+        }
+        sync_acfs_deployed() { echo "DEPLOY_CALLED=yes"; return 99; }
+        self_update_status=0
+        update_acfs_self || self_update_status=$?
+        printf "SELF_UPDATE_STATUS=%s\n" "$self_update_status"
+        [[ -f "$temp_root/origin-checked" ]] && printf "ORIGIN_CHECKED=yes\n"
         printf "SUCCESS_COUNT=%s\n" "$SUCCESS_COUNT"
         printf "SKIP_COUNT=%s\n" "$SKIP_COUNT"
         printf "FAIL_COUNT=%s\n" "$FAIL_COUNT"
     ' 2>&1
 ) || true
 
-if echo "$self_update_done_output" | grep -q '^SUCCESS_COUNT=0$' \
+if echo "$self_update_done_output" | grep -q '^SELF_UPDATE_STATUS=1$' \
+    && echo "$self_update_done_output" | grep -q '^ORIGIN_CHECKED=yes$' \
+    && ! echo "$self_update_done_output" | grep -q 'DEPLOY_CALLED\|unexpected git call' \
+    && echo "$self_update_done_output" | grep -q '^SUCCESS_COUNT=0$' \
     && echo "$self_update_done_output" | grep -q '^SKIP_COUNT=0$' \
     && echo "$self_update_done_output" | grep -q '^FAIL_COUNT=0$'; then
-    pass "ACFS self-update re-exec marker stays out of summary counters"
+    pass "An inherited self-update marker cannot skip origin validation or inflate summary counters"
 else
-    fail "ACFS self-update re-exec marker polluted summary counters: $self_update_done_output"
+    fail "An inherited self-update marker bypassed validation or polluted summary counters: $self_update_done_output"
 fi
 
 # ============================================================
-section "Test 3g: ACFS self-update preserves upstream-looking dirty checkout"
+section "Test 3g: Incomplete bootstrap preserves an upstream-looking dirty checkout"
 # ============================================================
 self_update_repair_output=$(
     bash -c '
@@ -519,8 +538,10 @@ self_update_repair_output=$(
         seed_repo="$temp_root/seed"
         origin_repo="$temp_root/origin.git"
         work_repo="$temp_root/work"
+        temp_home="$temp_root/home"
 
-        mkdir -p "$seed_repo/scripts/lib" "$seed_repo/scripts/generated"
+        mkdir -p "$seed_repo/scripts/lib" "$seed_repo/scripts/generated" "$temp_home/.acfs/scripts/lib"
+        printf "previous-update\n" > "$temp_home/.acfs/scripts/lib/update.sh"
         git -C "$seed_repo" init -b main >/dev/null
         git -C "$seed_repo" config user.email test@example.invalid
         git -C "$seed_repo" config user.name "ACFS Test"
@@ -548,9 +569,14 @@ self_update_repair_output=$(
         git -C "$work_repo" fetch origin main >/dev/null 2>&1
         git -C "$work_repo" show "$intermediate_commit:scripts/lib/update.sh" > "$work_repo/scripts/lib/update.sh"
         git -C "$work_repo" show "$intermediate_commit:scripts/generated/install_all.sh" > "$work_repo/scripts/generated/install_all.sh"
+        old_head="$(git -C "$work_repo" rev-parse HEAD)"
+        old_update_hash="$(sha256sum "$work_repo/scripts/lib/update.sh")"
+        old_generated_hash="$(sha256sum "$work_repo/scripts/generated/install_all.sh")"
 
+        HOME="$temp_home"
+        TARGET_HOME="$temp_home"
         ACFS_REPO_ROOT="$work_repo"
-        ACFS_HOME="$work_repo"
+        ACFS_HOME="$temp_home/.acfs"
         DRY_RUN=false
         QUIET=true
         UPDATE_SELF=true
@@ -561,11 +587,20 @@ self_update_repair_output=$(
         RED="" GREEN="" YELLOW="" CYAN="" BOLD="" DIM="" NC=""
 
         log_item() { printf "%s|%s|%s\n" "$1" "$2" "${3:-}"; }
-        is_expected_acfs_origin_url() { return 0; }
-        sync_acfs_global_wrapper() { return 0; }
-        update_runtime_acfs_home() { printf "%s\n" "$work_repo"; }
+        is_expected_acfs_origin_url() { [[ "$1" == "$origin_repo" ]]; }
+        update_target_home() { printf "%s\n" "$temp_home"; }
 
-        update_acfs_self
+        # This intentionally partial source lacks the canonical ledger. Its
+        # failure must precede checkout/deployment changes. Complete dirty
+        # handoffs are exercised by BootstrapHandoffTests.
+        self_update_status=0
+        update_acfs_self || self_update_status=$?
+        printf "SELF_UPDATE_STATUS=%s\n" "$self_update_status"
+        [[ "$(git -C "$work_repo" rev-parse HEAD)" == "$old_head" ]] && echo "HEAD_UNCHANGED=yes"
+        [[ "$(sha256sum "$work_repo/scripts/lib/update.sh")" == "$old_update_hash" ]] && echo "UPDATE_UNCHANGED=yes"
+        [[ "$(sha256sum "$work_repo/scripts/generated/install_all.sh")" == "$old_generated_hash" ]] && echo "GENERATED_UNCHANGED=yes"
+        [[ "$(cat "$temp_home/.acfs/scripts/lib/update.sh")" == previous-update ]] && echo "DEPLOYED_UNCHANGED=yes"
+        [[ ! -e "$temp_home/.acfs/.update-runtime/current" ]] && echo "NO_ACTIVE_GENERATION=yes"
         printf "HEAD=%s\n" "$(git -C "$work_repo" rev-parse HEAD)"
         printf "REMOTE=%s\n" "$(git -C "$work_repo" rev-parse origin/main)"
         if [[ -z "$(git -C "$work_repo" status --porcelain --untracked-files=no)" ]]; then
@@ -577,12 +612,18 @@ self_update_repair_output=$(
     ' 2>&1
 ) || true
 
-if echo "$self_update_repair_output" | grep -q '^warn|ACFS self-update|BLOCKED:' \
+if echo "$self_update_repair_output" | grep -q '^SELF_UPDATE_STATUS=1$' \
+    && echo "$self_update_repair_output" | grep -q 'missing or nonregular Git source: scripts/generated/internal_checksums.sh' \
+    && echo "$self_update_repair_output" | grep -q '^HEAD_UNCHANGED=yes$' \
+    && echo "$self_update_repair_output" | grep -q '^UPDATE_UNCHANGED=yes$' \
+    && echo "$self_update_repair_output" | grep -q '^GENERATED_UNCHANGED=yes$' \
+    && echo "$self_update_repair_output" | grep -q '^DEPLOYED_UNCHANGED=yes$' \
+    && echo "$self_update_repair_output" | grep -q '^NO_ACTIVE_GENERATION=yes$' \
     && echo "$self_update_repair_output" | grep -q '^STATUS_CLEAN=no$' \
     && [[ "$(echo "$self_update_repair_output" | sed -n 's/^HEAD=//p' | tail -1)" != "$(echo "$self_update_repair_output" | sed -n 's/^REMOTE=//p' | tail -1)" ]] \
     && echo "$self_update_repair_output" | grep -q '^ M scripts/generated/install_all.sh$' \
     && echo "$self_update_repair_output" | grep -q '^ M scripts/lib/update.sh$'; then
-    pass "ACFS self-update preserves dirty tracked files even when their bytes match upstream history"
+    pass "Incomplete bootstrap preserves deployed and dirty tracked files even when their bytes match upstream history"
 else
     fail "ACFS self-update modified or misreported an upstream-looking dirty checkout: $self_update_repair_output"
 fi
@@ -597,7 +638,8 @@ sync_git_tracked_output=$(
 
         temp_root="${TMPDIR:-/tmp}/acfs-sync-git-managed.$$"
         source_repo="$temp_root/source"
-        deployed_repo="$temp_root/deployed"
+        temp_home="$temp_root/home"
+        deployed_repo="$temp_home/.acfs"
 
         mkdir -p "$source_repo/scripts/lib" "$deployed_repo/scripts/lib"
         printf "source-update\n" > "$source_repo/scripts/lib/update.sh"
@@ -610,9 +652,12 @@ sync_git_tracked_output=$(
 
         ACFS_REPO_ROOT="$source_repo"
         ACFS_HOME="$deployed_repo"
+        HOME="$temp_home"
+        TARGET_HOME="$temp_home"
         DRY_RUN=false
         UPDATE_LOG_FILE="/dev/null"
         update_runtime_acfs_home() { printf "%s\n" "$ACFS_HOME"; }
+        update_target_home() { printf "%s\n" "$temp_home"; }
         log_to_file() { :; }
 
         sync_acfs_deployed
