@@ -26,6 +26,36 @@ assert.deepEqual(
   [],
 );
 
+// Use the real prerequisite rule in routing tests, and the production catalogue
+// for the fresh-subset regressions below. Existing routing cases keep their small graph.
+const selectionScope = createContext({});
+function loadSelectionSource(path, dependencies = {}) {
+  const output = ts.transpileModule(readFileSync(path, "utf8"), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  });
+  const cjs = { exports: {} };
+  runInContext(`(function(require,module,exports){${output.outputText}\n})`, selectionScope)(
+    (name) => {
+      assert.ok(Object.hasOwn(dependencies, name), name);
+      return dependencies[name];
+    },
+    cjs,
+    cjs.exports,
+  );
+  return cjs.exports;
+}
+const selectionCatalogue = loadSelectionSource(
+  new URL("../../../lib/generated/manifest-modules.ts", import.meta.url),
+);
+const selectionHelpers = loadSelectionSource(
+  new URL("../../../lib/moduleSelection.ts", import.meta.url),
+  { "./generated/manifest-modules": selectionCatalogue },
+);
+const parseSelection = runInContext("JSON.parse", selectionScope);
+const productionPlan = (input) =>
+  selectionHelpers.resolveModuleSelection(parseSelection(JSON.stringify(input)));
+const wizardModules = [...selectionHelpers.WIZARD_PREREQUISITE_MODULES];
+
 // Fixture graph makes routing errors visible; graph correctness is covered by
 // moduleSelection's production-catalogue contract tests, not these service doubles.
 const profiles = [
@@ -38,10 +68,10 @@ const profiles = [
   { id: "stack-only", label: "Stack only" },
 ];
 const ids = {
-  full: ["base.system", "agents.claude", "stack.ntm"],
-  safe: ["base.system", "agents.claude", "stack.ntm"],
-  vibe: ["base.system", "agents.claude", "stack.ntm"],
-  minimal: ["base.system", "agents.claude"],
+  full: [...wizardModules, "agents.claude", "stack.ntm"],
+  safe: [...wizardModules, "agents.claude", "stack.ntm"],
+  vibe: [...wizardModules, "agents.claude", "stack.ntm"],
+  minimal: [...wizardModules, "agents.claude"],
   "agents-only": ["base.system", "agents.claude"],
   "cloud-only": ["base.system", "cloud.wrangler"],
   "stack-only": ["base.system", "stack.ntm"],
@@ -63,7 +93,8 @@ function fixture(initial = {}) {
     ref: null,
     ip: "203.0.113.42",
     username: "developer",
-    profile: "cloud-only",
+    profile: "full",
+    setupProfile: null,
     provider: {
       providerId: "other",
       planName: "custom plan",
@@ -81,6 +112,7 @@ function fixture(initial = {}) {
     ip: true,
     username: true,
     profile: true,
+    setup: true,
     provider: true,
   };
   const calls = { command: [], runbook: [], provider: [], profile: [] };
@@ -91,6 +123,7 @@ function fixture(initial = {}) {
   const slots = [];
   let acknowledgeNext = false;
   let invalidPlan = false;
+  let productionSelections = false;
   let cursor = 0;
   let navigation;
   let lastCompletionKey = null;
@@ -166,7 +199,7 @@ function fixture(initial = {}) {
     return (
       `bash install.sh --mode ${mode} --target-ubuntu=${prefs.installDestination ?? "26.04"} --user ${username}` +
       (ref ? ` --ref "${ref}"` : "") +
-      (selection ? ` --profile "${selection.profile}"` : "") +
+      (selection?.profile ? ` --profile "${selection.profile}"` : "") +
       (selection?.onlyModules ?? []).map((id) => ` --only "${id}"`).join("") +
       (selection?.skipModules ?? []).map((id) => ` --skip "${id}"`).join("")
     );
@@ -282,9 +315,17 @@ function fixture(initial = {}) {
       useSSHUsername: pref("username"),
       useVPSReadinessSelection: pref("provider"),
       useModuleProfile: pref("profile"),
+      useWizardSetup: () => [
+        session.status !== "active" && prefs.setupProfile === prefs.profile,
+        (enabled) => {
+          if (session.status !== "active") prefs.setupProfile = enabled ? prefs.profile : null;
+        },
+        loaded.setup,
+      ],
       useModuleSelection: () => [
-        session.installation?.moduleSelection ?? { profile: prefs.profile },
-        loaded.profile,
+        session.installation?.moduleSelection ??
+          selectionHelpers.getGuidedModuleSelection(prefs.profile, prefs.setupProfile === prefs.profile),
+        loaded.profile && loaded.setup,
       ],
       normalizeGitRef: (value) =>
         typeof value === "string" &&
@@ -300,7 +341,10 @@ function fixture(initial = {}) {
     },
     "@/lib/vpsProviders": { ACFS_RECOMMENDED_UBUNTU: "26.04" },
     "@/lib/moduleSelection": {
-      resolveModuleSelection: ({ profile, onlyModules, skipModules }) => {
+      getMissingWizardPrerequisites: selectionHelpers.getMissingWizardPrerequisites,
+      resolveModuleSelection: (selection) => {
+        if (productionSelections) return productionPlan(selection);
+        const { profile, onlyModules, skipModules } = selection;
         const valid = !invalidPlan && Object.hasOwn(ids, profile);
         const included = valid
           ? (onlyModules?.length ? onlyModules : ids[profile])
@@ -312,7 +356,7 @@ function fixture(initial = {}) {
           included,
           excluded: [],
           selectedCount: included.length,
-          availableCount: 4,
+          availableCount: new Set(Object.values(ids).flat()).size,
           warnings: [],
           errors: valid ? [] : ["The selected profile cannot be resolved."],
         };
@@ -446,6 +490,8 @@ function fixture(initial = {}) {
       button: (label) => find((node) => node.type === "button" && text(node).trim() === label),
       picker: () => find((node) => node.type === "select" && node.props.id === "installer-profile"),
       pinToggle: () => find((node) => node.type === "checkbox" && node.props.id === "pin-ref"),
+      setupToggle: () => find((node) => node.type === "checkbox" && node.props.id === "include-wizard-setup"),
+      text: () => nodes.map(text).join(" "),
       pinInput: () =>
         find(
           (node) =>
@@ -471,6 +517,7 @@ function fixture(initial = {}) {
     acknowledgements,
     session,
     queryInputs,
+    useProductionSelection: () => { productionSelections = true; },
     checkpointJobs,
     useNativeHashing: (crypto = webcrypto) => {
       context.crypto = crypto;
@@ -584,7 +631,7 @@ test("mode-bearing profiles cannot be downgraded by a conflicting saved install 
 });
 
 test("saved profile hydration gates every command and artifact builder", () => {
-  const item = fixture();
+  const item = fixture({ profile: "cloud-only" });
   item.loaded.profile = false;
   const view = item.render();
   assert.equal(view.main(), undefined);
@@ -595,7 +642,7 @@ test("saved profile hydration gates every command and artifact builder", () => {
 });
 
 test("all other preference hydration gates remain intact", () => {
-  for (const key of ["os", "mode", "ref", "ip", "username", "provider"]) {
+  for (const key of ["os", "mode", "ref", "ip", "username", "provider", "setup"]) {
     const item = fixture();
     item.loaded[key] = false;
     assert.equal(item.render().main(), undefined);
@@ -681,7 +728,7 @@ test("a resolver refusal never reaches executable builders or completion handler
 });
 
 test("what-installs summary is the resolved profile, not the hard-coded full tool catalogue", () => {
-  const item = fixture();
+  const item = fixture({ profile: "cloud-only" });
   const view = item.render();
   const section = view.nodes.find(
     (node) =>
@@ -788,7 +835,7 @@ test("an acknowledged context can be revisited without approving a different one
   item.setAcknowledged(true);
   item.prefs.profile = "minimal";
   assert.equal(item.render().navigation().disabled, true);
-  item.prefs.profile = "cloud-only";
+  item.prefs.profile = "full";
   const view = item.render();
   assert.equal(view.main().props.persistKey, first);
   assert.equal(view.navigation().disabled, false);
@@ -894,7 +941,7 @@ test("active reviewed selection drives primary, cache and all handoffs without w
 });
 
 test("adoption ignores an earlier invalid pin draft and prevents settings handlers from changing approved choices", () => {
-  const item = fixture({ ref: "v0.1.0" });
+  const item = fixture({ ref: "v0.1.0", profile: "cloud-only" });
   let view = item.render();
   view.pinInput().props.onChange({ target: { value: "bad;ref" } });
   assert.equal(item.render().main(), undefined);
@@ -1054,4 +1101,88 @@ test("native hashing runs again after remount and a persisted acknowledgement ca
   failed.navigation().onContinue();
   assert.deepEqual(next.completed, []);
   assert.match(failed.errors(), /could not prepare the installation acknowledgement/);
+});
+
+for (const profile of ["agents-only", "cloud-only", "stack-only"]) {
+  test(`fresh ${profile} setup requires an explicit prerequisite choice and a new command acknowledgement`, () => {
+    const item = fixture({ profile });
+    item.useProductionSelection();
+    let view = item.render();
+    const original = view.main().props.command;
+    const originalKey = view.main().props.persistKey;
+    item.setAcknowledged(true);
+    view = item.render();
+    assert.equal(view.setupToggle().props.checked, false);
+    assert.equal(view.main().props.command, original);
+    assert.equal(view.main().props.showCheckbox, false);
+    assert.equal(view.navigation().disabled, true);
+    assert.equal(view.button("Installation finished").props.disabled, true);
+    view.navigation().onContinue();
+    assert.deepEqual(item.completed, []);
+    assert.match(view.text(), /acfs\.doctor/);
+
+    view.setupToggle().props.onCheckedChange(true);
+    view = item.render();
+    assert.equal(view.setupToggle().props.checked, true);
+    assert.match(view.main().props.command, /--only "acfs.doctor"/);
+    assert.notEqual(view.main().props.persistKey, originalKey);
+    assert.equal(view.navigation().disabled, true, "the old command acknowledgement is insufficient");
+    assert.equal(view.main().props.showCheckbox, true);
+    const selection = item.calls.command.at(-1).selection;
+    for (const kind of ["runbook", "provider", "profile"])
+      assert.deepEqual(item.calls[kind].at(-1).moduleSelection, selection);
+    assert.ok(view.cache().props.command.startsWith(view.main().props.command));
+    const expected = new Set([
+      ...productionPlan({ profile }).included.map((entry) => entry.id),
+      ...wizardModules,
+    ]);
+    assert.deepEqual(new Set(selection.onlyModules), expected);
+    item.setAcknowledged(true);
+    assert.equal(item.render().navigation().disabled, false);
+
+    item.render().setupToggle().props.onCheckedChange(false);
+    view = item.render();
+    assert.equal(view.main().props.command, original);
+    assert.equal(view.navigation().disabled, true, "a previous subset acknowledgement cannot bypass prerequisites");
+    view.setupToggle().props.onCheckedChange(true);
+    view = item.render();
+    assert.equal(view.navigation().disabled, false);
+    view.navigation().onContinue();
+    assert.deepEqual(item.completed, [9]);
+    assert.deepEqual(item.navigations, ["/wizard/reconnect-ubuntu"]);
+  });
+}
+
+test("an imported subset remains exact and cannot inherit saved setup approval", () => {
+  const item = fixture({ profile: "cloud-only", setupProfile: "cloud-only" });
+  item.useProductionSelection();
+  item.adopt();
+  const approved = plain(item.session.installation);
+  item.setAcknowledged(true);
+  const view = item.render();
+  assert.equal(view.main().props.command, approved.command);
+  assert.deepEqual(plain(item.session.installation), approved);
+  assert.equal(view.main().props.showCheckbox, false);
+  assert.equal(view.navigation().disabled, true);
+  assert.ok(!view.nodes.some((node) => node.props.id === "include-wizard-setup"));
+  assert.match(view.text(), /approved team profile is unchanged/);
+  assert.match(view.text(), /review it again/);
+  view.navigation().onContinue();
+  assert.deepEqual(item.navigations, []);
+});
+
+test("withdrawing setup prerequisites invalidates a previously enabled continuation callback", () => {
+  const item = fixture({ profile: "cloud-only" });
+  item.useProductionSelection();
+  item.render().setupToggle().props.onCheckedChange(true);
+  item.render();
+  item.setAcknowledged(true);
+  const ready = item.render();
+  assert.equal(ready.navigation().disabled, false);
+  const staleContinue = ready.navigation().onContinue;
+  ready.setupToggle().props.onCheckedChange(false);
+  assert.equal(item.render().navigation().disabled, true);
+  staleContinue();
+  assert.deepEqual(item.completed, []);
+  assert.deepEqual(item.navigations, []);
 });

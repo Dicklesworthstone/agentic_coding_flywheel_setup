@@ -100,7 +100,7 @@ function WindowsTerminalSetupContent() {
   // (#302). %USERPROFILE% is expanded by Windows in this context.
   const sshCommandLine = buildWindowsTerminalProfileSshCommand(effectiveUsername, displayIP);
 
-  const handleCopy = useCallback(async () => {
+  const handleCopy = async () => {
     const copiedOk = await copyTextToClipboard(sshCommandLine);
     if (!copiedOk) {
       return;
@@ -113,7 +113,7 @@ function WindowsTerminalSetupContent() {
       setCopied(false);
       copyResetTimerRef.current = null;
     }, 2000);
-  }, [sshCommandLine]);
+  };
 
   if (!ready || !vpsIP) {
     return (

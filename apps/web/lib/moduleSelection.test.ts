@@ -6,12 +6,57 @@ import {
 import {
   buildInstallSelectorArgs,
   formatModuleSelectionPlan,
+  getGuidedModuleSelection,
+  getMissingWizardPrerequisites,
   resolveModuleSelection,
+  WIZARD_PREREQUISITE_MODULES,
 } from "./moduleSelection";
 
 function includedIds(profile?: Parameters<typeof resolveModuleSelection>[0]) {
   return resolveModuleSelection(profile).included.map((entry) => entry.id);
 }
+
+describe("guided setup prerequisites are an explicit addition", () => {
+  for (const profile of ["agents-only", "cloud-only", "stack-only"] as const) {
+    test(`${profile} remains an exact CLI profile until guided setup is requested`, () => {
+      const original = { profile };
+      const before = resolveModuleSelection(original);
+      expect(before.ok).toBe(true);
+      expect(getMissingWizardPrerequisites(before)).toContain("acfs.doctor");
+      expect(getGuidedModuleSelection(profile, false)).toEqual(original);
+      expect(buildInstallSelectorArgs(original)).toEqual(["--profile", `"${profile}"`]);
+
+      const guided = getGuidedModuleSelection(profile, true);
+      const after = resolveModuleSelection(guided);
+      expect(after.ok).toBe(true);
+      expect(getMissingWizardPrerequisites(after)).toEqual([]);
+      expect(new Set(after.included.map((entry) => entry.id))).toEqual(
+        new Set([...before.included.map((entry) => entry.id), ...WIZARD_PREREQUISITE_MODULES]),
+      );
+      expect(buildInstallSelectorArgs(guided)).toContain('"acfs.doctor"');
+      expect(buildInstallSelectorArgs(guided)).not.toContain("--profile");
+      expect(buildInstallSelectorArgs(guided)).not.toContain("--no-deps");
+      expect(getGuidedModuleSelection(profile, false)).toEqual(original);
+      expect(includedIds(original)).not.toContain("acfs.doctor");
+    });
+  }
+
+  for (const profile of ["full", "minimal"] as const) {
+    test(`${profile} needs no rewritten selectors`, () => {
+      expect(getMissingWizardPrerequisites(resolveModuleSelection({ profile }))).toEqual([]);
+      expect(getGuidedModuleSelection(profile, true)).toEqual({ profile });
+    });
+  }
+
+  test("a custom fresh-server selection reports its missing account, workspace and Doctor", () => {
+    const plan = resolveModuleSelection({ onlyModules: ["base.system"] });
+    expect(plan.ok).toBe(true);
+    expect(getMissingWizardPrerequisites(plan)).toEqual([
+      "users.ubuntu", "base.filesystem", "acfs.doctor",
+    ]);
+    expect(plan.included.map((entry) => entry.id)).toEqual(["base.system"]);
+  });
+});
 
 describe("resolveModuleSelection", () => {
   test("default selection follows enabled-by-default manifest metadata", () => {

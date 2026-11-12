@@ -52,7 +52,7 @@ import {
   type InstallerCheckpointInput,
   installerCheckpointMatches,
 } from "@/lib/installerCheckpoint";
-import { resolveModuleSelection } from "@/lib/moduleSelection";
+import { getMissingWizardPrerequisites, resolveModuleSelection } from "@/lib/moduleSelection";
 import {
   buildProviderProvisioningPacket,
   serializeProviderProvisioningPacketJson,
@@ -67,6 +67,7 @@ import {
   useUserOS,
   useVPSIP,
   useVPSReadinessSelection,
+  useWizardSetup,
   type VPSReadinessSelection,
 } from "@/lib/userPreferences";
 import { copyTextToClipboard, safeGetItem, withCurrentSearch } from "@/lib/utils";
@@ -134,6 +135,7 @@ export default function RunInstallerPage() {
   const [installMode, , installModeLoaded] = useInstallMode();
   const [moduleProfile, setModuleProfile, moduleProfileLoaded] = useModuleProfile();
   const [moduleSelection, moduleSelectionLoaded] = useModuleSelection();
+  const [includeWizardSetup, setIncludeWizardSetup, wizardSetupLoaded] = useWizardSetup();
   const installationSession = useWizardInstallation();
   const reviewedInstallation =
     installationSession?.status === "active" ? installationSession.installation : null;
@@ -162,11 +164,16 @@ export default function RunInstallerPage() {
     installModeLoaded &&
     moduleProfileLoaded &&
     moduleSelectionLoaded &&
+    wizardSetupLoaded &&
     acfsRefLoaded &&
     vpsIPLoaded &&
     sshUsernameLoaded &&
     vpsReadinessSelectionLoaded;
   const modulePlan = useMemo(() => resolveModuleSelection(moduleSelection), [moduleSelection]);
+  const missingPrerequisites = getMissingWizardPrerequisites(modulePlan);
+  const profilePrerequisites = reviewedInstallation
+    ? missingPrerequisites
+    : getMissingWizardPrerequisites(resolveModuleSelection({ profile: moduleProfile }));
   const selectedProfile = manifestSelectionProfiles.find((profile) => profile.id === moduleProfile);
   const effectiveInstallMode = reviewedInstallation?.mode ?? selectedProfile?.mode ?? installMode;
   const canBuildInstall =
@@ -317,7 +324,20 @@ export default function RunInstallerPage() {
     placeholderData: false,
   });
   const canContinue =
-    canGenerateInstall && currentCheckpoint !== null && installerAcknowledged && !isNavigating;
+    canGenerateInstall &&
+    missingPrerequisites.length === 0 &&
+    currentCheckpoint !== null &&
+    installerAcknowledged &&
+    !isNavigating;
+  // A registered mobile/desktop callback must not retain authority after the
+  // command, acknowledgement, or guided setup prerequisites change.
+  const currentCompletion = useRef<string | null>(null);
+  useEffect(() => {
+    currentCompletion.current = canContinue ? completionKey : null;
+    return () => {
+      currentCompletion.current = null;
+    };
+  }, [canContinue, completionKey]);
   const cacheTransferTarget = useMemo(
     () => formatSshTarget("root", effectiveVpsIP),
     [effectiveVpsIP],
@@ -427,12 +447,13 @@ export default function RunInstallerPage() {
   }, [ready, router, vpsIP]);
 
   const handleContinue = useCallback(() => {
-    if (!canContinue) return;
+    if (!canContinue || !completionKey || currentCompletion.current !== completionKey) return;
+    currentCompletion.current = null;
     markComplete();
     markStepComplete(9);
     setIsNavigating(true);
     router.push(withCurrentSearch("/wizard/reconnect-ubuntu"));
-  }, [canContinue, router, markComplete]);
+  }, [canContinue, completionKey, router, markComplete]);
   useEffect(() => {
     return () => {
       if (downloadStatusTimerRef.current) {
@@ -655,6 +676,52 @@ export default function RunInstallerPage() {
           ))}
         </div>
 
+        {profilePrerequisites.length > 0 && (
+          <AlertCard
+            variant={missingPrerequisites.length > 0 ? "warning" : "info"}
+            title="Set up SSH access and the health check"
+          >
+            <div className="space-y-3 text-sm">
+              <p>
+                The guided setup needs a working SSH account, workspace, and ACFS Doctor before
+                you can reconnect and verify this installation. This profile omits:
+              </p>
+              <ul className="list-inside list-disc font-mono text-xs">
+                {profilePrerequisites.map((id) => <li key={id}>{id}</li>)}
+              </ul>
+              {reviewedInstallation ? (
+                <p>
+                  Your approved team profile is unchanged. Add the missing modules to that
+                  profile and review it again, or discard the reviewed installation above and
+                  use your saved wizard choices. You cannot continue this fresh setup without
+                  these prerequisites.
+                </p>
+              ) : (
+                <>
+                  <label htmlFor="include-wizard-setup" className="flex min-h-11 items-start gap-3 py-2">
+                    <Checkbox
+                      id="include-wizard-setup"
+                      checked={includeWizardSetup}
+                      onCheckedChange={(checked) => setIncludeWizardSetup(checked === true)}
+                      className="mt-0.5"
+                    />
+                    <span>
+                      Include these setup modules with my selected tools. I will review and run
+                      the updated command below.
+                    </span>
+                  </label>
+                  <p className="text-muted-foreground">
+                    This choice applies to this profile. The updated command and every handoff
+                    artifact list the selected tools plus these prerequisites and their required
+                    dependencies. Until you opt in, the command below keeps the original CLI
+                    selection and cannot unlock the next wizard step.
+                  </p>
+                </>
+              )}
+            </div>
+          </AlertCard>
+        )}
+
         {/* Pinned ref toggle (bd-31ps.8.2) */}
         <div className="rounded-lg border border-border/50 bg-card/50 p-4 space-y-3">
           {/* The whole row is the label so the 16px box gets a 44px tap target. */}
@@ -724,7 +791,7 @@ export default function RunInstallerPage() {
             command={installCommand}
             description="Agent Flywheel installer one-liner"
             runLocation="vps"
-            showCheckbox={currentCheckpoint !== null}
+            showCheckbox={currentCheckpoint !== null && missingPrerequisites.length === 0}
             persistKey={currentCheckpoint?.persistKey}
             className="border-2 border-primary/20"
           />

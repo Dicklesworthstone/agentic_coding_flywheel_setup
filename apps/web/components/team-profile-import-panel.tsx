@@ -16,7 +16,7 @@ import {
 import {
   useSavedACFSRef as useACFSRef,
   useSavedInstallMode as useInstallMode,
-  useSavedModuleProfile as useModuleProfile,
+  useSavedModuleSelection as useModuleSelection,
   useSavedSSHUsername as useSSHUsername,
   useVPSIP,
   useVPSReadinessSelection,
@@ -50,7 +50,7 @@ function Changes({ title, changes }: { title: string; changes: TeamProfileImport
 export function TeamProfileImportPanel() {
   const installationSession = useWizardInstallation();
   const [mode, , modeLoaded] = useInstallMode();
-  const [profile, , profileLoaded] = useModuleProfile();
+  const [moduleSelection, profileLoaded] = useModuleSelection();
   const [ref, , refLoaded] = useACFSRef();
   const [username, , usernameLoaded] = useSSHUsername();
   const [host, , hostLoaded] = useVPSIP();
@@ -84,7 +84,7 @@ export function TeamProfileImportPanel() {
         username,
         architecture,
         ubuntuVersion,
-        moduleSelection: { profile },
+        moduleSelection,
       },
     };
   }, [
@@ -97,7 +97,7 @@ export function TeamProfileImportPanel() {
     ref,
     username,
     ubuntuVersion,
-    profile,
+    moduleSelection,
   ]);
   const [previousContext, setPreviousContext] = useState(context);
   const activeReview = teamProfileReviewMatches(review, context) ? review : null;

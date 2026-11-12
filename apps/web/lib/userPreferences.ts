@@ -12,7 +12,7 @@ import {
   manifestSelectionProfiles,
 } from "./generated/manifest-modules";
 import { isValidIP, normalizeGitRef, normalizeSSHUsername } from "./inputValidation";
-import type { ModuleSelectionInput } from "./moduleSelection";
+import { getGuidedModuleSelection, type ModuleSelectionInput } from "./moduleSelection";
 import {
   safeGetItem,
   safeSetItem,
@@ -42,6 +42,7 @@ const VPS_IP_KEY = "agent-flywheel-vps-ip";
 const INSTALL_MODE_KEY = "agent-flywheel-install-mode";
 const SSH_USERNAME_KEY = "agent-flywheel-ssh-username";
 const MODULE_PROFILE_KEY = "agent-flywheel-module-profile";
+export const WIZARD_SETUP_PROFILE_KEY = "agent-flywheel-wizard-setup-profile";
 export const ACFS_REF_KEY = "agent-flywheel-acfs-ref";
 export const CREATE_VPS_CHECKLIST_KEY = "agent-flywheel-create-vps-checklist";
 export const VPS_READINESS_SELECTION_KEY = "agent-flywheel-vps-readiness-selection";
@@ -254,6 +255,7 @@ export const userPreferencesKeys = {
   installMode: ["userPreferences", "installMode"] as const,
   sshUsername: ["userPreferences", "sshUsername"] as const,
   moduleProfile: ["userPreferences", "moduleProfile"] as const,
+  wizardSetupProfile: ["userPreferences", "wizardSetupProfile"] as const,
   acfsRef: ["userPreferences", "acfsRef"] as const,
   createVPSChecklist: ["userPreferences", "createVPSChecklist"] as const,
   vpsReadinessSelection: ["userPreferences", "vpsReadinessSelection"] as const,
@@ -816,14 +818,69 @@ export function useModuleProfile(): [
   );
 }
 
+function getWizardSetupProfile(): ModuleSelectionProfileId | null {
+  const value = getPrivateJSONPreference(WIZARD_SETUP_PROFILE_KEY);
+  return typeof value === "string" && VALID_WEB_PROFILES.has(value as ModuleSelectionProfileId)
+    ? (value as ModuleSelectionProfileId)
+    : null;
+}
+
+/** Adding setup modules is an explicit choice for this saved profile only. */
+function useSavedWizardSetup(): [boolean, (enabled: boolean) => void, boolean] {
+  const [profile, , profileLoaded] = useSavedModuleProfile();
+  const queryClient = useQueryClient();
+  usePreferenceSync(userPreferencesKeys.wizardSetupProfile);
+  const { data, status } = useQuery({
+    queryKey: userPreferencesKeys.wizardSetupProfile,
+    queryFn: getWizardSetupProfile,
+    staleTime: 0,
+    gcTime: Infinity,
+  });
+  const setEnabled = useCallback(
+    (enabled: boolean) => {
+      if (setPrivateJSONPreference(WIZARD_SETUP_PROFILE_KEY, enabled ? profile : null)) {
+        queryClient.setQueryData(userPreferencesKeys.wizardSetupProfile, getWizardSetupProfile());
+        emitUserPreferencesUpdate();
+      }
+    },
+    [profile, queryClient],
+  );
+  // A restored query is only a rendering cache. Clearing or withdrawing the
+  // saved choice must not let cached data authorize extra install modules.
+  return [
+    data === profile && getWizardSetupProfile() === profile,
+    setEnabled,
+    profileLoaded && status === "success",
+  ];
+}
+
+export function useWizardSetup(): [boolean, (enabled: boolean) => void, boolean] {
+  return useInstallationPreference(useSavedWizardSetup(), () => false);
+}
+
+export function getSavedModuleSelection(): ModuleSelectionInput {
+  const profile = getModuleProfile();
+  return getGuidedModuleSelection(profile, getWizardSetupProfile() === profile);
+}
+
+/** The review baseline includes any setup modules the user explicitly added. */
+export function useSavedModuleSelection(): [ModuleSelectionInput, boolean] {
+  const [profile, , profileLoaded] = useSavedModuleProfile();
+  const [includePrerequisites, , prerequisitesLoaded] = useSavedWizardSetup();
+  const selection = useMemo(
+    () => getGuidedModuleSelection(profile, includePrerequisites),
+    [profile, includePrerequisites],
+  );
+  return [selection, profileLoaded && prerequisitesLoaded];
+}
+
 /** Exact selectors must travel together; a profile ID alone loses custom skips. */
 export function useModuleSelection(): [ModuleSelectionInput, boolean] {
-  const [profile, , loaded] = useModuleProfile();
+  const [saved, loaded] = useSavedModuleSelection();
   const session = useWizardInstallation();
   const installation = session?.status === "active" ? session.installation : null;
-  const selection = useMemo(
-    () => installation?.moduleSelection ?? { profile },
-    [installation, profile],
-  );
-  return [selection, loaded];
+  return [
+    installation?.moduleSelection ?? saved,
+    loaded && (!session || session.status === "saved" || session.status === "active"),
+  ];
 }

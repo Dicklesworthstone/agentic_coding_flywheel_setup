@@ -199,6 +199,10 @@ function fixture(sessionEntries = new Map(), initialPath = "/wizard/run-installe
     })),
   };
   const contextModule = load(new URL("../lib/wizardInstallation.ts", import.meta.url), { react });
+  const selectionCatalogue = load(new URL("../lib/generated/manifest-modules.ts", import.meta.url), {});
+  const selections = load(new URL("../lib/moduleSelection.ts", import.meta.url), {
+    "./generated/manifest-modules": selectionCatalogue,
+  });
   const queryClient = {
     invalidateQueries() {},
     getQueryData() {
@@ -228,6 +232,7 @@ function fixture(sessionEntries = new Map(), initialPath = "/wizard/run-installe
   const preferences = load(new URL("../lib/userPreferences.ts", import.meta.url), {
     react,
     "./wizardInstallation": contextModule,
+    "./moduleSelection": selections,
     "@tanstack/react-query": { useQuery, useQueryClient: () => queryClient },
     "./inputValidation": inputValidation,
     "./utils": {
@@ -332,6 +337,7 @@ function fixture(sessionEntries = new Map(), initialPath = "/wizard/run-installe
     "@/lib/wizardInstallation": contextModule,
     "@/lib/teamProfileImport": core,
     "@/lib/commandBuilder": commands,
+    "@/lib/moduleSelection": selections,
     "@/lib/utils": {
       cn: (...parts) => parts.filter(Boolean).join(" "),
       safeGetItem: () => null,
@@ -383,6 +389,7 @@ function fixture(sessionEntries = new Map(), initialPath = "/wizard/run-installe
       "@/lib/inputValidation": inputValidation,
       "@/lib/installerCheckpoint": load(new URL("../lib/installerCheckpoint.ts", import.meta.url), {}),
       "@/lib/moduleSelection": {
+        getMissingWizardPrerequisites: selections.getMissingWizardPrerequisites,
         resolveModuleSelection: () => ({
           ok: true,
           included: [],
@@ -500,7 +507,7 @@ function fixture(sessionEntries = new Map(), initialPath = "/wizard/run-installe
         username: preferences.getSSHUsername(),
         architecture: "aarch64",
         ubuntuVersion: "24.04",
-        moduleSelection: { profile: preferences.getModuleProfile() },
+        moduleSelection: preferences.getSavedModuleSelection(),
       },
     };
   }
@@ -579,6 +586,7 @@ function fixture(sessionEntries = new Map(), initialPath = "/wizard/run-installe
         ref: preferences.useACFSRef(),
         profile: preferences.useModuleProfile(),
         selection: preferences.useModuleSelection(),
+        setup: preferences.useWizardSetup(),
       })),
     review: () => core.reviewTeamProfileFile(new Blob([JSON.stringify(profile)]), context()),
     navigate: (value) => {
@@ -1096,4 +1104,69 @@ test("all native event subscriptions are removed when the connected session and 
   assert.ok(f.listenerCount() > 10);
   f.unmount();
   assert.equal(f.listenerCount(), 0);
+});
+
+test("guided setup is opt-in for one saved profile and reaches the imperative review baseline", () => {
+  const f = fixture();
+  f.local.set("agent-flywheel-module-profile", "cloud-only");
+  f.render();
+  let hooks = f.hooks();
+  assert.equal(hooks.setup[0], false);
+  assert.deepEqual(plain(hooks.selection[0]), { profile: "cloud-only" });
+  hooks.setup[1](true);
+  hooks = f.hooks();
+  assert.equal(hooks.setup[0], true);
+  const included = plain(hooks.selection[0]).onlyModules;
+  for (const id of ["cloud.wrangler", "cloud.supabase", "cloud.vercel", "acfs.doctor"])
+    assert.ok(included.includes(id), id);
+  for (const id of ["agents.claude", "stack.ntm", "db.postgres18"])
+    assert.ok(!included.includes(id), id);
+  assert.deepEqual(plain(f.preferences.getSavedModuleSelection()), plain(hooks.selection[0]));
+  assert.deepEqual(plain(f.context().current.moduleSelection), plain(hooks.selection[0]));
+
+  hooks.profile[1]("stack-only");
+  hooks = f.hooks();
+  assert.equal(hooks.setup[0], false);
+  assert.deepEqual(plain(hooks.selection[0]), { profile: "stack-only" });
+  hooks.profile[1]("cloud-only");
+  hooks = f.hooks();
+  assert.equal(hooks.setup[0], true);
+  hooks.setup[1](false);
+  assert.deepEqual(plain(f.hooks().selection[0]), { profile: "cloud-only" });
+  assert.deepEqual(plain(f.preferences.getSavedModuleSelection()), { profile: "cloud-only" });
+});
+
+test("saved guided setup cannot rewrite an imported approval or its restoration after discard", async () => {
+  const f = fixture();
+  f.local.set("agent-flywheel-module-profile", "cloud-only");
+  f.render();
+  f.hooks().setup[1](true);
+  const savedSelection = plain(f.hooks().selection[0]);
+  const review = await f.review();
+  f.session().activate(review, f.context(), true);
+  f.render();
+  assert.equal(f.session().status, "active");
+  const imported = plain(f.session().installation.moduleSelection);
+  assert.deepEqual(plain(f.hooks().selection[0]), imported);
+  assert.ok(!imported.onlyModules.includes("acfs.doctor"));
+  const stored = new Map(f.local);
+  f.hooks().setup[1](true);
+  f.render();
+  assert.deepEqual(f.local, stored);
+  assert.deepEqual(plain(f.hooks().selection[0]), imported);
+  f.session().discard();
+  f.render();
+  assert.deepEqual(plain(f.hooks().selection[0]), savedSelection);
+});
+
+test("cached guided setup cannot override a withdrawn canonical opt-in", () => {
+  const f = fixture();
+  f.local.set("agent-flywheel-module-profile", "cloud-only");
+  f.render();
+  f.hooks().setup[1](true);
+  assert.ok(plain(f.hooks().selection[0]).onlyModules.includes("acfs.doctor"));
+  f.local.delete(f.preferences.WIZARD_SETUP_PROFILE_KEY);
+  assert.equal(f.hooks().setup[0], false);
+  assert.deepEqual(plain(f.hooks().selection[0]), { profile: "cloud-only" });
+  assert.deepEqual(plain(f.preferences.getSavedModuleSelection()), { profile: "cloud-only" });
 });

@@ -43,6 +43,11 @@ function load(path, dependencies, scope) {
   );
   return cjs.exports;
 }
+const selectionHelpers = load(
+  new URL("../../../lib/moduleSelection.ts", import.meta.url),
+  { "./generated/manifest-modules": {} },
+  createContext({}),
+);
 function fixture() {
   const prefs = {
     host: "203.0.113.42",
@@ -306,6 +311,7 @@ function fixture() {
         typeof value === "string" && /^[a-zA-Z0-9_./-]+$/.test(value) ? value : null,
     },
     "@/lib/moduleSelection": {
+      getMissingWizardPrerequisites: selectionHelpers.getMissingWizardPrerequisites,
       resolveModuleSelection(selection) {
         const ok = !resolverFailure;
         return {
@@ -494,6 +500,27 @@ test("doctor requires a context-bound acknowledgement and a currently rendered c
   assert.equal(f.marked(), 1);
   assert.equal(f.analytics(), 1);
   assert.deepEqual(f.routes, ["/wizard/launch-onboarding"]);
+});
+
+test("a targeted existing-host addition retains Doctor verification and offers fresh-host recovery", async () => {
+  const f = fixture();
+  f.select(["base.system", "users.ubuntu", "base.filesystem", "cloud.vercel"]);
+  f.prefs.selection = { profile: "cloud-only" };
+  let view = f.render();
+  assert.match(view.text(), /This selection does not install acfs.doctor/);
+  assert.ok(view.nodes.some((node) =>
+    node.type === "link" && node.props.href === "/wizard/run-installer" &&
+    /required setup modules/.test(text(node)),
+  ));
+  assert.equal(view.continue().props.disabled, true);
+  view = await f.settle();
+  assert.equal(view.doctor().props.command, "acfs doctor");
+  assert.equal(view.continue().props.disabled, true);
+  view.continue().props.onClick();
+  assert.deepEqual(f.routes, []);
+  f.acknowledge().continue().props.onClick();
+  assert.deepEqual(f.routes, ["/wizard/launch-onboarding"]);
+  assert.deepEqual(f.prefs.selection, { profile: "cloud-only" });
 });
 
 test("old global doctor/installer acknowledgements cannot unlock navigation", async () => {

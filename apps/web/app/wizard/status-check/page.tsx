@@ -30,6 +30,7 @@ import { Button } from "@/components/ui/button";
 import { formatSshTarget } from "@/lib/commandBuilder";
 import { DOCTOR_COMMAND, useInstallationHealth } from "@/lib/hooks/useInstallationHealth";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
+import { getMissingWizardPrerequisites } from "@/lib/moduleSelection";
 import {
   CATEGORY_NAMES,
   getSelectedAuthServices,
@@ -197,6 +198,7 @@ export default function StatusCheckPage() {
   });
 
   const selectedModules = new Set(selectedPlan?.included.map((entry) => entry.id) ?? []);
+  const missingPrerequisites = selectedPlan ? getMissingWizardPrerequisites(selectedPlan) : [];
   const quickChecks = QUICK_CHECKS.filter((check) => selectedModules.has(check.moduleId));
   const authServices = getSelectedAuthServices(selectedModules);
   const selectedServices = Object.values(authServices).flat();
@@ -309,6 +311,26 @@ export default function StatusCheckPage() {
       {/* Doctor command */}
       <div className="space-y-4">
         <h2 className="text-xl font-semibold text-foreground">Run the doctor command</h2>
+        {missingPrerequisites.length > 0 && (
+          <AlertCard variant="warning" title="Missing setup tools on a fresh VPS?">
+            <p>
+              This selection does not install {missingPrerequisites.join(", ")}. If the SSH
+              account or <code>acfs doctor</code> is unavailable, return to Run Installer and
+              explicitly include the guided setup modules. Review and run that updated command,
+              reconnect, then run Doctor here.
+            </p>
+            <p className="mt-2">
+              On an existing ACFS host, you can use the working Doctor already installed. You
+              still need to run it for this exact installation and review its results below.
+            </p>
+            <Link
+              href={withCurrentSearch("/wizard/run-installer")}
+              className="inline-flex min-h-11 items-center underline"
+            >
+              Review the required setup modules
+            </Link>
+          </AlertCard>
+        )}
         <p className="text-sm text-muted-foreground">
           Run the health check on this VPS and inspect the actual results. This page knows your
           selected plan, not what succeeded remotely. The doctor may report tools outside a narrow

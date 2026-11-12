@@ -175,7 +175,10 @@ function fixture() {
       "@/components/command-card": { CommandCard: "command-card" },
       "@/lib/userPreferences": {
         useSavedInstallMode: preference("mode"),
-        useSavedModuleProfile: preference("profile"),
+        useSavedModuleSelection: () => [
+          react.useMemo(() => ({ profile: prefs.profile }), [prefs.profile]),
+          loaded.profile,
+        ],
         useSavedACFSRef: preference("ref"),
         useSavedSSHUsername: preference("username"),
         useVPSIP: preference("host"),

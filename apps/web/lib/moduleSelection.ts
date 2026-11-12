@@ -42,6 +42,42 @@ export interface ModuleSelectionPlan {
   availableCount: number;
 }
 
+/** A fresh guided install must support reconnecting and running the health check. */
+export const WIZARD_PREREQUISITE_MODULES = [
+  "base.system",
+  "users.ubuntu",
+  "base.filesystem",
+  "acfs.doctor",
+] as const;
+
+export function getMissingWizardPrerequisites(plan: ModuleSelectionPlan): string[] {
+  if (!plan.ok) return [];
+  const included = new Set(plan.included.map((entry) => entry.id));
+  return WIZARD_PREREQUISITE_MODULES.filter((id) => !included.has(id));
+}
+
+/**
+ * Only the guided wizard calls this after an explicit, profile-scoped opt-in.
+ * CLI profiles retain their exact meaning. Imported profiles bypass this helper
+ * because their reviewed selectors and command must never be rewritten.
+ */
+export function getGuidedModuleSelection(
+  profile: ModuleSelectionProfileId,
+  includePrerequisites: boolean,
+): ModuleSelectionInput {
+  const selection = { profile };
+  if (!includePrerequisites) return selection;
+  const plan = resolveModuleSelection(selection);
+  if (!plan.ok || plan.selectedCount === 0 || getMissingWizardPrerequisites(plan).length === 0) {
+    return selection;
+  }
+  return {
+    onlyModules: [
+      ...new Set([...plan.included.map((entry) => entry.id), ...WIZARD_PREREQUISITE_MODULES]),
+    ],
+  };
+}
+
 interface NormalizedSelection {
   profile?: ManifestSelectionProfile;
   onlyModules: string[];

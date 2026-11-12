@@ -19,13 +19,13 @@ import {
 import {
   getACFSRef,
   getInstallMode,
-  getModuleProfile,
+  getSavedModuleSelection,
   getSSHUsername,
   getVPSIP,
   getVPSReadinessSelection,
   useSavedACFSRef,
   useSavedInstallMode,
-  useSavedModuleProfile,
+  useSavedModuleSelection,
   useSavedSSHUsername,
   useVPSIP,
   useVPSReadinessSelection,
@@ -58,7 +58,7 @@ function currentContext(reviewed: TeamProfileReviewContext): TeamProfileReviewCo
       username: getSSHUsername(),
       architecture: reviewed.current.architecture,
       ubuntuVersion: reviewed.current.ubuntuVersion,
-      moduleSelection: { profile: getModuleProfile() },
+      moduleSelection: getSavedModuleSelection(),
     },
   };
 }
@@ -69,7 +69,7 @@ export function WizardInstallationProvider({ children }: { children: ReactNode }
   const inWizard =
     pathname === null || pathname === "/wizard" || pathname?.startsWith("/wizard/") === true;
   const [, , modeReady] = useSavedInstallMode();
-  const [, , profileReady] = useSavedModuleProfile();
+  const [, profileReady] = useSavedModuleSelection();
   const [, , refReady] = useSavedACFSRef();
   const [, , userReady] = useSavedSSHUsername();
   const [, , hostReady] = useVPSIP();
