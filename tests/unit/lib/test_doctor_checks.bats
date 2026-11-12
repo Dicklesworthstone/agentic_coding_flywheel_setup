@@ -30,8 +30,11 @@ load_doctor_functions() {
         || fail "doctor.sh no longer ends in 'main \"\$@\"' (got: $last_line)"
     # shellcheck disable=SC1090
     source <(sed '$d' "$DOCTOR_SH") >/dev/null 2>&1 || true
-    # Record results instead of rendering them.
-    check() { printf '%s|%s|%s|%s\n' "$1" "$3" "$4" "${5:-}"; }
+    # Most configuration tests record results instead of rendering them. Scope
+    # tests exercise the production JSON counters and repair dispatch too.
+    if [[ "${1:-}" != production ]]; then
+        check() { printf '%s|%s|%s|%s\n' "$1" "$3" "$4" "${5:-}"; }
+    fi
 }
 
 # ------------------------------------------------------------
@@ -369,4 +372,360 @@ nightly_state_fixture() {
     run check_login_shell_policy
     [ "$output" = "shell.login_shell|fail|user.sh validator is not deployed|Run acfs-update to redeploy the ACFS runtime, then run acfs doctor again" ] \
         || fail "unexpected: $output"
+}
+
+# ------------------------------------------------------------
+# Persisted subset installs: diagnose and repair the intended capabilities.
+# ------------------------------------------------------------
+
+doctor_selection_fixture() {
+    load_doctor_functions production
+    DOCTOR_TEST_STATE="$BATS_TEST_TMPDIR/selected-state.json"
+    DOCTOR_TEST_BIN="$BATS_TEST_TMPDIR/selected-bin"
+    DOCTOR_TEST_PROBES="$BATS_TEST_TMPDIR/probes"
+    mkdir -p "$DOCTOR_TEST_BIN"
+    printf '%s\n' "$1" > "$DOCTOR_TEST_STATE"
+    export DOCTOR_TEST_PROBES
+    _acfs_doctor_find_project_path() {
+        if [[ "$1" == state.json ]]; then
+            printf '%s\n' "$DOCTOR_TEST_STATE"
+        elif [[ -f "$PROJECT_ROOT/$1" ]]; then
+            printf '%s\n' "$PROJECT_ROOT/$1"
+        else
+            return 1
+        fi
+    }
+    # Load the real generated check data in a subshell: its shell options and
+    # PATH exports must not leak into Bats, just as in the production loader.
+    mapfile -t MANIFEST_CHECKS < <(
+        source "$PROJECT_ROOT/scripts/generated/doctor_checks.sh"
+        printf '%s\n' "${MANIFEST_CHECKS[@]}"
+    )
+    [[ ${#MANIFEST_CHECKS[@]} -gt 50 ]] || fail "manifest check fixture did not load"
+    MANIFEST_CHECKS_LOADED=true
+    JSON_MODE=true
+    HAS_GUM=false
+    FIX_MODE=false
+    section() { :; }
+    blank_line() { :; }
+    doctor_binary_path() {
+        [[ -x "$DOCTOR_TEST_BIN/$1" ]] || return 1
+        printf '%s\n' "$DOCTOR_TEST_BIN/$1"
+    }
+    doctor_agent_mail_cli_path() { doctor_binary_path am; }
+    doctor_load_module_selection
+}
+
+doctor_selection_binary() {
+    cat > "$DOCTOR_TEST_BIN/$1" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "${0##*/}" >> "$DOCTOR_TEST_PROBES"
+printf '%s 1.0\n' "${0##*/}"
+EOF
+    chmod +x "$DOCTOR_TEST_BIN/$1"
+}
+
+doctor_selection_json() {
+    local joined=""
+    joined=$(IFS=,; printf '%s' "${JSON_CHECKS[*]}")
+    printf '[%s]\n' "$joined"
+}
+
+doctor_custom_checkpoint_fixture() {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["agents.claude"]}}'
+    TARGET_HOME="$BATS_TEST_TMPDIR/custom-target"
+    TARGET_USER="$(id -un)"
+    ACFS_HOME="$TARGET_HOME/.acfs"
+    ACFS_STATE_FILE="$BATS_TEST_TMPDIR/custom-checkpoint.json"
+    mkdir -p "$ACFS_HOME"
+    jq -n --arg home "$TARGET_HOME" --arg user "$TARGET_USER" \
+        '{target_home:$home,target_user:$user,module_selection:{schema_version:1,selected_modules:["lang.bun"]}}' > "$ACFS_STATE_FILE"
+}
+
+@test "doctor selection: an explicit custom checkpoint overrides installed scope for the resolved account" {
+    doctor_custom_checkpoint_fixture
+    doctor_load_module_selection
+    state_module_is_selected lang.bun
+    if state_module_is_selected agents.claude; then fail "installed scope replaced the explicit custom checkpoint"; fi
+    check agent.claude Claude fail missing "install claude"
+    check tool.bun Bun fail missing "install bun"
+    doctor_selection_json | jq -e '
+        .[0].status == "skip" and .[0].fix == null and
+        .[1].status == "fail" and .[1].fix == "install bun"
+    ' >/dev/null
+}
+
+@test "doctor selection: missing malformed or foreign custom checkpoints never fall back or authorize repairs" {
+    doctor_custom_checkpoint_fixture
+    check_identity() { printf 'unexpected diagnostic\n' >> "$DOCTOR_TEST_PROBES"; }
+    doctor_fix_init() { printf 'unexpected repair\n' >> "$DOCTOR_TEST_PROBES"; }
+    custom_scope_doctor() { main --json --fix 2> "$BATS_TEST_TMPDIR/custom-selection-error"; }
+
+    local state_kind=""
+    for state_kind in missing malformed foreign_home foreign_user missing_identity; do
+        ACFS_STATE_FILE="$BATS_TEST_TMPDIR/custom-$state_kind.json"
+        case "$state_kind" in
+            missing) ;;
+            malformed) printf '%s\n' '{broken' > "$ACFS_STATE_FILE" ;;
+            foreign_home)
+                jq -n --arg user "$TARGET_USER" '{target_home:"/other/account",target_user:$user,module_selection:{schema_version:1,selected_modules:["lang.bun"]}}' > "$ACFS_STATE_FILE"
+                ;;
+            foreign_user)
+                jq -n --arg home "$TARGET_HOME" '{target_home:$home,target_user:"other_account",module_selection:{schema_version:1,selected_modules:["lang.bun"]}}' > "$ACFS_STATE_FILE"
+                ;;
+            missing_identity)
+                printf '%s\n' '{"module_selection":{"schema_version":1,"selected_modules":["lang.bun"]}}' > "$ACFS_STATE_FILE"
+                ;;
+        esac
+        run custom_scope_doctor
+        [[ "$status" -eq 1 ]] || fail "$state_kind returned $status: $output"
+        [[ ! -e "$DOCTOR_TEST_PROBES" ]] || fail "$state_kind ran a diagnostic or repair"
+        printf '%s\n' "$output" | jq -e '.summary.fail == 1 and .checks[0].id == "config.module_selection"' >/dev/null
+    done
+}
+
+@test "doctor selection: an exported missing canonical checkpoint keeps legacy behavior" {
+    doctor_custom_checkpoint_fixture
+    ACFS_STATE_FILE="$ACFS_HOME/state.json"
+    doctor_load_module_selection
+    [[ "$ACFS_STATE_SELECTION_MODE" == legacy ]]
+    state_module_is_selected agents.claude
+    state_module_is_selected lang.bun
+}
+
+@test "doctor entrypoints: invalid explicit checkpoint paths fail before dispatch" {
+    local entrypoint="" state_path=""
+    for entrypoint in "$DOCTOR_SH" "$PROJECT_ROOT/scripts/acfs-global"; do
+        for state_path in relative-state.json /; do
+            run env ACFS_STATE_FILE="$state_path" bash "$entrypoint" doctor --json
+            [[ "$status" -eq 1 ]] || fail "$entrypoint accepted $state_path: $output"
+            [[ "$output" == *'ACFS_STATE_FILE must be an absolute non-root path'* ]] || fail "$output"
+        done
+    done
+}
+
+doctor_wrapper_checkpoint_fixture() {
+    DOCTOR_WRAPPER_HOME="$BATS_TEST_TMPDIR/wrapper-home"
+    DOCTOR_WRAPPER_CHECKPOINT="$BATS_TEST_TMPDIR/wrapper-custom.json"
+    DOCTOR_WRAPPER_DISPATCH="$BATS_TEST_TMPDIR/wrapper-dispatch"
+    DOCTOR_WRAPPER_USER="$(id -un)"
+    mkdir -p "$DOCTOR_WRAPPER_HOME/.local/bin" "$DOCTOR_WRAPPER_HOME/.acfs"
+    jq -n --arg home "$DOCTOR_WRAPPER_HOME" --arg user "$DOCTOR_WRAPPER_USER" \
+        '{target_home:$home,target_user:$user,module_selection:{schema_version:1,selected_modules:["agents.claude"]}}' > "$DOCTOR_WRAPPER_HOME/.acfs/state.json"
+    jq -n --arg home "$DOCTOR_WRAPPER_HOME" --arg user "$DOCTOR_WRAPPER_USER" \
+        '{target_home:$home,target_user:$user,module_selection:{schema_version:1,selected_modules:["lang.bun"]}}' > "$DOCTOR_WRAPPER_CHECKPOINT"
+    # The real wrapper launches this child. Use the production state reader to
+    # verify the checkpoint transported across exec, independent of the wrapper's
+    # discovery parser and the normal installed checkpoint beside the child.
+    cat > "$DOCTOR_WRAPPER_HOME/.local/bin/acfs" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+printf '%s\n' "$ACFS_STATE_FILE" > "$DOCTOR_WRAPPER_DISPATCH"
+source "$DOCTOR_WRAPPER_STATE_LIBRARY"
+state_load_module_selection "$ACFS_STATE_FILE" "$TARGET_HOME" "$DOCTOR_WRAPPER_USER"
+printf 'SELECTED=%s\n' "${ACFS_STATE_SELECTED_MODULES[*]}"
+EOF
+    chmod +x "$DOCTOR_WRAPPER_HOME/.local/bin/acfs"
+}
+
+run_doctor_wrapper_checkpoint() {
+    run env HOME="$DOCTOR_WRAPPER_HOME" TARGET_HOME="$DOCTOR_WRAPPER_HOME" \
+        ACFS_HOME="$DOCTOR_WRAPPER_HOME/.acfs" ACFS_STATE_FILE="$DOCTOR_WRAPPER_CHECKPOINT" \
+        ACFS_SYSTEM_STATE_FILE="$BATS_TEST_TMPDIR/no-system-state.json" \
+        DOCTOR_WRAPPER_DISPATCH="$DOCTOR_WRAPPER_DISPATCH" DOCTOR_WRAPPER_USER="$DOCTOR_WRAPPER_USER" \
+        DOCTOR_WRAPPER_STATE_LIBRARY="$PROJECT_ROOT/scripts/lib/state.sh" \
+        bash "$PROJECT_ROOT/scripts/acfs-global" doctor --json
+}
+
+@test "doctor wrapper: real dispatch preserves the requested custom checkpoint" {
+    doctor_wrapper_checkpoint_fixture
+    run_doctor_wrapper_checkpoint
+    [[ "$status" -eq 0 ]] || fail "$output"
+    [[ "$output" == 'SELECTED=lang.bun' ]] || fail "$output"
+    [[ "$(cat "$DOCTOR_WRAPPER_DISPATCH")" == "$DOCTOR_WRAPPER_CHECKPOINT" ]]
+}
+
+@test "doctor wrapper: broken custom checkpoints reach validation instead of installed-state fallback" {
+    doctor_wrapper_checkpoint_fixture
+    local state_kind=""
+    for state_kind in missing malformed foreign; do
+        DOCTOR_WRAPPER_CHECKPOINT="$BATS_TEST_TMPDIR/wrapper-$state_kind.json"
+        case "$state_kind" in
+            missing) ;;
+            malformed) printf '%s\n' '{broken' > "$DOCTOR_WRAPPER_CHECKPOINT" ;;
+            foreign)
+                jq -n --arg user "$DOCTOR_WRAPPER_USER" '{target_home:"/other/account",target_user:$user,module_selection:{schema_version:1,selected_modules:["lang.bun"]}}' > "$DOCTOR_WRAPPER_CHECKPOINT"
+                ;;
+        esac
+        run_doctor_wrapper_checkpoint
+        [[ "$status" -eq 1 ]] || fail "$state_kind returned $status: $output"
+        [[ "$(cat "$DOCTOR_WRAPPER_DISPATCH")" == "$DOCTOR_WRAPPER_CHECKPOINT" ]] || fail "$state_kind checkpoint was replaced"
+        [[ "$output" != *SELECTED=* ]] || fail "$state_kind bypassed validation"
+    done
+}
+
+@test "doctor selection: excluded agent and cloud binaries are never executed; selected Bun passes" {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["base.system","lang.bun"]}}'
+    doctor_selection_binary claude
+    doctor_selection_binary vercel
+    doctor_selection_binary bun
+
+    check_command agent.claude Claude claude "install claude"
+    check_optional_command cloud.vercel Vercel vercel "install vercel"
+    check_command tool.bun Bun bun "install bun"
+    check_command tool.minisign Minisign minisign "install minisign"
+    check_command tool.zstd Zstd zstd "install zstd"
+
+    [ "$(cat "$DOCTOR_TEST_PROBES")" = bun ]
+    [ "$PASS_COUNT:$WARN_COUNT:$FAIL_COUNT:$SKIP_COUNT" = 1:0:0:4 ]
+    doctor_selection_json | jq -e '
+        .[0].id == "agent.claude" and .[0].status == "skip" and .[0].fix == null and
+        .[1].id == "cloud.vercel" and .[1].status == "skip" and .[1].fix == null and
+        .[2].id == "tool.bun" and .[2].status == "pass" and
+        .[3].id == "tool.minisign" and .[3].status == "skip" and
+        .[4].id == "tool.zstd" and .[4].status == "skip"' >/dev/null
+}
+
+@test "doctor selection: selected missing capabilities still fail and only their repairs are queued" {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["base.system","lang.bun"]}}'
+    FIX_MODE=true
+    DOCTOR_FIX_SCOPED=true
+
+    check_command agent.claude Claude claude "install claude"
+    check_command tool.bun Bun bun "install bun"
+
+    [ "$FAIL_COUNT:$SKIP_COUNT" = 1:1 ]
+    [ "${DOCTOR_FIX_OBSERVED_IDS[*]}" = 'agent.claude tool.bun' ]
+    [ "${DOCTOR_FIX_PENDING_IDS[*]}" = tool.bun ]
+    [ "${DOCTOR_FIX_PENDING_HINTS[*]}" = 'install bun' ]
+    doctor_selection_json | jq -e '.[1].status == "fail" and .[1].fix == "install bun"' >/dev/null
+}
+
+@test "doctor selection: legacy failures in skipped_tools do not hide broken tools" {
+    doctor_selection_fixture '{"skipped_tools":["lang.bun","agents.claude"]}'
+    [ "$ACFS_STATE_SELECTION_MODE" = legacy ]
+    check_command tool.bun Bun bun "install bun"
+    check_command agent.claude Claude claude "install claude"
+    [ "$FAIL_COUNT:$SKIP_COUNT" = 2:0 ]
+}
+
+@test "doctor selection: intended nightly installation overrides a stale skipped_tools marker" {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["base.system","acfs.nightly"]},"skipped_tools":["acfs.nightly"]}'
+    report_nightly_timer_status missing
+    [ "$WARN_COUNT:$SKIP_COUNT" = 1:0 ]
+    doctor_selection_json | jq -e '.[0].id == "acfs.nightly" and .[0].status == "warn" and .[0].fix != null' >/dev/null
+}
+
+@test "doctor selection: account workspace and shell requirements follow their owning modules" {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["base.system","lang.bun"]}}'
+    check identity.passwordless_sudo Sudo fail "requires password" "repair account"
+    check workspace.data_projects Workspace fail "missing directory" "create workspace"
+    check shell.login_shell Shell fail "bash login" "change login shell"
+    check system.ubuntu_archive_suites Archives fail "mixed suites" "repair sources"
+    [ "$FAIL_COUNT:$SKIP_COUNT" = 1:3 ]
+
+    printf '%s\n' '{"module_selection":{"schema_version":1,"selected_modules":["users.ubuntu","base.filesystem","shell.login"]}}' > "$DOCTOR_TEST_STATE"
+    doctor_load_module_selection
+    check identity.passwordless_sudo Sudo fail "requires password" "repair account"
+    check workspace.data_projects Workspace fail "missing directory" "create workspace"
+    check shell.login_shell Shell fail "bash login" "change login shell"
+    [ "$FAIL_COUNT:$SKIP_COUNT" = 4:3 ]
+}
+
+@test "doctor selection: selected stack aliases stay checked while excluded service and deep probes do not run" {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["base.system","stack.ultimate_bug_scanner","stack.beads_viewer","stack.cass","stack.cm"]}}'
+    doctor_selection_binary am
+    doctor_selection_binary rch
+    doctor_selection_binary claude
+    doctor_selection_binary vercel
+
+    check_stack
+    deep_check_optional_probe deep.stack.rch RCH rch "repair rch" "rch doctor"
+    check_claude_auth
+    check_vercel_auth
+
+    [ ! -e "$DOCTOR_TEST_PROBES" ]
+    doctor_selection_json | jq -e '
+        ([.[] | select(.status == "fail") | .id] | sort) ==
+            ["stack.bv","stack.cass","stack.cm","stack.ubs"] and
+        ([.[] | select(.id == "stack.mcp_agent_mail" or .id == "deep.stack.rch" or
+                         .id == "deep.agent.claude_auth" or .id == "deep.cloud.vercel_auth") |
+            .status] | all(. == "skip"))' >/dev/null
+}
+
+@test "doctor selection: supplemental probes run selected opt-in agents and omit excluded modules" {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["base.system","agents.opencode","agents.omp","agents.grok","agents.gemini"]}}'
+    # Use real subprocesses, not a replacement _doctor_run_manifest_check.
+    # Failure must be observed; merely seeing an installed executable is not
+    # enough for agents outside the three bespoke checks.
+    MANIFEST_CHECKS=(
+        $'agents.opencode\tOpenCode functional check\tprintf opencode >> "$DOCTOR_TEST_PROBES"; false\trequired\tcurrent'
+        $'agents.omp\tOMP functional check\tprintf omp >> "$DOCTOR_TEST_PROBES"; false\trequired\tcurrent'
+        $'agents.grok\tGrok functional check\tprintf grok >> "$DOCTOR_TEST_PROBES"; false\trequired\tcurrent'
+        $'agents.gemini\tGemini functional check\tprintf gemini >> "$DOCTOR_TEST_PROBES"; false\trequired\tcurrent'
+        $'tools.lazygit\tExcluded probe\tprintf EXCLUDED >> "$DOCTOR_TEST_PROBES"; false\trequired\tcurrent'
+    )
+    check_manifest_supplemental
+    [ "$(cat "$DOCTOR_TEST_PROBES")" = opencodeompgrokgemini ]
+    [ "$FAIL_COUNT:$SKIP_COUNT" = 4:1 ]
+    doctor_selection_json | jq -e '.[4].id == "tools.lazygit" and .[4].status == "skip" and .[4].fix == null' >/dev/null
+}
+
+@test "doctor selection: excluded timed-out checks cannot become warnings or autofixes" {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["base.system"]}}'
+    FIX_MODE=true
+    dispatch_fix() { printf 'unexpected repair\n' >> "$DOCTOR_TEST_PROBES"; }
+    check_with_timeout_status deep.cloud.vercel_auth Vercel timeout "hung" "install vercel"
+    check agent.codex Codex fail "missing" "install codex"
+    [ "$WARN_COUNT:$FAIL_COUNT:$SKIP_COUNT" = 0:0:2 ]
+    [ ! -e "$DOCTOR_TEST_PROBES" ]
+    doctor_selection_json | jq -e 'all(.status == "skip" and .fix == null)' >/dev/null
+}
+
+@test "doctor selection: malformed saved scope stops main before diagnostics and repair initialization" {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["base.system"]}}'
+    printf '%s\n' '{"module_selection":{"schema_version":1,"selected_modules":[]}}' > "$DOCTOR_TEST_STATE"
+    run_doctor_fix() { printf 'unexpected fix init\n' >> "$DOCTOR_TEST_PROBES"; }
+    check_identity() { printf 'unexpected diagnostic\n' >> "$DOCTOR_TEST_PROBES"; }
+
+    invalid_scope_doctor() { main --json --fix 2> "$BATS_TEST_TMPDIR/selection-error"; }
+    run invalid_scope_doctor
+    [ "$status" -eq 1 ]
+    [ ! -e "$DOCTOR_TEST_PROBES" ]
+    [ -s "$BATS_TEST_TMPDIR/selection-error" ]
+    # The state parser writes its diagnostic to stderr; stdout remains one
+    # complete report even when the invocation requested automatic repair.
+    printf '%s\n' "$output" | jq -e '
+        .summary.fail == 1 and (.checks | length) == 1 and
+        .checks[0].id == "config.module_selection" and
+        .checks[0].status == "fail" and .checks[0].fix == null' >/dev/null
+}
+
+@test "doctor selection: unknown saved module IDs cannot hide all checks" {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["base.system"]}}'
+    printf '%s\n' '{"module_selection":{"schema_version":1,"selected_modules":["stack.no_such_module"]}}' > "$DOCTOR_TEST_STATE"
+    check_identity() { printf 'unexpected diagnostic\n' >> "$DOCTOR_TEST_PROBES"; }
+    unknown_scope_doctor() { main --json 2> "$BATS_TEST_TMPDIR/selection-error"; }
+
+    run unknown_scope_doctor
+    [ "$status" -eq 1 ]
+    [ ! -e "$DOCTOR_TEST_PROBES" ]
+    printf '%s\n' "$output" | jq -e '
+        .summary.fail == 1 and .checks[0].id == "config.module_selection" and
+        (.checks[0].details | contains("absent from the deployed manifest"))' >/dev/null
+}
+
+@test "doctor selection: a missing generated catalog cannot authorize repairs" {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["base.system"]}}'
+    MANIFEST_CHECKS=()
+    MANIFEST_CHECKS_LOADED=false
+    run_doctor_fix() { printf 'unexpected fix init\n' >> "$DOCTOR_TEST_PROBES"; }
+    missing_catalog_doctor() { main --json --fix 2> "$BATS_TEST_TMPDIR/selection-error"; }
+
+    run missing_catalog_doctor
+    [ "$status" -eq 1 ]
+    [ ! -e "$DOCTOR_TEST_PROBES" ]
+    printf '%s\n' "$output" | jq -e '
+        .summary.fail == 1 and .checks[0].id == "config.module_selection" and
+        (.checks[0].details | contains("deployed manifest"))' >/dev/null
 }

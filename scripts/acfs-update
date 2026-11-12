@@ -966,6 +966,13 @@ exec_as_target_user() {
     esac
   fi
 
+  # main preserves an explicitly requested checkpoint across context repair.
+  # The updater validates its identity and module scope together; dropping it
+  # here could turn an invalid or missing scoped checkpoint into a full update.
+  if [[ -n "${_acfs_update_explicit_state_file:-}" ]]; then
+    sanitized_state_file="$_acfs_update_explicit_state_file"
+  fi
+
   [[ -n "$sanitized_state_file" ]] && env_args+=("ACFS_STATE_FILE=$sanitized_state_file")
   [[ -n "$sanitized_system_state_file" ]] && env_args+=("ACFS_SYSTEM_STATE_FILE=$sanitized_system_state_file")
   [[ -n "$sanitized_target_home" ]] && env_args+=("HOME=$sanitized_target_home" "TARGET_HOME=$sanitized_target_home")
@@ -1037,6 +1044,15 @@ main() {
   local bash_bin=""
   local env_bin=""
   local system_state_home=""
+  local _acfs_update_explicit_state_file=""
+
+  if [[ -n "${ACFS_STATE_FILE:-}" ]]; then
+    _acfs_update_explicit_state_file="$(sanitize_abs_nonroot_path "$ACFS_STATE_FILE" 2>/dev/null || true)"
+    if [[ -z "$_acfs_update_explicit_state_file" ]]; then
+      echo "Error: ACFS_STATE_FILE must name an absolute checkpoint file" >&2
+      return 1
+    fi
+  fi
 
   original_home_candidate="$(sanitize_abs_nonroot_path "$original_home" 2>/dev/null || true)"
   if [[ -n "$original_home_candidate" ]] && current_home_matches_update_install "$original_home_candidate"; then
@@ -1061,7 +1077,7 @@ main() {
     if [[ -z "${TARGET_HOME:-}" ]] || { [[ "$TARGET_HOME" != "$system_state_home" ]] && ! find_update_script_for_home "$TARGET_HOME" >/dev/null 2>&1; }; then
       TARGET_HOME="$system_state_home"
       ACFS_HOME="$system_state_home/.acfs"
-      if [[ -f "$ACFS_HOME/state.json" ]]; then
+      if [[ -z "$_acfs_update_explicit_state_file" && -f "$ACFS_HOME/state.json" ]]; then
         ACFS_STATE_FILE="$ACFS_HOME/state.json"
       fi
       export TARGET_HOME ACFS_HOME ACFS_STATE_FILE
@@ -1098,7 +1114,7 @@ main() {
       if [[ -n "$system_state_home" ]] && { [[ -z "${TARGET_HOME:-}" ]] || { [[ "$TARGET_HOME" != "$system_state_home" ]] && ! find_update_script_for_home "$TARGET_HOME" >/dev/null 2>&1; }; }; then
         TARGET_HOME="$system_state_home"
         ACFS_HOME="$system_state_home/.acfs"
-        if [[ -f "$ACFS_HOME/state.json" ]]; then
+        if [[ -z "$_acfs_update_explicit_state_file" && -f "$ACFS_HOME/state.json" ]]; then
           ACFS_STATE_FILE="$ACFS_HOME/state.json"
         fi
         export TARGET_HOME ACFS_HOME ACFS_STATE_FILE
@@ -1165,6 +1181,11 @@ main() {
         target_user="$runtime_user"
       fi
     fi
+  fi
+
+  if [[ -n "$_acfs_update_explicit_state_file" ]]; then
+    ACFS_STATE_FILE="$_acfs_update_explicit_state_file"
+    export ACFS_STATE_FILE
   fi
 
   if [[ -n "$target_user" ]]; then

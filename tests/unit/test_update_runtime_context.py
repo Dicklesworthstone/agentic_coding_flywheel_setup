@@ -21,6 +21,26 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = Path(os.environ.get("ACFS_UPDATE_TEST_LIBRARY", ROOT / "scripts/lib/update.sh"))
 
+
+def snapshot_update_runtime(directory, update_source):
+    """Keep the actual updater and its scope reader/catalog together."""
+    for relative in ("scripts", "scripts/lib", "scripts/generated"):
+        path = directory / relative
+        path.mkdir()
+        path.chmod(0o755)
+    sources = {
+        "scripts/lib/update.sh": update_source,
+        "scripts/lib/state.sh": (ROOT / "scripts/lib/state.sh").read_text(),
+        "scripts/generated/manifest_index.sh":
+            (ROOT / "scripts/generated/manifest_index.sh").read_text(),
+    }
+    for relative, content in sources.items():
+        path = directory / relative
+        path.write_text(content)
+        path.chmod(0o444)
+    return directory / "scripts/lib/update.sh"
+
+
 MAINTENANCE_ENV_NAMES = (
     "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_RUNTIME_DIR",
     "GH_CONFIG_DIR", "GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "GH_HOST",
@@ -92,9 +112,7 @@ class RustRuntimeContextTests(unittest.TestCase):
         cls.artifacts.chmod(0o755)
         # One immutable source snapshot per run keeps the real-account suite
         # practical on small/full disks without changing individual controls.
-        cls.library = cls.artifacts / "update.sh"
-        cls.library.write_text(cls.source)
-        cls.library.chmod(0o444)
+        cls.library = snapshot_update_runtime(cls.artifacts, cls.source)
         print("Runtime context artifacts:", cls.artifacts, flush=True)
 
     def setUp(self):
@@ -1292,8 +1310,7 @@ class AgentPackageDeadlineTests(unittest.TestCase):
     def setUpClass(cls):
         cls.account = pwd.getpwuid(os.geteuid())
         cls.artifacts = Path(tempfile.mkdtemp(prefix="acfs-agent-deadlines-"))
-        cls.library = cls.artifacts / "update.sh"
-        cls.library.write_text(SOURCE.read_text())
+        cls.library = snapshot_update_runtime(cls.artifacts, SOURCE.read_text())
         print("Agent deadline artifacts:", cls.artifacts, flush=True)
 
     def setUp(self):

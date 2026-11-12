@@ -332,7 +332,13 @@ _acfs_doctor_assign_abs_nonroot_path _ACFS_DOCTOR_ENV_TARGET_HOME "${TARGET_HOME
 _acfs_doctor_assign_abs_nonroot_path _ACFS_DOCTOR_ENV_ACFS_HOME "${ACFS_HOME:-}" || true
 TARGET_HOME="$_ACFS_DOCTOR_ENV_TARGET_HOME"
 _acfs_doctor_assign_abs_nonroot_path ACFS_HOME "${ACFS_HOME:-}" || true
+_acfs_doctor_requested_state_file="${ACFS_STATE_FILE:-}"
 _acfs_doctor_assign_abs_nonroot_path ACFS_STATE_FILE "${ACFS_STATE_FILE:-}" || true
+if [[ -n "$_acfs_doctor_requested_state_file" && -z "$ACFS_STATE_FILE" ]]; then
+    printf 'Error: ACFS_STATE_FILE must be an absolute non-root path; refusing to use a different checkpoint\n' >&2
+    exit 1
+fi
+unset _acfs_doctor_requested_state_file
 _acfs_doctor_assign_abs_nonroot_path ACFS_SYSTEM_STATE_FILE "${ACFS_SYSTEM_STATE_FILE:-/var/lib/acfs/state.json}" || true
 if [[ -z "$ACFS_SYSTEM_STATE_FILE" ]]; then
     ACFS_SYSTEM_STATE_FILE="/var/lib/acfs/state.json"
@@ -1992,6 +1998,8 @@ check_with_timeout_status() {
     local details="${4:-}"
     local fix="${5:-}"
 
+    doctor_skip_unselected_check "$id" "$label" && return 0
+
     # Convert timeout to special handling
     if [[ "$status" == "timeout" ]]; then
         # Timeouts count as warnings for stats (unknown state, not failed)
@@ -2028,6 +2036,167 @@ check_with_timeout_status() {
     check "$id" "$label" "$status" "$details" "$fix"
 }
 
+# Bind stable doctor IDs to the manifest module that owns the capability. The
+# human-facing IDs predate the manifest (tool.bun, stack.ubs, util.tru, etc.), so
+# a category-prefix comparison would silently skip selected tools. Unknown
+# diagnostics stay active; platform and runtime integrity are not optional
+# merely because an install selected fewer tools.
+doctor_check_module_id() {
+    local id="${1:-}"
+    local module=""
+    local entry=""
+    local manifest_id=""
+    local manifest_module=""
+    case "$id" in
+        identity.passwordless_sudo|identity.sudo) module=users.ubuntu ;;
+        workspace.data_projects) module=base.filesystem ;;
+        shell.zsh) module=shell.zsh ;;
+        shell.login_shell) module=shell.login ;;
+        shell.ohmyzsh|shell.p10k|shell.plugins.*|shell.acfs_sourced|config.acfs_zshrc|path.ordering)
+            module=shell.omz ;;
+        shell.lsd_or_eza|shell.fzf|shell.direnv|config.tmux|tool.tmux|tool.rg|tool.gh|tool.git_lfs|tool.rsync|tool.strace|tool.lsof|tool.dig|tool.nc|tool.zstd|tool.minisign|deep.tmux.*|deep.cloud.gh_auth)
+            module=cli.modern ;;
+        tool.bun|bun.global_bin_dir) module=lang.bun ;;
+        tool.uv) module=lang.uv ;;
+        tool.cargo) module=lang.rust ;;
+        tool.go) module=lang.go ;;
+        tool.sg) module=tools.ast_grep ;;
+        shell.atuin_daemon) module=tools.atuin ;;
+        agent.claude|agent.alias.cc|agent.path.claude|deep.agent.claude_auth)
+            module=agents.claude ;;
+        agent.codex|agent.alias.cod|deep.agent.codex_auth) module=agents.codex ;;
+        agent.antigravity|agent.alias.agy|agent.alias.gmi|deep.agent.antigravity_auth)
+            module=agents.antigravity ;;
+        deep.agent.gemini_auth) module=agents.gemini ;;
+        cloud.vault|deep.cloud.vault_*) module=tools.vault ;;
+        cloud.postgres|deep.db.postgres_*) module=db.postgres18 ;;
+        deep.cloud.wrangler_auth) module=cloud.wrangler ;;
+        deep.cloud.supabase_auth) module=cloud.supabase ;;
+        deep.cloud.vercel_auth) module=cloud.vercel ;;
+        stack.ubs) module=stack.ultimate_bug_scanner ;;
+        stack.bv) module=stack.beads_viewer ;;
+        symlink.am) module=stack.mcp_agent_mail ;;
+        updates.nightly_runs) module=acfs.nightly ;;
+        util.tru) module=utils.toon_rust ;;
+        util.pt|deep.stack.pt) module=stack.process_triage ;;
+        util.rust_proxy|util.rano|util.xf|util.mdwb|util.aadc|util.s2p|util.caut)
+            module="utils.${id#util.}" ;;
+        deep.stack.fsfs) module=stack.frankensearch ;;
+        deep.stack.sbh) module=stack.storage_ballast_helper ;;
+        deep.stack.casr) module=stack.cross_agent_session_resumer ;;
+        deep.stack.dsr) module=stack.doodlestein_self_releaser ;;
+        deep.stack.asb) module=stack.agent_settings_backup ;;
+        deep.stack.ee) module=stack.eidetic_engine_cli ;;
+        deep.stack.fmd) module=stack.franken_markdown ;;
+        deep.stack.pi) module=stack.pi_agent_rust ;;
+        deep.stack.pfr) module=stack.power_failure_resumer ;;
+        deep.stack.rch|deep.stack.ru|deep.stack.pcr) module="${id#deep.}" ;;
+        *)
+            # Generated checks already carry their exact module ID, optionally
+            # followed by a numeric check suffix. Require membership in the
+            # loaded manifest instead of guessing from an arbitrary check ID.
+            for entry in "${MANIFEST_CHECKS[@]}"; do
+                manifest_id="${entry%%$'\t'*}"
+                manifest_module="$manifest_id"
+                [[ "$manifest_module" =~ ^(.+)\.[0-9]+$ ]] && manifest_module="${BASH_REMATCH[1]}"
+                [[ "$manifest_id" == "$id" || "$manifest_module" == "$id" ]] || continue
+                module="$manifest_module"
+                break
+            done
+            ;;
+    esac
+    [[ -n "$module" ]] || return 1
+    printf '%s\n' "$module"
+}
+
+# Read the installer's intended scope through the same versioned state parser
+# used by updates. Do this after identity resolution and before any diagnostics
+# or automatic repair. Optional-install failures in skipped_tools are not a
+# selection policy and must never hide a selected tool's failure.
+doctor_load_module_selection() {
+    DOCTOR_SELECTION_ERROR=""
+    ACFS_STATE_SELECTION_MODE=invalid
+    ACFS_STATE_SELECTED_MODULES=()
+    local state_script=""
+    local state_file=""
+    local candidate=""
+    local entry=""
+    local module=""
+    local default_state_file="${ACFS_HOME:+$ACFS_HOME/state.json}"
+    local -a expected_identity=()
+    local -a known_modules=()
+
+    state_script="$(_acfs_doctor_find_lib_script "state.sh" 2>/dev/null || true)"
+    # shellcheck source=state.sh
+    if [[ -z "$state_script" || ! -r "$state_script" ]] ||
+       ! source "$state_script" >/dev/null ||
+       ! declare -F state_load_module_selection >/dev/null ||
+       ! declare -F state_module_is_selected >/dev/null; then
+        DOCTOR_SELECTION_ERROR="The deployed state.sh cannot validate module selection; update the ACFS runtime before diagnosing or repairing it"
+        return 1
+    fi
+
+    # An explicit checkpoint is the policy requested by the caller, even when
+    # another installed state exists. Do not fall back from a missing or broken
+    # custom file and accidentally diagnose/repair the default installation.
+    state_file="${ACFS_STATE_FILE:-}"
+    if [[ -n "$state_file" ]]; then
+        [[ -n "$default_state_file" ]] || default_state_file="${TARGET_HOME:+$TARGET_HOME/.acfs/state.json}"
+        if [[ "$state_file" != "$default_state_file" ]]; then
+            expected_identity=("${TARGET_HOME:-}" "${TARGET_USER:-}")
+        fi
+    else
+        state_file="$(_acfs_doctor_find_project_path "state.json" 2>/dev/null || true)"
+        if [[ -z "$state_file" ]]; then
+            candidate="${ACFS_SYSTEM_STATE_FILE:-}"
+            if [[ -n "$candidate" && ( -e "$candidate" || -L "$candidate" ) ]]; then
+                state_file="$candidate"
+            fi
+        fi
+    fi
+    if ! state_load_module_selection "$state_file" "${expected_identity[@]}"; then
+        DOCTOR_SELECTION_ERROR="Saved module selection is invalid, unreadable, or does not belong to the resolved target; no diagnostics or repairs were run. Restore a valid ACFS state file before continuing"
+        return 1
+    fi
+    if [[ "$ACFS_STATE_SELECTION_MODE" == scoped ]]; then
+        if [[ "$MANIFEST_CHECKS_LOADED" != true ]] ||
+           ! declare -F state_validate_module_selection_catalog >/dev/null; then
+            DOCTOR_SELECTION_ERROR="Cannot validate saved module selection against the deployed manifest; update the complete ACFS runtime before diagnosing or repairing it"
+            return 1
+        fi
+        for entry in "${MANIFEST_CHECKS[@]}"; do
+            module="${entry%%$'\t'*}"
+            [[ "$module" =~ ^(.+)\.[0-9]+$ ]] && module="${BASH_REMATCH[1]}"
+            known_modules+=("$module")
+        done
+        if ! state_validate_module_selection_catalog "${known_modules[@]}"; then
+            DOCTOR_SELECTION_ERROR="Saved selection names modules absent from the deployed manifest, or the manifest is empty; no diagnostics or repairs were run. Restore matching ACFS state and runtime files"
+            return 1
+        fi
+    fi
+}
+
+# Return success only when this check was emitted as an intentional skip.
+# Keep the original check ID so JSON consumers and scoped repair selectors see
+# the same capability, with no misleading install hint or queued mutation.
+doctor_skip_unselected_check() {
+    local id="$1"
+    local label="$2"
+    local module=""
+    local selected_status=0
+    [[ "${ACFS_STATE_SELECTION_MODE:-legacy}" == scoped ]] || return 1
+    module="$(doctor_check_module_id "$id")" || return 1
+    state_module_is_selected "$module" || selected_status=$?
+    if [[ "$selected_status" -eq 0 && "$id" == agent.alias.* ]]; then
+        # Agent-only installs need their binaries, not an unselected zsh setup.
+        module=shell.omz
+        state_module_is_selected "$module" || selected_status=$?
+    fi
+    [[ "$selected_status" -eq 1 ]] || return 1
+    check_skipped "$id" "$label" "not selected during installation ($module)"
+    return 0
+}
+
 # Check result helper
 check() {
     local id="$1"
@@ -2035,6 +2204,8 @@ check() {
     local status="$3"
     local details="${4:-}"
     local fix="${5:-}"
+
+    doctor_skip_unselected_check "$id" "$label" && return 0
 
     case "$status" in
         pass) ((PASS_COUNT += 1)) ;;
@@ -2342,6 +2513,8 @@ check_command() {
     local fix="${4:-}"
     local cmd_path=""
 
+    doctor_skip_unselected_check "$id" "$label" && return 0
+
     cmd_path="$(doctor_binary_path "$cmd" 2>/dev/null || true)"
     if [[ -n "$cmd_path" ]]; then
         local version
@@ -2359,6 +2532,8 @@ check_optional_command() {
     local cmd="$3"
     local fix="${4:-}"
     local cmd_path=""
+
+    doctor_skip_unselected_check "$id" "$label" && return 0
 
     cmd_path="$(doctor_binary_path "$cmd" 2>/dev/null || true)"
     if [[ -n "$cmd_path" ]]; then
@@ -2585,6 +2760,14 @@ check_identity() {
         check "identity.user_is_ubuntu" "Logged in as $TARGET_USER (currently: $user)" "warn" "whoami=$user" "ssh ${TARGET_USER}@YOUR_SERVER"
     fi
 
+    # A CLI-only subset need not normalize the account or its sudo policy.
+    local sudo_check_id=identity.sudo
+    [[ "${ACFS_MODE:-vibe}" == vibe ]] && sudo_check_id=identity.passwordless_sudo
+    if doctor_skip_unselected_check "$sudo_check_id" "ACFS sudo policy"; then
+        blank_line
+        return 0
+    fi
+
     # Check sudo configuration (passwordless only required in vibe mode)
     sudo_bin="$(_acfs_doctor_system_binary_path sudo 2>/dev/null || true)"
     if [[ "${ACFS_MODE:-vibe}" == "vibe" ]]; then
@@ -2612,6 +2795,8 @@ check_identity() {
 check_workspace() {
     section "Workspace"
 
+    doctor_skip_unselected_check "workspace.data_projects" "/data/projects" && return 0
+
     if [[ -d "/data/projects" ]] && [[ -w "/data/projects" ]]; then
         check "workspace.data_projects" "/data/projects exists and writable" "pass"
     else
@@ -2626,6 +2811,7 @@ check_workspace() {
 # runtime deployment problem, not an account problem; reporting it as an
 # unapproved shell blamed accounts that were configured correctly (#482).
 check_login_shell_policy() {
+    doctor_skip_unselected_check "shell.login_shell" "Login shell policy" && return 0
     local user_lib=""
     local verdict=0
 
@@ -2880,6 +3066,7 @@ doctor_atuin_resolve_socket_path() {
 # the reporter sat in for two days. #358's fix pins socket_path at install;
 # this check catches a daemon that predates the pin, ignores it, or died.
 check_atuin_daemon() {
+    doctor_skip_unselected_check "shell.atuin_daemon" "Atuin daemon" && return 0
     local runtime_home=""
     runtime_home="$(doctor_runtime_home)"
     local config_file="$runtime_home/.config/atuin/config.toml"
@@ -3036,6 +3223,7 @@ doctor_bun_stranded_global_binaries() {
 }
 
 check_bun_global_bin_dir() {
+    doctor_skip_unselected_check "bun.global_bin_dir" "Bun global binary directory" && return 0
     local bun_bin=""
     local runtime_home=""
     local expected_dir=""
@@ -3166,6 +3354,7 @@ check_agents() {
 # Check for agent PATH conflicts (bead hi7)
 # Native installations should take precedence over package manager versions
 check_agent_path_conflicts() {
+    doctor_skip_unselected_check "agent.path.claude" "Claude Code path" && return 0
     local doctor_ci="${ACFS_DOCTOR_CI:-false}"
     local expected_native_path=""
     expected_native_path="$(doctor_runtime_home)/.local/bin/claude"
@@ -3197,6 +3386,7 @@ check_agent_path_conflicts() {
 
 # Check DCG hook registration status
 check_dcg_hook_status() {
+    doctor_skip_unselected_check "stack.dcg" "DCG" && return 0
     if ! doctor_binary_exists "dcg"; then
         check "stack.dcg" "DCG" "warn" "not installed" \
             "Re-run: acfs update --stack-only && dcg install --force"
@@ -3314,7 +3504,9 @@ check_cloud() {
     # Tailscale VPN (bt5)
     local tailscale_bin=""
     tailscale_bin="$(doctor_binary_path tailscale 2>/dev/null || true)"
-    if [[ -n "$tailscale_bin" ]]; then
+    if doctor_skip_unselected_check "network.tailscale" "Tailscale"; then
+        :
+    elif [[ -n "$tailscale_bin" ]]; then
         local ts_status
         # `tailscale status --json` talks to tailscaled over its socket and
         # can hang indefinitely when the daemon is wedged; cap it so doctor
@@ -3440,7 +3632,9 @@ check_stack() {
         "Re-run: $(fix_for_module stack.slb)"
 
     # UBS - custom check
-    if ubs_bin="$(doctor_binary_path ubs 2>/dev/null || true)" && [[ -n "$ubs_bin" ]]; then
+    if doctor_skip_unselected_check "stack.ubs" "UBS"; then
+        :
+    elif ubs_bin="$(doctor_binary_path ubs 2>/dev/null || true)" && [[ -n "$ubs_bin" ]]; then
         local version
         version=$(get_version_line "$ubs_bin")
         check "stack.ubs" "UBS ($version)" "pass" "installed"
@@ -3450,7 +3644,9 @@ check_stack() {
     fi
 
     # Beads Viewer - custom check to detect gcloud 'bv' shadowing
-    if bv_path="$(doctor_binary_path bv 2>/dev/null || true)" && [[ -n "$bv_path" ]]; then
+    if doctor_skip_unselected_check "stack.bv" "Beads Viewer"; then
+        :
+    elif bv_path="$(doctor_binary_path bv 2>/dev/null || true)" && [[ -n "$bv_path" ]]; then
         local version
         # Check if the resolved bv is gcloud's BigQuery Visualizer
         if [[ "$bv_path" == *"google-cloud-sdk"* ]]; then
@@ -3474,7 +3670,9 @@ check_stack() {
     fi
 
     # CASS - custom check
-    if doctor_binary_exists "cass"; then
+    if doctor_skip_unselected_check "stack.cass" "CASS"; then
+        :
+    elif doctor_binary_exists "cass"; then
         local version
         version=$(get_version_line "$(doctor_binary_path cass 2>/dev/null || echo cass)")
         check "stack.cass" "CASS ($version)" "pass" "installed"
@@ -3493,7 +3691,9 @@ check_stack() {
     am_install_fix="Re-run: $(fix_for_module "stack.mcp_agent_mail")"
     am_label="MCP Agent Mail"
 
-    if am_bin="$(doctor_agent_mail_cli_path 2>/dev/null || true)" && [[ -n "$am_bin" ]]; then
+    if doctor_skip_unselected_check "stack.mcp_agent_mail" "$am_label"; then
+        :
+    elif am_bin="$(doctor_agent_mail_cli_path 2>/dev/null || true)" && [[ -n "$am_bin" ]]; then
         local curl_bin=""
         local id_bin=""
         local systemctl_bin=""
@@ -3623,7 +3823,9 @@ check_stack() {
     fi
 
     # Check RU (Repo Updater)
-    if ru_bin="$(doctor_binary_path ru 2>/dev/null || true)" && [[ -n "$ru_bin" ]]; then
+    if doctor_skip_unselected_check "stack.ru" "RU (Repo Updater)"; then
+        :
+    elif ru_bin="$(doctor_binary_path ru 2>/dev/null || true)" && [[ -n "$ru_bin" ]]; then
         local version
         version=$(get_version_line "$ru_bin")
         check "stack.ru" "RU ($version)" "pass" "installed"
@@ -3637,7 +3839,9 @@ check_stack() {
     # only in the invoking shell does not create a false pass.
     local _br_bin=""
     _br_bin="$(doctor_binary_path br 2>/dev/null || true)"
-    if [[ -n "$_br_bin" ]]; then
+    if doctor_skip_unselected_check "stack.beads_rust" "beads_rust (br)"; then
+        :
+    elif [[ -n "$_br_bin" ]]; then
         local version
         version=$(get_version_line "$_br_bin")
         check "stack.beads_rust" "beads_rust ($version)" "pass" "installed"
@@ -3649,7 +3853,9 @@ check_stack() {
     # Check meta_skill (ms)
     local ms_bin=""
     ms_bin="$(doctor_binary_path ms 2>/dev/null || true)"
-    if [[ -n "$ms_bin" ]]; then
+    if doctor_skip_unselected_check "stack.meta_skill" "meta_skill"; then
+        :
+    elif [[ -n "$ms_bin" ]]; then
         local version
         version=$(get_version_line "$ms_bin")
         check "stack.meta_skill" "meta_skill ($version)" "pass" "installed"
@@ -3688,7 +3894,9 @@ check_stack() {
         rch_bin="$runtime_home/remote_compilation_helper/rch"
     fi
 
-    if [[ -n "$rch_bin" ]] && [[ -x "$rch_bin" ]]; then
+    if doctor_skip_unselected_check "stack.rch" "Remote Compilation Helper"; then
+        :
+    elif [[ -n "$rch_bin" ]] && [[ -x "$rch_bin" ]]; then
         # get_version_line runs the probe under a timeout so a wedged rch
         # binary (e.g. blocked on remote config) can't hang doctor.
         rch_version=$(get_version_line "$rch_bin") || rch_version="installed"
@@ -3708,7 +3916,9 @@ check_stack() {
     # Check wa (WezTerm Automata) - optional
     local wa_bin=""
     wa_bin="$(doctor_binary_path wa 2>/dev/null || true)"
-    if [[ -n "$wa_bin" ]]; then
+    if doctor_skip_unselected_check "stack.wezterm_automata" "WezTerm Automata"; then
+        :
+    elif [[ -n "$wa_bin" ]]; then
         local version
         version=$(get_version_line "$wa_bin")
         check "stack.wezterm_automata" "wezterm_automata ($version)" "pass" "installed"
@@ -3719,7 +3929,9 @@ check_stack() {
     # Check brenner (Brenner Bot) - optional
     local brenner_bin=""
     brenner_bin="$(doctor_binary_path brenner 2>/dev/null || true)"
-    if [[ -n "$brenner_bin" ]]; then
+    if doctor_skip_unselected_check "stack.brenner_bot" "Brenner Bot"; then
+        :
+    elif [[ -n "$brenner_bin" ]]; then
         local version
         version=$(get_version_line "$brenner_bin")
         check "stack.brenner_bot" "brenner_bot ($version)" "pass" "installed"
@@ -3733,6 +3945,10 @@ check_stack() {
     # Check acfs-nightly-update timer (systemd user unit)
     # Gracefully handle missing systemd user session (curl|bash installs as
     # root don't have a D-Bus session, so systemctl --user always fails).
+    if doctor_skip_unselected_check "acfs.nightly" "Nightly auto-update timer"; then
+        blank_line
+        return 0
+    fi
     local _nightly_status="unknown"
     local systemctl_bin=""
     systemctl_bin="$(_acfs_doctor_system_binary_path systemctl 2>/dev/null || true)"
@@ -3773,6 +3989,7 @@ check_stack() {
 
 # Usage: report_nightly_timer_status <enabled|unit_exists|no_systemd|missing>
 report_nightly_timer_status() {
+    doctor_skip_unselected_check "acfs.nightly" "Nightly auto-update timer" && return 0
     case "${1:-missing}" in
         enabled)
             check "acfs.nightly" "Nightly auto-update timer" "pass" "enabled"
@@ -3789,7 +4006,8 @@ report_nightly_timer_status() {
         *)
             # An install run with --skip acfs.nightly records the opt-out; an
             # absent timer is then the user's choice, not a defect (#476).
-            if _doctor_module_skipped_at_install "acfs.nightly"; then
+            if [[ "${ACFS_STATE_SELECTION_MODE:-legacy}" != scoped ]] &&
+               _doctor_module_skipped_at_install "acfs.nightly"; then
                 check "acfs.nightly" "Nightly auto-update timer" "skip" \
                     "not installed (skipped during installation)"
             else
@@ -3855,7 +4073,9 @@ check_utilities() {
 
     # toon (Token-Optimized Notation; toon_rust, installer key tru)
     util_bin="$(doctor_binary_path toon 2>/dev/null || true)"
-    if [[ -n "$util_bin" ]]; then
+    if doctor_skip_unselected_check "util.tru" "toon (token notation)"; then
+        :
+    elif [[ -n "$util_bin" ]]; then
         local version
         version=$(get_version_line "$util_bin")
         check "util.tru" "toon ($version)" "pass" "installed"
@@ -3865,7 +4085,9 @@ check_utilities() {
 
     # rust_proxy (Transparent Proxy Routing)
     util_bin="$(doctor_binary_path rust_proxy 2>/dev/null || true)"
-    if [[ -n "$util_bin" ]]; then
+    if doctor_skip_unselected_check "util.rust_proxy" "rust_proxy"; then
+        :
+    elif [[ -n "$util_bin" ]]; then
         local version
         version=$(get_version_line "$util_bin")
         check "util.rust_proxy" "rust_proxy ($version)" "pass" "installed"
@@ -3875,7 +4097,9 @@ check_utilities() {
 
     # rano (Network Observer for AI CLIs)
     util_bin="$(doctor_binary_path rano 2>/dev/null || true)"
-    if [[ -n "$util_bin" ]]; then
+    if doctor_skip_unselected_check "util.rano" "rano"; then
+        :
+    elif [[ -n "$util_bin" ]]; then
         local version
         version=$(get_version_line "$util_bin")
         check "util.rano" "rano ($version)" "pass" "installed"
@@ -3885,7 +4109,9 @@ check_utilities() {
 
     # xf (X/Twitter Archive Search)
     util_bin="$(doctor_binary_path xf 2>/dev/null || true)"
-    if [[ -n "$util_bin" ]]; then
+    if doctor_skip_unselected_check "util.xf" "xf"; then
+        :
+    elif [[ -n "$util_bin" ]]; then
         local version
         version=$(get_version_line "$util_bin")
         check "util.xf" "xf ($version)" "pass" "installed"
@@ -3895,7 +4121,9 @@ check_utilities() {
 
     # mdwb (Markdown Web Browser)
     util_bin="$(doctor_binary_path mdwb 2>/dev/null || true)"
-    if [[ -n "$util_bin" ]]; then
+    if doctor_skip_unselected_check "util.mdwb" "mdwb"; then
+        :
+    elif [[ -n "$util_bin" ]]; then
         local version
         version=$(get_version_line "$util_bin")
         check "util.mdwb" "mdwb ($version)" "pass" "installed"
@@ -3905,7 +4133,9 @@ check_utilities() {
 
     # pt (Process Triage)
     util_bin="$(doctor_binary_path pt 2>/dev/null || true)"
-    if [[ -n "$util_bin" ]]; then
+    if doctor_skip_unselected_check "util.pt" "Process Triage"; then
+        :
+    elif [[ -n "$util_bin" ]]; then
         local version
         version=$(get_version_line "$util_bin")
         check "util.pt" "pt ($version)" "pass" "installed"
@@ -3915,7 +4145,9 @@ check_utilities() {
 
     # aadc (ASCII Diagram Corrector)
     util_bin="$(doctor_binary_path aadc 2>/dev/null || true)"
-    if [[ -n "$util_bin" ]]; then
+    if doctor_skip_unselected_check "util.aadc" "ASCII Diagram Corrector"; then
+        :
+    elif [[ -n "$util_bin" ]]; then
         local version
         version=$(get_version_line "$util_bin")
         check "util.aadc" "aadc ($version)" "pass" "installed"
@@ -3925,7 +4157,9 @@ check_utilities() {
 
     # s2p (Source to Prompt TUI)
     util_bin="$(doctor_binary_path s2p 2>/dev/null || true)"
-    if [[ -n "$util_bin" ]]; then
+    if doctor_skip_unselected_check "util.s2p" "Source to Prompt"; then
+        :
+    elif [[ -n "$util_bin" ]]; then
         local version
         version=$(get_version_line "$util_bin")
         check "util.s2p" "s2p ($version)" "pass" "installed"
@@ -3935,7 +4169,9 @@ check_utilities() {
 
     # caut (Coding Agent Usage Tracker)
     util_bin="$(doctor_binary_path caut 2>/dev/null || true)"
-    if [[ -n "$util_bin" ]]; then
+    if doctor_skip_unselected_check "util.caut" "Coding Agent Usage Tracker"; then
+        :
+    elif [[ -n "$util_bin" ]]; then
         local version
         version=$(get_version_line "$util_bin")
         check "util.caut" "caut ($version)" "pass" "installed"
@@ -3983,8 +4219,9 @@ _is_bespoke_covered() {
         lang.bun|lang.uv|lang.rust|lang.rust.*|lang.go) return 0 ;;
         # check_shell / check_core_tools  (individual tools)
         tools.atuin|tools.zoxide|tools.ast_grep|tools.vault) return 0 ;;
-        # check_agents
-        agents|agents.*) return 0 ;;
+        # check_agents covers these three agents only. Opt-in agents such as
+        # OpenCode, OMP, Grok, and legacy Gemini need their manifest probes.
+        agents.claude|agents.claude.*|agents.codex|agents.codex.*|agents.antigravity|agents.antigravity.*) return 0 ;;
         # check_cloud / check_ssh
         cloud.wrangler|cloud.supabase|cloud.vercel) return 0 ;;
         network.tailscale|network.tailscale.*|network.ssh_keepalive|network.ssh_keepalive.*) return 0 ;;
@@ -4235,6 +4472,8 @@ check_manifest_supplemental() {
         local module_id
         module_id=$(_manifest_module_id "$id")
 
+        doctor_skip_unselected_check "$id" "$tool_name" && continue
+
         # A module the installer skips by design on this distro family must not
         # be warned about with a fix that would skip it again (#385).
         if ! _acfs_doctor_module_applies_to_family "$module_id"; then
@@ -4393,6 +4632,7 @@ deep_check_optional_probe() {
     local binary="$3"
     local fix="$4"
     shift 4
+    doctor_skip_unselected_check "$id" "$label" && return 0
     local runtime_home=""
     local binary_path=""
     local runtime_path=""
@@ -4690,6 +4930,7 @@ legacy_gemini_auth_artifact_exists() {
 # Fixed: Check correct credentials file (.credentials.json, not config.json)
 # Fixed: Removed non-existent --print-system-info flag
 check_claude_auth() {
+    doctor_skip_unselected_check "deep.agent.claude_auth" "Claude authentication" && return 0
     local auth_home=""
     auth_home="$(doctor_runtime_home)"
 
@@ -4741,6 +4982,7 @@ check_claude_auth() {
 # Returns via check(): pass (auth OK), warn (partial/skipped), fail (auth broken)
 # Related: bead 325, ua5 (Codex auth documentation fix)
 check_codex_auth() {
+    doctor_skip_unselected_check "deep.agent.codex_auth" "Codex authentication" && return 0
     local auth_home=""
     auth_home="$(doctor_runtime_home)"
 
@@ -4803,6 +5045,7 @@ check_codex_auth() {
 # check_antigravity_auth - Thorough Antigravity CLI authentication check
 # Antigravity stores OAuth state under ~/.gemini/antigravity-cli.
 check_antigravity_auth() {
+    doctor_skip_unselected_check "deep.agent.antigravity_auth" "Antigravity authentication" && return 0
     local auth_home=""
     auth_home="$(doctor_runtime_home)"
 
@@ -4832,6 +5075,7 @@ check_antigravity_auth() {
 # Related: bead 325
 # Fixed: Check actual Gemini CLI credential files (oauth_creds.json, google_accounts.json)
 check_gemini_auth() {
+    doctor_skip_unselected_check "deep.agent.gemini_auth" "Gemini authentication" && return 0
     local auth_home=""
     auth_home="$(doctor_runtime_home)"
 
@@ -4933,6 +5177,7 @@ deep_check_database() {
 # check_postgres_connection - Test PostgreSQL connectivity
 # Related: bead azw
 check_postgres_connection() {
+    doctor_skip_unselected_check "deep.db.postgres_connect" "PostgreSQL connection" && return 0
     local psql_bin=""
 
     # Skip if not installed
@@ -4963,6 +5208,7 @@ check_postgres_connection() {
 # Fixed: Provide actionable fix message (createuser, not systemctl status)
 # Fixed: Use bash variable substitution with validated input (:'var' syntax is unreliable across psql versions)
 check_postgres_role() {
+    doctor_skip_unselected_check "deep.db.postgres_role" "PostgreSQL role" && return 0
     local psql_bin=""
     psql_bin="$(doctor_binary_path psql 2>/dev/null || true)"
     if [[ -z "$psql_bin" ]]; then
@@ -5023,6 +5269,7 @@ deep_check_cloud() {
 # Deep check: tmux responsiveness
 # Related: GitHub issue #20 (NTM: "context deadline exceeded")
 deep_check_tmux_performance() {
+    doctor_skip_unselected_check "deep.tmux.present" "tmux performance" && return 0
     local tmux_bin=""
 
     if ! tmux_bin="$(doctor_binary_path tmux 2>/dev/null || true)" || [[ -z "$tmux_bin" ]]; then
@@ -5401,6 +5648,7 @@ deep_check_notifications() {
 # check_vault_configured - Check if Vault is configured and reachable
 # Related: bead azw
 check_vault_configured() {
+    doctor_skip_unselected_check "deep.cloud.vault_config" "Vault configuration" && return 0
     local auth_home=""
     local vault_bin=""
     auth_home="$(doctor_runtime_home)"
@@ -5434,6 +5682,7 @@ check_vault_configured() {
 # Related: bead azw
 # Enhanced: Caching support (bead lz1)
 check_gh_auth() {
+    doctor_skip_unselected_check "deep.cloud.gh_auth" "GitHub authentication" && return 0
     local gh_bin=""
 
     if ! gh_bin="$(doctor_binary_path gh 2>/dev/null || true)" || [[ -z "$gh_bin" ]]; then
@@ -5470,6 +5719,7 @@ check_gh_auth() {
 # Related: bead azw
 # Enhanced: Caching and timeout support (bead lz1)
 check_wrangler_auth() {
+    doctor_skip_unselected_check "deep.cloud.wrangler_auth" "Wrangler authentication" && return 0
     local auth_home=""
     local wrangler_bin=""
     auth_home="$(doctor_runtime_home)"
@@ -5523,6 +5773,7 @@ check_wrangler_auth() {
 # check_supabase_auth - Supabase CLI authentication check
 # Related: bead azw
 check_supabase_auth() {
+    doctor_skip_unselected_check "deep.cloud.supabase_auth" "Supabase authentication" && return 0
     local auth_home=""
     local supabase_bin=""
     auth_home="$(doctor_runtime_home)"
@@ -5571,6 +5822,7 @@ check_supabase_auth() {
 # check_vercel_auth - Vercel CLI authentication check
 # Related: bead azw
 check_vercel_auth() {
+    doctor_skip_unselected_check "deep.cloud.vercel_auth" "Vercel authentication" && return 0
     local auth_home=""
     local vercel_bin=""
     auth_home="$(doctor_runtime_home)"
@@ -5726,6 +5978,7 @@ EOF
 # `acfs status`, sourced in a subshell and only from a copy carrying the
 # health API marker, because older wrappers ran the whole update when sourced.
 check_nightly_health() {
+    doctor_skip_unselected_check "updates.nightly_runs" "Nightly updates" && return 0
     local state_file="$1" helper="" first_line="" marker="" output=""
     local level="" message="" json="" code="" fix=""
 
@@ -6740,6 +6993,22 @@ main() {
     # the gum banner box still reached stdout. Genuine errors keep stderr.
     if [[ "$QUIET_MODE" == "true" ]]; then
         exec 1>/dev/null
+    fi
+
+    if ! doctor_load_module_selection; then
+        # A corrupt scope must not become an apparently healthy empty install,
+        # nor authorize --fix to install the default toolset. Report it before
+        # initializing the fix session or running any tool probes.
+        local requested_fix_mode="$FIX_MODE"
+        FIX_MODE=false
+        check "config.module_selection" "Saved installation selection" "fail" "$DOCTOR_SELECTION_ERROR"
+        FIX_MODE="$requested_fix_mode"
+        if [[ "$JSON_MODE" == true ]]; then
+            print_json 1
+        else
+            print_summary
+        fi
+        return 1
     fi
 
     local_progress_record_doctor_invoked "$DEEP_MODE" "$FIX_MODE" "$DRY_RUN_MODE" "$JSON_MODE" 2>/dev/null || true

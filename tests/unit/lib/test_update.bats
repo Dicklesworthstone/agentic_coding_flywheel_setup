@@ -1564,6 +1564,9 @@ EOF
 }
 
 @test "update_stack records MCP Agent Mail target-home failure and continues" {
+    # main validates scope before dispatch. Inject the per-tool home failure
+    # afterward so this still exercises continuation past an Agent Mail error.
+    update_load_module_selection
     update_ensure_minisign() { return 0; }  # the minisign gate (#375) has its own tests
     QUIET=true
     VERBOSE=false
@@ -1948,6 +1951,9 @@ _setup_stack_agent_mail_gate_fixture() {
 }
 
 @test "update_stack honors abort-on-failure for MCP Agent Mail target-home failure" {
+    # Preserve the validated scope before simulating loss of home resolution
+    # inside the selected tool, as in the normal main-to-dispatch lifecycle.
+    update_load_module_selection
     update_ensure_minisign() { return 0; }  # the minisign gate (#375) has its own tests
     QUIET=true
     VERBOSE=false

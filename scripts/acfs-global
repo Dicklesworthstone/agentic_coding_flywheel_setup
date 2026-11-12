@@ -653,7 +653,7 @@ prepare_runtime_context_from_acfs_home() {
 
     [[ -n "$runtime_target_home" ]] && TARGET_HOME="$runtime_target_home"
     ACFS_HOME="$acfs_home"
-    ACFS_STATE_FILE="$state_file"
+    ACFS_STATE_FILE="${_acfs_explicit_state_file:-$state_file}"
     state_bin_dir="$(read_validated_bin_dir_from_state_file "$ACFS_STATE_FILE" "$runtime_target_home" 2>/dev/null || true)"
     ACFS_BIN_DIR="${state_bin_dir:-}"
     ACFS_RUNTIME_TARGET_USER="${validated_target_user:-}"
@@ -903,6 +903,16 @@ main() {
     local -a state_candidates=()
     local env_bin=""
     local system_state_home=""
+    # Preserve caller policy separately from automatic runtime discovery. The
+    # child validates a custom checkpoint against the resolved account; stale
+    # context repair must not silently replace it with a broader default.
+    local _acfs_explicit_state_file="${ACFS_STATE_FILE:-}"
+    if [[ -n "$_acfs_explicit_state_file" ]]; then
+        if ! _acfs_explicit_state_file="$(sanitize_abs_nonroot_path "$_acfs_explicit_state_file")"; then
+            echo "Error: ACFS_STATE_FILE must be an absolute non-root path; refusing to use a different checkpoint" >&2
+            return 1
+        fi
+    fi
 
     original_home_candidate="$(sanitize_abs_nonroot_path "$original_home" 2>/dev/null || true)"
     if [[ -n "$original_home_candidate" ]] && current_home_matches_acfs_install "$original_home_candidate"; then
@@ -927,7 +937,7 @@ main() {
         if [[ -z "${TARGET_HOME:-}" ]] || { [[ "$TARGET_HOME" != "$system_state_home" ]] && ! find_acfs_bin_for_home "$TARGET_HOME" >/dev/null 2>&1; }; then
             TARGET_HOME="$system_state_home"
             ACFS_HOME="$system_state_home/.acfs"
-            if [[ -f "$ACFS_HOME/state.json" ]]; then
+            if [[ -z "$_acfs_explicit_state_file" && -f "$ACFS_HOME/state.json" ]]; then
                 ACFS_STATE_FILE="$ACFS_HOME/state.json"
             fi
             export TARGET_HOME ACFS_HOME ACFS_STATE_FILE
@@ -1112,7 +1122,7 @@ main() {
         validate_target_user_or_die "$user"
 
         if [[ -n "$sanitized_target_home" ]]; then
-            if [[ -n "$sanitized_state_file" ]] && ! state_file_matches_target_home "$sanitized_state_file" "$sanitized_target_home"; then
+            if [[ -z "${_acfs_explicit_state_file:-}" && -n "$sanitized_state_file" ]] && ! state_file_matches_target_home "$sanitized_state_file" "$sanitized_target_home"; then
                 sanitized_state_file=""
             fi
             if [[ -n "$sanitized_system_state_file" ]] && ! state_file_matches_target_home "$sanitized_system_state_file" "$sanitized_target_home"; then

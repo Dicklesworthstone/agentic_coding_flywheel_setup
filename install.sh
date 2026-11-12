@@ -11394,6 +11394,7 @@ finalize() {
     try_step "Installing output.sh" install_asset "scripts/lib/output.sh" "$ACFS_HOME/scripts/lib/output.sh" || return 1
     try_step "Installing gum_ui.sh" install_asset "scripts/lib/gum_ui.sh" "$ACFS_HOME/scripts/lib/gum_ui.sh" || return 1
     try_step "Installing progress.sh" install_asset "scripts/lib/progress.sh" "$ACFS_HOME/scripts/lib/progress.sh" || return 1
+    try_step "Installing state.sh" install_asset "scripts/lib/state.sh" "$ACFS_HOME/scripts/lib/state.sh" || return 1
     try_step "Installing install_helpers.sh" install_asset "scripts/lib/install_helpers.sh" "$ACFS_HOME/scripts/lib/install_helpers.sh" || return 1
     try_step "Installing module_selector.sh" install_asset "scripts/lib/module_selector.sh" "$ACFS_HOME/scripts/lib/module_selector.sh" || return 1
     try_step "Installing stack.sh" install_asset "scripts/lib/stack.sh" "$ACFS_HOME/scripts/lib/stack.sh" || return 1
@@ -12660,6 +12661,15 @@ main() {
         fi
     fi
 
+    # An empty plan cannot authorize an install or create a legacy/full-scope
+    # checkpoint. Keep inspection and explicit state reset available.
+    if [[ "$LIST_MODULES" != true && "$PRINT_PLAN_MODE" != true \
+        && "$DRY_RUN" != true && "$PRINT_MODE" != true && "$RESET_STATE_ONLY" != true ]] \
+        && { [[ "${ACFS_EFFECTIVE_PLAN+x}" != x ]] || [[ ${#ACFS_EFFECTIVE_PLAN[@]} -eq 0 ]]; }; then
+        log_error "No modules selected. Choose a nonempty plan or inspect your selectors with --print-plan."
+        exit 1
+    fi
+
     # Handle --list-modules: print available modules and exit (mjt.5.3)
     if [[ "$LIST_MODULES" == "true" ]]; then
         list_modules
@@ -12860,7 +12870,15 @@ main() {
     ACFS_STATE_FILE="${ACFS_STATE_FILE:-$ACFS_HOME/state.json}"
     export ACFS_HOME ACFS_STATE_FILE
 
-    # Validate and handle existing state file
+    if [[ "$DRY_RUN" != true ]] && type -t state_load_module_selection >/dev/null; then
+        if ! state_load_module_selection "$ACFS_STATE_FILE" \
+            || ! state_validate_module_selection_catalog "${ACFS_MODULES_IN_ORDER[@]}"; then
+            log_error "The saved module selection cannot be used safely. Resolve the checkpoint before reinstalling."
+            exit 1
+        fi
+    fi
+
+    # Validate and handle existing state only after its selection is checked.
     if type -t state_ensure_valid &>/dev/null; then
         if ! state_ensure_valid; then
             log_error "State validation failed. Aborting."
@@ -12906,6 +12924,16 @@ main() {
     # full `pacman -Syu`, which must not upgrade the whole system before an
     # interactive user has answered the confirmation prompt.
     ensure_base_deps
+
+    # Persist the approved plan before executing its modules. This records
+    # intent even when a later module fails, and unions targeted repairs with
+    # the existing managed set instead of silently shrinking it.
+    if [[ "$DRY_RUN" != true ]] && type -t state_record_module_selection >/dev/null; then
+        if ! state_record_module_selection "${ACFS_EFFECTIVE_PLAN[@]}"; then
+            log_error "Could not record the selected modules; installation has stopped before module execution."
+            return 1
+        fi
+    fi
 
     # Base dependencies run before the resumable phase loop because state and
     # module verification need jq. Clear only older failures after checking

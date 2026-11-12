@@ -179,6 +179,8 @@ if [[ -z "$SCRIPT_DIR" ]]; then
     printf 'ERROR: unable to resolve the acfs-update script directory\n' >&2
     return 1 2>/dev/null || exit 1
 fi
+_UPDATE_STATE_LIBRARY="$SCRIPT_DIR/state.sh"
+_UPDATE_MANIFEST_INDEX="$SCRIPT_DIR/../generated/manifest_index.sh"
 
 _update_early_current_user() {
     local current_user=""
@@ -420,6 +422,11 @@ QUIET=false
 YES_MODE=false
 ABORT_ON_FAILURE=false
 REBOOT_REQUIRED=false
+
+# Installation scope is loaded from the resolved target's state, never from
+# exported selectors. Keep one validated snapshot across self-update and all
+# component dispatch in this process.
+UPDATE_MODULE_SELECTION_READY=false
 
 # Logging
 UPDATE_LOG_DIR="${UPDATE_LOG_DIR:-${HOME:-/tmp}/.acfs/logs/updates}"
@@ -810,6 +817,141 @@ update_runtime_shell_home() {
     runtime_home="$(update_existing_home "${HOME:-}" 2>/dev/null || true)"
     [[ -n "$runtime_home" ]] || return 1
     printf '%s\n' "$runtime_home"
+}
+
+update_load_module_selection() {
+    [[ "$UPDATE_MODULE_SELECTION_READY" == "true" ]] && return 0
+
+    local acfs_home="" candidate=""
+    acfs_home="$(update_runtime_acfs_home 2>/dev/null || true)"
+    if [[ -z "$acfs_home" ]]; then
+        echo "Unable to resolve the target installation's module selection" >&2
+        return 1
+    fi
+
+    if ! declare -F state_load_module_selection >/dev/null \
+        || ! declare -F state_module_is_selected >/dev/null \
+        || ! declare -F state_validate_module_selection_catalog >/dev/null; then
+        local -a candidates=("$_UPDATE_STATE_LIBRARY" "$acfs_home/scripts/lib/state.sh")
+        [[ -z "${ACFS_REPO_ROOT:-}" ]] || candidates+=("$ACFS_REPO_ROOT/scripts/lib/state.sh")
+        for candidate in "${candidates[@]}"; do
+            [[ -f "$candidate" ]] || continue
+            # Use the state reader shipped beside the updater, following the
+            # same deployed-library discovery as stack.sh and holds.sh.
+            # shellcheck source=/dev/null
+            if source "$candidate" \
+                && declare -F state_load_module_selection >/dev/null \
+                && declare -F state_module_is_selected >/dev/null \
+                && declare -F state_validate_module_selection_catalog >/dev/null; then
+                break
+            fi
+        done
+    fi
+
+    if ! declare -F state_load_module_selection >/dev/null \
+        || ! declare -F state_module_is_selected >/dev/null \
+        || ! declare -F state_validate_module_selection_catalog >/dev/null; then
+        echo "The ACFS module-selection reader is unavailable; refusing to expand the installation" >&2
+        return 1
+    fi
+    local state_file="$acfs_home/state.json"
+    local explicit_state_file="${ACFS_STATE_FILE:-}"
+    if [[ -n "$explicit_state_file" ]]; then
+        if [[ "$explicit_state_file" != /* || "$explicit_state_file" == / ]]; then
+            echo "ACFS_STATE_FILE must name an absolute checkpoint file" >&2
+            return 1
+        fi
+        if [[ "$explicit_state_file" != "$state_file" ]]; then
+            local target_user="" target_home=""
+            target_user="$(update_target_user 2>/dev/null || true)"
+            target_home="$(update_target_home "$target_user" 2>/dev/null || true)"
+            if [[ -z "$target_user" || -z "$target_home" ]]; then
+                echo "Cannot bind the explicit checkpoint to the update target" >&2
+                return 1
+            fi
+            # Validate identity and selection in the same read. A missing or
+            # unrelated explicit checkpoint must never become a legacy update.
+            state_load_module_selection "$explicit_state_file" "$target_home" "$target_user" || return 1
+        else
+            # The wrapper exports this default even for older installations
+            # with no checkpoint. Preserve their documented legacy behavior.
+            state_load_module_selection "$state_file" || return 1
+        fi
+    else
+        state_load_module_selection "$state_file" || return 1
+    fi
+
+    if [[ "${ACFS_STATE_SELECTION_MODE:-invalid}" == "scoped" ]]; then
+        local awk_bin="" catalog=""
+        local -a known_modules=()
+        awk_bin="$(update_system_binary_path awk 2>/dev/null || true)"
+        # Read only the canonical data block beside this updater. Sourcing the
+        # index would execute shell code before the saved scope was validated.
+        if [[ -z "$awk_bin" || ! -f "$_UPDATE_MANIFEST_INDEX" ]] || ! catalog="$("$awk_bin" '
+            /^ACFS_MODULES_IN_ORDER=\($/ {
+                if (found++) bad=1
+                inside=1
+                next
+            }
+            inside && /^\)$/ { inside=0; complete=1; next }
+            inside {
+                if ($0 !~ /^  "[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)+"$/) {
+                    bad=1
+                    next
+                }
+                id=substr($0, 4, length($0)-4)
+                if (seen[id]++) bad=1
+                print id
+            }
+            END { if (found != 1 || !complete || inside || bad) exit 1 }
+        ' "$_UPDATE_MANIFEST_INDEX")"; then
+            echo "Unable to read the ACFS module catalog; refusing to expand the installation" >&2
+            return 1
+        fi
+        mapfile -t known_modules <<< "$catalog"
+        state_validate_module_selection_catalog "${known_modules[@]}" || return 1
+    fi
+    UPDATE_MODULE_SELECTION_READY=true
+}
+
+update_selection_has_prefix() {
+    local prefix="" module=""
+    case "${ACFS_STATE_SELECTION_MODE:-invalid}" in
+        legacy) return 0 ;;
+        scoped) ;;
+        *) return 2 ;;
+    esac
+    for prefix in "$@"; do
+        for module in "${ACFS_STATE_SELECTED_MODULES[@]}"; do
+            [[ "$module" == "$prefix"* ]] && return 0
+        done
+    done
+    return 1
+}
+
+update_run_selected_module() {
+    local module="$1"
+    shift
+    update_load_module_selection || return 1
+    if state_module_is_selected "$module"; then
+        "$@"
+    else
+        log_item "skip" "$module" "not selected for this installation"
+    fi
+}
+
+# Internal libraries remain a coherent runtime even for a small installation.
+# Public entrypoints and managed configuration belong to their manifest module.
+update_deployed_asset_is_selected() {
+    case "$1" in
+        tmux/tmux.conf) state_module_is_selected cli.modern ;;
+        onboard/*) state_module_is_selected acfs.onboard ;;
+        bin/acfs) state_module_is_selected acfs.doctor ;;
+        bin/acfs-update) state_module_is_selected acfs.update ;;
+        bin/agy-locked) state_module_is_selected agents.antigravity ;;
+        zsh/*|completions/*) state_module_is_selected shell.omz ;;
+        *) return 0 ;;
+    esac
 }
 
 update_binary_exists() {
@@ -3217,6 +3359,8 @@ update_claude_settings_has_legacy_git_safety_guard_hook() {
 # Clean up legacy git_safety_guard artifacts from pre-DCG installations
 # This runs on every update to ensure stale files are removed
 cleanup_legacy_git_safety_guard() {
+    update_load_module_selection || return 1
+    state_module_is_selected agents.claude || return 0
     local runtime_home=""
     runtime_home="$(update_runtime_shell_home 2>/dev/null || true)"
     [[ -n "$runtime_home" ]] || return 0
@@ -3327,6 +3471,8 @@ cleanup_legacy_git_safety_guard() {
 }
 
 cleanup_legacy_bv_alias() {
+    update_load_module_selection || return 1
+    state_module_is_selected stack.beads_viewer || return 0
     local runtime_home=""
     runtime_home="$(update_runtime_shell_home 2>/dev/null || true)"
     [[ -n "$runtime_home" ]] || return 0
@@ -3400,6 +3546,8 @@ cleanup_legacy_bv_alias() {
 # Fix stale aliases in deployed acfs.zshrc
 # Older versions aliased br='bun run dev', which shadows beads_rust (br).
 cleanup_legacy_br_alias() {
+    update_load_module_selection || return 1
+    state_module_is_selected stack.beads_rust || return 0
     local runtime_home=""
     runtime_home="$(update_runtime_shell_home 2>/dev/null || true)"
     [[ -n "$runtime_home" ]] || return 0
@@ -3429,6 +3577,9 @@ cleanup_legacy_br_alias() {
 # loader really carries the init, so atuin never ends up uninitialized. Only
 # the exact stock line is touched; a customized invocation is left alone.
 cleanup_unmanaged_atuin_init() {
+    update_load_module_selection || return 1
+    state_module_is_selected shell.omz || return 0
+    state_module_is_selected tools.atuin || return 0
     local runtime_home=""
     runtime_home="$(update_runtime_shell_home 2>/dev/null || true)"
     [[ -n "$runtime_home" ]] || return 0
@@ -3515,6 +3666,8 @@ update_atomic_deploy_file() (
 
 # Re-deploy acfs.zshrc from repo to ~/.acfs/ if repo copy is newer
 sync_acfs_zshrc() {
+    update_load_module_selection || return 1
+    state_module_is_selected shell.omz || return 0
     local repo_zshrc="$ACFS_REPO_ROOT/acfs/zsh/acfs.zshrc"
     local runtime_home=""
     runtime_home="$(update_runtime_shell_home 2>/dev/null || true)"
@@ -3549,6 +3702,8 @@ sync_acfs_zshrc() {
 }
 
 sync_acfs_zsh_loader() {
+    update_load_module_selection || return 1
+    state_module_is_selected shell.omz || return 0
     local runtime_home=""
     runtime_home="$(update_runtime_shell_home 2>/dev/null || true)"
     [[ -n "$runtime_home" ]] || return 0
@@ -3613,6 +3768,8 @@ _update_sed_literal() {
 }
 
 sync_acfs_profile_paths() {
+    update_load_module_selection || return 1
+    state_module_is_selected shell.omz || return 0
     local runtime_home=""
     runtime_home="$(update_runtime_shell_home 2>/dev/null || true)"
     [[ -n "$runtime_home" ]] || return 0
@@ -3671,6 +3828,8 @@ sync_acfs_profile_paths() {
 }
 
 sync_acfs_zprofile_paths() {
+    update_load_module_selection || return 1
+    state_module_is_selected shell.omz || return 0
     local runtime_home=""
     runtime_home="$(update_runtime_shell_home 2>/dev/null || true)"
     [[ -n "$runtime_home" ]] || return 0
@@ -3735,6 +3894,7 @@ sync_acfs_zprofile_paths() {
 # or checksums.yaml — the self-update pulls into the git repo but the
 # deployed copies at ~/.acfs/ remain stale.
 sync_acfs_deployed() {
+    update_load_module_selection || return 1
     local source_ref="${1:-}"
     local acfs_home=""
     acfs_home="$(update_runtime_acfs_home 2>/dev/null || true)"
@@ -3799,6 +3959,8 @@ sync_acfs_deployed() {
             local source_label="$repo_rel"
             local source_mode=""
             local target_mode_override=""
+
+            update_deployed_asset_is_selected "$deployed_rel" || exit 10
 
             trap 'if [[ -n "$source_tmp" ]]; then rm -f -- "$source_tmp"; fi' EXIT
             trap 'exit 129' HUP
@@ -3922,6 +4084,7 @@ sync_acfs_deployed() {
         "scripts/lib/provenance.sh:scripts/lib/provenance.sh"
         "scripts/lib/offline_artifact_pack.sh:scripts/lib/offline_artifact_pack.sh"
         "scripts/lib/provisioning_packet.sh:scripts/lib/provisioning_packet.sh"
+        "scripts/lib/state.sh:scripts/lib/state.sh"
         "scripts/lib/update.sh:scripts/lib/update.sh"
         "scripts/lib/logging.sh:scripts/lib/logging.sh"
         "scripts/lib/output.sh:scripts/lib/output.sh"
@@ -4141,6 +4304,8 @@ update_normalize_runtime_modes() {
 }
 
 sync_acfs_global_wrapper() (
+    update_load_module_selection || exit 1
+    state_module_is_selected acfs.doctor || exit 0
     local source_ref="${1:-}"
     local deployed_file="${2:-/usr/local/bin/acfs}"
     local repo_rel="scripts/acfs-global"
@@ -4208,6 +4373,7 @@ sync_acfs_global_wrapper() (
 )
 
 sync_acfs_global_command_links() {
+    update_load_module_selection || return 1
     local acfs_home=""
     local global_bin_dir="${ACFS_GLOBAL_BIN_DIR:-/usr/local/bin}"
     local spec=""
@@ -4225,6 +4391,11 @@ sync_acfs_global_command_links() {
     do
         source_path="${spec%%:*}"
         dest_path="${spec#*:}"
+
+        case "$dest_path" in
+            */acfs-update) state_module_is_selected acfs.update || continue ;;
+            */onboard) state_module_is_selected acfs.onboard || continue ;;
+        esac
 
         if [[ ! -x "$source_path" ]]; then
             log_to_file "Skipped linking $dest_path -> $source_path (source missing)"
@@ -7025,6 +7196,8 @@ update_apt() {
     if [[ "$UPDATE_APT" != "true" ]]; then
         return 0
     fi
+    update_load_module_selection || return 1
+    state_module_is_selected base.system || return 0
 
     # Arch-family (Arch, Omarchy): the system package manager is pacman, and
     # partial upgrades are unsupported there, so the only correct operation is
@@ -7361,6 +7534,8 @@ update_bun() {
     if [[ "$UPDATE_RUNTIME" != "true" ]]; then
         return 0
     fi
+    update_load_module_selection || return 1
+    state_module_is_selected lang.bun || return 0
 
     log_section "Bun Runtime"
 
@@ -7603,6 +7778,8 @@ update_agents() {
     if [[ "$UPDATE_AGENTS" != "true" ]]; then
         return 0
     fi
+    update_load_module_selection || return 1
+    update_selection_has_prefix agents. || return 0
 
     local target_user=""
     local target_home=""
@@ -7634,7 +7811,9 @@ update_agents() {
         fi
     fi
 
-    if [[ -n "$claude_path" ]] && [[ "$bun_claude_detected" != "true" || "$FORCE_MODE" != "true" ]]; then
+    if ! state_module_is_selected agents.claude; then
+        log_item "skip" "Claude Code" "not selected for this installation"
+    elif [[ -n "$claude_path" ]] && [[ "$bun_claude_detected" != "true" || "$FORCE_MODE" != "true" ]]; then
         capture_version_before "claude"
 
         # Verification already refreshes metadata once. A refused pin cannot
@@ -7683,7 +7862,9 @@ update_agents() {
     # Codex CLI via bun (--trust allows postinstall scripts)
     # Uses fallback chain: @latest -> unversioned -> pinned 0.87.0
     # npm can 404 briefly after publishing; pinned version is reliable fallback
-    if [[ -z "$bun_bin" ]]; then
+    if ! state_module_is_selected agents.codex; then
+        log_item "skip" "Codex CLI" "not selected for this installation"
+    elif [[ -z "$bun_bin" ]]; then
         # One line for one cause: a missing Bun only matters through Codex, so
         # it is reported once, against Codex (it used to be a Bun line plus a
         # Codex line). Not a failure when there is no Codex to update.
@@ -7759,7 +7940,9 @@ update_agents() {
         agy_bin="$(update_binary_path agy 2>/dev/null || true)"
     fi
 
-    if [[ -n "$agy_bin" ]]; then
+    if ! state_module_is_selected agents.antigravity; then
+        log_item "skip" "Antigravity CLI" "not selected for this installation"
+    elif [[ -n "$agy_bin" ]]; then
         capture_version_before "agy"
         run_cmd "Antigravity CLI" update_run_bounded_in_target_context "$agy_bin" update
         if capture_version_after "agy"; then
@@ -7784,7 +7967,9 @@ update_agents() {
 
     # oh-my-pi (omp) is a standalone self-updating native binary; prefer its
     # native 'omp update', fall back to the verified installer for fresh installs.
-    if update_binary_exists omp; then
+    if ! state_module_is_selected agents.omp; then
+        log_item "skip" "oh-my-pi (omp)" "not selected for this installation"
+    elif update_binary_exists omp; then
         local omp_bin=""
         omp_bin="$(update_binary_path omp 2>/dev/null || true)"
         capture_version_before "omp"
@@ -7810,7 +7995,9 @@ update_agents() {
     # OpenCode ships its own 'opencode upgrade'; prefer that, and fall back to
     # the verified installer for fresh installs under --force. (Before this
     # block the updater never touched opencode at all.)
-    if update_binary_exists opencode; then
+    if ! state_module_is_selected agents.opencode; then
+        log_item "skip" "OpenCode" "not selected for this installation"
+    elif update_binary_exists opencode; then
         local opencode_bin=""
         local opencode_timeout_bin=""
         opencode_bin="$(update_binary_path opencode 2>/dev/null || true)"
@@ -7851,7 +8038,9 @@ update_agents() {
     # Grok CLI has no documented native self-update; refresh by re-running the
     # verified installer. GROK_BIN_DIR keeps the binary in the ACFS bin dir
     # instead of the upstream default ~/.grok/bin.
-    if update_binary_exists grok || [[ "$FORCE_MODE" == "true" ]]; then
+    if ! state_module_is_selected agents.grok; then
+        log_item "skip" "Grok CLI" "not selected for this installation"
+    elif update_binary_exists grok || [[ "$FORCE_MODE" == "true" ]]; then
         if update_require_security; then
             local grok_bin_dir=""
             grok_bin_dir="$(update_runtime_primary_bin_dir 2>/dev/null || true)"
@@ -8191,6 +8380,7 @@ update_cloud() {
     if [[ "$UPDATE_CLOUD" != "true" ]]; then
         return 0
     fi
+    update_load_module_selection || return 1
 
     log_section "Cloud CLIs"
 
@@ -8200,7 +8390,9 @@ update_cloud() {
     [[ -n "$bun_bin" ]] && has_bun=true
 
     # Wrangler (--trust allows postinstall scripts for native binaries)
-    if update_binary_exists wrangler || [[ "$FORCE_MODE" == "true" ]]; then
+    if ! state_module_is_selected cloud.wrangler; then
+        log_item "skip" "Wrangler" "not selected for this installation"
+    elif update_binary_exists wrangler || [[ "$FORCE_MODE" == "true" ]]; then
         if [[ "$has_bun" == "true" ]]; then
             run_cmd_bun_with_retry "Wrangler (Cloudflare)" update_run_bounded_in_target_context "$bun_bin" install -g --trust wrangler@latest
         else
@@ -8211,7 +8403,9 @@ update_cloud() {
     fi
 
     # Supabase (verified GitHub release binary; installed to ~/.local/bin)
-    if update_binary_exists supabase || [[ "$FORCE_MODE" == "true" ]]; then
+    if ! state_module_is_selected cloud.supabase; then
+        log_item "skip" "Supabase CLI" "not selected for this installation"
+    elif update_binary_exists supabase || [[ "$FORCE_MODE" == "true" ]]; then
         local supabase_primary_bin=""
         capture_version_before "supabase"
         supabase_primary_bin="$(update_runtime_primary_bin_dir 2>/dev/null || true)"
@@ -8230,7 +8424,9 @@ update_cloud() {
     fi
 
     # Vercel (--trust allows postinstall scripts for native binaries)
-    if update_binary_exists vercel || [[ "$FORCE_MODE" == "true" ]]; then
+    if ! state_module_is_selected cloud.vercel; then
+        log_item "skip" "Vercel CLI" "not selected for this installation"
+    elif update_binary_exists vercel || [[ "$FORCE_MODE" == "true" ]]; then
         if [[ "$has_bun" == "true" ]]; then
             run_cmd_bun_with_retry "Vercel CLI" update_run_bounded_in_target_context "$bun_bin" install -g --trust vercel@latest
         else
@@ -8243,7 +8439,9 @@ update_cloud() {
     # GitHub CLI (gh) - update extensions
     local gh_bin=""
     gh_bin="$(update_binary_path gh 2>/dev/null || true)"
-    if [[ -n "$gh_bin" ]]; then
+    if ! state_module_is_selected cli.modern; then
+        log_item "skip" "GitHub CLI" "not selected for this installation"
+    elif [[ -n "$gh_bin" ]]; then
         capture_version_before "gh"
         # Update gh extensions if any are installed
         local gh_extensions=0 gh_inventory="" gh_inventory_status=0
@@ -8297,6 +8495,8 @@ update_rust() {
     if [[ "$UPDATE_RUNTIME" != "true" ]]; then
         return 0
     fi
+    update_load_module_selection || return 1
+    state_module_is_selected lang.rust || return 0
 
     log_section "Rust Toolchain"
 
@@ -8337,6 +8537,7 @@ update_cargo_tools() {
     if [[ "$UPDATE_RUNTIME" != "true" ]]; then
         return 0
     fi
+    update_load_module_selection || return 1
 
     log_section "Cargo Tools"
 
@@ -8354,6 +8555,11 @@ update_cargo_tools() {
     for entry in "${tools[@]}"; do
         local tool="${entry%|*}"
         local binary_name="${entry#*|}"
+
+        case "$tool" in
+            ast-grep) state_module_is_selected tools.ast_grep || continue ;;
+            *) state_module_is_selected cli.modern || continue ;;
+        esac
 
         if ! update_binary_exists "$binary_name"; then
             continue
@@ -8375,6 +8581,8 @@ update_uv() {
     if [[ "$UPDATE_RUNTIME" != "true" ]]; then
         return 0
     fi
+    update_load_module_selection || return 1
+    state_module_is_selected lang.uv || return 0
 
     log_section "Python Tools (uv)"
 
@@ -8407,6 +8615,8 @@ update_go() {
     if [[ "$UPDATE_RUNTIME" != "true" ]]; then
         return 0
     fi
+    update_load_module_selection || return 1
+    state_module_is_selected lang.go || return 0
 
     log_section "Go Runtime"
 
@@ -9343,6 +9553,8 @@ update_stack() {
     if [[ "$UPDATE_STACK" != "true" ]]; then
         return 0
     fi
+    update_load_module_selection || return 1
+    update_selection_has_prefix stack. utils. || return 0
 
     log_section "Agent Flywheel Stack"
 
@@ -9355,43 +9567,49 @@ update_stack() {
     # installs/updates them individually below.  Previously only --skip-cass
     # was passed, causing brenner's install_toolchain() to redundantly rebuild
     # NTM and CM from source — a 5+ hour hang on slow machines (fixes #210).
-    capture_version_before "brenner"
-    run_cmd "Brenner Bot" update_run_verified_installer brenner_bot --skip-ntm --skip-cass --skip-cm
-    if capture_version_after "brenner"; then
-        update_say "       ${DIM}%s → %s${NC}\n" "${VERSION_BEFORE[brenner]}" "${VERSION_AFTER[brenner]}"
+    if state_module_is_selected stack.brenner_bot; then
+        capture_version_before "brenner"
+        run_cmd "Brenner Bot" update_run_verified_installer brenner_bot --skip-ntm --skip-cass --skip-cm
+        if capture_version_after "brenner"; then
+            update_say "       ${DIM}%s → %s${NC}\n" "${VERSION_BEFORE[brenner]}" "${VERSION_AFTER[brenner]}"
+        fi
     fi
 
-    # NTM - always install/update (installer is idempotent)
-    capture_version_before "ntm"
-    update_run_verified_installer_or_existing_on_transient "NTM" ntm ntm ntm || true
-    if capture_version_after "ntm"; then
-        update_say "       ${DIM}%s → %s${NC}\n" "${VERSION_BEFORE[ntm]}" "${VERSION_AFTER[ntm]}"
+    # Selected tools retain their existing install/update and failure handling.
+    if state_module_is_selected stack.ntm; then
+        capture_version_before "ntm"
+        update_run_verified_installer_or_existing_on_transient "NTM" ntm ntm ntm || true
+        if capture_version_after "ntm"; then
+            update_say "       ${DIM}%s → %s${NC}\n" "${VERSION_BEFORE[ntm]}" "${VERSION_AFTER[ntm]}"
+        fi
     fi
 
     # minisign (issue #375): the MCP Agent Mail and CAAM installers fail
     # closed without it, so provision it once here, before either runs.
     local minisign_ready=true
-    update_ensure_minisign || minisign_ready=false
+    if state_module_is_selected stack.mcp_agent_mail || state_module_is_selected stack.caam; then
+        update_ensure_minisign || minisign_ready=false
+    fi
 
     # Verify release/install evidence before downloading an unchanged Agent
     # Mail installer; always reconcile its managed service after a payload no-op.
-    update_agent_mail "$minisign_ready"
+    update_run_selected_module stack.mcp_agent_mail update_agent_mail "$minisign_ready"
 
     # Meta Skill (ms) - always install/update (installer is idempotent)
-    update_run_verified_installer_or_existing_on_transient "Meta Skill" ms ms ms --easy-mode || true
+    update_run_selected_module stack.meta_skill update_run_verified_installer_or_existing_on_transient "Meta Skill" ms ms ms --easy-mode || true
 
     # APR (Automated Plan Reviser Pro) - always install/update
-    run_cmd "APR" update_run_verified_installer apr --easy-mode
+    update_run_selected_module stack.automated_plan_reviser run_cmd "APR" update_run_verified_installer apr --easy-mode
 
     # Process Triage (pt) - always install/update
-    run_cmd "Process Triage" update_run_verified_installer pt
+    update_run_selected_module stack.process_triage run_cmd "Process Triage" update_run_verified_installer pt
 
     # xf (X Archive Search) - always install/update
-    run_cmd "xf" update_run_verified_installer xf --easy-mode
+    update_run_selected_module utils.xf run_cmd "xf" update_run_verified_installer xf --easy-mode
 
     # JeffreysPrompts (jfp) - only update if already installed
     # Note: JFP requires a paid subscription to jeffreysprompts.com
-    if update_binary_exists jfp; then
+    if state_module_is_selected stack.jeffreysprompts && update_binary_exists jfp; then
         run_cmd "JeffreysPrompts" update_run_verified_installer jfp
     fi
 
@@ -9402,27 +9620,29 @@ update_stack() {
     # $CLAUDE_PROJECT_DIR-relative hook paths into the user-level
     # ~/.claude/settings.json every night (#400). ACFS wires agent hooks (DCG)
     # itself; per-project UBS hooks are a choice made inside a repo.
-    run_cmd "Ultimate Bug Scanner" update_run_verified_installer ubs --easy-mode --skip-hooks
+    update_run_selected_module stack.ultimate_bug_scanner run_cmd "Ultimate Bug Scanner" update_run_verified_installer ubs --easy-mode --skip-hooks
 
     # Beads Viewer - always install/update
-    run_cmd "Beads Viewer" update_run_verified_installer bv
+    update_run_selected_module stack.beads_viewer run_cmd "Beads Viewer" update_run_verified_installer bv
 
     # Beads Rust (br) - local issue tracker CLI - always install/update
-    run_cmd "Beads Rust" update_run_verified_installer br
+    update_run_selected_module stack.beads_rust run_cmd "Beads Rust" update_run_verified_installer br
 
     # CASS - always install/update. Its upstream installer uses a lock inside
     # TMPDIR; give it an ACFS-owned target-user temp root so stale shared
     # /tmp or /data/tmp locks cannot make only CASS fail during `acfs update`.
-    update_run_verified_installer_with_target_tmpdir_or_existing_on_transient "CASS" cass cass cass --easy-mode --verify || true
+    update_run_selected_module stack.cass update_run_verified_installer_with_target_tmpdir_or_existing_on_transient "CASS" cass cass cass --easy-mode --verify || true
 
     # CASS Memory - always install/update, but do not trust installer exit 0
     # unless the CLI is still present and versionable afterward.
-    update_run_verified_installer_or_existing_on_transient "CASS Memory" cm cm cm --easy-mode --verify || true
+    update_run_selected_module stack.cm update_run_verified_installer_or_existing_on_transient "CASS Memory" cm cm cm --easy-mode --verify || true
 
     # CAAM - always install/update. Releases >= 0.1.18 are minisign-signed and
     # the installer fails closed without minisign (#375); a held CAAM still
     # skips through the shared path regardless.
-    if [[ "$minisign_ready" == "true" || "$DRY_RUN" == "true" ]] || update_tool_hold_details caam; then
+    if ! state_module_is_selected stack.caam; then
+        log_item "skip" "CAAM" "not selected for this installation"
+    elif [[ "$minisign_ready" == "true" || "$DRY_RUN" == "true" ]] || update_tool_hold_details caam; then
         run_cmd "CAAM" update_run_verified_installer caam
     else
         log_item "fail" "CAAM" "$(update_minisign_missing_details)"
@@ -9430,17 +9650,18 @@ update_stack() {
 
     # SLB - install when absent; refresh only ACFS-managed binaries (#329).
     # An operator-audited/pinned binary is preserved unless ACFS_FORCE_SLB_UPDATE=1.
-    run_cmd "SLB" update_run_slb_verified_install
+    update_run_selected_module stack.slb run_cmd "SLB" update_run_slb_verified_install
 
     # RU (Repo Updater) - always install/update
-    run_cmd "RU" update_run_verified_installer_with_env ru "RU_NON_INTERACTIVE=1"
+    update_run_selected_module stack.ru run_cmd "RU" update_run_verified_installer_with_env ru "RU_NON_INTERACTIVE=1"
 
     # DCG (Destructive Command Guard) - always install/update, but do not
     # report a transient installer/network failure when an existing dcg remains
     # usable and versionable.
-    update_run_verified_installer_or_existing_on_transient "DCG" dcg dcg dcg --easy-mode || true
+    update_run_selected_module stack.dcg update_run_verified_installer_or_existing_on_transient "DCG" dcg dcg dcg --easy-mode || true
     # Re-register hook after install/update to ensure latest version is active
-    if update_binary_exists dcg && update_binary_exists claude; then
+    if state_module_is_selected stack.dcg && state_module_is_selected agents.claude \
+        && update_binary_exists dcg && update_binary_exists claude; then
         local dcg_bin=""
         dcg_bin="$(update_binary_path dcg 2>/dev/null || true)"
         if [[ -n "$dcg_bin" ]]; then
@@ -9457,45 +9678,47 @@ update_stack() {
     # user through sudo, sudo drops the caller's environment. Binary, hook and
     # daemon updates are unaffected; rch installers that predate the variable
     # ignore it.
-    if [[ "${RCH_SKIP_SKILL:-}" == "1" ]]; then
+    if ! state_module_is_selected stack.rch; then
+        log_item "skip" "RCH" "not selected for this installation"
+    elif [[ "${RCH_SKIP_SKILL:-}" == "1" ]]; then
         run_cmd "RCH" update_run_verified_installer_with_env rch "RCH_SKIP_SKILL=1" --easy-mode
     else
         run_cmd "RCH" update_run_verified_installer rch --easy-mode
     fi
 
     # GIIL (Google Image Inline Linker) - always install/update
-    run_cmd "GIIL" update_run_verified_installer giil
+    update_run_selected_module utils.giil run_cmd "GIIL" update_run_verified_installer giil
 
     # CSCTF (Chat Shared Conversation To File) - always install/update
-    run_cmd "CSCTF" update_run_verified_installer csctf
+    update_run_selected_module utils.csctf run_cmd "CSCTF" update_run_verified_installer csctf
 
     # SRPS (System Resource Protection Script) - always install/update
-    run_cmd "SRPS" update_run_verified_installer srps
+    update_run_selected_module stack.srps run_cmd "SRPS" update_run_verified_installer srps
 
     # TRU (Toon Rust) - always install/update
-    run_cmd "TRU" update_run_verified_installer tru
+    update_run_selected_module utils.toon_rust run_cmd "TRU" update_run_verified_installer tru
 
     # RANO - always install/update
-    run_cmd "RANO" update_run_verified_installer rano
+    update_run_selected_module utils.rano run_cmd "RANO" update_run_verified_installer rano
 
     # MDWB (Markdown Web Browser) - always install/update
-    run_cmd "MDWB" update_run_verified_installer mdwb --yes
+    update_run_selected_module utils.mdwb run_cmd "MDWB" update_run_verified_installer mdwb --yes
 
     # S2P (Source to Prompt TUI) - always install/update
-    run_cmd "S2P" update_run_verified_installer s2p -- --skip-cass
+    update_run_selected_module utils.s2p run_cmd "S2P" update_run_verified_installer s2p -- --skip-cass
 
     # FrankenSearch (fsfs) - prefer the small Linux release asset to avoid
     # upstream's missing-full-binary source-build fallback on Ubuntu.
-    run_cmd "FrankenSearch" update_run_fsfs_installer --easy-mode
+    update_run_selected_module stack.frankensearch run_cmd "FrankenSearch" update_run_fsfs_installer --easy-mode
 
     # Storage Ballast Helper (sbh) - always install/update
-    run_cmd "SBH" update_run_verified_installer sbh
+    update_run_selected_module stack.storage_ballast_helper run_cmd "SBH" update_run_verified_installer sbh
 
     # Cross-Agent Session Resumer (casr) - always install/update
-    run_cmd "CASR" update_run_verified_installer casr
+    update_run_selected_module stack.cross_agent_session_resumer run_cmd "CASR" update_run_verified_installer casr
 
     # ASCII Art Diagram Corrector (aadc) - update when installed, or install with --force
-    if update_binary_exists aadc || [[ "$FORCE_MODE" == "true" ]]; then
+    if state_module_is_selected utils.aadc && { update_binary_exists aadc || [[ "$FORCE_MODE" == "true" ]]; }; then
         capture_version_before "aadc"
         run_cmd "AADC" update_run_cargo_git_source_install https://github.com/Dicklesworthstone/aadc.git aadc
         if capture_version_after "aadc"; then
@@ -9506,7 +9729,7 @@ update_stack() {
     fi
 
     # Rust Proxy (rust_proxy) - update when installed, or install with --force
-    if update_binary_exists rust_proxy || [[ "$FORCE_MODE" == "true" ]]; then
+    if state_module_is_selected utils.rust_proxy && { update_binary_exists rust_proxy || [[ "$FORCE_MODE" == "true" ]]; }; then
         capture_version_before "rust_proxy"
         run_cmd "Rust Proxy" update_run_cargo_git_source_install https://github.com/Dicklesworthstone/rust_proxy.git rust_proxy
         if capture_version_after "rust_proxy"; then
@@ -9517,7 +9740,7 @@ update_stack() {
     fi
 
     # Agent Settings Backup (asb) - update when installed, or install with --force
-    if update_binary_exists asb || [[ "$FORCE_MODE" == "true" ]]; then
+    if state_module_is_selected stack.agent_settings_backup && { update_binary_exists asb || [[ "$FORCE_MODE" == "true" ]]; }; then
         run_cmd "ASB" update_run_asb_installer
     fi
 
@@ -9525,7 +9748,9 @@ update_stack() {
     local pcr_hook_script=""
     pcr_hook_script="$(update_runtime_primary_bin_dir 2>/dev/null || true)"
     [[ -n "$pcr_hook_script" ]] && pcr_hook_script="$pcr_hook_script/claude-post-compact-reminder"
-    if ! update_binary_exists claude; then
+    if ! state_module_is_selected stack.pcr; then
+        log_item "skip" "PCR" "not selected for this installation"
+    elif ! update_binary_exists claude; then
         log_item "skip" "PCR" "Claude Code not installed"
     elif [[ -z "$pcr_hook_script" ]]; then
         log_item "fail" "PCR" "unable to resolve target hook path"
@@ -9558,25 +9783,27 @@ update_stack() {
     fi
 
     # DSR (Doodlestein Self-Releaser) - always install/update
-    run_cmd "DSR" update_run_verified_installer dsr --easy-mode
+    update_run_selected_module stack.doodlestein_self_releaser run_cmd "DSR" update_run_verified_installer dsr --easy-mode
 
     # EE (Eidetic Engine) - always install/update
-    run_cmd "EE" update_run_verified_installer ee --easy-mode
+    update_run_selected_module stack.eidetic_engine_cli run_cmd "EE" update_run_verified_installer ee --easy-mode
 
     # FMD (Franken Markdown) - always install/update
-    run_cmd "FMD" update_run_verified_installer fmd --easy-mode
+    update_run_selected_module stack.franken_markdown run_cmd "FMD" update_run_verified_installer fmd --easy-mode
 
     # PI (Pi Agent Rust) - always install/update
-    run_cmd "PI" update_run_verified_installer pi --yes --easy-mode
+    update_run_selected_module stack.pi_agent_rust run_cmd "PI" update_run_verified_installer pi --yes --easy-mode
 
     # PFR (Power Failure Resumer) - always install/update
-    run_cmd "PFR" update_run_verified_installer pfr --easy-mode --install-skill
+    update_run_selected_module stack.power_failure_resumer run_cmd "PFR" update_run_verified_installer pfr --easy-mode --install-skill
 }
 
 # ============================================================
 # Flywheel Agent Guide Generation (~/.acfs/docs/flywheel-agent-guide.md)
 # ============================================================
 update_root_agents_md() {
+    update_load_module_selection || return 1
+    update_selection_has_prefix agents. stack. || return 0
     log_section "Agent Guide"
 
     local root_agents_generator=""
@@ -9926,17 +10153,18 @@ update_shell() {
     if [[ "$UPDATE_SHELL" != "true" ]]; then
         return 0
     fi
+    update_load_module_selection || return 1
 
     log_section "Shell Tools"
 
     # Git-based updates (OMZ, P10K, plugins)
-    update_omz
-    update_p10k
-    update_zsh_plugins
+    update_run_selected_module shell.omz update_omz
+    update_run_selected_module shell.omz update_p10k
+    update_run_selected_module shell.omz update_zsh_plugins
 
     # Installer-based updates (Atuin, Zoxide)
-    update_atuin
-    update_zoxide
+    update_run_selected_module tools.atuin update_atuin
+    update_run_selected_module tools.zoxide update_zoxide
 
     # Keep the runtime source selected during self-update. A fetched-runtime
     # fallback must not be undone by a later sync from the dirty checkout.
@@ -10173,6 +10401,12 @@ USAGE:
   acfs-update [options]
   acfs update [options]    (if acfs wrapper is installed)
 
+INSTALLATION SCOPE:
+  Saved installation choices also control updates. Category flags narrow
+  those choices; --force can reinstall selected tools without adding omitted
+  modules. To add a module, rerun the installer with --only <module-id>.
+  Older installations without saved module choices retain full-update behavior.
+
 CATEGORY OPTIONS (select what to update):
   --apt-only         Only update system packages (apt)
   --agents-only      Only update coding agents (Claude, Codex, Antigravity, omp, Grok)
@@ -10227,7 +10461,7 @@ EXIT CODES:
   2   partial failure: some tools updated, some failed
 
 EXAMPLES:
-  # Standard update (EVERYTHING: apt, runtimes, shell, agents, cloud, stack)
+  # Standard update (all selected modules across every category)
   acfs-update
 
   # Skip Agent Flywheel stack updates (faster)
@@ -10970,6 +11204,11 @@ main() {
     trap 'exit 129' HUP
     trap 'exit 130' INT
     trap 'exit 143' TERM
+
+    # The saved target scope must be readable before self-update can publish
+    # commands/configuration or any component updater can install a tool.
+    # Explicit category flags narrow that scope; --force does not broaden it.
+    update_load_module_selection || return 1
 
     # Every download below goes through TMPDIR, self-update included.
     update_ensure_writable_tmpdir

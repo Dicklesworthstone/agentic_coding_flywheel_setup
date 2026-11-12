@@ -25,6 +25,305 @@ teardown() {
     assert_output --partial '"completed_phases": []'
 }
 
+@test "state: fresh module selection survives a separate maintenance process" {
+    ACFS_EFFECTIVE_PLAN=(base.system lang.bun agents.claude)
+    state_init
+
+    run bash -eu -c '
+        source "$1"
+        state_load_module_selection "$2"
+        [[ "$ACFS_STATE_SELECTION_MODE" == scoped ]]
+        state_validate_module_selection_catalog base.system lang.bun agents.claude stack.ntm
+        state_module_is_selected agents.claude
+        if state_module_is_selected stack.ntm; then exit 21; fi
+        printf "%s\n" "${ACFS_STATE_SELECTED_MODULES[@]}"
+    ' _ "$PROJECT_ROOT/scripts/lib/state.sh" "$ACFS_STATE_FILE"
+    assert_success
+    assert_output $'base.system\nlang.bun\nagents.claude'
+}
+
+@test "state: targeted repair extends scope without hiding selected failures" {
+    ACFS_EFFECTIVE_PLAN=(base.system agents.claude)
+    state_init
+    state_phase_start agents
+    state_phase_fail agents agents.claude "selected installer failed"
+    state_update '.skipped_tools = ["agents.claude"] | .operator_note = "retain me"'
+
+    state_record_module_selection base.system lang.go
+    state_load_module_selection "$ACFS_STATE_FILE"
+    state_module_is_selected agents.claude
+    state_module_is_selected lang.go
+    run jq -er '.failed_phase == "agents" and .operator_note == "retain me" and .module_selection.selected_modules == ["base.system", "agents.claude", "lang.go"]' "$ACFS_STATE_FILE"
+    assert_success
+    assert_output true
+
+    cp "$ACFS_STATE_FILE" "$BATS_TEST_TMPDIR/before-repeat.json"
+    state_record_module_selection lang.go base.system
+    run cmp "$ACFS_STATE_FILE" "$BATS_TEST_TMPDIR/before-repeat.json"
+    assert_success
+}
+
+@test "state: zero-phase retries preserve the earlier managed scope" {
+    ACFS_EFFECTIVE_PLAN=(base.system agents.claude)
+    state_init
+    ACFS_EFFECTIVE_PLAN=(base.system agents.codex)
+    local result=0
+    confirm_resume || result=$?
+    [[ "$result" -eq 1 ]]
+    state_init
+    state_load_module_selection "$ACFS_STATE_FILE"
+    state_module_is_selected agents.claude
+    state_module_is_selected agents.codex
+}
+
+@test "state: force-reinstall repair preserves scope across the checkpoint backup" {
+    ACFS_EFFECTIVE_PLAN=(base.system agents.claude)
+    state_init
+    ACFS_EFFECTIVE_PLAN=(base.system lang.go)
+    ACFS_FORCE_REINSTALL=true
+    local result=0
+    confirm_resume || result=$?
+    [[ "$result" -eq 1 ]]
+    [[ ! -f "$ACFS_STATE_FILE" ]]
+    state_init
+    state_load_module_selection "$ACFS_STATE_FILE"
+    state_module_is_selected agents.claude
+    state_module_is_selected lang.go
+}
+
+@test "state: targeted and force reinstall do not narrow legacy checkpoints" {
+    state_init
+    ACFS_EFFECTIVE_PLAN=(lang.go)
+    state_record_module_selection lang.go
+    ACFS_FORCE_REINSTALL=true
+    local result=0
+    confirm_resume || result=$?
+    [[ "$result" -eq 1 ]]
+    state_init
+    state_load_module_selection "$ACFS_STATE_FILE"
+    [[ "$ACFS_STATE_SELECTION_MODE" == legacy ]]
+    state_module_is_selected stack.ntm
+    run jq -er 'has("module_selection") | not' "$ACFS_STATE_FILE"
+    assert_success
+    assert_output true
+}
+
+@test "state: module selection is cleared before reading another target" {
+    ACFS_EFFECTIVE_PLAN=(agents.claude)
+    state_init
+    state_load_module_selection "$ACFS_STATE_FILE"
+    [[ "$ACFS_STATE_SELECTION_MODE" == scoped ]]
+    state_load_module_selection "$ACFS_HOME/not-installed.json"
+    [[ "$ACFS_STATE_SELECTION_MODE" == legacy ]]
+    [[ ${#ACFS_STATE_SELECTED_MODULES[@]} -eq 0 ]]
+    state_module_is_selected agents.codex
+
+    printf '%s\n' '{"module_selection":null}' > "$ACFS_HOME/broken.json"
+    if state_load_module_selection "$ACFS_HOME/broken.json"; then return 1; fi
+    [[ "$ACFS_STATE_SELECTION_MODE" == invalid ]]
+    [[ ${#ACFS_STATE_SELECTED_MODULES[@]} -eq 0 ]]
+    run state_module_is_selected agents.claude
+    [[ "$status" -eq 2 ]]
+}
+
+@test "state: malformed explicit module selections fail without overwriting the checkpoint" {
+    local selection
+    for selection in 'null' 'false' '[]' '{}' \
+        '{"schema_version":2,"selected_modules":["lang.go"]}' \
+        '{"schema_version":true,"selected_modules":["lang.go"]}' \
+        '{"schema_version":1,"selected_modules":[]}' \
+        '{"schema_version":1,"selected_modules":"lang.go"}' \
+        '{"schema_version":1,"selected_modules":[null]}' \
+        '{"schema_version":1,"selected_modules":["lang.go","lang.go"]}' \
+        '{"schema_version":1,"selected_modules":["lang.go\n"]}' \
+        '{"schema_version":1,"selected_modules":["../../etc/passwd"]}'; do
+        jq -n --argjson scope "$selection" '{schema_version:3,version:"test",mode:"safe",completed_phases:[],module_selection:$scope}' > "$ACFS_STATE_FILE"
+        cp "$ACFS_STATE_FILE" "$BATS_TEST_TMPDIR/invalid-before.json"
+        run state_record_module_selection agents.claude
+        assert_failure
+        run cmp "$ACFS_STATE_FILE" "$BATS_TEST_TMPDIR/invalid-before.json"
+        assert_success
+    done
+}
+
+@test "state: bootstrap without jq records the same scope and rejects malformed selections" {
+    # Exercise the production bootstrap serializer and Python read-only fallback.
+    # jq remains callable below to inspect the resulting file, but availability
+    # detection models a fresh machine before the base dependencies are installed.
+    command() {
+        if [[ "${1:-}" == -v && "${2:-}" == jq ]]; then
+            return 1
+        fi
+        builtin command "$@"
+    }
+    ACFS_EFFECTIVE_PLAN=(base.system agents.claude)
+    state_init
+    state_load_module_selection "$ACFS_STATE_FILE"
+    [[ "$ACFS_STATE_SELECTION_MODE" == scoped ]]
+    state_module_is_selected agents.claude
+    run jq -er '.module_selection == {schema_version:1,selected_modules:["base.system","agents.claude"]}' "$ACFS_STATE_FILE"
+    assert_success
+    assert_output true
+
+    local selection
+    for selection in 'null' \
+        '{"schema_version":true,"selected_modules":["lang.go"]}' \
+        '{"schema_version":2,"selected_modules":["lang.go"]}' \
+        '{"schema_version":1,"selected_modules":[]}' \
+        '{"schema_version":1,"selected_modules":["lang.go","lang.go"]}' \
+        '{"schema_version":1,"selected_modules":["lang.go\n"]}'; do
+        jq -n --argjson scope "$selection" '{module_selection:$scope}' > "$ACFS_HOME/python-invalid.json"
+        run state_load_module_selection "$ACFS_HOME/python-invalid.json"
+        assert_failure
+    done
+    printf '%s\n' '{}' '{}' > "$ACFS_HOME/python-stream.json"
+    run state_load_module_selection "$ACFS_HOME/python-stream.json"
+    assert_failure
+    printf '%s\n' '{}' > "$ACFS_HOME/python-legacy.json"
+    state_load_module_selection "$ACFS_HOME/python-legacy.json"
+    [[ "$ACFS_STATE_SELECTION_MODE" == legacy ]]
+}
+
+@test "state: invalid scope cannot be erased by force-reinstall" {
+    state_init
+    state_update '.module_selection = {schema_version:1,selected_modules:[]}'
+    cp "$ACFS_STATE_FILE" "$BATS_TEST_TMPDIR/invalid-before.json"
+    ACFS_FORCE_REINSTALL=true
+    run confirm_resume
+    [[ "$status" -eq 3 ]]
+    run cmp "$ACFS_STATE_FILE" "$BATS_TEST_TMPDIR/invalid-before.json"
+    assert_success
+}
+
+@test "state: automatic recovery refuses invalid scope before backing up damaged state" {
+    YES_MODE=true
+    printf '%s\n' '{"module_selection":{"schema_version":1,"selected_modules":[]}}' > "$ACFS_STATE_FILE"
+    cp "$ACFS_STATE_FILE" "$BATS_TEST_TMPDIR/recovery-before.json"
+    run state_ensure_valid
+    assert_failure
+    run cmp "$ACFS_STATE_FILE" "$BATS_TEST_TMPDIR/recovery-before.json"
+    assert_success
+
+    printf '%s\n' '{"module_selection":' > "$ACFS_STATE_FILE"
+    cp "$ACFS_STATE_FILE" "$BATS_TEST_TMPDIR/recovery-before.json"
+    run confirm_resume
+    [[ "$status" -eq 3 ]]
+    run cmp "$ACFS_STATE_FILE" "$BATS_TEST_TMPDIR/recovery-before.json"
+    assert_success
+}
+
+@test "state: recovery preserves valid scope when outer progress fields are damaged" {
+    YES_MODE=true
+    printf '%s\n' '{"schema_version":3,"module_selection":{"schema_version":1,"selected_modules":["agents.claude"]}}' > "$ACFS_STATE_FILE"
+    ACFS_EFFECTIVE_PLAN=(lang.go)
+    state_ensure_valid
+    [[ ! -f "$ACFS_STATE_FILE" ]]
+    local result=0
+    confirm_resume || result=$?
+    [[ "$result" -eq 1 ]]
+    state_init
+    state_load_module_selection "$ACFS_STATE_FILE"
+    state_module_is_selected agents.claude
+    state_module_is_selected lang.go
+}
+
+@test "state: recovery preserves legacy full-install scope across progress reset" {
+    YES_MODE=true
+    printf '%s\n' '{"schema_version":3}' > "$ACFS_STATE_FILE"
+    ACFS_EFFECTIVE_PLAN=(lang.go)
+    state_ensure_valid
+    [[ ! -f "$ACFS_STATE_FILE" ]]
+    local result=0
+    confirm_resume || result=$?
+    [[ "$result" -eq 1 ]]
+    state_init
+    state_load_module_selection "$ACFS_STATE_FILE"
+    [[ "$ACFS_STATE_SELECTION_MODE" == legacy ]]
+    state_module_is_selected agents.claude
+}
+
+@test "state: unknown module selections require a compatible catalogue" {
+    ACFS_EFFECTIVE_PLAN=(stack.future_tool)
+    state_init
+    state_load_module_selection "$ACFS_STATE_FILE"
+    run state_validate_module_selection_catalog base.system agents.claude
+    assert_failure
+    assert_output --partial 'unsupported module: stack.future_tool'
+    run state_validate_module_selection_catalog
+    assert_failure
+    assert_output --partial 'catalogue is unavailable'
+    run state_validate_module_selection_catalog stack.future_tool
+    assert_success
+}
+
+@test "state: module selection read rejects streams links and multiple JSON objects" {
+    mkfifo "$ACFS_HOME/state-pipe"
+    run state_load_module_selection "$ACFS_HOME/state-pipe"
+    assert_failure
+    state_init
+    ln -s "$ACFS_STATE_FILE" "$ACFS_HOME/state-link"
+    run state_load_module_selection "$ACFS_HOME/state-link"
+    assert_failure
+    printf '%s\n' '{}' '{}' > "$ACFS_HOME/two-states.json"
+    run state_load_module_selection "$ACFS_HOME/two-states.json"
+    assert_failure
+}
+
+@test "state: module selection write failure preserves prior scope and releases its lock" {
+    ACFS_EFFECTIVE_PLAN=(lang.go)
+    state_init
+    cp "$ACFS_STATE_FILE" "$BATS_TEST_TMPDIR/write-before.json"
+    state_write_atomic() { return 1; }
+    if state_record_module_selection agents.claude; then return 1; fi
+    [[ "$_ACFS_STATE_LOCKED" == false ]]
+    run cmp "$ACFS_STATE_FILE" "$BATS_TEST_TMPDIR/write-before.json"
+    assert_success
+}
+
+@test "state: module selection readers are read-only and ignore inherited policy" {
+    ACFS_EFFECTIVE_PLAN=(lang.go)
+    state_init
+    cp "$ACFS_STATE_FILE" "$BATS_TEST_TMPDIR/read-before.json"
+    run env ACFS_STATE_SELECTION_MODE=legacy bash -eu -c '
+        source "$1"
+        rc=0
+        state_module_is_selected agents.claude || rc=$?
+        [[ "$rc" -eq 2 ]]
+        state_load_module_selection "$2"
+        state_module_is_selected lang.go
+    ' _ "$PROJECT_ROOT/scripts/lib/state.sh" "$ACFS_STATE_FILE"
+    assert_success
+    assert_output ''
+    run cmp "$ACFS_STATE_FILE" "$BATS_TEST_TMPDIR/read-before.json"
+    assert_success
+}
+
+@test "state: custom checkpoints validate target identity with either parser" {
+    jq -n '{target_home:"/home/custom",target_user:"custom",module_selection:{schema_version:1,selected_modules:["lang.go"]}}' > "$ACFS_STATE_FILE"
+    local parser
+    for parser in jq python; do
+        if [[ "$parser" == python ]]; then
+            command() {
+                if [[ "${1:-}" == -v && "${2:-}" == jq ]]; then return 1; fi
+                builtin command "$@"
+            }
+            if command -v jq >/dev/null 2>&1; then return 1; fi
+        fi
+        state_load_module_selection "$ACFS_STATE_FILE" /home/custom custom
+        state_module_is_selected lang.go
+        run state_load_module_selection "$ACFS_STATE_FILE" /home/other custom
+        assert_failure
+        assert_output --partial 'does not belong to the resolved target'
+        run state_load_module_selection "$ACFS_STATE_FILE" /home/custom other
+        assert_failure
+        run state_load_module_selection "$ACFS_HOME/not-installed.json" /home/custom custom
+        assert_failure
+        printf '%s\n' '{}' > "$ACFS_HOME/missing-identity.json"
+        run state_load_module_selection "$ACFS_HOME/missing-identity.json" /home/custom custom
+        assert_failure
+    done
+}
+
 @test "state: validation rejects non-integer schema data before Bash arithmetic" {
     local marker="$BATS_TEST_TMPDIR/arithmetic-marker"
     printf \

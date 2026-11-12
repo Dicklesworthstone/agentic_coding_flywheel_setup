@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
-"""Offline integration regressions for atomic runtime deployment (issue #488).
+"""Offline regressions for atomic deployment and saved installation scope.
 
 Run: python3 -B -m unittest discover -s tests/unit -p test_update_deployment.py -v
-The real runtime, early security, and managed-shell deployment paths run against
-disposable source/runtime trees. No updater main(), package manager, network
-request, or service is invoked.
+Real runtime, early security, and managed-shell deployment paths run against
+disposable source/runtime trees. Selection cases also exercise main() and real
+failure accounting with external installers, package commands, service checks,
+and the watchdog replaced by fixture endpoints. No network or real install runs.
 """
 import contextlib
+import json
 import os
 from pathlib import Path
+import pwd
 import select
 import signal
 import subprocess
@@ -1321,6 +1324,509 @@ cp() {
         self.assertEqual(deployed.read_text(), "old complete script\n")
         self.assertEqual(deployed.stat().st_ino, original_inode)
         self.assert_runtime_files("scripts/lib/stack.sh")
+
+
+SELECTION_SETUP = r'''
+source "$UPDATE_TEST_LIBRARY"
+ACFS_REPO_ROOT="$TEST_SOURCE"
+UPDATE_LOG_DIR="$TEST_ROOT/logs"
+UPDATE_LOG_FILE="$TEST_ROOT/update.log"
+DRY_RUN="$TEST_DRY_RUN" FORCE_MODE="$TEST_FORCE"
+ABORT_ON_FAILURE="$TEST_ABORT" QUIET=true YES_MODE=true
+UPDATE_CMD_TIMEOUT=3
+# Keep the real target-home and runtime resolution. Only the account database
+# is a fixture, so these cases also run safely when the test caller is root.
+update_current_user() { printf '%s\n' "$TEST_CURRENT_USER"; }
+update_getent_passwd_entry() {
+    [[ "$1" == fixture ]] || return 1
+    printf 'fixture:x:2001:2001:Fixture:%s:/bin/bash\n' "$TEST_HOME"
+}
+# Retain shell-created output/staging files with the diagnostic fixture.
+rm() { :; }
+'''
+
+SELECTION_DISPATCH = r'''
+# These are the external mutation boundaries. Real category dispatch,
+# selection loading, run_cmd, failure counters, and runtime deployment remain.
+fixture_record() { printf '%s\n' "$*" >> "$TEST_EVENTS"; }
+update_require_security() { return 0; }
+capture_version_before() { VERSION_BEFORE["$1"]="fixture"; }
+capture_version_after() { return 1; }
+update_binary_path() {
+    case ",$TEST_PRESENT," in
+        *,"$1",*) printf '%s/%s\n' "$TEST_BIN" "$1" ;;
+        *) return 1 ;;
+    esac
+}
+update_binary_exists() { update_binary_path "$1" >/dev/null; }
+update_tool_binary_path() { update_binary_path "$1"; }
+update_rust_binary_path() { update_binary_path "$1"; }
+update_run_verified_installer() {
+    fixture_record "installer:$*"
+    [[ "$TEST_FAILURE" != "$1" ]] || return 47
+}
+update_run_verified_installer_with_env() { update_run_verified_installer "$@"; }
+update_run_verified_installer_or_existing_on_transient() {
+    local label="$1" tool="$2"
+    shift 4
+    run_cmd "$label" update_run_verified_installer "$tool" "$@"
+}
+update_run_verified_installer_with_target_tmpdir_or_existing_on_transient() {
+    update_run_verified_installer_or_existing_on_transient "$@"
+}
+update_ensure_minisign() { fixture_record "provision:minisign"; }
+update_agent_mail() { run_cmd "MCP Agent Mail" update_run_verified_installer mcp_agent_mail; }
+update_run_slb_verified_install() { update_run_verified_installer slb; }
+update_run_fsfs_installer() { update_run_verified_installer fsfs "$@"; }
+update_run_asb_installer() { update_run_verified_installer asb; }
+update_run_pcr_installer_and_verify() { update_run_verified_installer pcr; }
+update_run_cargo_git_source_install() { fixture_record "cargo-install:$*"; }
+run_cmd_claude_update() { run_cmd "Claude Code" update_run_verified_installer claude; }
+update_run_bounded_in_target_context() { fixture_record "native:$*"; }
+update_run_in_target_context() { fixture_record "target:$*"; }
+update_run_rust_in_target_context() {
+    fixture_record "rust:$*"
+    if [[ "$*" == *"toolchain list" ]]; then printf 'stable-fixture\n'; fi
+}
+update_run_maintenance_in_target_context() { fixture_record "maintenance:$*"; }
+update_install_agy_locked_launchers() { fixture_record "launchers:agy"; }
+update_omz() { fixture_record "shell:omz"; }
+update_p10k() { fixture_record "shell:p10k"; }
+update_zsh_plugins() { fixture_record "shell:plugins"; }
+update_atuin() { fixture_record "shell:atuin"; }
+update_zoxide() { fixture_record "shell:zoxide"; }
+update_ensure_jq_available() { :; }
+update_procwatch_start() { :; }
+update_procwatch_stop() { :; }
+update_record_nightly_outcome() { :; }
+update_report_service_binary_drift() { :; }
+'''
+
+
+class ModuleSelectionUpdateTests(unittest.TestCase):
+    """Saved module scope survives actual updater dispatch and publication."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.artifacts = Path(tempfile.mkdtemp(prefix="acfs-update-selection-"))
+        print("Updater selection artifacts:", cls.artifacts, flush=True)
+
+    def setUp(self):
+        self.base = Path(tempfile.mkdtemp(prefix="case-", dir=self.artifacts))
+        self.home = self.base / "target home"
+        self.acfs = self.home / ".acfs"
+        self.repo = self.base / "source"
+        self.stage = self.base / "temporary"
+        self.bin = self.home / ".local/bin"
+        for path in (self.acfs, self.repo, self.stage, self.bin):
+            path.mkdir(parents=True)
+        self.events_file = self.base / "events"
+        self.state = self.acfs / "state.json"
+        self.env = {
+            "PATH": "/usr/bin:/bin", "HOME": str(self.home),
+            "TARGET_USER": "fixture", "TARGET_HOME": str(self.home),
+            "TMPDIR": str(self.stage), "TEST_ROOT": str(self.base),
+            "TEST_HOME": str(self.home), "TEST_SOURCE": str(self.repo),
+            "TEST_EVENTS": str(self.events_file), "TEST_BIN": str(self.bin),
+            "TEST_CURRENT_USER": "fixture", "TEST_DRY_RUN": "false",
+            "TEST_FORCE": "false", "TEST_ABORT": "false",
+            "TEST_PRESENT": "", "TEST_FAILURE": "",
+            "UPDATE_TEST_LIBRARY": os.environ.get(
+                "ACFS_UPDATE_TEST_LIBRARY", str(ROOT / "scripts/lib/update.sh")),
+            "ACFS_GLOBAL_BIN_DIR": str(self.base / "global-bin"),
+            "NO_COLOR": "1", "ACFS_INTERACTIVE": "false",
+        }
+
+    def selection(self, *modules, path=None):
+        (path or self.state).write_text(json.dumps({
+            "schema_version": 3, "target_user": "fixture",
+            "target_home": str(self.home),
+            "module_selection": {"schema_version": 1, "selected_modules": list(modules)},
+        }))
+
+    def write(self, root, path, content, mode=0o644):
+        result = root / path
+        result.parent.mkdir(parents=True, exist_ok=True)
+        result.write_text(content)
+        result.chmod(mode)
+        return result
+
+    def source_assets(self):
+        assets = {
+            "scripts/lib/update.sh": "#!/bin/bash\nprintf 'updated runtime\\n'\n",
+            "scripts/lib/state.sh": (ROOT / "scripts/lib/state.sh").read_text(),
+            "scripts/lib/doctor.sh": "#!/bin/bash\nprintf 'doctor\\n'\n",
+            "scripts/lib/agy_locked.py": "print('agy fixture')\n",
+            "scripts/acfs-update": "#!/bin/bash\nprintf 'update\\n'\n",
+            "scripts/acfs-global": "#!/bin/bash\nprintf 'global acfs\\n'\n",
+            "packages/onboard/onboard.sh": "#!/bin/bash\nprintf 'onboard\\n'\n",
+            "acfs/onboard/lessons/fixture.md": "# Fixture lesson\n",
+            "acfs/tmux/tmux.conf": "set -g mouse on\n",
+            "acfs/zsh/acfs.zshrc": "export ACFS_FIXTURE=1\n",
+            "acfs/zsh/p10k.zsh": "# Managed theme fixture\n",
+            "scripts/completions/_acfs": "# Managed completion fixture\n",
+        }
+        for path, content in assets.items():
+            self.write(self.repo, path, content, 0o755 if path.endswith(".sh") else 0o644)
+
+    def shell(self, body, *, code=0, dispatch=True, **env):
+        script = SELECTION_SETUP + (SELECTION_DISPATCH if dispatch else "") + body
+        result = subprocess.run(
+            ["/bin/bash", "--noprofile", "--norc", "-c", script],
+            env=self.env | env, text=True, capture_output=True, timeout=20,
+        )
+        if code is not None:
+            self.assertEqual(result.returncode, code, result.stdout + result.stderr)
+        return result
+
+    def events(self):
+        return self.events_file.read_text().splitlines() if self.events_file.exists() else []
+
+    def wrapper(self, checkpoint, *, code=0):
+        wrapper_path = self.write(
+            self.acfs, "bin/acfs-update",
+            Path(os.environ.get("ACFS_UPDATE_TEST_WRAPPER", ROOT / "scripts/acfs-update")).read_text(),
+            0o755,
+        )
+        self.write(self.acfs, "scripts/lib/update.sh", r'''#!/bin/bash
+source "$UPDATE_TEST_LIBRARY"
+# Root's production home is intentionally fixed to /root. Keep this read-only
+# checkpoint probe inside its fixture while exercising the complete wrapper.
+if [[ "$EUID" -eq 0 ]]; then
+    update_target_home() { printf '%s\n' "$TEST_HOME"; }
+fi
+update_load_module_selection || exit $?
+if state_module_is_selected stack.ntm; then printf 'NTM:selected\n'; else printf 'NTM:omitted\n'; fi
+if state_module_is_selected stack.caam; then printf 'CAAM:selected\n'; else printf 'CAAM:omitted\n'; fi
+printf 'checkpoint-accepted\n' >> "$TEST_EVENTS"
+''', 0o755)
+        env = self.env | {
+            "ACFS_HOME": str(self.acfs), "ACFS_STATE_FILE": str(checkpoint),
+            "ACFS_SYSTEM_STATE_FILE": str(self.base / "missing system checkpoint.json"),
+        }
+        env.pop("TARGET_USER")
+        result = subprocess.run(
+            ["/bin/bash", str(wrapper_path), "--stack-only"], env=env,
+            text=True, capture_output=True, timeout=20,
+        )
+        if code is not None:
+            self.assertEqual(result.returncode, code, result.stdout + result.stderr)
+        return result
+
+    def wrapper_selection(self, path, *modules):
+        self.selection(*modules, path=path)
+        document = json.loads(path.read_text())
+        document["target_user"] = pwd.getpwuid(os.geteuid()).pw_name
+        path.write_text(json.dumps(document))
+
+    def installers(self):
+        return [event.partition(":")[2].split()[0] for event in self.events()
+                if event.startswith("installer:")]
+
+    def test_stack_subset_updates_only_selected_tool_and_required_prerequisite(self):
+        for module, tool, needs_minisign in (
+            ("stack.ntm", "ntm", False), ("stack.caam", "caam", True),
+            ("stack.mcp_agent_mail", "mcp_agent_mail", True),
+            ("utils.giil", "giil", False),
+        ):
+            with self.subTest(module=module):
+                self.selection(module)
+                self.events_file.write_text("")
+                self.shell("update_stack\n")
+                self.assertEqual(self.installers(), [tool])
+                self.assertEqual("provision:minisign" in self.events(), needs_minisign)
+
+    def test_force_installs_selected_missing_agents_without_expanding_scope(self):
+        self.selection("agents.omp", "cloud.vercel", "lang.uv")
+        self.shell(
+            "update_agents\nupdate_cloud\nupdate_stack\nupdate_bun\n"
+            "update_rust\nupdate_cargo_tools\nupdate_uv\nupdate_go\n",
+            TEST_FORCE="true", TEST_PRESENT="bun,uv",
+        )
+        self.assertEqual(self.installers(), ["omp"])
+        native = [event for event in self.events() if event.startswith("native:")]
+        self.assertEqual(native, [
+            f"native:{self.bin}/bun install -g --trust vercel@latest",
+            f"native:{self.bin}/uv self update",
+        ])
+        self.assertNotIn("launchers:agy", self.events())
+
+    def test_present_but_unselected_tools_and_shell_settings_remain_untouched(self):
+        self.selection("acfs.update")
+        self.source_assets()
+        self.shell(
+            "update_agents\nupdate_cloud\nupdate_stack\nupdate_bun\n"
+            "update_rust\nupdate_cargo_tools\nupdate_uv\nupdate_go\nupdate_shell\n",
+            TEST_FORCE="true",
+            TEST_PRESENT="claude,codex,agy-real,omp,opencode,grok,bun,uv,rustup,cargo,"
+                         "go,sg,lsd,dust,tldr,wrangler,vercel,supabase,gh,atuin,zoxide",
+        )
+        self.assertEqual(self.events(), [])
+        self.assertTrue((self.acfs / "bin/acfs-update").is_file())
+        for path in ("bin/acfs", "bin/agy-locked", "onboard/onboard.sh",
+                     "tmux/tmux.conf", "zsh/acfs.zshrc", "completions/_acfs"):
+            self.assertFalse((self.acfs / path).exists(), path)
+        self.assertFalse((self.home / ".profile").exists())
+        self.assertFalse((self.home / ".zprofile").exists())
+
+    def test_selected_failure_still_counts_and_later_selected_tools_continue(self):
+        self.selection("stack.beads_viewer", "stack.beads_rust")
+        result = self.shell(
+            'update_stack\nprintf "COUNTS:%s:%s\\n" "$SUCCESS_COUNT" "$FAIL_COUNT"\n',
+            TEST_FAILURE="bv",
+        )
+        self.assertEqual(self.installers(), ["bv", "br"])
+        self.assertIn("COUNTS:1:1", result.stdout)
+
+    def test_abort_on_selected_failure_still_stops_later_tools(self):
+        self.selection("stack.beads_viewer", "stack.beads_rust")
+        result = self.shell("update_stack\n", code=None, TEST_FAILURE="bv", TEST_ABORT="true")
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.installers(), ["bv"])
+
+    def test_legacy_installation_without_scope_keeps_full_stack_dispatch(self):
+        self.shell("update_stack\n")
+        self.assertEqual(set(self.installers()), {
+            "brenner_bot", "ntm", "mcp_agent_mail", "ms", "apr", "pt", "xf",
+            "ubs", "bv", "br", "cass", "cm", "caam", "slb", "ru", "dcg",
+            "rch", "giil", "csctf", "srps", "tru", "rano", "mdwb", "s2p",
+            "fsfs", "sbh", "casr", "dsr", "ee", "fmd", "pi", "pfr",
+        })
+        self.assertIn("provision:minisign", self.events())
+
+    def test_category_flags_narrow_the_saved_scope(self):
+        self.selection("agents.omp", "stack.ntm", "lang.bun", "cloud.vercel")
+        self.shell("main --yes --agents-only --no-self-update --force\n", TEST_PRESENT="bun")
+        self.assertEqual(self.installers(), ["omp"])
+        self.assertFalse(any(event.startswith("native:") for event in self.events()))
+
+    def test_invalid_scope_stops_main_before_self_update_or_component_mutation(self):
+        for invalid in (
+            {"schema_version": 2, "selected_modules": ["stack.ntm"]},
+            {"schema_version": 1, "selected_modules": []},
+            {"schema_version": 1, "selected_modules": ["stack.ntm", "stack.ntm"]},
+            {"schema_version": 1, "selected_modules": ["stack.does_not_exist"]},
+            False,
+        ):
+            with self.subTest(invalid=invalid):
+                self.state.write_text(json.dumps({"module_selection": invalid}))
+                self.events_file.write_text("")
+                result = self.shell(
+                    'update_acfs_self() { fixture_record "self-update"; }\nmain --yes\n',
+                    code=None,
+                )
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(self.events(), [])
+                self.assertFalse((self.base / "update.log").exists())
+
+    def test_malformed_json_does_not_fall_back_to_full_updates(self):
+        self.state.write_text('{"module_selection":')
+        result = self.shell("update_stack\n", code=None)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.events(), [])
+
+    def test_selection_uses_resolved_target_home_and_ignores_inherited_policy(self):
+        self.selection("stack.ntm")
+        caller = self.base / "caller"
+        self.write(caller, ".acfs/state.json", '{"module_selection":false}\n')
+        self.shell(
+            "update_stack\n",
+            HOME=str(caller), TARGET_HOME=str(caller), ACFS_HOME=str(caller / ".acfs"),
+            TEST_CURRENT_USER="caller",
+            UPDATE_MODULE_SELECTION_READY="true", ACFS_STATE_SELECTION_MODE="legacy",
+        )
+        self.assertEqual(self.installers(), ["ntm"])
+
+    def test_custom_checkpoint_scope_is_used_without_a_default_checkpoint(self):
+        custom = self.home / "custom checkpoint.json"
+        self.selection("stack.ntm", path=custom)
+        self.assertFalse(self.state.exists())
+        self.shell("update_stack\n", ACFS_STATE_FILE=str(custom), TEST_FORCE="true")
+        self.assertEqual(self.installers(), ["ntm"])
+
+    def test_explicit_checkpoint_takes_precedence_over_default_scope(self):
+        self.selection("stack.caam")
+        custom = self.home / "custom checkpoint.json"
+        self.selection("stack.ntm", path=custom)
+        self.shell("update_stack\n", ACFS_STATE_FILE=str(custom))
+        self.assertEqual(self.installers(), ["ntm"])
+        self.assertNotIn("provision:minisign", self.events())
+
+    def test_invalid_custom_checkpoint_never_falls_back_to_default_scope(self):
+        self.selection("stack.ntm")
+        for name, content in (
+            ("missing", None),
+            ("malformed", '{"module_selection":'),
+            ("wrong-home", {"target_user": "fixture", "target_home": str(self.base / "caller")}),
+            ("wrong-user", {"target_user": "another", "target_home": str(self.home)}),
+            ("no-identity", {}),
+        ):
+            with self.subTest(name=name):
+                custom = self.home / (name + ".json")
+                if isinstance(content, dict):
+                    content["module_selection"] = {
+                        "schema_version": 1, "selected_modules": ["stack.caam"],
+                    }
+                    custom.write_text(json.dumps(content))
+                elif content is not None:
+                    custom.write_text(content)
+                self.events_file.write_text("")
+                result = self.shell("update_stack\n", code=None, ACFS_STATE_FILE=str(custom))
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(self.events(), [])
+        for path in ("relative.json", "/", str(self.home)):
+            with self.subTest(path=path):
+                result = self.shell("update_stack\n", code=None, ACFS_STATE_FILE=path)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(self.events(), [])
+
+    def test_explicit_default_path_preserves_legacy_missing_state_behavior(self):
+        self.assertFalse(self.state.exists())
+        result = self.shell(
+            'update_load_module_selection\nprintf "MODE:%s\\n" "$ACFS_STATE_SELECTION_MODE"\n',
+            dispatch=False, ACFS_STATE_FILE=str(self.state),
+        )
+        self.assertIn("MODE:legacy", result.stdout)
+
+    def test_public_update_wrapper_preserves_custom_checkpoint_without_default(self):
+        custom = self.home / "custom checkpoint.json"
+        self.wrapper_selection(custom, "stack.ntm")
+        self.assertFalse(self.state.exists())
+        result = self.wrapper(custom)
+        self.assertIn("NTM:selected", result.stdout)
+        self.assertIn("CAAM:omitted", result.stdout)
+        self.assertEqual(self.events(), ["checkpoint-accepted"])
+
+    def test_public_update_wrapper_preserves_custom_checkpoint_after_context_repair(self):
+        self.wrapper_selection(self.state, "stack.caam")
+        custom = self.home / "custom checkpoint.json"
+        self.wrapper_selection(custom, "stack.ntm")
+        result = self.wrapper(custom)
+        self.assertIn("NTM:selected", result.stdout)
+        self.assertIn("CAAM:omitted", result.stdout)
+        self.assertEqual(self.events(), ["checkpoint-accepted"])
+
+    def test_public_update_wrapper_rejects_invalid_explicit_checkpoint(self):
+        self.wrapper_selection(self.state, "stack.caam")
+        custom = self.home / "wrong identity checkpoint.json"
+        self.wrapper_selection(custom, "stack.ntm")
+        document = json.loads(custom.read_text())
+        document["target_home"] = str(self.base / "another home")
+        custom.write_text(json.dumps(document))
+        malformed = self.home / "malformed checkpoint.json"
+        malformed.write_text('{"module_selection":')
+        for checkpoint in (custom, malformed, self.home / "missing checkpoint.json", "relative.json", "/"):
+            with self.subTest(checkpoint=str(checkpoint)):
+                result = self.wrapper(checkpoint, code=None)
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(self.events(), [])
+
+    def test_catalog_is_parsed_as_data_without_executing_shell_content(self):
+        self.selection("stack.ntm")
+        self.write(
+            self.base, "catalog.sh",
+            'printf injected > "$TEST_ROOT/catalog-executed"\n'
+            'ACFS_MODULES_IN_ORDER=(\n  "stack.ntm"\n)\n',
+        )
+        self.shell('_UPDATE_MANIFEST_INDEX="$TEST_ROOT/catalog.sh"\nupdate_stack\n')
+        self.assertEqual(self.installers(), ["ntm"])
+        self.assertFalse((self.base / "catalog-executed").exists())
+
+    def test_scoped_updates_require_a_valid_catalog_but_legacy_does_not(self):
+        self.selection("stack.ntm")
+        result = self.shell(
+            '_UPDATE_MANIFEST_INDEX="$TEST_ROOT/missing"\nupdate_stack\n', code=None,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.events(), [])
+        self.state.write_text('{"schema_version":3}\n')
+        self.shell('_UPDATE_MANIFEST_INDEX="$TEST_ROOT/missing"\nupdate_stack\n')
+        self.assertIn("ntm", self.installers())
+
+    def test_public_assets_follow_scope_while_shared_runtime_stays_current(self):
+        self.selection("acfs.update")
+        self.source_assets()
+        before = self.state.read_bytes()
+        self.shell("sync_acfs_deployed\n", dispatch=False)
+        self.assertFalse((self.acfs / "bin/acfs").exists())
+        self.assertFalse((self.acfs / "onboard").exists())
+        self.assertTrue((self.acfs / "scripts/lib/state.sh").is_file())
+        self.assertTrue((self.acfs / "scripts/lib/update.sh").is_file())
+        self.assertTrue((self.acfs / "scripts/lib/doctor.sh").is_file())
+        self.assertTrue((self.acfs / "bin/acfs-update").is_file())
+        self.assertEqual(self.state.read_bytes(), before)
+        inode = (self.acfs / "scripts/lib/update.sh").stat().st_ino
+        self.shell("sync_acfs_deployed\n", dispatch=False)
+        self.assertEqual((self.acfs / "scripts/lib/update.sh").stat().st_ino, inode)
+        self.selection("acfs.update", "acfs.onboard")
+        self.shell("sync_acfs_deployed\n", dispatch=False)
+        self.assertTrue((self.acfs / "onboard/lessons/fixture.md").is_file())
+        self.assertFalse((self.acfs / "bin/acfs").exists())
+
+    def test_existing_unselected_commands_configuration_and_profiles_are_preserved(self):
+        self.selection("acfs.update")
+        self.source_assets()
+        kept = [
+            self.write(self.acfs, path, "existing user content\n")
+            for path in ("bin/acfs", "bin/agy-locked", "onboard/onboard.sh",
+                         "tmux/tmux.conf", "zsh/acfs.zshrc", "completions/_acfs")
+        ]
+        kept += [self.write(self.home, path, "existing user profile\n")
+                 for path in (".profile", ".zprofile", ".zshrc")]
+        kept.append(self.write(self.base, "global-acfs", "existing command\n", 0o755))
+        original = {path: (path.read_bytes(), path.stat().st_ino) for path in kept}
+        self.shell(
+            'sync_acfs_profile_paths\nsync_acfs_zprofile_paths\nsync_acfs_zsh_loader\n'
+            'sync_acfs_zshrc\nsync_acfs_deployed\n'
+            'sync_acfs_global_wrapper "" "$TEST_ROOT/global-acfs"\n'
+            'sync_acfs_global_command_links\n',
+            dispatch=False,
+        )
+        for path, expected in original.items():
+            self.assertEqual((path.read_bytes(), path.stat().st_ino), expected, path)
+        self.assertFalse((self.base / "global-bin/onboard").exists())
+
+    def test_selected_public_commands_deploy_link_and_remain_idempotent(self):
+        self.selection("acfs.doctor", "acfs.update", "acfs.onboard",
+                       "shell.omz", "cli.modern", "agents.antigravity")
+        self.source_assets()
+        body = ('sync_acfs_deployed\n'
+                'sync_acfs_global_wrapper "" "$TEST_ROOT/global-acfs"\n'
+                'sync_acfs_global_command_links\n')
+        self.shell(body, dispatch=False)
+        expected = ("bin/acfs", "bin/acfs-update", "bin/agy-locked", "onboard/onboard.sh",
+                    "onboard/lessons/fixture.md", "tmux/tmux.conf", "zsh/acfs.zshrc")
+        for path in expected:
+            self.assertTrue((self.acfs / path).is_file(), path)
+        self.assertEqual((self.base / "global-bin/onboard").resolve(),
+                         self.acfs / "onboard/onboard.sh")
+        self.assertEqual((self.base / "global-bin/acfs-update").resolve(),
+                         self.acfs / "bin/acfs-update")
+        self.assertTrue(os.access(self.base / "global-acfs", os.X_OK))
+        inodes = {path: (self.acfs / path).stat().st_ino for path in expected}
+        self.shell(body, dispatch=False)
+        self.assertEqual({path: (self.acfs / path).stat().st_ino for path in expected}, inodes)
+
+    def test_dry_run_publishes_no_runtime_or_public_files(self):
+        self.selection("acfs.doctor", "acfs.update", "acfs.onboard")
+        self.source_assets()
+        self.shell(
+            'sync_acfs_deployed\nsync_acfs_global_wrapper "" "$TEST_ROOT/global-acfs"\n'
+            'sync_acfs_global_command_links\n',
+            dispatch=False, TEST_DRY_RUN="true",
+        )
+        self.assertEqual(list(self.acfs.iterdir()), [self.state])
+        self.assertFalse((self.base / "global-acfs").exists())
+        self.assertFalse((self.base / "global-bin").exists())
+
+    def test_selected_deployment_error_is_not_hidden_as_an_exclusion(self):
+        self.selection("cli.modern")
+        self.source_assets()
+        marker = self.write(self.acfs, "tmux/tmux.conf/marker", "keep directory content\n")
+        result = self.shell("sync_acfs_deployed\n", code=None, dispatch=False)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(marker.read_text(), "keep directory content\n")
+        self.assertFalse((self.acfs / "scripts/lib/update.sh").exists())
 
 
 if __name__ == "__main__":

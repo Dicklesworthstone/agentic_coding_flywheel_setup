@@ -446,7 +446,13 @@ state_update_with_args '
                 status, output = self.run_resume(
                     folder, path, choice="fresh", force_reinstall=forced, backup_failure=True)
                 self.assertEqual(status, 3, output)
-                self.assertTrue((folder / "backup-failed").exists())
+                if content is None:
+                    self.assertTrue((folder / "backup-failed").exists())
+                else:
+                    # Unparseable state could contain managed selection intent.
+                    # It must now be refused before even attempting a backup.
+                    self.assertFalse((folder / "backup-failed").exists())
+                    self.assertIn("Refusing to reset or resume", output)
                 self.assertEqual((folder / "state.json").read_bytes(), before)
                 self.assertEqual(list(folder.glob("state.json.backup.*")), [])
 

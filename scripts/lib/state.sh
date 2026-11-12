@@ -36,8 +36,15 @@ _ACFS_STATE_LOCK_OWNER_PID=""
 # ledger. An exported digest or a remote branch name is not evidence about the
 # actual scripts being installed (particularly for local/offline archives).
 _ACFS_STATE_SOURCE_LEDGER_SHA256=""
+_ACFS_STATE_REINSTALL_SELECTION_MODE=""
+_ACFS_STATE_REINSTALL_SELECTION_FILE=""
+declare -ga _ACFS_STATE_REINSTALL_MODULES=()
+ACFS_STATE_SELECTION_MODE=invalid
+declare -ga ACFS_STATE_SELECTED_MODULES=()
 export -n _ACFS_STATE_SH_LOADED _ACFS_STATE_LOCKED _ACFS_STATE_LOCK_DEPTH \
-    _ACFS_STATE_LOCK_FILE _ACFS_STATE_LOCK_OWNER_PID _ACFS_STATE_SOURCE_LEDGER_SHA256
+    _ACFS_STATE_LOCK_FILE _ACFS_STATE_LOCK_OWNER_PID _ACFS_STATE_SOURCE_LEDGER_SHA256 \
+    _ACFS_STATE_REINSTALL_SELECTION_MODE _ACFS_STATE_REINSTALL_SELECTION_FILE \
+    ACFS_STATE_SELECTION_MODE
 
 _ACFS_STATE_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if ! type -t local_progress_record_installer_phase >/dev/null 2>&1 && [[ -f "$_ACFS_STATE_SCRIPT_DIR/progress.sh" ]]; then
@@ -73,6 +80,10 @@ fi
 #   "schema_version": 3,                      # Schema version for compatibility
 #   "version": "0.1.0",                       # ACFS version that created this state
 #   "source_ledger_sha256": "...",            # Source last deployed by successful finalization
+#   "module_selection": {                    # Optional; absent means legacy full-install behavior
+#     "schema_version": 1,
+#     "selected_modules": ["base.system", ...] # Cumulative intent, including failed selected installs
+#   },
 #   "mode": "vibe",                           # Installation mode (vibe|safe)
 #   "started_at": "2025-01-15T10:30:00Z",     # When installation started
 #   "last_updated": "2025-01-15T10:42:00Z",   # Last state update timestamp
@@ -428,6 +439,222 @@ state_bind_installer_source() {
     _ACFS_STATE_SOURCE_LEDGER_SHA256="$digest"
 }
 
+# A recorded selection is the cumulative set of modules this installation is
+# meant to manage, not proof that their installers succeeded. Failed selected
+# modules must remain visible to doctor and available for update/repair.
+# Older checkpoints without this optional object retain their full-install
+# behavior; a targeted repair must never turn one into a smaller installation.
+state_is_valid_module_id() {
+    [[ "${1:-}" =~ ^[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)+$ ]]
+}
+
+state_module_selection_json() {
+    [[ $# -gt 0 ]] || return 1
+    local module="" separator=""
+    local -A seen=()
+    local -a modules=()
+    for module in "$@"; do
+        if ! state_is_valid_module_id "$module"; then
+            printf '%s\n' 'Invalid module ID in installation selection.' >&2
+            return 1
+        fi
+        if [[ -z "${seen[$module]+present}" ]]; then
+            seen["$module"]=1
+            modules+=("$module")
+        fi
+    done
+    # Validated IDs contain no JSON metacharacters. This also works during
+    # early initialization, before the base-dependency phase provides jq.
+    printf '{"schema_version":1,"selected_modules":['
+    for module in "${modules[@]}"; do
+        printf '%s"%s"' "$separator" "$module"
+        separator=,
+    done
+    printf ']}\n'
+}
+
+# Read-only policy loader for doctor and update. Always clear the previous
+# target's policy first; a failed load must not reuse a previously valid scope.
+# Missing state/object => legacy. An explicit invalid scope is an error.
+# Optional expected home/user bind a custom checkpoint to its resolved target
+# in the same parse. Such an explicit checkpoint must exist and identify both.
+state_load_module_selection() {
+    ACFS_STATE_SELECTION_MODE=invalid
+    declare -ga ACFS_STATE_SELECTED_MODULES=()
+    local state_file="${1:-}"
+    local expected_home="${2:-}" expected_user="${3:-}" verify_identity=false
+    if [[ $# -gt 1 ]]; then
+        if [[ $# -ne 3 || "$expected_home" != /* || -z "$expected_user" ]]; then
+            printf '%s\n' 'Custom ACFS checkpoints require a resolved target home and user.' >&2
+            return 1
+        fi
+        verify_identity=true
+    fi
+    [[ -n "$state_file" ]] || state_file="$(state_get_file)" || return 1
+    if [[ ! -e "$state_file" && ! -L "$state_file" ]]; then
+        if [[ "$verify_identity" == true ]]; then
+            printf 'Explicit ACFS checkpoint does not exist: %s\n' "$state_file" >&2
+            return 1
+        fi
+        ACFS_STATE_SELECTION_MODE=legacy
+        return 0
+    fi
+    if [[ ! -f "$state_file" || -L "$state_file" || ! -r "$state_file" ]]; then
+        printf 'Cannot safely read ACFS module selection: %s\n' "$state_file" >&2
+        return 1
+    fi
+
+    local parsed=""
+    if command -v jq >/dev/null 2>&1; then
+        if ! parsed=$(jq -ers --arg expected_home "$expected_home" \
+            --arg expected_user "$expected_user" --argjson verify_identity "$verify_identity" '
+            if length != 1 or (.[0] | type) != "object" then
+                error("expected one installation state object")
+            else .[0] end |
+            if $verify_identity and (.target_home != $expected_home or .target_user != $expected_user) then
+                error("custom checkpoint does not belong to the resolved target")
+            else . end |
+            if has("module_selection") | not then "legacy"
+            else .module_selection |
+                if type != "object" or .schema_version != 1 then
+                    error("unsupported module selection schema")
+                elif (.selected_modules | type) != "array" then
+                    error("selected_modules must be an array")
+                elif (.selected_modules | length) == 0 then
+                    error("selected_modules must not be empty")
+                elif (.selected_modules | all(.[];
+                    type == "string" and test("\\A[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)+\\z"))) | not then
+                    error("invalid module ID in selected_modules")
+                elif (.selected_modules | length) != (.selected_modules | unique | length) then
+                    error("duplicate module ID in selected_modules")
+                else "scoped", .selected_modules[] end
+            end
+        ' -- "$state_file"); then
+            printf 'Invalid ACFS module selection in %s\n' "$state_file" >&2
+            return 1
+        fi
+    elif command -v python3 >/dev/null 2>&1; then
+        if ! parsed=$(python3 - "$state_file" "$verify_identity" "$expected_home" "$expected_user" <<'ACFS_SELECTION_PY'
+import json
+import re
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as source:
+        state = json.load(source)
+    if not isinstance(state, dict):
+        raise ValueError("expected one installation state object")
+    if sys.argv[2] == "true" and (state.get("target_home") != sys.argv[3] or state.get("target_user") != sys.argv[4]):
+        raise ValueError("custom checkpoint does not belong to the resolved target")
+    if "module_selection" not in state:
+        print("legacy")
+    else:
+        selection = state["module_selection"]
+        if not isinstance(selection, dict) or type(selection.get("schema_version")) not in (int, float) or selection["schema_version"] != 1:
+            raise ValueError("unsupported module selection schema")
+        modules = selection.get("selected_modules")
+        if not isinstance(modules, list) or not modules or any(not isinstance(item, str) or not re.fullmatch(r"[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)+", item) for item in modules):
+            raise ValueError("invalid selected_modules list")
+        if len(set(modules)) != len(modules):
+            raise ValueError("duplicate module ID in selected_modules")
+        print("scoped")
+        print("\n".join(modules))
+except (OSError, ValueError) as error:
+    print("Cannot read ACFS module selection: " + str(error), file=sys.stderr)
+    sys.exit(1)
+ACFS_SELECTION_PY
+        ); then
+            return 1
+        fi
+    else
+        printf '%s\n' 'Cannot validate ACFS module selection without jq or python3.' >&2
+        return 1
+    fi
+
+    local -a records=()
+    mapfile -t records <<< "$parsed"
+    case "${records[0]:-}" in
+        legacy) ACFS_STATE_SELECTION_MODE=legacy ;;
+        scoped)
+            ACFS_STATE_SELECTED_MODULES=("${records[@]:1}")
+            ACFS_STATE_SELECTION_MODE=scoped
+            ;;
+        *) return 1 ;;
+    esac
+}
+
+# Call only after a successful load. Return 2 for an invalid/unloaded policy so
+# mutation consumers can distinguish a damaged checkpoint from an omission.
+state_module_is_selected() {
+    local wanted="${1:-}" module=""
+    state_is_valid_module_id "$wanted" || return 2
+    case "${ACFS_STATE_SELECTION_MODE:-invalid}" in
+        legacy) return 0 ;;
+        scoped)
+            for module in "${ACFS_STATE_SELECTED_MODULES[@]}"; do
+                [[ "$module" != "$wanted" ]] || return 0
+            done
+            return 1
+            ;;
+        *) return 2 ;;
+    esac
+}
+
+# Consumers supply IDs from their already trusted manifest catalogue. Unknown
+# saved IDs must not turn an incompatible installation into an all-skipped pass.
+state_validate_module_selection_catalog() {
+    case "${ACFS_STATE_SELECTION_MODE:-invalid}" in
+        legacy) return 0 ;;
+        scoped) ;;
+        *) return 1 ;;
+    esac
+    if [[ $# -eq 0 ]]; then
+        printf '%s\n' 'Cannot validate saved module selection: module catalogue is unavailable.' >&2
+        return 1
+    fi
+    local module=""
+    local -A known=()
+    for module in "$@"; do
+        state_is_valid_module_id "$module" || return 1
+        known["$module"]=1
+    done
+    for module in "${ACFS_STATE_SELECTED_MODULES[@]}"; do
+        if [[ -z "${known[$module]+present}" ]]; then
+            printf 'Saved module selection contains an unsupported module: %s\n' "$module" >&2
+            return 1
+        fi
+    done
+}
+
+# Merge an approved plan while holding the existing state lock across the
+# read/validate/write cycle. Narrow --only repairs add intent, never erase it.
+state_record_module_selection() {
+    local state_file="" merged="" previous="" status=0
+    state_module_selection_json "$@" >/dev/null || return 1
+    state_file=$(state_get_file) || return 1
+    [[ -f "$state_file" ]] || return 1
+    _state_acquire_lock || return 1
+    if ! state_load_module_selection "$state_file"; then
+        _state_release_lock
+        return 1
+    fi
+    if [[ "$ACFS_STATE_SELECTION_MODE" == legacy ]]; then
+        _state_release_lock
+        return 0
+    fi
+    previous=$(state_module_selection_json "${ACFS_STATE_SELECTED_MODULES[@]}") || status=1
+    merged=$(state_module_selection_json "${ACFS_STATE_SELECTED_MODULES[@]}" "$@") || status=1
+    if [[ "$status" -eq 0 && "$merged" != "$previous" ]]; then
+        state_update_with_args '.module_selection.selected_modules = $selection.selected_modules' \
+            --argjson selection "$merged" || status=1
+        if [[ "$status" -eq 0 ]]; then
+            state_load_module_selection "$state_file" || status=1
+        fi
+    fi
+    _state_release_lock
+    return "$status"
+}
+
 # Initialize a new state file with default values
 # Usage: state_init
 # Returns: 0 on success, 1 on failure
@@ -511,6 +738,30 @@ state_init() {
     fi
     state_target_user="${state_target_user:-unknown}"
 
+    local module_selection="null"
+    local -a previous_modules=()
+    local preserve_legacy_selection=false
+    if [[ -e "$state_file" || -L "$state_file" ]]; then
+        state_load_module_selection "$state_file" || return 1
+        if [[ "$ACFS_STATE_SELECTION_MODE" == scoped ]]; then
+            previous_modules=("${ACFS_STATE_SELECTED_MODULES[@]}")
+        else
+            preserve_legacy_selection=true
+        fi
+    elif [[ "${_ACFS_STATE_REINSTALL_SELECTION_FILE:-}" == "$state_file" ]]; then
+        case "${_ACFS_STATE_REINSTALL_SELECTION_MODE:-}" in
+            scoped) previous_modules=("${_ACFS_STATE_REINSTALL_MODULES[@]}") ;;
+            legacy) preserve_legacy_selection=true ;;
+        esac
+    fi
+    if [[ "$preserve_legacy_selection" != true ]]; then
+        if [[ "${ACFS_EFFECTIVE_PLAN+x}" == x && ${#ACFS_EFFECTIVE_PLAN[@]} -gt 0 ]]; then
+            module_selection=$(state_module_selection_json "${previous_modules[@]}" "${ACFS_EFFECTIVE_PLAN[@]}") || return 1
+        elif [[ ${#previous_modules[@]} -gt 0 ]]; then
+            module_selection=$(state_module_selection_json "${previous_modules[@]}") || return 1
+        fi
+    fi
+
     # Normalize boolean values for JSON
     local skip_pg="false"; [[ "${SKIP_POSTGRES:-false}" == "true" ]] && skip_pg="true"
     local skip_v="false"; [[ "${SKIP_VAULT:-false}" == "true" ]] && skip_v="true"
@@ -529,6 +780,7 @@ state_init() {
             --argjson skip_pg "$skip_pg" \
             --argjson skip_v "$skip_v" \
             --argjson skip_c "$skip_c" \
+            --argjson module_selection "$module_selection" \
             '{
                 schema_version: $schema_version,
                 version: $ver,
@@ -554,7 +806,7 @@ state_init() {
                     upgrade_path: [],
                     completed_upgrades: []
                 }
-            }')
+            } + (if $module_selection == null then {} else {module_selection: $module_selection} end)')
     else
         # Fallback to heredoc if jq is not yet installed
         initial_state=$(cat <<EOF
@@ -562,6 +814,7 @@ state_init() {
   "schema_version": $ACFS_STATE_SCHEMA_VERSION,
   "version": "$state_version",
   "source_ledger_sha256": null,
+  $(if [[ "$module_selection" != null ]]; then printf '"module_selection": %s,' "$module_selection"; fi)
   "target_user": "$state_target_user",
   "target_home": "$resolved_target_home",
   "bin_dir": "${ACFS_BIN_DIR:-$resolved_target_home/.local/bin}",
@@ -592,6 +845,9 @@ EOF
         return 1
     fi
 
+    _ACFS_STATE_REINSTALL_SELECTION_MODE=""
+    _ACFS_STATE_REINSTALL_SELECTION_FILE=""
+    _ACFS_STATE_REINSTALL_MODULES=()
     state_sync_path_if_enabled "$state_dir"
 
     return 0
@@ -1180,11 +1436,30 @@ confirm_resume() {
         _confirm_resume_log_warn "Cannot resolve the installation checkpoint. Refusing to resume."
         return 3
     fi
+    # Recovery may already have moved this same checkpoint aside. Keep its
+    # captured scope until state_init writes the replacement; never reuse a
+    # different target's captured selection.
+    if [[ "${_ACFS_STATE_REINSTALL_SELECTION_FILE:-}" != "$state_file" ]]; then
+        _ACFS_STATE_REINSTALL_SELECTION_MODE=""
+        _ACFS_STATE_REINSTALL_SELECTION_FILE=""
+        _ACFS_STATE_REINSTALL_MODULES=()
+    fi
+    if ! state_load_module_selection "$state_file"; then
+        _confirm_resume_log_warn "Cannot read the saved module selection. Refusing to reset or resume."
+        return 3
+    fi
 
     # If no state file, nothing to resume - proceed with fresh install
     if [[ ! -f "$state_file" ]]; then
         return 1
     fi
+
+    # --force-reinstall and the interactive fresh option reset progress, not
+    # the tools already entrusted to ACFS. Capture intent before any path can
+    # back up the checkpoint, including recovery of its outer state fields.
+    _ACFS_STATE_REINSTALL_SELECTION_MODE="$ACFS_STATE_SELECTION_MODE"
+    _ACFS_STATE_REINSTALL_SELECTION_FILE="$state_file"
+    _ACFS_STATE_REINSTALL_MODULES=("${ACFS_STATE_SELECTED_MODULES[@]}")
 
     # Load state to extract resume info
     local state
@@ -2903,15 +3178,31 @@ state_backup_and_remove() {
 # Usage: state_ensure_valid
 # Returns: 0 if state is valid or fresh, 1 if should abort
 state_ensure_valid() {
-    local code
-    state_validate
-    code=$?
+    local state_file="" code=0 had_state=false
+    state_file=$(state_get_file) || return 1
+    [[ ! -e "$state_file" && ! -L "$state_file" ]] || had_state=true
+    # Automatic checkpoint recovery must not erase an explicit invalid scope
+    # and then mistake the missing replacement for a legacy installation.
+    state_load_module_selection "$state_file" || return 1
+    if declare -p ACFS_MODULES_IN_ORDER >/dev/null 2>&1; then
+        state_validate_module_selection_catalog "${ACFS_MODULES_IN_ORDER[@]}" || return 1
+    fi
+    local selection_mode="$ACFS_STATE_SELECTION_MODE"
+    local -a selected_modules=("${ACFS_STATE_SELECTED_MODULES[@]}")
+    state_validate || code=$?
 
     if [[ $code -eq 0 ]]; then
         return 0  # Valid state
     fi
 
-    state_handle_invalid "$code"
+    state_handle_invalid "$code" || return 1
+    if [[ "$had_state" == true && ! -e "$state_file" && ! -L "$state_file" ]]; then
+        # A valid scope can accompany recoverable progress/schema damage.
+        # Preserve both scoped intent and legacy full-install semantics.
+        _ACFS_STATE_REINSTALL_SELECTION_MODE="$selection_mode"
+        _ACFS_STATE_REINSTALL_SELECTION_FILE="$state_file"
+        _ACFS_STATE_REINSTALL_MODULES=("${selected_modules[@]}")
+    fi
 }
 
 # ============================================================

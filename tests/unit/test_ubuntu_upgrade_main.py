@@ -82,8 +82,8 @@ acfs_remember_install_lock() { trace install_lock; }
 source_generated_installers() { trace generated; }
 acfs_apply_legacy_skips() { :; }
 acfs_apply_profile() { trace profile; return "$TEST_SELECTION_STATUS"; }
-acfs_resolve_selection() { trace selection; return "$TEST_SELECTION_STATUS"; }
-acfs_interactive_module_selector() { trace interactive; return "$TEST_SELECTION_STATUS"; }
+acfs_resolve_selection() { trace selection; ACFS_EFFECTIVE_PLAN=(base.system); return "$TEST_SELECTION_STATUS"; }
+acfs_interactive_module_selector() { trace interactive; ACFS_EFFECTIVE_PLAN=(base.system); return "$TEST_SELECTION_STATUS"; }
 list_modules() { trace list; }
 print_execution_plan() { trace plan; }
 print_summary() { trace summary; }
@@ -289,6 +289,58 @@ confirm_resume() { trace normal_install_ready; exit 0; }
         result, events, _ = self.run_main(overrides={'TEST_SELECTION_STATUS': '1'})
         self.assert_no_mutation(result, events)
         self.assertNotIn('upgrade', events)
+
+    def run_empty_selection(self, *, overrides=None, arguments=()):
+        installer = MAIN.read_text()
+        helpers = (ROOT / 'scripts/lib/install_helpers.sh').read_text()
+        actual_selection = '\n'.join([
+            'declare -a ONLY_MODULES=() ONLY_PHASES=() SKIP_MODULES=() ACFS_EFFECTIVE_PLAN=()',
+            'NO_DEPS=false',
+            'ACFS_MANIFEST_INDEX_LOADED=true',
+            'builtin source ' + shlex.quote(str(ROOT / 'scripts/generated/manifest_index.sh')),
+            definitions(installer, ['parse_args', 'append_comma_or_space_separated']),
+            definitions(helpers, ['acfs_normalize_only_phases', 'acfs_resolve_selection']),
+            'confirm_resume() { trace normal_install_ready; return 1; }',
+            'confirm_or_exit() { trace confirmed; }',
+            'state_init() { trace state_init; }',
+            'ensure_base_deps() { trace mut:base; exit 0; }',
+        ])
+        excluded = ','.join(('acfs.workspace', 'acfs.onboard', 'acfs.update',
+                             'acfs.nightly', 'acfs.doctor'))
+        return self.run_main(overrides=overrides,
+            arguments=('--only-phase', '10', '--skip', excluded, *arguments),
+            extra=actual_selection)
+
+    def test_empty_real_selection_stops_before_upgrade_packages_or_state(self):
+        for upgrade in ('false', 'true'):
+            with self.subTest(upgrade=upgrade):
+                result, events, root = self.run_empty_selection(
+                    overrides={'TARGET_UBUNTU_VERSION_EXPLICIT': upgrade})
+                self.assert_no_mutation(result, events)
+                self.assertIn('No modules selected', result.stderr)
+                self.assertNotIn('upgrade', events)
+                self.assertNotIn('normal_state', events)
+                self.assertNotIn('state_init', events)
+                self.assertFalse((root / 'home/.acfs/state.json').exists())
+
+    def test_empty_real_selection_retains_readonly_inspection(self):
+        for flag in ('--list-modules', '--print-plan', '--dry-run', '--print'):
+            with self.subTest(flag=flag):
+                result, events, root = self.run_empty_selection(arguments=(flag,))
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertFalse(any(e.startswith('mut:') for e in events), events)
+                self.assertNotIn('upgrade', events)
+                self.assertNotIn('state_init', events)
+                self.assertFalse((root / 'home/.acfs/state.json').exists())
+
+    def test_empty_real_selection_retains_explicit_state_reset(self):
+        result, events, _ = self.run_empty_selection(
+            overrides={'RESET_STATE_ONLY': 'true'}, arguments=('--reset-state',))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual([e for e in events if e.startswith('mut:')], ['mut:reset'])
+        self.assertNotIn('upgrade', events)
+        self.assertNotIn('state_init', events)
+        self.assertNotIn('normal_install_ready', events)
 
     def test_root_and_user_validation_failures_do_not_run_gum_or_autofix(self):
         for flag in ('TEST_ROOT_STATUS', 'TEST_USER_STATUS'):
