@@ -451,6 +451,9 @@ NO_DEPS=false
 ACFS_CLI_PROFILE=""
 ACFS_SELECTED_PROFILE=""
 ACFS_EXPLICIT_TARGETED_SELECTION=false
+ACFS_SAVED_SELECTION_ACTIVE=false
+ACFS_SAVED_SELECTION_MODULES=()
+ACFS_SAVED_REQUESTED_MODULES=()
 
 # Resume/reinstall options (used by state.sh confirm_resume)
 export ACFS_FORCE_RESUME=false
@@ -12490,6 +12493,67 @@ acfs_guard_ubuntu_install_checkpoint() {
     return 1
 }
 
+# Validate persisted intent before any package or operating-system changes.
+# Existing custom checkpoints must identify the same target as this install.
+# Default legacy checkpoints can predate target identity and scope metadata.
+acfs_load_installation_selection() {
+    type -t state_load_module_selection >/dev/null 2>&1 || return 0
+    local state_file="${ACFS_STATE_FILE:-$ACFS_HOME/state.json}"
+    if [[ "$state_file" != /* || "$state_file" == / ]]; then
+        log_error "ACFS_STATE_FILE must be an absolute file path: $state_file"
+        return 1
+    fi
+    if [[ "$state_file" != "$TARGET_HOME/.acfs/state.json" ]] \
+        && [[ -e "$state_file" || -L "$state_file" ]]; then
+        state_load_module_selection "$state_file" "$TARGET_HOME" "$TARGET_USER" || return 1
+    elif [[ "$state_file" == "$TARGET_HOME/.acfs/state.json" ]]; then
+        state_load_module_selection "$state_file" "$TARGET_HOME" "$TARGET_USER" allow-legacy-identity || return 1
+    else
+        state_load_module_selection "$state_file" || return 1
+    fi
+    state_validate_module_selection_catalog "${ACFS_MODULES_IN_ORDER[@]}"
+}
+
+acfs_apply_saved_installation_selection() {
+    ACFS_SAVED_SELECTION_ACTIVE=false
+    ACFS_SAVED_SELECTION_MODULES=()
+    ACFS_SAVED_REQUESTED_MODULES=()
+    if [[ "${ACFS_STATE_SELECTION_MODE:-legacy}" == scoped \
+        && -z "${ACFS_CLI_PROFILE:-}" && "${ACFS_INTERACTIVE:-false}" != true ]] \
+        && [[ ${#ONLY_MODULES[@]} -eq 0 && ${#ONLY_PHASES[@]} -eq 0 ]]; then
+        # Saved intent is an implicit default, not a set of new --only roots.
+        # Explicit module, phase, and profile choices can still expand it.
+        ACFS_SAVED_SELECTION_MODULES=("${ACFS_STATE_SELECTED_MODULES[@]}")
+        ACFS_SAVED_REQUESTED_MODULES=("${ACFS_STATE_REQUESTED_MODULES[@]}")
+        ACFS_SAVED_SELECTION_ACTIVE=true
+        log_info "Using the saved module selection (use --profile full to expand it)."
+    fi
+}
+
+# Preview the same saved default without requiring privileges or checkpoint
+# repair. Explicit selectors are already a complete request for inspection.
+acfs_preview_installation_selection() {
+    type -t state_resolve_target_home >/dev/null 2>&1 || return 0
+    if [[ -n "${ACFS_CLI_PROFILE:-}" || "${ACFS_INTERACTIVE:-false}" == true ]] \
+        || [[ ${#ONLY_MODULES[@]} -gt 0 || ${#ONLY_PHASES[@]} -gt 0 ]]; then
+        return 0
+    fi
+    local preview_home="" preview_acfs_home="" preview_state_file=""
+    preview_home="$(state_resolve_target_home 2>/dev/null || true)"
+    if [[ -z "$preview_home" ]]; then
+        log_warn "Cannot resolve the saved installation target; showing the fallback manifest plan. Resolve the target before installing."
+        return 0
+    fi
+    preview_acfs_home="${ACFS_HOME:-$preview_home/.acfs}"
+    preview_state_file="${ACFS_STATE_FILE:-$preview_acfs_home/state.json}"
+    if TARGET_HOME="$preview_home" ACFS_HOME="$preview_acfs_home" ACFS_STATE_FILE="$preview_state_file" \
+        acfs_load_installation_selection; then
+        acfs_apply_saved_installation_selection
+    else
+        log_warn "Cannot validate the saved module selection; showing the fallback manifest plan. Repair the checkpoint before installing."
+    fi
+}
+
 main() {
     # The fleet tools refuse group/other-writable runtime files, and a login
     # user's per-user-group umask (0002 on Ubuntu) would make every installed
@@ -12573,6 +12637,23 @@ main() {
     if [[ "$LIST_MODULES" != true && "$PRINT_PLAN_MODE" != true \
         && "$DRY_RUN" != true && "$PRINT_MODE" != true ]]; then
         acfs_guard_ubuntu_install_checkpoint || exit 1
+    fi
+
+    # Resolve the target and read its scope before upgrades, bootstrap packages,
+    # or autofix can mutate the host. Explicit state reset remains a recovery
+    # operation, and inspection modes remain usable with damaged checkpoints.
+    if [[ "$LIST_MODULES" != true && "$PRINT_PLAN_MODE" != true \
+        && "$DRY_RUN" != true && "$PRINT_MODE" != true && "$RESET_STATE_ONLY" != true ]]; then
+        ensure_root
+        validate_target_user
+        init_target_paths
+        if ! acfs_load_installation_selection; then
+            log_error "The saved module selection cannot be used safely. Resolve the checkpoint before reinstalling."
+            exit 1
+        fi
+        acfs_apply_saved_installation_selection
+    elif [[ "$PRINT_PLAN_MODE" == true || "$DRY_RUN" == true ]]; then
+        acfs_preview_installation_selection
     fi
 
     # Acquire install-wide flock to prevent concurrent install.sh processes.
@@ -12741,9 +12822,6 @@ main() {
     # preflight, confirmation, lock and reboot-resume state. General ACFS
     # preflight/autofix belongs after it, on the final operating system.
     if [[ "$DRY_RUN" != true && "$PRINT_MODE" != true ]]; then
-        ensure_root
-        validate_target_user
-        init_target_paths
         ensure_ubuntu
         if acfs_ubuntu_upgrade_requested; then
             if ! run_ubuntu_upgrade_phase "$@"; then
@@ -12871,8 +12949,7 @@ main() {
     export ACFS_HOME ACFS_STATE_FILE
 
     if [[ "$DRY_RUN" != true ]] && type -t state_load_module_selection >/dev/null; then
-        if ! state_load_module_selection "$ACFS_STATE_FILE" \
-            || ! state_validate_module_selection_catalog "${ACFS_MODULES_IN_ORDER[@]}"; then
+        if ! acfs_load_installation_selection; then
             log_error "The saved module selection cannot be used safely. Resolve the checkpoint before reinstalling."
             exit 1
         fi

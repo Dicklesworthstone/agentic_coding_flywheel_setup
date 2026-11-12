@@ -41,7 +41,8 @@ class MainUpgradeOrderTests(unittest.TestCase):
     def setUpClass(cls):
         cls.source = definitions(MAIN.read_text(), ['main'], [
             'acfs_validate_ubuntu_target', 'acfs_ubuntu_upgrade_requested',
-            'acfs_guard_ubuntu_install_checkpoint'])
+            'acfs_guard_ubuntu_install_checkpoint', 'acfs_load_installation_selection',
+            'acfs_apply_saved_installation_selection', 'acfs_preview_installation_selection'])
 
     def run_main(self, *, overrides=None, arguments=(), extra='', uid=None):
         root = Path(tempfile.mkdtemp(prefix='acfs-main-order-'))
@@ -392,7 +393,8 @@ class IntegratedUpgradeFlowTests(unittest.TestCase):
     def setUpClass(cls):
         cls.source = definitions(MAIN.read_text(), ['main'], [
             'acfs_validate_ubuntu_target', 'acfs_ubuntu_upgrade_requested',
-            'acfs_guard_ubuntu_install_checkpoint'])
+            'acfs_guard_ubuntu_install_checkpoint', 'acfs_load_installation_selection',
+            'acfs_apply_saved_installation_selection', 'acfs_preview_installation_selection'])
         source = PHASE.read_text()
         cls.phase = definitions(source, ['run_ubuntu_upgrade_phase',
             'release_ubuntu_upgrade_lock_if_acquired', 'restore_previous_acfs_state_file'])

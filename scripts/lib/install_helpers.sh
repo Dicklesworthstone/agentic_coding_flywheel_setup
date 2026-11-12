@@ -34,6 +34,13 @@ fi
 if [[ "${SKIP_MODULES+x}" != "x" ]]; then
     SKIP_MODULES=()
 fi
+if [[ "${ACFS_SAVED_SELECTION_MODULES+x}" != "x" ]]; then
+    ACFS_SAVED_SELECTION_MODULES=()
+fi
+if [[ "${ACFS_SAVED_REQUESTED_MODULES+x}" != "x" ]]; then
+    ACFS_SAVED_REQUESTED_MODULES=()
+fi
+: "${ACFS_SAVED_SELECTION_ACTIVE:=false}"
 : "${NO_DEPS:=false}"
 : "${PRINT_PLAN:=false}"
 
@@ -308,15 +315,37 @@ acfs_resolve_selection() {
     fi
 
     if [[ "${#ONLY_MODULES[@]}" -eq 0 && "${#ONLY_PHASES[@]}" -eq 0 ]]; then
-        for module in "${ACFS_MODULES_IN_ORDER[@]}"; do
-            local enabled="${ACFS_MODULE_DEFAULT["$module"]:-1}"
-            if [[ "$enabled" == "1" || "$enabled" == "true" ]]; then
-                desired["$module"]=1
-                start_reason["$module"]="default"
-            else
-                ACFS_PLAN_EXCLUDE_REASON["$module"]="disabled by default"
+        if [[ "${ACFS_SAVED_SELECTION_ACTIVE:-false}" == true ]]; then
+            if [[ ${#ACFS_SAVED_SELECTION_MODULES[@]} -eq 0 ]]; then
+                log_error "The saved module selection is empty."
+                return 1
             fi
-        done
+            for module in "${ACFS_SAVED_SELECTION_MODULES[@]}"; do
+                if [[ -z "$module" || -z "${module_exists[$module]:-}" ]]; then
+                    log_error "Unknown module id in saved selection: $module"
+                    return 1
+                fi
+                desired["$module"]=1
+                start_reason["$module"]="saved installation"
+            done
+            for module in "${ACFS_SAVED_REQUESTED_MODULES[@]}"; do
+                if [[ -z "$module" || -z "${desired[$module]:-}" ]]; then
+                    log_error "Saved requested module is outside the installation selection: $module"
+                    return 1
+                fi
+                start_reason["$module"]="explicitly requested"
+            done
+        else
+            for module in "${ACFS_MODULES_IN_ORDER[@]}"; do
+                local enabled="${ACFS_MODULE_DEFAULT["$module"]:-1}"
+                if [[ "$enabled" == "1" || "$enabled" == "true" ]]; then
+                    desired["$module"]=1
+                    start_reason["$module"]="default"
+                else
+                    ACFS_PLAN_EXCLUDE_REASON["$module"]="disabled by default"
+                fi
+            done
+        fi
     fi
 
     local -A skip_set=()
@@ -667,6 +696,7 @@ acfs_use_generated_for_category() {
 }
 
 acfs_selection_filters_active() {
+    [[ "${ACFS_SAVED_SELECTION_ACTIVE:-false}" == true ]] && return 0
     [[ "${ONLY_MODULES+x}" == "x" && ${#ONLY_MODULES[@]} -gt 0 ]] && return 0
     [[ "${ONLY_PHASES+x}" == "x" && ${#ONLY_PHASES[@]} -gt 0 ]] && return 0
     [[ "${SKIP_MODULES+x}" == "x" && ${#SKIP_MODULES[@]} -gt 0 ]] && return 0

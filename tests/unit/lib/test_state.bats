@@ -25,6 +25,173 @@ teardown() {
     assert_output --partial '"completed_phases": []'
 }
 
+@test "state: explicit optional requests survive bootstrap and later targeted repairs" {
+    local python_fallback=false parser
+    command() {
+        if [[ "$python_fallback" == true && "${1:-}" == -v && "${2:-}" == jq ]]; then
+            return 1
+        fi
+        builtin command "$@"
+    }
+    declare -A ACFS_PLAN_REASON=(
+        [agents.grok]="explicitly requested"
+        [agents.codex]="phase 7"
+    )
+    ACFS_EFFECTIVE_PLAN=(agents.grok agents.codex)
+    for parser in jq python; do
+        python_fallback=false
+        [[ "$parser" != python ]] || python_fallback=true
+        ACFS_STATE_FILE="$ACFS_HOME/$parser.json"
+        state_init
+        state_load_module_selection "$ACFS_STATE_FILE"
+        [[ "${ACFS_STATE_REQUESTED_MODULES[*]}" == agents.grok ]]
+        run jq -e '.module_selection.requested_modules == ["agents.grok"]' "$ACFS_STATE_FILE"
+        assert_success
+    done
+
+    python_fallback=false
+    ACFS_PLAN_REASON=([agents.codex]="explicitly requested")
+    state_record_module_selection agents.codex
+    state_load_module_selection "$ACFS_STATE_FILE"
+    [[ "${ACFS_STATE_REQUESTED_MODULES[*]}" == "agents.grok agents.codex" ]]
+    cp "$ACFS_STATE_FILE" "$BATS_TEST_TMPDIR/requirements-before-repeat.json"
+    state_record_module_selection agents.codex
+    run cmp "$ACFS_STATE_FILE" "$BATS_TEST_TMPDIR/requirements-before-repeat.json"
+    assert_success
+}
+
+@test "state: force reinstall and progress recovery retain explicit required roots" {
+    ACFS_EFFECTIVE_PLAN=(agents.grok agents.codex)
+    declare -A ACFS_PLAN_REASON=([agents.grok]="explicitly requested")
+    state_init
+    ACFS_FORCE_REINSTALL=true
+    ACFS_EFFECTIVE_PLAN=(lang.go)
+    ACFS_PLAN_REASON=([lang.go]="explicitly requested")
+    local result=0
+    confirm_resume || result=$?
+    [[ "$result" -eq 1 ]]
+    state_init
+    state_load_module_selection "$ACFS_STATE_FILE"
+    [[ "${ACFS_STATE_REQUESTED_MODULES[*]}" == "agents.grok lang.go" ]]
+
+    YES_MODE=true
+    printf '%s\n' '{"schema_version":3,"module_selection":{"schema_version":1,"selected_modules":["agents.grok"],"requested_modules":["agents.grok"]}}' > "$ACFS_STATE_FILE"
+    ACFS_FORCE_REINSTALL=false
+    ACFS_EFFECTIVE_PLAN=(lang.bun)
+    ACFS_PLAN_REASON=()
+    state_ensure_valid
+    [[ ! -f "$ACFS_STATE_FILE" ]]
+    result=0
+    confirm_resume || result=$?
+    [[ "$result" -eq 1 ]]
+    state_init
+    state_load_module_selection "$ACFS_STATE_FILE"
+    [[ "${ACFS_STATE_REQUESTED_MODULES[*]}" == agents.grok ]]
+    state_module_is_selected lang.bun
+}
+
+@test "state: both parsers reject invalid requested roots and clear prior policy" {
+    local python_fallback=false parser requested
+    command() {
+        if [[ "$python_fallback" == true && "${1:-}" == -v && "${2:-}" == jq ]]; then
+            return 1
+        fi
+        builtin command "$@"
+    }
+    for parser in jq python; do
+        python_fallback=false
+        [[ "$parser" != python ]] || python_fallback=true
+        printf '%s\n' '{"module_selection":{"schema_version":1,"selected_modules":["agents.grok"]}}' > "$ACFS_STATE_FILE"
+        state_load_module_selection "$ACFS_STATE_FILE"
+        [[ ${#ACFS_STATE_REQUESTED_MODULES[@]} -eq 0 ]]
+        for requested in null false '{}' '"agents.grok"' '[null]' '[true]' \
+            '["agents.grok","agents.grok"]' '["agents.codex"]' '["agents.grok\n"]'; do
+            jq -n --argjson requested "$requested" \
+                '{module_selection:{schema_version:1,selected_modules:["agents.grok"],requested_modules:$requested}}' > "$ACFS_STATE_FILE"
+            ACFS_STATE_REQUESTED_MODULES=(agents.grok)
+            if state_load_module_selection "$ACFS_STATE_FILE"; then
+                fail "Accepted invalid requested roots using $parser: $requested"
+            fi
+            [[ "$ACFS_STATE_SELECTION_MODE" == invalid ]]
+            [[ ${#ACFS_STATE_SELECTED_MODULES[@]} -eq 0 ]]
+            [[ ${#ACFS_STATE_REQUESTED_MODULES[@]} -eq 0 ]]
+        done
+    done
+}
+
+@test "state: default legacy identity policy rejects conflicts and cannot weaken custom reads" {
+    local target_home="$ACFS_HOME/identity-home"
+    local checkpoint="$target_home/.acfs/state.json"
+    local python_fallback=false parser identity
+    mkdir -p "$target_home/.acfs"
+    command() {
+        if [[ "$python_fallback" == true && "${1:-}" == -v && "${2:-}" == jq ]]; then
+            return 1
+        fi
+        builtin command "$@"
+    }
+    for parser in jq python; do
+        python_fallback=false
+        [[ "$parser" != python ]] || python_fallback=true
+        printf '%s\n' '{}' > "$checkpoint"
+        state_load_module_selection "$checkpoint" "$target_home" fixture allow-legacy-identity
+        [[ "$ACFS_STATE_SELECTION_MODE" == legacy ]]
+        if state_load_module_selection "$checkpoint" "$target_home" fixture; then
+            fail "Strict custom identity accepted absent metadata with $parser"
+        fi
+        for identity in '{"target_home":null}' '{"target_home":false}' '{"target_home":17}' \
+            '{"target_home":"/another/home"}' '{"target_user":null}' '{"target_user":[]}' \
+            '{"target_user":17}' '{"target_user":"someone_else"}'; do
+            printf '%s\n' "$identity" > "$checkpoint"
+            if state_load_module_selection "$checkpoint" "$target_home" fixture allow-legacy-identity; then
+                fail "Accepted foreign or invalid default identity using $parser: $identity"
+            fi
+        done
+        jq -n --arg home "$target_home" '{target_home:$home,target_user:"fixture"}' > "$checkpoint"
+        state_load_module_selection "$checkpoint" "$target_home" fixture
+        state_load_module_selection "$checkpoint" "$target_home" fixture allow-legacy-identity
+        cp "$checkpoint" "$ACFS_HOME/custom-checkpoint.json"
+        state_load_module_selection "$ACFS_HOME/custom-checkpoint.json" "$target_home" fixture
+        if state_load_module_selection "$ACFS_HOME/custom-checkpoint.json" "$target_home" fixture allow-legacy-identity; then
+            fail "Default-only policy accepted a custom path using $parser"
+        fi
+        if state_load_module_selection "$checkpoint" "$target_home" fixture unknown-policy; then
+            fail "Accepted an unknown identity policy using $parser"
+        fi
+        state_load_module_selection "$ACFS_HOME/missing-home/.acfs/state.json" "$ACFS_HOME/missing-home" fixture allow-legacy-identity
+        [[ "$ACFS_STATE_SELECTION_MODE" == legacy ]]
+    done
+}
+
+@test "state: saved scope excludes unrelated phases while completed selected phases stay verifiable" {
+    ACFS_EFFECTIVE_PLAN=(lang.bun)
+    declare -A ACFS_MODULE_PHASE=([lang.bun]=6)
+    ONLY_MODULES=()
+    ONLY_PHASES=()
+    ACFS_SAVED_SELECTION_ACTIVE=true
+    state_init
+    state_phase_complete languages
+    local verification_status=0
+    acfs_verify_phase() {
+        printf '%s:%s\n' "$1" "$2" >> "$ACFS_HOME/verification-events"
+        return "$verification_status"
+    }
+    state_should_skip_phase agents
+    [[ ! -f "$ACFS_HOME/verification-events" ]]
+    state_should_skip_phase languages
+    run cat "$ACFS_HOME/verification-events"
+    assert_output "languages:resume"
+    verification_status=1
+    if state_should_skip_phase languages; then
+        fail "A failed selected verifier was skipped"
+    fi
+    verification_status=0
+    ONLY_MODULES=(lang.bun)
+    if state_should_skip_phase languages; then
+        fail "An explicit selected repair was skipped"
+    fi
+}
+
 @test "state: fresh module selection survives a separate maintenance process" {
     ACFS_EFFECTIVE_PLAN=(base.system lang.bun agents.claude)
     state_init
@@ -161,7 +328,7 @@ teardown() {
     state_load_module_selection "$ACFS_STATE_FILE"
     [[ "$ACFS_STATE_SELECTION_MODE" == scoped ]]
     state_module_is_selected agents.claude
-    run jq -er '.module_selection == {schema_version:1,selected_modules:["base.system","agents.claude"]}' "$ACFS_STATE_FILE"
+    run jq -er '.module_selection == {schema_version:1,selected_modules:["base.system","agents.claude"],requested_modules:[]}' "$ACFS_STATE_FILE"
     assert_success
     assert_output true
 

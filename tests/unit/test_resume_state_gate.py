@@ -722,5 +722,187 @@ ensure_base_deps() {
                     self.assertEqual(state["source_ledger_sha256"], SOURCE_A)
 
 
+
+class ScopedInstallerResumeTests(unittest.TestCase):
+    BASE_SCOPE = ("base.system", "users.ubuntu", "lang.bun")
+
+    @classmethod
+    def setUpClass(cls):
+        _main_fixture.MainUpgradeOrderTests.setUpClass()
+        cls.harness = _main_fixture.MainUpgradeOrderTests(methodName="runTest")
+
+    def run_scoped(self, arguments=(), *, modules=None, requested=("lang.bun",),
+                   alter="", custom=False, completed=True, options=None):
+        modules = self.BASE_SCOPE if modules is None else modules
+        installer = (ROOT / "install.sh").read_text()
+        setup = [
+            f"builtin source {shlex.quote(str(ROOT / 'scripts/lib/install_helpers.sh'))}",
+            f"builtin source {shlex.quote(str(STATE))}",
+            f"builtin source {shlex.quote(str(ROOT / 'scripts/generated/manifest_index.sh'))}",
+            _main_fixture.definitions(installer, [
+                "parse_args", "append_comma_or_space_separated"]),
+            "ACFS_VERSION=fixture; MODE=safe; HAS_GUM=false",
+            "ACFS_FORCE_RESUME=false; ACFS_FORCE_REINSTALL=false; ACFS_INTERACTIVE=false",
+            "SKIP_POSTGRES=false; SKIP_VAULT=false; SKIP_CLOUD=false",
+            "ACFS_CLI_PROFILE=''; ACFS_SELECTED_PROFILE=''; NO_DEPS=false",
+            "declare -a ONLY_MODULES=() ONLY_PHASES=() SKIP_MODULES=()",
+            "ACFS_SAVED_SELECTION_ACTIVE=false",
+            "declare -a ACFS_SAVED_SELECTION_MODULES=() ACFS_SAVED_REQUESTED_MODULES=()",
+            'export ACFS_STATE_FILE="$ACFS_HOME/state.json"',
+            # Isolate NSS at the fixture account boundary; checkpoint parsing,
+            # selector closure, initialization, locks and persistence are real.
+            r'''state_getent_passwd_entry() { printf 'ubuntu:x:1000:1000::%s:/bin/bash\n' "$TARGET_HOME"; }''',
+            "ACFS_EFFECTIVE_PLAN=(" + " ".join(map(shlex.quote, modules)) + ")",
+            "ACFS_PLAN_REASON=()",
+        ]
+        setup += [f"ACFS_PLAN_REASON[{shlex.quote(module)}]='explicitly requested'"
+                  for module in requested]
+        setup += [
+            "state_init",
+            "state_phase_complete languages" if completed else "",
+            "ACFS_EFFECTIVE_PLAN=(); ACFS_PLAN_REASON=()",
+            'cp "$ACFS_STATE_FILE" "$TEST_ROOT/custom-state.json"\n'
+            'ACFS_STATE_FILE="$TEST_ROOT/custom-state.json"' if custom else "",
+            alter,
+            'cp "$ACFS_STATE_FILE" "$TEST_ROOT/checkpoint-before.json"',
+            r'''
+confirm_or_exit() { trace approved; }
+ensure_base_deps() { trace mut:base; }
+record_scope() {
+    local module
+    local -a required=()
+    for module in "${ACFS_EFFECTIVE_PLAN[@]}"; do
+        if acfs_module_explicitly_selected "$module"; then required+=("$module"); fi
+    done
+    trace "resolved:$(jq -cn --args '$ARGS.positional' "${ACFS_EFFECTIVE_PLAN[@]}")"
+    trace "required:$(jq -cn --args '$ARGS.positional' "${required[@]}")"
+}
+print_execution_plan() { record_scope; }
+acfs_verify_phase() { record_scope; exit 0; }
+''',
+        ]
+        return self.harness.run_main(
+            overrides={"TEST_MISSING_TOOLS": "false", **(options or {})},
+            arguments=arguments, extra="\n".join(setup))
+
+    def scope_event(self, events, name):
+        values = [event[len(name) + 1:] for event in events if event.startswith(name + ":")]
+        self.assertEqual(len(values), 1, events)
+        return json.loads(values[0])
+
+    def assert_unchanged(self, folder, *, custom=False):
+        checkpoint = folder / "custom-state.json" if custom else folder / "home/.acfs/state.json"
+        self.assertEqual(checkpoint.read_bytes(), (folder / "checkpoint-before.json").read_bytes())
+
+    def test_no_selector_retry_and_force_preserve_scope_even_before_first_completed_phase(self):
+        for completed in (False, True):
+            for arguments in ((), ("--resume",), ("--force-reinstall",)):
+                with self.subTest(completed=completed, arguments=arguments):
+                    result, events, folder = self.run_scoped(arguments, completed=completed)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertEqual(self.scope_event(events, "resolved"), list(self.BASE_SCOPE))
+                    self.assertEqual(self.scope_event(events, "required"), ["lang.bun"])
+                    selection = json.loads((folder / "home/.acfs/state.json").read_text())["module_selection"]
+                    self.assertEqual(selection["selected_modules"], list(self.BASE_SCOPE))
+                    self.assertEqual(selection["requested_modules"], ["lang.bun"])
+
+    def test_explicit_module_phase_and_profile_requests_can_expand_the_installation(self):
+        cases = (
+            (("--only", "agents.grok"), "agents.grok", ["agents.grok"]),
+            (("--only-phase", "agents"), "agents.codex", []),
+            (("--profile", "full"), "stack.ntm", []),
+        )
+        for arguments, included, required in cases:
+            with self.subTest(arguments=arguments):
+                result, events, folder = self.run_scoped(arguments)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn(included, self.scope_event(events, "resolved"))
+                self.assertEqual(self.scope_event(events, "required"), required)
+                selection = json.loads((folder / "home/.acfs/state.json").read_text())["module_selection"]
+                self.assertIn("lang.bun", selection["selected_modules"])
+                self.assertIn(included, selection["selected_modules"])
+
+    def test_saved_optional_roots_stay_required_but_unrecorded_requirements_are_not_invented(self):
+        modules = (*self.BASE_SCOPE, "agents.grok")
+        for arguments in (("--resume",), ("--force-reinstall",)):
+            result, events, _ = self.run_scoped(arguments, modules=modules, requested=("agents.grok",))
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(self.scope_event(events, "required"), ["agents.grok"])
+        result, events, _ = self.run_scoped(
+            ("--resume",), modules=modules, requested=(),
+            alter="state_update 'del(.module_selection.requested_modules)'")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("agents.grok", self.scope_event(events, "resolved"))
+        self.assertEqual(self.scope_event(events, "required"), [])
+
+    def test_skip_filters_saved_scope_without_expanding_or_erasing_cumulative_intent(self):
+        for flag in ("--resume", "--force-reinstall"):
+            result, events, folder = self.run_scoped(
+                (flag, "--skip", "agents.grok"), modules=(*self.BASE_SCOPE, "agents.grok"),
+                requested=("agents.grok",))
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(self.scope_event(events, "resolved"), list(self.BASE_SCOPE))
+            self.assertEqual(self.scope_event(events, "required"), [])
+            selection = json.loads((folder / "home/.acfs/state.json").read_text())["module_selection"]
+            self.assertIn("agents.grok", selection["selected_modules"])
+            self.assertEqual(selection["requested_modules"], ["agents.grok"])
+
+    def test_invalid_or_foreign_checkpoints_stop_before_upgrade_packages_or_state_changes(self):
+        cases = (
+            ("empty", "state_update '.module_selection.selected_modules = []'", False),
+            ("unknown", 'state_update \'.module_selection.selected_modules += ["stack.unknown"]\'', False),
+            ("orphan-request", 'state_update \'.module_selection.requested_modules = ["agents.grok"]\'', False),
+            ("broken", r'''printf '{"module_selection":' > "$ACFS_STATE_FILE"''', False),
+            ("foreign-default", 'state_update \'.target_home = "/another/home"\'', False),
+            ("foreign-custom", 'state_update \'.target_user = "someone_else"\'', True),
+            ("null-identity", "state_update '.target_user = null'", False),
+        )
+        for name, alter, custom in cases:
+            for flag in ("--resume", "--force-reinstall"):
+                with self.subTest(case=name, flag=flag):
+                    result, events, folder = self.run_scoped(
+                        (flag,), alter=alter, custom=custom,
+                        options={"TARGET_UBUNTU_VERSION_EXPLICIT": "true"})
+                    self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertFalse(any(event.startswith("mut:") for event in events), events)
+                    self.assertNotIn("upgrade", events)
+                    self.assertNotIn("install_lock", events)
+                    self.assert_unchanged(folder, custom=custom)
+
+    def test_valid_custom_checkpoint_and_legacy_full_install_remain_supported(self):
+        result, events, _ = self.run_scoped(("--resume",), custom=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.scope_event(events, "resolved"), list(self.BASE_SCOPE))
+        result, events, folder = self.run_scoped(
+            ("--resume",), alter="state_update 'del(.module_selection, .target_home, .target_user)'")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("stack.ntm", self.scope_event(events, "resolved"))
+        self.assertNotIn("module_selection", json.loads((folder / "home/.acfs/state.json").read_text()))
+
+    def test_saved_scope_previews_match_execution_without_privileges_or_checkpoint_writes(self):
+        for flag in ("--print-plan", "--dry-run"):
+            result, events, folder = self.run_scoped((flag,))
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(self.scope_event(events, "resolved"), list(self.BASE_SCOPE))
+            self.assertEqual(self.scope_event(events, "required"), ["lang.bun"])
+            self.assertFalse(any(event.startswith("mut:") for event in events), events)
+            for event in ("root", "user", "paths", "install_lock", "upgrade"):
+                self.assertNotIn(event, events)
+            self.assert_unchanged(folder)
+
+    def test_damaged_or_unresolvable_preview_warns_and_keeps_readonly_inspection_available(self):
+        for alter in ("state_update '.module_selection.selected_modules = []'",
+                      "TARGET_USER='invalid user'"):
+            for flag in ("--print-plan", "--dry-run"):
+                with self.subTest(alter=alter, flag=flag):
+                    result, events, folder = self.run_scoped((flag,), alter=alter)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertIn("fallback manifest plan", result.stderr)
+                    self.assertIn("stack.ntm", self.scope_event(events, "resolved"))
+                    self.assertFalse(any(event.startswith("mut:") for event in events), events)
+                    self.assertNotIn("root", events)
+                    self.assert_unchanged(folder)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

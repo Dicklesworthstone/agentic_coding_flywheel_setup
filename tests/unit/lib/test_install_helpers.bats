@@ -26,6 +26,9 @@ setup() {
     SKIP_MODULES=()
     SKIP_TAGS=()
     SKIP_CATEGORIES=()
+    ACFS_SAVED_SELECTION_ACTIVE=false
+    ACFS_SAVED_SELECTION_MODULES=()
+    ACFS_SAVED_REQUESTED_MODULES=()
     
     # Stub sudo for run_as_target
     stub_command "sudo" "" 0
@@ -186,6 +189,74 @@ use_spy_sudo() {
     SKIP_MODULES=("mod1")
     if acfs_resolve_selection 2>/dev/null; then
         fail "an explicit module must not also be skipped"
+    fi
+}
+
+@test "acfs_resolve_selection: saved selection excludes defaults and retains required roots" {
+    ACFS_SAVED_SELECTION_ACTIVE=true
+    ACFS_SAVED_SELECTION_MODULES=("mod1" "mod3")
+    ACFS_SAVED_REQUESTED_MODULES=("mod3")
+
+    acfs_resolve_selection
+
+    assert_equal "${ACFS_EFFECTIVE_PLAN[*]}" "mod1 mod3"
+    assert_equal "${ACFS_PLAN_REASON[mod1]}" "saved installation"
+    assert_equal "${ACFS_PLAN_REASON[mod3]}" "explicitly requested"
+    acfs_module_explicitly_selected mod3
+    ! acfs_module_explicitly_selected mod1
+    acfs_selection_filters_active
+}
+
+@test "acfs_resolve_selection: saved incidental modules remain optional" {
+    ACFS_SAVED_SELECTION_ACTIVE=true
+    ACFS_SAVED_SELECTION_MODULES=("mod3")
+
+    acfs_resolve_selection
+
+    assert_equal "${ACFS_EFFECTIVE_PLAN[*]}" "mod3"
+    ! acfs_module_explicitly_selected mod3
+}
+
+@test "acfs_resolve_selection: invalid saved scope never falls back to defaults" {
+    ACFS_SAVED_SELECTION_ACTIVE=true
+    if acfs_resolve_selection 2>/dev/null; then
+        fail "empty saved scope must not select defaults"
+    fi
+    ACFS_SAVED_SELECTION_MODULES=("missing")
+    if acfs_resolve_selection 2>/dev/null; then
+        fail "unknown saved module must not be ignored"
+    fi
+    ACFS_SAVED_SELECTION_MODULES=("mod1")
+    ACFS_SAVED_REQUESTED_MODULES=("mod3")
+    if acfs_resolve_selection 2>/dev/null; then
+        fail "a required root must belong to saved scope"
+    fi
+}
+
+@test "acfs_resolve_selection: deliberate module selection overrides the saved implicit default" {
+    ACFS_SAVED_SELECTION_ACTIVE=true
+    ACFS_SAVED_SELECTION_MODULES=("mod3")
+    ACFS_SAVED_REQUESTED_MODULES=("mod3")
+    ONLY_MODULES=("mod2")
+
+    acfs_resolve_selection
+
+    assert_equal "${ACFS_EFFECTIVE_PLAN[*]}" "mod2"
+    assert_equal "${ACFS_PLAN_REASON[mod2]}" "explicitly requested"
+}
+
+@test "acfs_resolve_selection: saved scope retains dependency closure and skip conflicts" {
+    ACFS_SAVED_SELECTION_ACTIVE=true
+    ACFS_SAVED_SELECTION_MODULES=("mod3")
+    ACFS_MODULE_DEPS["mod3"]="mod1"
+
+    acfs_resolve_selection
+    assert_equal "${ACFS_EFFECTIVE_PLAN[*]}" "mod1 mod3"
+    assert_equal "${ACFS_PLAN_REASON[mod1]}" "dependency of mod3"
+
+    SKIP_MODULES=("mod1")
+    if acfs_resolve_selection 2>/dev/null; then
+        fail "saved scope must not bypass dependency conflicts"
     fi
 }
 
