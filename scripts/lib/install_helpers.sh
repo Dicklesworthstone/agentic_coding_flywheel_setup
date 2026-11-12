@@ -281,7 +281,11 @@ acfs_resolve_selection() {
             desired["$module"]=1
             start_reason["$module"]="explicitly requested"
         done
-    elif [[ "${#ONLY_PHASES[@]}" -gt 0 ]]; then
+    fi
+
+    # Explicit module roots and phase roots are additive. Preserve an explicit
+    # reason when both selectors include the same module.
+    if [[ "${#ONLY_PHASES[@]}" -gt 0 ]]; then
         for phase in "${ONLY_PHASES[@]}"; do
             [[ -n "$phase" ]] || continue
             if [[ -z "${phase_exists[$phase]:-}" ]]; then
@@ -294,12 +298,16 @@ acfs_resolve_selection() {
             for target_phase in "${ONLY_PHASES[@]}"; do
                 if [[ "$phase" == "$target_phase" ]]; then
                     desired["$module"]=1
-                    start_reason["$module"]="phase $phase"
+                    if [[ -z "${start_reason[$module]:-}" ]]; then
+                        start_reason["$module"]="phase $phase"
+                    fi
                     break
                 fi
             done
         done
-    else
+    fi
+
+    if [[ "${#ONLY_MODULES[@]}" -eq 0 && "${#ONLY_PHASES[@]}" -eq 0 ]]; then
         for module in "${ACFS_MODULES_IN_ORDER[@]}"; do
             local enabled="${ACFS_MODULE_DEFAULT["$module"]:-1}"
             if [[ "$enabled" == "1" || "$enabled" == "true" ]]; then

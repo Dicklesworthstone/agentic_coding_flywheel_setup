@@ -137,6 +137,58 @@ use_spy_sudo() {
     if [[ -n "${ACFS_EFFECTIVE_RUN[mod1]}" ]]; then fail "mod1 selected"; fi
 }
 
+@test "acfs_resolve_selection: module and phase roots form a union with dependencies" {
+    ONLY_MODULES=("mod1")
+    ONLY_PHASES=("3")
+    ACFS_MODULE_DEPS["mod3"]="mod2"
+
+    acfs_resolve_selection
+
+    assert_equal "${ACFS_EFFECTIVE_PLAN[*]}" "mod1 mod2 mod3"
+    assert_equal "${ACFS_PLAN_REASON[mod1]}" "explicitly requested"
+    assert_equal "${ACFS_PLAN_REASON[mod2]}" "dependency of mod3"
+    assert_equal "${ACFS_PLAN_REASON[mod3]}" "phase 3"
+}
+
+@test "acfs_resolve_selection: explicit module reason wins when a phase overlaps" {
+    ONLY_MODULES=("mod3")
+    ONLY_PHASES=("3")
+
+    acfs_resolve_selection
+
+    assert_equal "${ACFS_EFFECTIVE_PLAN[*]}" "mod3"
+    assert_equal "${ACFS_PLAN_REASON[mod3]}" "explicitly requested"
+}
+
+@test "acfs_resolve_selection: mixed roots validate phases and dependency conflicts" {
+    ONLY_MODULES=("mod1")
+    ONLY_PHASES=("999")
+    if acfs_resolve_selection 2>/dev/null; then
+        fail "an explicit module must not hide an invalid phase"
+    fi
+
+    ONLY_PHASES=("3")
+    ACFS_MODULE_DEPS["mod3"]="mod2"
+    SKIP_MODULES=("mod2")
+    if acfs_resolve_selection 2>/dev/null; then
+        fail "phase dependencies must not bypass an explicit skip"
+    fi
+}
+
+@test "acfs_resolve_selection: mixed roots allow phase exclusions but reject explicit conflicts" {
+    ONLY_MODULES=("mod1")
+    ONLY_PHASES=("2" "3")
+    SKIP_MODULES=("mod3")
+
+    acfs_resolve_selection
+    assert_equal "${ACFS_EFFECTIVE_PLAN[*]}" "mod1 mod2"
+
+    SKIP_MODULES=("mod1")
+    if acfs_resolve_selection 2>/dev/null; then
+        fail "an explicit module must not also be skipped"
+    fi
+}
+
 @test "run_as_current_shell: executes command" {
     run run_as_current_shell "echo 'hello world'"
     assert_success

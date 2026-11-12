@@ -71,10 +71,14 @@ export function getGuidedModuleSelection(
   if (!plan.ok || plan.selectedCount === 0 || getMissingWizardPrerequisites(plan).length === 0) {
     return selection;
   }
+  const source = manifestSelectionProfiles.find((candidate) => candidate.id === profile)!;
+  // Preserve roots, not the resolved closure. Flattening a phase into --only
+  // makes optional tools mandatory and promotes inferred dependencies too.
   return {
     onlyModules: [
-      ...new Set([...plan.included.map((entry) => entry.id), ...WIZARD_PREREQUISITE_MODULES]),
+      ...new Set([...source.onlyModules, ...WIZARD_PREREQUISITE_MODULES]),
     ],
+    ...(source.onlyPhases.length > 0 ? { onlyPhases: [...source.onlyPhases] } : {}),
   };
 }
 
@@ -337,7 +341,10 @@ export function resolveModuleSelection(
           );
         }
       }
-    } else if (normalized.onlyPhases.length > 0) {
+    }
+    // Phase roots add to explicit module roots. An overlapping --only module
+    // keeps its explicit reason, including its required-failure semantics.
+    if (normalized.onlyPhases.length > 0) {
       for (const phase of normalized.onlyPhases) {
         if (!phaseSet.has(phase)) {
           errors.push(`Unknown phase in --only-phase: ${phase}`);
@@ -346,7 +353,7 @@ export function resolveModuleSelection(
       if (errors.length === 0) {
         const selectedPhases = new Set(normalized.onlyPhases);
         for (const moduleMetadata of modules) {
-          if (selectedPhases.has(String(moduleMetadata.phase))) {
+          if (selectedPhases.has(String(moduleMetadata.phase)) && !desired.has(moduleMetadata.id)) {
             desired.set(
               moduleMetadata.id,
               normalized.profile
@@ -356,7 +363,8 @@ export function resolveModuleSelection(
           }
         }
       }
-    } else {
+    }
+    if (normalized.onlyModules.length === 0 && normalized.onlyPhases.length === 0) {
       for (const moduleMetadata of modules) {
         if (moduleMetadata.enabledByDefault) {
           desired.set(moduleMetadata.id, "default");

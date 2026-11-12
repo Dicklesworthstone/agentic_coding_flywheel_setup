@@ -1,6 +1,7 @@
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   type ManifestModuleMetadata,
   manifestModules,
@@ -9,8 +10,10 @@ import {
 import {
   buildInstallSelectorArgs,
   formatModuleSelectionPlan,
+  getGuidedModuleSelection,
   type ModuleSelectionInput,
   resolveModuleSelection,
+  WIZARD_PREREQUISITE_MODULES,
 } from "./moduleSelection";
 
 function refuse(input: unknown): void {
@@ -228,6 +231,117 @@ function selectorRoundTrip(input: ModuleSelectionInput): ModuleSelectionInput {
   }
   return decoded;
 }
+
+/** Resolve the emitted arguments with the real installer, without installing anything. */
+function runInstallerSelection(input: ModuleSelectionInput, probe: string) {
+  const args = buildInstallSelectorArgs(input);
+  return spawnSync(
+    "/bin/bash",
+    [
+      "--noprofile", "--norc", "-c",
+      `set -euo pipefail
+source scripts/generated/manifest_index.sh
+# Like install.sh, load the generated library and its helpers before resolving.
+source scripts/generated/install_agents.sh
+profile=""
+set -- ${args.join(" ")}
+while (( $# )); do
+  case "$1" in
+    --profile) profile="$2"; shift 2 ;;
+    --only) ONLY_MODULES+=("$2"); ACFS_EXPLICIT_TARGETED_SELECTION=true; shift 2 ;;
+    --only-phase) ONLY_PHASES+=("$2"); ACFS_EXPLICIT_TARGETED_SELECTION=true; shift 2 ;;
+    --skip) SKIP_MODULES+=("$2"); shift 2 ;;
+    --no-deps) NO_DEPS=true; shift ;;
+    *) exit 90 ;;
+  esac
+done
+if [[ -n "$profile" ]]; then acfs_apply_profile "$profile"; fi
+acfs_resolve_selection
+${probe}`,
+    ],
+    {
+      cwd: fileURLToPath(new URL("../../../", import.meta.url)),
+      encoding: "utf8",
+      env: { PATH: "/usr/bin:/bin", LANG: "C.UTF-8" },
+      timeout: 5000,
+    },
+  );
+}
+
+function installerPlan(input: ModuleSelectionInput) {
+  const result = runInstallerSelection(input, `
+for module in "\${ACFS_EFFECTIVE_PLAN[@]}"; do
+  explicit=false
+  if acfs_module_explicitly_selected "$module"; then explicit=true; fi
+  printf '%s\\t%s\\n' "$module" "$explicit"
+done`);
+  assert.equal(result.status, 0, result.error?.message ?? result.stderr);
+  return result.stdout.trim().split("\n").map((line) => {
+    const [id, explicit] = line.split("\t");
+    return { id, explicit: explicit === "true" };
+  });
+}
+
+for (const profile of ["agents-only", "cloud-only", "stack-only"] as const) {
+  test(`guided ${profile} preserves native optional roots and dependency intent`, () => {
+    const before = installerPlan({ profile });
+    const guided = getGuidedModuleSelection(profile, true);
+    const after = installerPlan(guided);
+    assert.deepEqual(
+      after.map((entry) => entry.id),
+      resolveModuleSelection(guided).included.map((entry) => entry.id),
+    );
+    const prerequisites = new Set<string>(WIZARD_PREREQUISITE_MODULES);
+    for (const original of before) {
+      if (!prerequisites.has(original.id)) {
+        assert.deepEqual(after.find((entry) => entry.id === original.id), original, original.id);
+      }
+    }
+    for (const id of prerequisites) assert.ok(after.find((entry) => entry.id === id)?.explicit, id);
+    assert.ok(!after.some((entry) => entry.id === "acfs.nightly"));
+    assert.ok(!after.some((entry) => entry.id === "acfs.onboard"));
+  });
+}
+
+test("guided agents tolerate an optional Gemini installer failure but an explicit request fails", () => {
+  for (const explicit of [false, true]) {
+    const guided = getGuidedModuleSelection("agents-only", true);
+    const input = explicit
+      ? { ...guided, onlyModules: [...(guided.onlyModules ?? []), "agents.gemini"] }
+      : guided;
+    const result = runInstallerSelection(input, `
+acfs_require_contract() { return 0; }
+attempts=0
+skipped=""
+# Exercise the real generated failure handler; only the external installation is inert.
+run_as_target_shell() { while IFS= read -r line; do :; done; attempts=$((attempts + 1)); return 73; }
+record_skipped_tool() { skipped="$1"; }
+status=0
+acfs_generated_install_agents_gemini || status=$?
+printf '%s\\t%s\\t%s\\n' "$status" "$attempts" "$skipped"
+`);
+    assert.equal(result.status, 0, result.error?.message ?? result.stderr);
+    assert.equal(result.stdout.trim(), explicit ? "1\t1" : "0\t1\tagents.gemini", result.stderr);
+    if (explicit) assert.match(result.stderr, /explicitly requested via --only/);
+  }
+});
+
+test("mixed selectors preserve native union, exclusions, and explicit precedence", () => {
+  const input = {
+    onlyModules: ["acfs.doctor", "agents.gemini"],
+    onlyPhases: ["agents"],
+    skipModules: ["agents.grok"],
+  };
+  for (const noDeps of [false, true]) {
+    const selection = { ...input, noDeps };
+    const native = installerPlan(selection);
+    assert.deepEqual(native.map((entry) => entry.id), resolveModuleSelection(selection).included.map((entry) => entry.id));
+    assert.equal(native.find((entry) => entry.id === "agents.gemini")?.explicit, true);
+    assert.equal(native.find((entry) => entry.id === "agents.claude")?.explicit, false);
+    assert.ok(!native.some((entry) => entry.id === "agents.grok"));
+    assert.equal(native.some((entry) => entry.id === "lang.bun"), !noDeps);
+  }
+});
 
 test("tag exclusions lower to exact skips including matching disabled defaults", () => {
   const input: ModuleSelectionInput = { skipTags: ["cloud", "maintenance"] };

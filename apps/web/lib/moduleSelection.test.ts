@@ -56,6 +56,34 @@ describe("guided setup prerequisites are an explicit addition", () => {
     ]);
     expect(plan.included.map((entry) => entry.id)).toEqual(["base.system"]);
   });
+
+  test("guided phase profiles keep optional tools in their phase and dependencies inferred", () => {
+    const guided = getGuidedModuleSelection("agents-only", true);
+    expect(guided).toEqual({
+      onlyModules: ["base.system", "users.ubuntu", "base.filesystem", "acfs.doctor"],
+      onlyPhases: ["agents"],
+    });
+    const plan = resolveModuleSelection(guided);
+    expect(plan.ok).toBe(true);
+    expect(plan.included.find((entry) => entry.id === "agents.gemini")?.reason).toBe("phase 7");
+    expect(plan.included.find((entry) => entry.id === "agents.opencode")?.reason).toBe("phase 7");
+    expect(plan.included.find((entry) => entry.id === "lang.bun")?.reason).toStartWith("dependency of ");
+    expect(plan.included.find((entry) => entry.id === "acfs.doctor")?.reason).toBe("explicitly requested");
+    expect(plan.included.some((entry) => entry.id === "acfs.nightly")).toBe(false);
+    expect(plan.included.some((entry) => entry.id === "acfs.onboard")).toBe(false);
+  });
+
+  test("guided exact-module profiles preserve their roots without promoting dependencies", () => {
+    const guided = getGuidedModuleSelection("cloud-only", true);
+    expect(guided.onlyModules).toEqual([
+      "cloud.wrangler", "cloud.supabase", "cloud.vercel",
+      "base.system", "users.ubuntu", "base.filesystem", "acfs.doctor",
+    ]);
+    expect(guided.onlyPhases).toBeUndefined();
+    const plan = resolveModuleSelection(guided);
+    expect(plan.included.find((entry) => entry.id === "lang.bun")?.reason).toStartWith("dependency of ");
+    expect(plan.included.some((entry) => entry.id === "db.postgres18")).toBe(false);
+  });
 });
 
 describe("resolveModuleSelection", () => {
@@ -174,6 +202,48 @@ describe("resolveModuleSelection", () => {
 
     expect(plan.ok).toBe(false);
     expect(plan.errors.join("\n")).toContain("profile minimal cannot be combined");
+  });
+
+
+  test("mixed module and phase selectors form a union with explicit module precedence", () => {
+    const selection = {
+      onlyModules: ["acfs.doctor", "agents.gemini"],
+      onlyPhases: ["agents"],
+      skipModules: ["agents.grok"],
+    };
+    const plan = resolveModuleSelection(selection);
+    expect(plan.ok).toBe(true);
+    const ids = plan.included.map((entry) => entry.id);
+    expect(ids).toContain("agents.claude");
+    expect(ids).toContain("agents.codex");
+    expect(ids).toContain("acfs.doctor");
+    expect(ids).toContain("lang.bun");
+    expect(ids).not.toContain("agents.grok");
+    expect(plan.included.find((entry) => entry.id === "agents.gemini")?.reason).toBe("explicitly requested");
+    expect(plan.included.find((entry) => entry.id === "agents.claude")?.reason).toBe("phase 7");
+
+    const noDeps = resolveModuleSelection({ ...selection, noDeps: true });
+    expect(noDeps.ok).toBe(true);
+    expect(noDeps.included.map((entry) => entry.id)).not.toContain("lang.bun");
+    expect(noDeps.included.map((entry) => entry.id)).toContain("agents.claude");
+  });
+
+  test("mixed selectors validate both roots and keep phase dependency conflicts", () => {
+    expect(resolveModuleSelection({ onlyModules: ["acfs.doctor"], onlyPhases: ["99"] }).ok).toBe(false);
+    expect(resolveModuleSelection({ onlyModules: ["agents.not_real"], onlyPhases: ["agents"] }).ok).toBe(false);
+    const conflict = resolveModuleSelection({
+      onlyModules: ["acfs.doctor"],
+      onlyPhases: ["agents"],
+      skipModules: ["lang.bun"],
+    });
+    expect(conflict.ok).toBe(false);
+    expect(conflict.errors.join("\n")).toContain("depends on skipped lang.bun");
+    expect(resolveModuleSelection({
+      onlyModules: ["agents.gemini"],
+      onlyPhases: ["agents"],
+      skipModules: ["agents.gemini"],
+      noDeps: true,
+    }).ok).toBe(false);
   });
 
   test("serializes stable machine-readable plan JSON", () => {
