@@ -33,6 +33,9 @@ for index in "${!expected_pre_commands[@]}"; do
         || fail "bootstrap command $((index + 1)) changed or moved"
 done
 
+[[ "$(sed -n 's/^UMask=//p' "$UNIT")" == "0077" ]] \
+    || fail "monitor must create its state private (UMask=0077); a 002 umask makes it fail closed"
+
 exec_start="$(sed -n 's/^ExecStart=//p' "$UNIT")"
 [[ "$exec_start" == '%h/acfs-monitor/scripts/checksum-monitor-local.sh' ]] \
     || fail "monitor ExecStart no longer names the dedicated-clone script"

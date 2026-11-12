@@ -31,6 +31,12 @@ ExecStartPre=/usr/bin/git -C %h/acfs-monitor -c core.hooksPath=/dev/null merge -
 ExecStartPre=/usr/bin/env -i HOME=%h PATH=/usr/bin:/bin /usr/bin/bash --noprofile --norc -c 'set -eu; bootstrap_head=$$(/usr/bin/git -C "$$1" rev-parse --verify HEAD^{commit}); bootstrap_expected=$$(/usr/bin/git -C "$$1" rev-parse --verify refs/remotes/acfs-bootstrap/main^{commit}); test "$$bootstrap_head" = "$$bootstrap_expected"' acfs-bootstrap %h/acfs-monitor
 ExecStart=%h/acfs-monitor/scripts/checksum-monitor-local.sh
 
+# The monitor refuses group- or world-writable state (lock, streak, cooldown
+# and log files under ~/.local/state/acfs-monitor). On hosts whose login umask
+# is 002, files it creates itself would trip that refusal, and every later run
+# fails closed before it can log (ts1, 2026-11-09..12). Create state private.
+UMask=0077
+
 # A full verify + regenerate cycle is minutes, not hours.
 TimeoutStartSec=1200
 
