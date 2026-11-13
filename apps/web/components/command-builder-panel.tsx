@@ -11,7 +11,7 @@ import {
   Settings2,
   Terminal,
 } from "lucide-react";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useId, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CopyStatus } from "@/components/ui/code-block";
 import { buildCommands, buildShareURL } from "@/lib/commandBuilder";
@@ -28,6 +28,7 @@ import {
   useACFSRef,
   useInstallMode,
   useModuleProfile,
+  useSavedModuleSelection,
   useSSHUsername,
   useUserOS,
   useVPSIP,
@@ -278,12 +279,16 @@ function ReviewedCommandBuilderPanel({
 }
 
 function SavedCommandBuilderPanel() {
-  const [vpsIP, setVPSIP] = useVPSIP();
-  const [os] = useUserOS();
-  const [mode, setMode] = useInstallMode();
-  const [username, setUsername] = useSSHUsername();
-  const [ref, setRef] = useACFSRef();
-  const [profile, setProfile] = useModuleProfile();
+  const [vpsIP, setVPSIP, vpsIPLoaded] = useVPSIP();
+  const [os, , osLoaded] = useUserOS();
+  const [mode, setMode, modeLoaded] = useInstallMode();
+  const [username, setUsername, usernameLoaded] = useSSHUsername();
+  const [ref, setRef, refLoaded] = useACFSRef();
+  const [profile, setProfile, profileLoaded] = useModuleProfile();
+  const [savedModuleSelection, moduleSelectionLoaded] = useSavedModuleSelection();
+  const ready =
+    vpsIPLoaded && osLoaded && modeLoaded && usernameLoaded && refLoaded &&
+    profileLoaded && moduleSelectionLoaded;
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showPlan, setShowPlan] = useState(false);
   // These are local command customizations, not silently lossy profile exports.
@@ -293,24 +298,35 @@ function SavedCommandBuilderPanel() {
   const shareCopied = shareCopyState === "copied";
   const [localIP, setLocalIP] = useState("");
   const [ipError, setIpError] = useState<string | null>(null);
-  const [usernameDraft, setUsernameDraft] = useState(username);
-  const [refDraft, setRefDraft] = useState(ref ?? "");
+  // A draft belongs to the saved value it edits. Hydration or a change in
+  // another tab must replace fallback values before a command can be copied,
+  // rather than waiting for a post-render effect to update the draft.
+  const [usernameEdit, setUsernameEdit] = useState<{ saved: string; value: string } | null>(null);
+  const [refEdit, setRefEdit] = useState<{ saved: string | null; value: string } | null>(null);
+  // Discard on the first observed change, not just while the values differ:
+  // returning to an earlier saved value must not resurrect its stale draft.
+  if (usernameEdit && usernameEdit.saved !== username) {
+    setUsernameEdit(null);
+  }
+  if (refEdit && refEdit.saved !== ref) {
+    setRefEdit(null);
+  }
+  const usernameDraft = usernameEdit?.saved === username ? usernameEdit.value : username;
+  const refDraft = refEdit?.saved === ref ? refEdit.value : (ref ?? "");
+  const setUsernameDraft = useCallback(
+    (value: string) => setUsernameEdit({ saved: username, value }),
+    [username],
+  );
+  const setRefDraft = useCallback(
+    (value: string) => setRefEdit({ saved: ref, value }),
+    [ref],
+  );
   const panelId = useId();
   const advancedPanelId = `${panelId}-advanced`;
   const planPanelId = `${panelId}-plan`;
   const ipErrorId = `${panelId}-ip-error`;
   const usernameErrorId = `${panelId}-user-error`;
   const refErrorId = `${panelId}-ref-error`;
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- resync the draft when the saved value changes
-    setUsernameDraft(username);
-  }, [username]);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- resync the draft when the saved value changes
-    setRefDraft(ref ?? "");
-  }, [ref]);
 
   const effectiveIP = vpsIP || (isValidIP(localIP) ? localIP : "");
   const effectiveOS = os || "mac";
@@ -341,10 +357,21 @@ function SavedCommandBuilderPanel() {
   }, [normalizedRefDraft, refDraft]);
 
   const moduleSelection = useMemo(
-    () => ({ profile, skipTags, skipCategories }),
-    [profile, skipTags, skipCategories],
+    () => ({
+      ...savedModuleSelection,
+      skipTags: [...new Set([...(savedModuleSelection.skipTags ?? []), ...skipTags])],
+      skipCategories: [...new Set([...(savedModuleSelection.skipCategories ?? []), ...skipCategories])],
+    }),
+    [savedModuleSelection, skipTags, skipCategories],
   );
   const hasExclusions = skipTags.length > 0 || skipCategories.length > 0;
+  // Shared links encode a profile ID only. Guided setup deliberately lowers
+  // that profile into exact roots/phases, which a link would otherwise lose.
+  const hasUnshareableSelection = Boolean(
+    moduleSelection.onlyModules?.length || moduleSelection.onlyPhases?.length ||
+    moduleSelection.skipModules?.length || moduleSelection.skipTags.length ||
+    moduleSelection.skipCategories.length || moduleSelection.noDeps,
+  );
   const exclusionOptions = useMemo(() => {
     const categories = new Map<string, number>();
     const tags = new Map<string, number>();
@@ -362,7 +389,7 @@ function SavedCommandBuilderPanel() {
   }, [moduleSelection]);
 
   const commands = useMemo(() => {
-    if (!effectiveIP || !plan.ok) return null;
+    if (!ready || !effectiveIP || !plan.ok) return null;
     return buildCommands({
       ip: effectiveIP,
       os: effectiveOS,
@@ -371,7 +398,7 @@ function SavedCommandBuilderPanel() {
       ref: effectiveRef,
       moduleSelection,
     });
-  }, [effectiveIP, effectiveOS, effectiveUsername, mode, effectiveRef, moduleSelection, plan.ok]);
+  }, [ready, effectiveIP, effectiveOS, effectiveUsername, mode, effectiveRef, moduleSelection, plan.ok]);
 
   const refError = useMemo(() => {
     const value = refDraft.trim();
@@ -380,7 +407,7 @@ function SavedCommandBuilderPanel() {
   }, [normalizedRefDraft, refDraft]);
 
   const handleShare = useCallback(() => {
-    if (!effectiveIP || !plan.ok || hasExclusions) return;
+    if (!ready || !effectiveIP || !plan.ok || hasUnshareableSelection) return;
     const url = buildShareURL({
       ip: effectiveIP,
       os: effectiveOS,
@@ -392,6 +419,7 @@ function SavedCommandBuilderPanel() {
     void copyShareLink(url);
   }, [
     copyShareLink,
+    ready,
     effectiveIP,
     effectiveOS,
     effectiveUsername,
@@ -399,7 +427,7 @@ function SavedCommandBuilderPanel() {
     effectiveRef,
     moduleSelection,
     plan.ok,
-    hasExclusions,
+    hasUnshareableSelection,
   ]);
 
   const handleIPChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -424,7 +452,7 @@ function SavedCommandBuilderPanel() {
 
   const handleUsernameChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setUsernameDraft(e.target.value);
-  }, []);
+  }, [setUsernameDraft]);
 
   const commitUsernameDraft = useCallback(() => {
     const trimmed = usernameDraft.trim();
@@ -438,11 +466,11 @@ function SavedCommandBuilderPanel() {
     if (normalized !== username) {
       setUsername(normalized);
     }
-  }, [username, usernameDraft, setUsername]);
+  }, [username, usernameDraft, setUsername, setUsernameDraft]);
 
   const handleRefChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setRefDraft(e.target.value);
-  }, []);
+  }, [setRefDraft]);
 
   const commitRefDraft = useCallback(() => {
     const trimmed = refDraft.trim();
@@ -462,7 +490,7 @@ function SavedCommandBuilderPanel() {
     if (normalizedRefDraft !== ref) {
       setRef(normalizedRefDraft);
     }
-  }, [normalizedRefDraft, ref, refDraft, setRef]);
+  }, [normalizedRefDraft, ref, refDraft, setRef, setRefDraft]);
 
   const profileOptions = useMemo(() => {
     return manifestSelectionProfiles
@@ -472,6 +500,10 @@ function SavedCommandBuilderPanel() {
         label: p.label,
       }));
   }, []);
+
+  if (!ready) {
+    return <p role="status">Loading your saved installation settings...</p>;
+  }
 
   return (
     <div className="space-y-4 rounded-xl border border-border/50 bg-card/30 p-5">
@@ -487,10 +519,10 @@ function SavedCommandBuilderPanel() {
             variant="ghost"
             size="sm"
             onClick={handleShare}
-            disabled={!plan.ok || hasExclusions}
+            disabled={!plan.ok || hasUnshareableSelection}
             title={
-              hasExclusions
-                ? "Copy the exact command below; shared links cannot preserve exclusions."
+              hasUnshareableSelection
+                ? "Copy the exact command below; shared links cannot preserve this module selection."
                 : undefined
             }
             className="gap-1.5 text-xs text-muted-foreground"
@@ -501,6 +533,12 @@ function SavedCommandBuilderPanel() {
         )}
       </div>
       <CopyStatus state={shareCopyState} />
+      {savedModuleSelection.onlyModules?.length ? (
+        <p className="text-sm text-muted-foreground" role="status">
+          These commands retain the setup modules you included in the wizard. Shared links cannot
+          preserve this selection; copy the exact installer command below when sharing it.
+        </p>
+      ) : null}
 
       {/* IP input (only if no IP stored from wizard) */}
       {!vpsIP && (
