@@ -1537,7 +1537,7 @@ printf 'checkpoint-accepted\n' >> "$TEST_EVENTS"
             "update_rust\nupdate_cargo_tools\nupdate_uv\nupdate_go\nupdate_shell\n",
             TEST_FORCE="true",
             TEST_PRESENT="claude,codex,agy-real,omp,opencode,grok,bun,uv,rustup,cargo,"
-                         "go,sg,lsd,dust,tldr,wrangler,vercel,supabase,gh,atuin,zoxide",
+                         "go,sg,lsd,dust,tldr,wrangler,vercel,supabase,gh,gcloud,atuin,zoxide",
         )
         self.assertEqual(self.events(), [])
         self.assertTrue((self.acfs / "bin/acfs-update").is_file())
@@ -1546,6 +1546,91 @@ printf 'checkpoint-accepted\n' >> "$TEST_EVENTS"
             self.assertFalse((self.acfs / path).exists(), path)
         self.assertFalse((self.home / ".profile").exists())
         self.assertFalse((self.home / ".zprofile").exists())
+
+    def test_scoped_cloud_update_does_not_manage_external_google_cloud_sdk(self):
+        self.selection("cloud.vercel")
+        self.shell("update_cloud\n", TEST_PRESENT="bun,vercel,gcloud")
+        self.assertEqual(self.events(), [
+            f"native:{self.bin}/bun install -g --trust vercel@latest",
+        ])
+
+    def test_legacy_cloud_update_keeps_external_google_cloud_sdk_maintenance(self):
+        self.shell("dpkg() { return 1; }; update_cloud\n", TEST_PRESENT="gcloud")
+        self.assertEqual(self.events(), [
+            f"maintenance:cloud {self.bin}/gcloud components update --quiet",
+        ])
+
+    def test_force_repairs_missing_selected_cargo_tools_without_expanding_scope(self):
+        for modules, packages in (
+            (("tools.ast_grep",), ("ast-grep",)),
+            (("cli.modern",), ()),
+            (("tools.ast_grep", "cli.modern"), ("ast-grep",)),
+            (("lang.rust",), ()),
+        ):
+            with self.subTest(modules=modules):
+                self.selection(*modules)
+                self.events_file.write_text("")
+                self.shell("update_cargo_tools\n", TEST_FORCE="true", TEST_PRESENT="cargo")
+                self.assertEqual(self.events(), [
+                    f"rust:{self.bin}/cargo install {package} --locked --force"
+                    for package in packages
+                ])
+
+    def test_scoped_cli_packages_do_not_gain_cargo_installs(self):
+        self.selection("cli.modern")
+        self.shell("update_cargo_tools\n", TEST_FORCE="true",
+                   TEST_PRESENT="cargo,lsd,dust,tldr")
+        self.assertEqual(self.events(), [])
+
+    def test_legacy_cargo_update_keeps_maintenance_of_present_extras(self):
+        self.shell("update_cargo_tools\n", TEST_PRESENT="cargo,lsd,dust,tldr")
+        self.assertEqual(self.events(), [
+            f"rust:{self.bin}/cargo install {package} --locked --force"
+            for package in ("lsd", "du-dust", "tealdeer")
+        ])
+
+    def test_missing_selected_cargo_tool_is_not_provisioned_without_force(self):
+        self.selection("tools.ast_grep", "cli.modern")
+        self.shell("update_cargo_tools\n", TEST_PRESENT="cargo")
+        self.assertEqual(self.events(), [])
+
+    def test_force_cargo_repair_dry_run_does_not_execute_installs(self):
+        self.selection("tools.ast_grep", "cli.modern")
+        result = self.shell("QUIET=false\nupdate_cargo_tools\n", TEST_PRESENT="cargo",
+                            TEST_FORCE="true", TEST_DRY_RUN="true")
+        self.assertEqual(self.events(), [])
+        self.assertIn("Update ast-grep", result.stdout)
+
+    def test_force_cargo_repair_reports_missing_prerequisite_as_failure(self):
+        self.selection("tools.ast_grep")
+        result = self.shell(
+            'update_cargo_tools\nprintf "FAILURES:%s\\n" "$FAIL_COUNT"\n',
+            TEST_FORCE="true",
+        )
+        self.assertIn("FAILURES:1", result.stdout)
+        self.assertEqual(self.events(), [])
+
+    def test_force_dry_run_previews_missing_rust_and_ast_grep_without_false_failure(self):
+        self.selection("lang.rust", "tools.ast_grep")
+        result = self.shell(
+            'QUIET=false\nupdate_rust\nupdate_cargo_tools\nprintf "FAILURES:%s\\n" "$FAIL_COUNT"\n',
+            TEST_FORCE="true", TEST_DRY_RUN="true",
+        )
+        self.assertIn("Rust (install)", result.stdout)
+        self.assertIn("Update ast-grep (after Rust installation)", result.stdout)
+        self.assertIn("FAILURES:0", result.stdout)
+        self.assertEqual(self.events(), [])
+
+    def test_force_without_selected_cargo_tools_does_not_require_cargo(self):
+        for module in ("acfs.update", "cli.modern", "lang.rust"):
+            with self.subTest(module=module):
+                self.selection(module)
+                result = self.shell(
+                    'update_cargo_tools\nprintf "FAILURES:%s\\n" "$FAIL_COUNT"\n',
+                    TEST_FORCE="true",
+                )
+                self.assertIn("FAILURES:0", result.stdout)
+                self.assertEqual(self.events(), [])
 
     def test_selected_failure_still_counts_and_later_selected_tools_continue(self):
         self.selection("stack.beads_viewer", "stack.beads_rust")

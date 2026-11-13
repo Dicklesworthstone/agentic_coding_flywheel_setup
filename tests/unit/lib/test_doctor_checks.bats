@@ -380,14 +380,20 @@ nightly_state_fixture() {
 
 doctor_selection_fixture() {
     load_doctor_functions production
-    DOCTOR_TEST_STATE="$BATS_TEST_TMPDIR/selected-state.json"
+    TARGET_HOME="$BATS_TEST_TMPDIR/selected-target"
+    TARGET_USER="$(id -un)"
+    ACFS_HOME="$TARGET_HOME/.acfs"
+    ACFS_STATE_FILE=""
+    ACFS_SYSTEM_STATE_FILE="$BATS_TEST_TMPDIR/no-system-state.json"
+    DOCTOR_TEST_STATE="$ACFS_HOME/state.json"
     DOCTOR_TEST_BIN="$BATS_TEST_TMPDIR/selected-bin"
     DOCTOR_TEST_PROBES="$BATS_TEST_TMPDIR/probes"
-    mkdir -p "$DOCTOR_TEST_BIN"
+    mkdir -p "$DOCTOR_TEST_BIN" "$ACFS_HOME"
     printf '%s\n' "$1" > "$DOCTOR_TEST_STATE"
     export DOCTOR_TEST_PROBES
     _acfs_doctor_find_project_path() {
         if [[ "$1" == state.json ]]; then
+            [[ -f "$DOCTOR_TEST_STATE" ]] || return 1
             printf '%s\n' "$DOCTOR_TEST_STATE"
         elif [[ -f "$PROJECT_ROOT/$1" ]]; then
             printf '%s\n' "$PROJECT_ROOT/$1"
@@ -491,6 +497,120 @@ doctor_custom_checkpoint_fixture() {
     [[ "$ACFS_STATE_SELECTION_MODE" == legacy ]]
     state_module_is_selected agents.claude
     state_module_is_selected lang.bun
+}
+
+@test "doctor selection: canonical checkpoints reject conflicting identities before any diagnostics or repairs" {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["lang.bun"]}}'
+    check_identity() { printf 'unexpected diagnostic\n' >> "$DOCTOR_TEST_PROBES"; }
+    run_doctor_fix() { printf 'unexpected repair initialization\n' >> "$DOCTOR_TEST_PROBES"; }
+    canonical_scope_doctor() { main --json --fix 2> "$BATS_TEST_TMPDIR/canonical-selection-error"; }
+
+    local discovery="" identity=""
+    for discovery in automatic explicit; do
+        ACFS_STATE_FILE=""
+        [[ "$discovery" != explicit ]] || ACFS_STATE_FILE="$DOCTOR_TEST_STATE"
+        for identity in foreign_home foreign_user null_home null_user; do
+            case "$identity" in
+                foreign_home)
+                    jq -n --arg user "$TARGET_USER" '{target_home:"/other/account",target_user:$user}' > "$DOCTOR_TEST_STATE"
+                    ;;
+                foreign_user)
+                    jq -n --arg home "$TARGET_HOME" '{target_home:$home,target_user:"other_account"}' > "$DOCTOR_TEST_STATE"
+                    ;;
+                null_home)
+                    jq -n --arg user "$TARGET_USER" '{target_home:null,target_user:$user}' > "$DOCTOR_TEST_STATE"
+                    ;;
+                null_user)
+                    jq -n --arg home "$TARGET_HOME" '{target_home:$home,target_user:null}' > "$DOCTOR_TEST_STATE"
+                    ;;
+            esac
+            run doctor_load_module_selection
+            [[ "$status" -eq 1 ]] || fail "$discovery $identity authorized foreign installation policy"
+            run canonical_scope_doctor
+            [[ "$status" -eq 1 ]] || fail "$discovery $identity returned $status: $output"
+            [[ ! -e "$DOCTOR_TEST_PROBES" ]] || fail "$discovery $identity authorized diagnostics or repairs"
+            printf '%s\n' "$output" | jq -e '
+                .summary.fail == 1 and (.checks | length) == 1 and
+                .checks[0].id == "config.module_selection" and .checks[0].fix == null
+            ' >/dev/null
+        done
+    done
+}
+
+@test "doctor selection: legacy canonical checkpoints without identity still diagnose their saved scope" {
+    doctor_selection_fixture '{"mode":"safe","module_selection":{"schema_version":1,"selected_modules":["lang.bun"]}}'
+    ACFS_STATE_FILE="$DOCTOR_TEST_STATE"
+    doctor_load_module_selection
+    state_module_is_selected lang.bun
+    if state_module_is_selected agents.claude; then fail "legacy checkpoint lost its selected scope"; fi
+    check tool.bun Bun fail missing "install bun"
+    check agent.claude Claude fail missing "install claude"
+    doctor_selection_json | jq -e '.[0].status == "fail" and .[1].status == "skip"' >/dev/null
+}
+
+@test "doctor selection: system fallback requires the resolved target identity and never replaces an unsafe canonical checkpoint" {
+    doctor_custom_checkpoint_fixture
+    DOCTOR_TEST_STATE="$ACFS_HOME/state.json"
+    ACFS_STATE_FILE=""
+    ACFS_SYSTEM_STATE_FILE="$BATS_TEST_TMPDIR/system-state.json"
+    jq -n --arg home "$TARGET_HOME" --arg user "$TARGET_USER" \
+        '{target_home:$home,target_user:$user,mode:"safe",module_selection:{schema_version:1,selected_modules:["lang.bun"]}}' > "$ACFS_SYSTEM_STATE_FILE"
+    doctor_load_module_selection
+    state_module_is_selected lang.bun
+    if state_module_is_selected agents.claude; then fail "system fallback used unrelated installed scope"; fi
+
+    ln -s "$BATS_TEST_TMPDIR/missing-canonical-state.json" "$DOCTOR_TEST_STATE"
+    run doctor_load_module_selection
+    [[ "$status" -eq 1 ]] || fail "system fallback replaced a dangling canonical checkpoint"
+
+    # A fresh target with no canonical checkpoint must also reject a foreign
+    # or unidentified system state instead of treating it as a legacy install.
+    TARGET_HOME="$BATS_TEST_TMPDIR/other-system-target"
+    ACFS_HOME="$TARGET_HOME/.acfs"
+    DOCTOR_TEST_STATE="$ACFS_HOME/state.json"
+    mkdir -p "$ACFS_HOME"
+    local identity=""
+    for identity in foreign_home foreign_user missing_identity; do
+        case "$identity" in
+            foreign_home)
+                jq -n --arg user "$TARGET_USER" '{target_home:"/other/account",target_user:$user}' > "$ACFS_SYSTEM_STATE_FILE"
+                ;;
+            foreign_user)
+                jq -n --arg home "$TARGET_HOME" '{target_home:$home,target_user:"other_account"}' > "$ACFS_SYSTEM_STATE_FILE"
+                ;;
+            missing_identity) printf '{}\n' > "$ACFS_SYSTEM_STATE_FILE" ;;
+        esac
+        run doctor_load_module_selection
+        [[ "$status" -eq 1 ]] || fail "$identity system checkpoint authorized a diagnostic run"
+    done
+}
+
+@test "doctor selection: the validated checkpoint determines safe or vibe sudo diagnostics" {
+    doctor_custom_checkpoint_fixture
+    _acfs_doctor_resolve_current_user() { printf '%s\n' "$TARGET_USER"; }
+    _acfs_doctor_system_binary_path() { return 1; }
+    _acfs_doctor_has_sudo_entitlement() { return 0; }
+
+    local mode="" expected_id="" expected_status=""
+    for mode in safe vibe; do
+        jq -n --arg home "$TARGET_HOME" --arg user "$TARGET_USER" --arg mode "$mode" \
+            '{target_home:$home,target_user:$user,mode:$mode,module_selection:{schema_version:1,selected_modules:["users.ubuntu"]}}' > "$ACFS_STATE_FILE"
+        ACFS_MODE=vibe
+        expected_id=identity.sudo
+        expected_status=pass
+        if [[ "$mode" == vibe ]]; then
+            ACFS_MODE=safe
+            expected_id=identity.passwordless_sudo
+            expected_status=fail
+        fi
+        JSON_CHECKS=()
+        doctor_load_module_selection
+        check_identity
+        [[ "$ACFS_MODE" == "$mode" ]] || fail "saved $mode policy was overridden by ambient mode"
+        doctor_selection_json | jq -e --arg id "$expected_id" --arg status "$expected_status" '
+            .[1].id == $id and .[1].status == $status
+        ' >/dev/null
+    done
 }
 
 @test "doctor entrypoints: invalid explicit checkpoint paths fail before dispatch" {

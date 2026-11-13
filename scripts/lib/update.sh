@@ -9085,7 +9085,11 @@ update_cloud() {
     # Google Cloud SDK (gcloud)
     local gcloud_bin=""
     gcloud_bin="$(update_binary_path gcloud 2>/dev/null || true)"
-    if [[ -n "$gcloud_bin" ]]; then
+    # No manifest module owns gcloud. Preserve legacy maintenance, but do not
+    # claim an independently installed SDK as part of a saved module selection.
+    if [[ "${ACFS_STATE_SELECTION_MODE:-invalid}" != legacy ]]; then
+        log_item "skip" "Google Cloud SDK" "not managed by the saved installation selection"
+    elif [[ -n "$gcloud_bin" ]]; then
         if dpkg -s google-cloud-cli >/dev/null 2>&1; then
             # apt-managed installs disable `gcloud components update`;
             # the package is updated via apt-get instead.
@@ -9171,7 +9175,18 @@ update_cargo_tools() {
     local cargo_bin=""
     cargo_bin="$(update_rust_binary_path cargo 2>/dev/null || true)"
     if [[ -z "$cargo_bin" ]]; then
-        log_item "skip" "Cargo tools" "cargo not found"
+        if [[ "$FORCE_MODE" == "true" ]] && state_module_is_selected tools.ast_grep; then
+            if [[ "$DRY_RUN" == "true" ]] && state_module_is_selected lang.rust \
+                && ! update_tool_hold_details rust; then
+                # update_rust previews the prerequisite without creating Cargo.
+                run_cmd "Update ast-grep (after Rust installation)" \
+                    update_run_rust_in_target_context cargo install ast-grep --locked --force
+            else
+                log_item "fail" "Cargo tools" "cargo not found (required to repair ast-grep)"
+            fi
+        else
+            log_item "skip" "Cargo tools" "cargo not found"
+        fi
         return 0
     fi
 
@@ -9185,11 +9200,13 @@ update_cargo_tools() {
 
         case "$tool" in
             ast-grep) state_module_is_selected tools.ast_grep || continue ;;
-            *) state_module_is_selected cli.modern || continue ;;
+            # cli.modern owns apt packages, not these separate Cargo installs.
+            # Keep maintenance of existing extras only for legacy installations.
+            *) [[ "${ACFS_STATE_SELECTION_MODE:-invalid}" == legacy ]] || continue ;;
         esac
 
         if ! update_binary_exists "$binary_name"; then
-            continue
+            [[ "$FORCE_MODE" == "true" && "$tool" == ast-grep ]] || continue
         fi
 
         capture_version_before "$binary_name"

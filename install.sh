@@ -5578,8 +5578,8 @@ acfs_verify_authored_module() {
 }
 
 # Hook used by state.sh for both resume decisions and phase completion.
-# Resume also retries optional components that the legacy installer attempts;
-# an optional failure may finish a run, but must not be skipped forever.
+# Resume also retries selected optional components; an optional failure may
+# finish a run, but must not be skipped forever by a completed phase record.
 acfs_verify_phase() {
     local phase_id="$1"
     local verification_mode="${2:-complete}"
@@ -5601,7 +5601,7 @@ acfs_verify_phase() {
         finalize) phase_number=10 ;;
         *) return 1 ;;
     esac
-    acfs_verify_phase_modules "$phase_number" || return 1
+    acfs_verify_phase_modules "$phase_number" "$verification_mode" || return 1
 
     if [[ "$phase_id" == "cloud_db" && "$verification_mode" == "resume" ]]; then
         if ! acfs_use_generated_category "db" && [[ "${SKIP_POSTGRES:-false}" != "true" ]] \

@@ -57,7 +57,8 @@ exec 3>&1
 trace() { printf 'EVENT:%s\n' "$*" >&3; }
 log_error() { printf 'ERROR:%s\n' "$*" >&2; }
 log_fatal() { log_error "$@"; exit 1; }
-log_info() { :; }; log_debug() { :; }; log_detail() { :; }; log_warn() { :; }
+log_info() { :; }; log_debug() { :; }; log_detail() { :; }
+log_warn() { printf 'WARN:%s\n' "$*" >&2; }
 source() {
     if [[ "$1" == /etc/os-release ]]; then
         [[ "$TEST_OS_STATUS" == 0 ]] || return "$TEST_OS_STATUS"

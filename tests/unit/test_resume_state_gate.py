@@ -723,6 +723,120 @@ ensure_base_deps() {
 
 
 
+class OptionalModuleResumeTests(unittest.TestCase):
+    """Exercise actual phase skipping, bounded probes and persisted attempts.
+
+    Package installation is a fixture that makes a local executable healthy;
+    the checkpoint and verifier decide whether that fixture may run.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        for executable in ("bash", "flock", "jq", "timeout"):
+            if shutil.which(executable) is None:
+                raise unittest.SkipTest(f"{executable} is required")
+        installer = Path(os.environ.get("ACFS_INSTALLER_MAIN_TEST_SOURCE", ROOT / "install.sh"))
+        cls.verify_phase = _main_fixture.definition(installer.read_text(), "acfs_verify_phase")
+
+    def run_phase_resume(self, *, repair=True, saved=True, requested=False,
+                         selected=True, applicable=True, healthy=False, soft_only=False):
+        folder = Path(tempfile.mkdtemp(prefix="acfs-optional-resume-"))
+        home = folder / "home"
+        home.mkdir()
+        probe = folder / "probe"
+        probe.write_text(
+            "#!/bin/bash\n"
+            f"printf 'probe\\n' >> {shlex.quote(str(folder / 'trace'))}\n"
+            f"test -f {shlex.quote(str(folder / 'ready'))}\n")
+        probe.chmod(0o755)
+        if healthy:
+            (folder / "ready").touch()
+        helpers = Path(os.environ.get(
+            "ACFS_INSTALL_HELPERS_TEST_SOURCE", ROOT / "scripts/lib/install_helpers.sh"))
+        script = "\n".join([
+            "set -euo pipefail",
+            f"source {shlex.quote(str(helpers))}",
+            f"source {shlex.quote(str(STATE))}",
+            f"source {shlex.quote(str(ROOT / 'scripts/generated/manifest_index.sh'))}",
+            self.verify_phase,
+            f"export TEST_ROOT={shlex.quote(str(folder))}",
+            'export TARGET_HOME="$HOME" ACFS_HOME="$HOME/.acfs"',
+            'export TARGET_USER="$(id -un)" ACFS_STATE_FILE="$ACFS_HOME/state.json"',
+            "ACFS_VERSION=fixture; MODE=safe; HAS_GUM=false; ACFS_DISTRO_FAMILY=ubuntu",
+            "state_getent_passwd_entry() { printf '%s:x:1000:1000::%s:/bin/bash\\n' \"$TARGET_USER\" \"$TARGET_HOME\"; }",
+            "ONLY_MODULES=(); ONLY_PHASES=(); ACFS_PLAN_REASON=()",
+            "ACFS_EFFECTIVE_PLAN=(agents.claude" + (" agents.opencode" if selected else "") + ")",
+            f"ACFS_SAVED_SELECTION_ACTIVE={'true' if saved else 'false'}",
+            "ACFS_PLAN_REASON[agents.opencode]='explicitly requested'" if requested else "",
+            "ACFS_MODULE_VERIFY_COUNT[agents.claude]=1",
+            "ACFS_MODULE_VERIFY_COMMAND[agents.claude.0]=true",
+            "ACFS_MODULE_VERIFY_RUN_AS[agents.claude]=current",
+            f"ACFS_MODULE_VERIFY_COUNT[agents.opencode]={0 if soft_only else 1}",
+            f"ACFS_MODULE_VERIFY_COMMAND[agents.opencode.0]={shlex.quote(shlex.quote(str(probe)))}",
+            "ACFS_MODULE_VERIFY_RUN_AS[agents.opencode]=current",
+            "ACFS_MODULE_FAMILIES[agents.opencode]=arch" if not applicable else "",
+            "state_init",
+            "state_phase_complete agents",
+            'cp "$ACFS_STATE_FILE" "$TEST_ROOT/before.json"',
+            "fixture_install() {",
+            '    printf "install\\n" >> "$TEST_ROOT/trace"',
+            '    : > "$TEST_ROOT/ready"' if repair else "    :",
+            "}",
+            "for attempt in 1 2; do",
+            "    status=0",
+            "    run_phase agents 'Coding Agents' fixture_install || status=$?",
+            '    printf "%s\\n" "$status" >> "$TEST_ROOT/statuses"',
+            "done",
+        ])
+        (folder / "fixture.sh").write_text(script + "\n")
+        result = subprocess.run(
+            ["/bin/bash", "-p", "-c", script], text=True, capture_output=True,
+            stdin=subprocess.DEVNULL, env=clean_environment(home), timeout=10)
+        (folder / "output.log").write_text(result.stdout + result.stderr)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        trace = (folder / "trace").read_text().splitlines() if (folder / "trace").exists() else []
+        statuses = list(map(int, (folder / "statuses").read_text().splitlines()))
+        state = json.loads((home / ".acfs/state.json").read_text())
+        before = json.loads((folder / "before.json").read_text())
+        self.assertEqual(state["module_selection"], before["module_selection"])
+        return trace, statuses, state
+
+    def test_failed_optional_selection_is_retried_once_then_live_verified(self):
+        for saved in (False, True):
+            with self.subTest(saved_scope=saved):
+                trace, statuses, state = self.run_phase_resume(saved=saved)
+                self.assertEqual(trace, ["probe", "install", "probe"])
+                self.assertEqual(statuses, [0, 0])
+                self.assertEqual(state["phase_attempts"]["agents"], 1)
+
+    def test_optional_retry_failure_stays_nonfatal_and_retryable(self):
+        trace, statuses, state = self.run_phase_resume(repair=False)
+        self.assertEqual(trace, ["probe", "install", "probe", "install"])
+        self.assertEqual(statuses, [0, 0])
+        self.assertIn("agents", state["completed_phases"])
+        self.assertEqual(state["phase_attempts"]["agents"], 2)
+        self.assertIsNone(state["failed_phase"])
+
+    def test_explicit_optional_request_still_fails_if_repair_does_not_work(self):
+        trace, statuses, state = self.run_phase_resume(repair=False, requested=True)
+        self.assertEqual(trace.count("install"), 2)
+        self.assertEqual(statuses, [1, 1])
+        self.assertNotIn("agents", state["completed_phases"])
+        self.assertEqual(state["failed_phase"], "agents")
+
+    def test_healthy_optional_selection_does_not_reinstall(self):
+        trace, statuses, _ = self.run_phase_resume(healthy=True)
+        self.assertEqual(trace, ["probe", "probe"])
+        self.assertEqual(statuses, [0, 0])
+
+    def test_excluded_inapplicable_and_soft_only_modules_do_not_force_reinstalls(self):
+        for options in ({"selected": False}, {"applicable": False}, {"soft_only": True}):
+            with self.subTest(options=options):
+                trace, statuses, _ = self.run_phase_resume(**options)
+                self.assertEqual(trace, [])
+                self.assertEqual(statuses, [0, 0])
+
+
 class ScopedInstallerResumeTests(unittest.TestCase):
     BASE_SCOPE = ("base.system", "users.ubuntu", "lang.bun")
 

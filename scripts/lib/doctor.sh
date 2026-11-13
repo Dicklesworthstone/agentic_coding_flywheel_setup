@@ -2122,8 +2122,8 @@ doctor_load_module_selection() {
     local candidate=""
     local entry=""
     local module=""
-    local default_state_file="${ACFS_HOME:+$ACFS_HOME/state.json}"
-    local -a expected_identity=()
+    local default_state_file="${TARGET_HOME:+$TARGET_HOME/.acfs/state.json}"
+    local -a expected_identity=("${TARGET_HOME:-}" "${TARGET_USER:-}")
     local -a known_modules=()
 
     state_script="$(_acfs_doctor_find_lib_script "state.sh" 2>/dev/null || true)"
@@ -2140,19 +2140,29 @@ doctor_load_module_selection() {
     # another installed state exists. Do not fall back from a missing or broken
     # custom file and accidentally diagnose/repair the default installation.
     state_file="${ACFS_STATE_FILE:-}"
-    if [[ -n "$state_file" ]]; then
-        [[ -n "$default_state_file" ]] || default_state_file="${TARGET_HOME:+$TARGET_HOME/.acfs/state.json}"
-        if [[ "$state_file" != "$default_state_file" ]]; then
-            expected_identity=("${TARGET_HOME:-}" "${TARGET_USER:-}")
-        fi
-    else
-        state_file="$(_acfs_doctor_find_project_path "state.json" 2>/dev/null || true)"
-        if [[ -z "$state_file" ]]; then
-            candidate="${ACFS_SYSTEM_STATE_FILE:-}"
-            if [[ -n "$candidate" && ( -e "$candidate" || -L "$candidate" ) ]]; then
-                state_file="$candidate"
+    if [[ -z "$state_file" ]]; then
+        # The checkpoint belongs to the resolved account, not the directory
+        # containing this copy of the runtime. Inspect an existing canonical
+        # entry even when it is a directory or dangling symlink: neither may
+        # silently fall through to a system checkpoint or legacy full scope.
+        if [[ -n "$default_state_file" && ( -e "$default_state_file" || -L "$default_state_file" ) ]]; then
+            state_file="$default_state_file"
+        else
+            state_file="$(_acfs_doctor_find_project_path "state.json" 2>/dev/null || true)"
+            if [[ -z "$state_file" ]]; then
+                candidate="${ACFS_SYSTEM_STATE_FILE:-}"
+                if [[ -n "$candidate" && ( -e "$candidate" || -L "$candidate" ) ]]; then
+                    state_file="$candidate"
+                fi
             fi
         fi
+    fi
+    [[ -n "$state_file" ]] || state_file="$default_state_file"
+    # Match the updater's identity policy: historical canonical checkpoints
+    # may omit identity, but conflicting explicit fields are always errors.
+    # A custom, runtime-relative, or system fallback must identify both fields.
+    if [[ -n "$default_state_file" && "$state_file" == "$default_state_file" ]]; then
+        expected_identity+=(allow-legacy-identity)
     fi
     if ! state_load_module_selection "$state_file" "${expected_identity[@]}"; then
         DOCTOR_SELECTION_ERROR="Saved module selection is invalid, unreadable, or does not belong to the resolved target; no diagnostics or repairs were run. Restore a valid ACFS state file before continuing"
@@ -2173,6 +2183,13 @@ doctor_load_module_selection() {
             DOCTOR_SELECTION_ERROR="Saved selection names modules absent from the deployed manifest, or the manifest is empty; no diagnostics or repairs were run. Restore matching ACFS state and runtime files"
             return 1
         fi
+    fi
+    # Scope and mode are one accepted installation policy. A saved safe-mode
+    # checkpoint must not inherit vibe-mode sudo requirements from ambient
+    # variables or a different installed checkpoint inspected during startup.
+    if [[ -n "${ACFS_STATE_INSTALL_MODE:-}" ]]; then
+        ACFS_MODE="$ACFS_STATE_INSTALL_MODE"
+        export ACFS_MODE
     fi
 }
 

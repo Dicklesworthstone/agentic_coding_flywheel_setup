@@ -2011,14 +2011,19 @@ acfs_verify_module_commands() {
 # Validate selected modules belonging to a numeric manifest phase. Optional
 # modules do not block phase completion unless explicitly requested with --only,
 # matching the generated installer's optional-module failure handling.
+# Resume is different: every applicable selected module must be healthy before
+# skipping its entire phase. Otherwise an optional failure (or a later broken
+# binary) would never reach the idempotent module installer on ordinary retries.
 acfs_verify_phase_modules() {
     local phase="${1:-}"
+    local verification_mode="${2:-complete}"
     local module=""
     local map_name=""
     local map_decl=""
     local had_failure=false
 
     [[ -n "$phase" && "${ACFS_MANIFEST_INDEX_LOADED:-false}" == "true" ]] || return 1
+    case "$verification_mode" in complete|resume) ;; *) return 1 ;; esac
     for map_name in ACFS_MODULE_PHASE ACFS_MODULE_OPTIONAL; do
         map_decl="$(declare -p "$map_name" 2>/dev/null || true)"
         [[ "$map_decl" == declare\ -A* ]] || return 1
@@ -2026,11 +2031,16 @@ acfs_verify_phase_modules() {
     for module in "${ACFS_EFFECTIVE_PLAN[@]}"; do
         [[ "${ACFS_MODULE_PHASE[$module]:-}" == "$phase" ]] || continue
         acfs_module_supports_family "$module" || continue
-        if [[ "${ACFS_MODULE_OPTIONAL[$module]:-0}" == "1" ]] && ! acfs_module_explicitly_selected "$module"; then
+        if [[ "$verification_mode" == complete && "${ACFS_MODULE_OPTIONAL[$module]:-0}" == "1" ]] \
+            && ! acfs_module_explicitly_selected "$module"; then
             continue
         fi
         if ! acfs_verify_module "$module"; then
-            log_warn "Required module is not ready: $module"
+            if [[ "$verification_mode" == resume ]]; then
+                log_warn "Selected module needs another installation attempt: $module"
+            else
+                log_warn "Required module is not ready: $module"
+            fi
             had_failure=true
         fi
     done
