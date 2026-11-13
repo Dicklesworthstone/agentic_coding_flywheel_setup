@@ -949,22 +949,18 @@ describe("Generated verified installer args", () => {
       `local verified_installer_tmpdir_template="$TARGET_HOME"'/.cache/acfs/installer-tmp/cass.XXXXXX'`,
     );
     expect(stackContent).not.toContain("installer TMPDIR template contains whitespace");
-    expect(stackContent).toContain("acfs_generated_system_binary_path mkdir");
-    expect(stackContent).toContain("acfs_generated_system_binary_path mktemp");
+    expect(stackContent).toContain("elif ! acfs_security_init; then");
     expect(stackContent).toContain(
-      'run_as_target "$verified_installer_mkdir_bin" -p "$verified_installer_tmpdir_parent"',
+      `verified_installer_tmpdir="$(acfs_prepare_installer_tmpdir "$TARGET_HOME" 'cass' run_as_target)"`,
     );
-    expect(stackContent).toContain(
-      'verified_installer_tmpdir="$(run_as_target "$verified_installer_mktemp_bin" -d "$verified_installer_tmpdir_template" 2>/dev/null)"',
+    expect(stackContent).not.toContain(
+      'run_as_target "$verified_installer_mkdir_bin" -p "$verified_installer_tmpdir_parent"',
     );
     expect(stackContent).toContain(
       '[[ "$verified_installer_tmpdir" != "$verified_installer_tmpdir_prefix"* || -z "$verified_installer_tmpdir_suffix"',
     );
     expect(stackContent).toContain(
       '|| -L "$verified_installer_tmpdir" || -L "$verified_installer_tmpdir_parent" ]]',
-    );
-    expect(stackContent).toContain(
-      "refusing installer TMPDIR through a symlinked target-home path",
     );
     expect(stackContent).toContain(
       `run_as_target_runner 'env' "TMPDIR=$verified_installer_tmpdir" 'bash' "$verified_installer_file" '--easy-mode' '--verify'`,
@@ -2637,11 +2633,13 @@ describe("agents.claude post-install link step", () => {
 });
 
 describe("stack.cass per-run installer TMPDIR cleanup", () => {
-  // Runs the real generated module function with its collaborators stubbed,
-  // so mkdir/mktemp/rm act on a throwaway TARGET_HOME.
+  // Runs the real generated module and shared private staging helper. Only
+  // upstream verification/execution is stubbed; all filesystem checks are real.
   const harness = [
     "set -uo pipefail",
     'gen="$1"',
+    'source "$2"',
+    'umask "$TEST_UMASK"',
     `eval "$(sed -n '/^acfs_generated_system_binary_path()/,/^}$/p' "$gen")"`,
     `eval "$(sed -n '/^acfs_generated_install_stack_cass()/,/^}$/p' "$gen")"`,
     "acfs_require_contract() { return 0; }",
@@ -2653,35 +2651,31 @@ describe("stack.cass per-run installer TMPDIR cleanup", () => {
     "run_as_target_shell() { cat >/dev/null; }",
     "log_error() { printf 'ERROR %s\\n' \"$*\" >&2; }",
     "log_warn() { printf 'WARN %s\\n' \"$*\" >&2; }",
-    // Record what mktemp hands back so every scenario can prove the exact
+    // Record what the shared helper hands back so scenarios prove the exact
     // directory existed and is gone, not merely that nothing is left.
-    "run_as_target() {",
-    '  if [[ "$1" == */mktemp ]]; then',
-    '    local made=""',
-    '    made="$("$@")" || return',
-    '    printf "%s\\n" "$made" > "$TARGET_HOME/made-tmpdir"',
-    '    printf "%s\\n" "$made"',
-    "    return 0",
-    "  fi",
-    '  "$@"',
+    'eval "real_$(declare -f acfs_prepare_installer_tmpdir)"',
+    "acfs_prepare_installer_tmpdir() {",
+    '  local made=""',
+    '  made="$(real_acfs_prepare_installer_tmpdir "$@")" || return',
+    '  printf "%s\\n" "$made" > "$TARGET_HOME/made-tmpdir"',
+    '  printf "%s\\n" "$made"',
     "}",
+    'run_as_target() { "$@"; }',
     'acfs_security_init() { [[ "$SCENARIO" != "setup" ]]; }',
     "declare -A KNOWN_INSTALLERS=([cass]='https://example.invalid/cass.sh')",
     "get_checksum() { printf '%064d\\n' 0; }",
-    'verify_checksum() { [[ "$SCENARIO" != "checksum" ]] || return 1; printf "#!/bin/bash\\n"; }',
+    'verify_checksum() { : > "$TARGET_HOME/download-called"; [[ "$SCENARIO" != "checksum" ]] || return 1; printf "#!/bin/bash\\n"; }',
     'acfs_security_mktemp() { mktemp "$TARGET_HOME/staged.XXXXXX"; }',
     '_acfs_remove_temp_files() { rm -f -- "$@"; }',
     "run_as_target_runner() {",
     '  local tmp="${2#TMPDIR=}"',
     '  printf "%s\\n" "$tmp" > "$TARGET_HOME/seen-tmpdir"',
+    '  stat -c "%a" "$TARGET_HOME/.cache" "$TARGET_HOME/.cache/acfs" "$TARGET_HOME/.cache/acfs/installer-tmp" "$tmp" > "$TARGET_HOME/seen-modes"',
     '  [[ -d "$tmp" ]] && : > "$tmp/build-artifact"',
     '  [[ "$SCENARIO" != "runner" ]] || return 7',
     "}",
     'if [[ "$SCENARIO" == "escape" ]]; then',
-    "  run_as_target() {",
-    '    if [[ "$1" == */mktemp ]]; then mkdir -p "$TARGET_HOME/victim"; printf "%s\\n" "$TARGET_HOME/victim"; return 0; fi',
-    '    "$@"',
-    "  }",
+    '  acfs_prepare_installer_tmpdir() { mkdir -p "$TARGET_HOME/victim"; printf "%s\\n" "$TARGET_HOME/victim"; }',
     "fi",
     'if [[ "$SCENARIO" == "rm-missing" ]]; then',
     "  eval \"real_$(declare -f acfs_generated_system_binary_path)\"",
@@ -2689,18 +2683,26 @@ describe("stack.cass per-run installer TMPDIR cleanup", () => {
     "fi",
     "status=0",
     "acfs_generated_install_stack_cass || status=$?",
+    'umask > "$TARGET_HOME/final-umask"',
     'printf "status=%s reason=%s\\n" "$status" "${ACFS_LAST_MODULE_FAILURE_REASON:-}"',
   ].join("\n");
 
-  function runCass(scenario: string) {
-    const home = mkdtempSync(resolve(tmpdir(), "acfs-cass-tmpdir-"));
+  function runCass(scenario: string, mask = "022", fresh = false, legacyParents = false) {
+    const home = mkdtempSync(resolve(tmpdir(), scenario === "spaces" ? "acfs cass tmpdir-" : "acfs-cass-tmpdir-"));
     const parent = resolve(home, ".cache/acfs/installer-tmp");
     const sibling = resolve(parent, "cass.KEEP01");
-    mkdirSync(sibling, { recursive: true });
-    writeFileSync(resolve(sibling, "other-run"), "x");
-    const result = spawnSync("bash", ["-c", harness, "_", resolve(GENERATED_DIR, "install_stack.sh")], {
+    if (!fresh) {
+      mkdirSync(sibling, { recursive: true });
+      writeFileSync(resolve(sibling, "other-run"), "x");
+    }
+    if (legacyParents) {
+      chmodSync(resolve(home, ".cache/acfs"), 0o775);
+      chmodSync(parent, 0o775);
+    }
+    if (scenario === "unsafe-cache") chmodSync(resolve(home, ".cache"), 0o775);
+    const result = spawnSync("bash", ["-c", harness, "_", resolve(GENERATED_DIR, "install_stack.sh"), resolve(PROJECT_ROOT, "scripts/lib/security.sh")], {
       encoding: "utf8",
-      env: { PATH: "/usr/bin:/bin", HOME: home, TARGET_HOME: home, SCENARIO: scenario },
+      env: { PATH: "/usr/bin:/bin", HOME: home, TARGET_HOME: home, SCENARIO: scenario, TEST_UMASK: mask },
     });
     const readMarker = (name: string) => {
       const file = resolve(home, name);
@@ -2712,6 +2714,9 @@ describe("stack.cass per-run installer TMPDIR cleanup", () => {
       sibling,
       made: readMarker("made-tmpdir"),
       seen: readMarker("seen-tmpdir"),
+      modes: readMarker("seen-modes").split("\n").filter(Boolean).map((mode) => parseInt(mode, 8)),
+      finalUmask: readMarker("final-umask"),
+      downloaded: existsSync(resolve(home, "download-called")),
       stdout: result.stdout,
       stderr: result.stderr,
     };
@@ -2746,19 +2751,65 @@ describe("stack.cass per-run installer TMPDIR cleanup", () => {
     expectOnlyThisRunRemoved(run);
   });
 
-  test("removes the run's TMPDIR after a setup failure and keeps the reason", () => {
+  test("refuses setup failure before creating a TMPDIR or downloading", () => {
     const run = runCass("setup");
     expect(run.stdout).toMatch(/^status=[1-9]\d* reason=environment setup$/m);
+    expect(run.made).toBe("");
     expect(run.seen).toBe("");
-    expectOnlyThisRunRemoved(run);
+    expect(run.downloaded).toBe(false);
+    expect(readdirSync(run.parent)).toEqual(["cass.KEEP01"]);
+    expect(existsSync(resolve(run.sibling, "other-run"))).toBe(true);
   });
 
-  test("never deletes a directory mktemp did not hand back inside the template", () => {
+  test("never deletes an escaped directory returned by the staging helper", () => {
     const run = runCass("escape");
     expect(run.stdout).toMatch(/^status=[1-9]\d* reason=environment setup$/m);
     expect(run.seen).toBe("");
     expect(existsSync(resolve(run.home, "victim"))).toBe(true);
     expect(existsSync(resolve(run.sibling, "other-run"))).toBe(true);
+  });
+
+  for (const mask of ["002", "022"]) {
+    test(`fresh generated install creates a private ancestry under umask ${mask}`, () => {
+      const run = runCass("success", mask, true);
+      expect(run.stdout, run.stderr).toMatch(/^status=0 reason=$/m);
+      expect(run.modes).toEqual([0o700, 0o700, 0o700, 0o700]);
+      expect(run.finalUmask).toBe(`0${mask}`);
+      expect(run.seen).toBe(run.made);
+      expect(existsSync(run.made)).toBe(false);
+      expect(readdirSync(run.parent)).toEqual([]);
+    });
+
+    test(`generated install safely tightens legacy owned 0775 parents under umask ${mask}`, () => {
+      const run = runCass("success", mask, false, true);
+      expect(run.stdout, run.stderr).toMatch(/^status=0 reason=$/m);
+      expect(run.modes).toHaveLength(4);
+      expect(run.modes.every((mode) => (mode & 0o022) === 0)).toBe(true);
+      expect(run.modes[3]).toBe(0o700);
+      expect(run.stderr).toContain(resolve(run.home, ".cache/acfs"));
+      expect(run.finalUmask).toBe(`0${mask}`);
+      expectOnlyThisRunRemoved(run);
+    });
+  }
+
+  test("refuses a shared writable cache before downloads and reports its exact component", () => {
+    const run = runCass("unsafe-cache", "002");
+    expect(run.stdout).toMatch(/^status=[1-9]\d* reason=environment setup$/m);
+    expect(run.made).toBe("");
+    expect(run.seen).toBe("");
+    expect(run.downloaded).toBe(false);
+    expect(run.stderr).toContain(resolve(run.home, ".cache"));
+    expect(lstatSync(resolve(run.home, ".cache")).mode & 0o777).toBe(0o775);
+    expect(existsSync(resolve(run.sibling, "other-run"))).toBe(true);
+  });
+
+  test("preserves quoted target-home paths containing spaces", () => {
+    const run = runCass("spaces", "002", true);
+    expect(run.stdout, run.stderr).toMatch(/^status=0 reason=$/m);
+    expect(run.seen).toBe(run.made);
+    expect(run.modes).toEqual([0o700, 0o700, 0o700, 0o700]);
+    expect(run.finalUmask).toBe("0002");
+    expect(existsSync(run.made)).toBe(false);
   });
 
   test("a cleanup problem warns without changing the install result", () => {

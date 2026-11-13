@@ -889,54 +889,21 @@ _stack_run_verified_installer() {
     _stack_run_verified_installer_with_env "$tool" "" "$@"
 }
 
+# Adapt the shared helper's argv runner to this library's command-string runner.
+# Quote each argument once; the Python program itself arrives on stdin.
+_stack_run_staging_command() {
+    local staging_command=""
+    printf -v staging_command '%q ' "$@"
+    _stack_run_as_user "$staging_command"
+}
+
 _stack_prepare_target_installer_tmpdir() {
-    local tool="${1:-}"
-    local tmpdir=""
-    local tmpdir_parent=""
-    local tmpdir_parent_q=""
-    local tmpdir_template=""
-    local tmpdir_template_q=""
-
-    [[ -n "$tool" ]] || {
-        log_warn "_stack_prepare_target_installer_tmpdir requires a tool name"
-        return 1
-    }
-    case "$tool" in
-        .|..|*[!A-Za-z0-9._+-]*)
-            log_warn "Invalid tool name for installer TMPDIR: $tool"
-            return 1
-            ;;
-    esac
-
-    if [[ -z "${TARGET_HOME:-}" || "$TARGET_HOME" != /* || "$TARGET_HOME" == "/" ]]; then
-        log_warn "Cannot prepare installer TMPDIR without a valid TARGET_HOME"
-        return 1
+    if ! declare -F acfs_prepare_installer_tmpdir >/dev/null; then
+        # No checksum refresh or network is needed to validate local ancestry.
+        # shellcheck source=security.sh
+        source "$STACK_SCRIPT_DIR/security.sh" || return 1
     fi
-
-    tmpdir_parent="$TARGET_HOME/.cache/acfs/installer-tmp"
-    tmpdir_template="$tmpdir_parent/${tool}.XXXXXX"
-    case "$tmpdir_template" in
-        *[[:space:]]*)
-            log_warn "Cannot prepare installer TMPDIR template with whitespace: $tmpdir_template"
-            return 1
-            ;;
-    esac
-
-    printf -v tmpdir_parent_q '%q' "$tmpdir_parent"
-    if ! _stack_run_as_user "mkdir -p $tmpdir_parent_q"; then
-        log_warn "Failed to prepare installer TMPDIR parent: $tmpdir_parent"
-        return 1
-    fi
-
-    printf -v tmpdir_template_q '%q' "$tmpdir_template"
-    tmpdir="$(_stack_run_as_user "mktemp -d $tmpdir_template_q" 2>/dev/null)" || tmpdir=""
-    if [[ -n "$tmpdir" ]]; then
-        printf '%s\n' "$tmpdir"
-        return 0
-    fi
-
-    log_warn "Failed to create installer TMPDIR from template: $tmpdir_template"
-    return 1
+    acfs_prepare_installer_tmpdir "${TARGET_HOME:-}" "${1:-}" _stack_run_staging_command
 }
 
 # Remove one per-run TMPDIR made by _stack_prepare_target_installer_tmpdir.

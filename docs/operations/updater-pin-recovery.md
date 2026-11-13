@@ -59,6 +59,58 @@ The updater can skip an unchanged Agent Mail or ASB installation without using
 a self-reported version as proof. The two adapters have different release
 contracts; the generic verified-installer wrapper does not skip other tools.
 
+### Private installer staging (#508)
+
+Hand-written stack installers, updates, doctor fixes, the installer's low-space
+fallback, and generated installers allocate per-run directories through
+`acfs_prepare_installer_tmpdir` in `scripts/lib/security.sh`. The helper runs as
+the target account and creates `.cache`, `acfs`, `installer-tmp`, and the random
+per-run directory with mode `0700` when they do not exist. Its private umask is
+confined to a child process: a caller using `002` or `022` keeps that umask.
+Agent Mail's archive, checksum manifest, and signature are created with a private
+mask too, including after the target-user handoff. The evidence reader still
+rejects group- or world-writable files; no authentication rule is relaxed.
+
+The helper walks every component from `/` with no-follow directory descriptors.
+It requires the home and cache tree to belong to the executing target account,
+rejects writable ancestors, and compares each retained directory with its name
+before returning a path. Only root-owned sticky `/tmp` and `/var/tmp` qualify
+for system-temporary-directory protection when they are above a test or
+temporary home. A private leaf beneath an unsafe parent is insufficient.
+
+Legacy group-writable `~/.cache/acfs` and `installer-tmp` directories can be
+tightened in place only after their ancestors pass validation. This migration
+requires target-account ownership, its local user-private group, no other
+listed primary or supplementary group members, no world write or special mode
+bits, and no access/default POSIX ACL. It clears only group/other write using
+`fchmod` on the checked descriptor and prints the exact path, UID, GID, and mode
+transition. Other ACFS cache creators use a local creation mask so they cannot
+introduce fresh `0775` ancestry before an installer runs. They do not modify
+existing permissions.
+
+ACFS does **not** automatically change the home, the general `.cache` directory,
+a foreign-owned directory, or a directory configured for sharing. Refusals name
+the exact component and its observed owner/mode, the expected contract, and a
+recovery action. Inspect that component and its parent, including group and ACL
+sharing, with concurrent installers stopped. Ask the owner to restore the
+expected private ownership/permissions only when that matches the intended use;
+otherwise use an account with a private home/cache. Do not recursively chmod or
+chown the tree, follow symlinks during repair, or change the user's global umask.
+
+This validation detects replacement during allocation and repair. The returned
+pathname remains within the target account's trust boundary; it is not a
+lifetime defense against an attacker who can rewrite that account's updater,
+home, or files after allocation.
+
+The executable staging regressions are in
+`tests/unit/test_update_idempotency.py`, the generated CASS installer tests in
+`packages/manifest/src/generate.test.ts`, and the installer/update TMPDIR tests
+in `tests/unit/lib/test_update.bats`. They use isolated filesystems and controlled
+transport rather than live installers. Replacement tests run the actual helper
+with test-side syscall barriers and a separate process replacing paths. Kernel
+ownership and ACL cases explicitly report skips when the host cannot support
+them.
+
 ### Agent Mail
 
 For the reviewed Linux release-archive installer, ACFS resolves the exact

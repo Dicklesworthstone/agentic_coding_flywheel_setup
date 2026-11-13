@@ -1072,11 +1072,6 @@ doctor_fix_run_verified_installer() {
 doctor_fix_prepare_target_installer_tmpdir() {
     local tool="${1:-}"
     local runtime_home=""
-    local tmpdir=""
-    local tmpdir_parent=""
-    local tmpdir_template=""
-    local mkdir_bin=""
-    local mktemp_bin=""
 
     [[ -n "$tool" ]] || {
         doctor_fix_log WARN "doctor_fix_prepare_target_installer_tmpdir requires a tool name"
@@ -1095,29 +1090,9 @@ doctor_fix_prepare_target_installer_tmpdir() {
         return 1
     fi
 
-    tmpdir_parent="$runtime_home/.cache/acfs/installer-tmp"
-    tmpdir_template="$tmpdir_parent/${tool}.XXXXXX"
-
-    mkdir_bin="$(doctor_fix_system_binary_path mkdir 2>/dev/null || true)"
-    mktemp_bin="$(doctor_fix_system_binary_path mktemp 2>/dev/null || true)"
-    if [[ -z "$mkdir_bin" || -z "$mktemp_bin" ]]; then
-        doctor_fix_log WARN "Unable to resolve trusted temp-directory tools"
-        return 1
-    fi
-
-    doctor_fix_run_in_runtime_context "" "$mkdir_bin" -p "$tmpdir_parent" || {
-        doctor_fix_log WARN "Failed to prepare installer TMPDIR parent: $tmpdir_parent"
-        return 1
-    }
-
-    tmpdir="$(doctor_fix_run_in_runtime_context "" "$mktemp_bin" -d "$tmpdir_template" 2>/dev/null)" || tmpdir=""
-    if [[ -n "$tmpdir" ]]; then
-        printf '%s\n' "$tmpdir"
-        return 0
-    fi
-
-    doctor_fix_log WARN "Failed to create installer TMPDIR from template: $tmpdir_template"
-    return 1
+    doctor_fix_require_security || return 1
+    acfs_prepare_installer_tmpdir "$runtime_home" "$tool" \
+        doctor_fix_run_in_runtime_context ""
 }
 
 # Remove one per-run TMPDIR made by doctor_fix_prepare_target_installer_tmpdir.

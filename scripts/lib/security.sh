@@ -180,6 +180,234 @@ acfs_security_mkdir_p() {
     "$mkdir_bin" -p "$dir"
 }
 
+# Allocate upstream scratch and authenticated release staging with one contract.
+# RUNNER and its optional prefix arguments must execute argv as the target user
+# with HOME set to TARGET_HOME. Never repair with elevated privileges. The Python
+# child owns its umask, all directory descriptors, and the entire allocation;
+# splitting this into mkdir/chmod/mktemp calls would reopen replacement races.
+# Usage: acfs_prepare_installer_tmpdir HOME TOOL [RUNNER [ARG ...]]
+acfs_prepare_installer_tmpdir() {
+    local staging_home="${1:-}" staging_tool="${2:-}"
+    local staging_python="" staging_timeout=""
+    [[ $# -ge 2 ]] || {
+        log_error "Installer staging requires a target home and tool name"
+        return 1
+    }
+    shift 2
+    staging_python="$(acfs_security_required_binary_path python3)" || return $?
+    staging_timeout="$(acfs_security_required_binary_path timeout)" || return $?
+    "$@" "$staging_timeout" --signal=KILL 15 "$staging_python" -I - \
+        "$staging_home" "$staging_tool" <<'ACFS_INSTALLER_STAGING_PY'
+import errno
+import grp
+import os
+import pwd
+import re
+import secrets
+import stat
+import sys
+
+
+class UnsafeStaging(ValueError):
+    pass
+
+
+home, tool = sys.argv[1:]
+uid = os.geteuid()
+gid = os.getegid()
+held = []
+flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+
+
+def identity(info):
+    # Directory size/timestamps change during legitimate concurrent allocation.
+    return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid)
+
+
+def refuse(path, reason, info=None, recovery=None):
+    observed = (f"uid={info.st_uid}, gid={info.st_gid}, "
+                f"mode={stat.S_IMODE(info.st_mode):04o}" if info else
+                "uid=unknown, gid=unknown, mode=unknown")
+    expected = (f"a real directory owned by uid {uid}, with no group/other write; "
+                "system ancestors must be owned by root or that uid")
+    if recovery is None:
+        recovery = ("Stop concurrent installers and inspect this exact component and its parent; "
+                    "restore a real directory with the expected owner and permissions, then retry. "
+                    "Do not recursively chmod/chown or follow a symlink to repair it.")
+    raise UnsafeStaging(f"Installer staging refused {path!r}: {reason} ({observed}); "
+                        f"expected {expected}. Recovery: {recovery}")
+
+
+def named_info(parent, name, path):
+    try:
+        return os.stat(name, dir_fd=parent, follow_symlinks=False)
+    except OSError as error:
+        refuse(path, f"cannot inspect component: {error.strerror}")
+
+
+def fence():
+    # Recheck every retained descriptor AND its name relative to its retained
+    # parent. A renamed parent cannot redirect a child check to another tree.
+    for node in held:
+        current = os.fstat(node["fd"])
+        if identity(current) != node["identity"]:
+            refuse(node["path"], "directory ownership, permissions or identity changed", current)
+        if node["parent"] is not None:
+            named = named_info(node["parent"], node["name"], node["path"])
+            if identity(named) != identity(current):
+                refuse(node["path"], "directory path was replaced during validation", named)
+
+
+def private_group():
+    # Only migrate the old user-private-group layout. A matching effective gid
+    # alone is insufficient: it may be a deliberately shared primary group.
+    try:
+        account = pwd.getpwuid(uid)
+        group = grp.getgrgid(gid)
+        return (account.pw_gid == gid and group.gr_name == account.pw_name
+                and not (set(group.gr_mem) - {account.pw_name})
+                and not any(other.pw_uid != uid and other.pw_gid == gid
+                            for other in pwd.getpwall()))
+    except (KeyError, OSError):
+        return False
+
+
+def has_shared_acl(fd, path, info):
+    # A named-user/default ACL can deliberately share a UPG-owned directory.
+    # Changing its mask would revoke that sharing, so do not migrate it.
+    for attribute in ("system.posix_acl_access", "system.posix_acl_default"):
+        try:
+            if os.getxattr(fd, attribute):
+                return True
+        except OSError as error:
+            if error.errno not in (errno.ENODATA, errno.ENOTSUP, errno.EOPNOTSUPP):
+                refuse(path, f"cannot inspect sharing ACL: {error.strerror}", info)
+    return False
+
+
+def open_directory(parent, name, path, role, create=False, exclusive=False):
+    created = False
+    try:
+        before = os.stat(name, dir_fd=parent, follow_symlinks=False)
+        if exclusive:
+            raise FileExistsError(path)
+    except FileNotFoundError:
+        if not create:
+            refuse(path, "required ancestor does not exist")
+        fence()
+        try:
+            os.mkdir(name, 0o700, dir_fd=parent)
+            created = True
+        except FileExistsError:
+            if exclusive:
+                raise
+        except OSError as error:
+            refuse(path, f"cannot create private directory: {error.strerror}")
+        before = named_info(parent, name, path)
+    except FileExistsError:
+        raise
+    except OSError as error:
+        refuse(path, f"cannot inspect component: {error.strerror}")
+    if not stat.S_ISDIR(before.st_mode):
+        kind = "symlink component" if stat.S_ISLNK(before.st_mode) else "non-directory component"
+        refuse(path, kind, before)
+    allowed_owners = (0, uid) if role == "system" else (uid,)
+    if before.st_uid not in allowed_owners:
+        refuse(path, "foreign ownership; no permissions were changed", before)
+    try:
+        fd = os.open(name, flags, dir_fd=parent)
+    except OSError as error:
+        refuse(path, f"cannot open component without following symlinks: {error.strerror}", before)
+    node = {"fd": fd, "name": name, "path": path, "parent": parent,
+            "identity": identity(before)}
+    held.append(node)
+    current = os.fstat(fd)
+    if identity(current) != identity(before):
+        refuse(path, "directory path was replaced while opening", current)
+    mode = stat.S_IMODE(current.st_mode)
+    # A root-owned sticky system temp directory protects an owned child from
+    # other users' rename/unlink. Never extend this exception to HOME or cache.
+    sticky_system_tmp = (role == "system" and path in ("/tmp", "/var/tmp")
+                         and current.st_uid == 0 and mode == 0o1777)
+    if mode & 0o022 and not sticky_system_tmp:
+        dedicated = role in ("acfs", "installer-tmp")
+        repairable = (dedicated and not created and current.st_gid == gid
+                      and mode & 0o020 and not mode & 0o7002 and private_group()
+                      and not has_shared_acl(fd, path, current))
+        if not repairable:
+            recovery = ("This component is shared or outside ACFS's private staging directories; "
+                        "ACFS left its permissions unchanged. Ask its owner to review sharing and "
+                        "remove group/other write only if it is intended to be private, or use a "
+                        "private, non-symlinked home/cache. Retry after that deliberate repair.")
+            refuse(path, "group/other-writable ancestor is not eligible for scoped repair", current,
+                   recovery)
+        # The parent is already safe. Pin the object before and after fchmod;
+        # never chmod a pathname that a group writer could substitute.
+        fence()
+        tightened = mode & ~0o022
+        os.fchmod(fd, tightened)
+        after = os.fstat(fd)
+        expected = (current.st_dev, current.st_ino, stat.S_IFDIR | tightened,
+                    current.st_uid, current.st_gid)
+        if identity(after) != expected:
+            refuse(path, "directory changed during scoped permission repair", after)
+        node["identity"] = identity(after)
+        fence()
+        print(f"Installer staging: tightened owned ACFS directory {path!r} "
+              f"(uid={uid}, gid={gid}, mode={mode:04o} -> {tightened:04o}); "
+              "shared home/cache permissions were not changed.", file=sys.stderr)
+    if created and mode != 0o700:
+        refuse(path, "new staging directory is not private (0700)", current)
+    fence()
+    return fd
+
+
+try:
+    if (home != os.environ.get("HOME") or not home.startswith("/") or home == "/"
+            or os.path.normpath(home) != home or any(char in home for char in "\r\n\x00")):
+        refuse(home, "invalid target home; it must be canonical, absolute and match the target HOME")
+    if not re.fullmatch(r"[A-Za-z0-9._+-]+", tool) or tool in (".", ".."):
+        refuse(home, "invalid installer tool name")
+    # Isolated process only: callers retain their umask, including 002.
+    os.umask(0o077)
+    parent = open_directory(None, "/", "/", "system")
+    path = ""
+    parts = home.split("/")[1:]
+    for index, part in enumerate(parts):
+        path += "/" + part
+        parent = open_directory(parent, part, path,
+                                "home" if index == len(parts) - 1 else "system")
+    for part, role in ((".cache", "cache"), ("acfs", "acfs"), ("installer-tmp", "installer-tmp")):
+        path += "/" + part
+        parent = open_directory(parent, part, path, role, create=True)
+    for attempt in range(16):
+        name = tool + "." + secrets.token_hex(16)
+        try:
+            open_directory(parent, name, path + "/" + name, "run", create=True, exclusive=True)
+            break
+        except FileExistsError:
+            continue
+    else:
+        refuse(path, "could not allocate an exclusive private staging directory")
+    fence()
+    print(path + "/" + name)
+except UnsafeStaging as error:
+    print(error, file=sys.stderr)
+    sys.exit(1)
+except OSError as error:
+    component = held[-1]["path"] if held else home
+    info = os.fstat(held[-1]["fd"]) if held else None
+    try:
+        refuse(component, f"filesystem operation failed: {error.strerror}", info)
+    except UnsafeStaging as diagnostic:
+        print(diagnostic, file=sys.stderr)
+    sys.exit(1)
+finally:
+    for node in reversed(held):
+        os.close(node["fd"])
+ACFS_INSTALLER_STAGING_PY
+}
+
 acfs_security_sort_lines() {
     local sort_bin=""
 

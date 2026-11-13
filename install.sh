@@ -6385,8 +6385,6 @@ acfs_run_verified_upstream_script_as_target_with_env() {
     fi
 
     local staged_installer=""
-    acfs_stage_verified_installer \
-        staged_installer "$url" "$expected_sha256" "$tool" || return $?
 
     # Upstream installers stage downloads in TMPDIR and some enforce multi-GB
     # free-space floors. On systems where /tmp is a small tmpfs (common on
@@ -6402,59 +6400,25 @@ acfs_run_verified_upstream_script_as_target_with_env() {
     if [[ -z "$df_bin" || -z "$awk_bin" ]]; then
         log_error "Trusted df/awk are required for installer TMPDIR capacity checks"
         ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
-        _acfs_remove_temp_files "$staged_installer"
         return 1
     fi
     if ! tmp_avail_kb="$("$df_bin" -Pk /tmp 2>/dev/null | "$awk_bin" 'NR==2{print $4}')" \
         || [[ ! "$tmp_avail_kb" =~ ^[0-9]+$ ]]; then
         log_error "Unable to determine available space for installer TMPDIR"
         ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
-        _acfs_remove_temp_files "$staged_installer"
         return 1
     fi
     if [[ -n "$tmp_avail_kb" ]] && (( tmp_avail_kb < 2097152 )); then
         acfs_tmpdir_parent="$TARGET_HOME/.cache/acfs/installer-tmp"
-        local acfs_mkdir_bin=""
-        local acfs_mktemp_bin=""
-        acfs_mkdir_bin="$(acfs_early_system_binary_path mkdir 2>/dev/null || true)"
-        acfs_mktemp_bin="$(acfs_early_system_binary_path mktemp 2>/dev/null || true)"
-        if [[ -z "$acfs_mkdir_bin" || -z "$acfs_mktemp_bin" ]]; then
-            log_error "Trusted mkdir/mktemp are required for installer TMPDIR setup"
-            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
-            _acfs_remove_temp_files "$staged_installer"
-            return 1
-        fi
-        if [[ ! -d "$TARGET_HOME" ]] \
-            || _acfs_install_asset_has_symlink_component_under_prefix \
-                "$TARGET_HOME" "$acfs_tmpdir_parent"; then
-            log_error "Refusing installer TMPDIR through a symlinked target-home path"
-            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
-            _acfs_remove_temp_files "$staged_installer"
-            return 1
-        fi
-        # Create only as the target user. A privileged fallback could follow a
-        # target-controlled ancestor symlink and chown an unrelated directory.
-        if ! run_as_target "$acfs_mkdir_bin" -p "$acfs_tmpdir_parent" 2>/dev/null; then
-            log_error "Target user cannot create installer TMPDIR parent: $acfs_tmpdir_parent"
-            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
-            _acfs_remove_temp_files "$staged_installer"
-            return 1
-        fi
-        if [[ ! -d "$acfs_tmpdir_parent" ]] \
-            || _acfs_install_asset_has_symlink_component_under_prefix \
-                "$TARGET_HOME" "$acfs_tmpdir_parent"; then
-            log_error "Installer TMPDIR parent is not a confined real directory"
-            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
-            _acfs_remove_temp_files "$staged_installer"
-            return 1
-        fi
-        if ! acfs_tmpdir="$(run_as_target "$acfs_mktemp_bin" -d "$acfs_tmpdir_parent/acfs.XXXXXX" 2>/dev/null)" \
+        # The shared helper validates the entire ancestry and creates private
+        # directories as the target user, independently of the process umask.
+        # Refuse unsafe components before downloading the upstream installer.
+        if ! acfs_tmpdir="$(acfs_prepare_installer_tmpdir "$TARGET_HOME" acfs run_as_target)" \
             || [[ "$acfs_tmpdir" != "$acfs_tmpdir_parent/acfs."* ]] \
             || [[ ! -d "$acfs_tmpdir" ]] \
             || [[ -L "$acfs_tmpdir" ]]; then
             log_error "Failed to create a confined target-user installer TMPDIR"
             ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
-            _acfs_remove_temp_files "$staged_installer"
             return 1
         fi
         tmpdir_assignment="TMPDIR=$acfs_tmpdir"
@@ -6470,20 +6434,24 @@ acfs_run_verified_upstream_script_as_target_with_env() {
     if [[ "$tool" == "uv" ]]; then
         runner_options+=(--acfs-require-sha256sum)
     fi
-    if [[ -n "$runner_env_assignment" && -n "$tmpdir_assignment" ]]; then
-        run_as_target_runner "${runner_options[@]}" env "$runner_env_assignment" "$tmpdir_assignment" \
-            "$runner" -s -- "$@" < "$staged_installer" || run_status=$?
-    elif [[ -n "$tmpdir_assignment" ]]; then
-        run_as_target_runner "${runner_options[@]}" env "$tmpdir_assignment" \
-            "$runner" -s -- "$@" < "$staged_installer" || run_status=$?
-    elif [[ -n "$runner_env_assignment" ]]; then
-        run_as_target_runner "${runner_options[@]}" env "$runner_env_assignment" \
-            "$runner" -s -- "$@" < "$staged_installer" || run_status=$?
+    if acfs_stage_verified_installer staged_installer "$url" "$expected_sha256" "$tool"; then
+        if [[ -n "$runner_env_assignment" && -n "$tmpdir_assignment" ]]; then
+            run_as_target_runner "${runner_options[@]}" env "$runner_env_assignment" "$tmpdir_assignment" \
+                "$runner" -s -- "$@" < "$staged_installer" || run_status=$?
+        elif [[ -n "$tmpdir_assignment" ]]; then
+            run_as_target_runner "${runner_options[@]}" env "$tmpdir_assignment" \
+                "$runner" -s -- "$@" < "$staged_installer" || run_status=$?
+        elif [[ -n "$runner_env_assignment" ]]; then
+            run_as_target_runner "${runner_options[@]}" env "$runner_env_assignment" \
+                "$runner" -s -- "$@" < "$staged_installer" || run_status=$?
+        else
+            run_as_target_runner "${runner_options[@]}" "$runner" -s -- "$@" < "$staged_installer" || run_status=$?
+        fi
     else
-        run_as_target_runner "${runner_options[@]}" "$runner" -s -- "$@" < "$staged_installer" || run_status=$?
+        run_status=$?
     fi
 
-    _acfs_remove_temp_files "$staged_installer"
+    [[ -z "$staged_installer" ]] || _acfs_remove_temp_files "$staged_installer"
     # Remove this run's low-space TMPDIR whatever the installer did. Only the
     # exact mktemp result qualifies; it is re-checked and removed as the target
     # user, and a cleanup problem only warns, so run_status is never masked.

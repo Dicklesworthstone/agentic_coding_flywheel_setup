@@ -5589,7 +5589,9 @@ make_acfs_cargo_tmp_dir() {
     for candidate in "${candidates[@]}"; do
         [[ -n "$candidate" ]] || continue
         [[ "$candidate" != "/" ]] || continue
-        mkdir -p "$candidate" 2>/dev/null || continue
+        # Do not seed a group-writable ~/.cache/acfs before release staging.
+        # This changes creation only; existing shared directories stay intact.
+        (umask 077; mkdir -p "$candidate") 2>/dev/null || continue
         [[ -d "$candidate" && -w "$candidate" ]] || continue
         tmp_dir="$(mktemp -d "$candidate/acfs_cargo_build.XXXXXX" 2>/dev/null)" || continue
         printf '%s\n' "$tmp_dir"
@@ -5611,7 +5613,7 @@ cd "$ACFS_TMP_DIR/src"
 # RCH_ENABLED=0 is rch's own disable switch, scoped to this one-off tool build.
 RCH_ENABLED=0 cargo build --release --target-dir "$ACFS_TMP_DIR/target"
 install -m 0755 "$ACFS_TMP_DIR/target/release/$2" "$HOME/.cargo/bin/$2"
-mkdir -p "${acfs_src_stamp%/*}"
+(umask 077; mkdir -p "${acfs_src_stamp%/*}")
 git rev-parse HEAD > "$acfs_src_stamp.tmp" && mv -f "$acfs_src_stamp.tmp" "$acfs_src_stamp"
 EOF
 )"
@@ -6484,11 +6486,9 @@ update_run_verified_installer() {
 
 update_prepare_target_installer_tmpdir() {
     local tool="${1:-}"
+    local expected_home="${2:-}"
     local target_user=""
     local target_home=""
-    local tmpdir=""
-    local tmpdir_parent=""
-    local tmpdir_template=""
 
     [[ -n "$tool" ]] || {
         echo "update_prepare_target_installer_tmpdir requires a tool name" >&2
@@ -6510,26 +6510,16 @@ update_prepare_target_installer_tmpdir() {
         return 1
     fi
 
-    tmpdir_parent="$target_home/.cache/acfs/installer-tmp"
-    tmpdir_template="$tmpdir_parent/${tool}.XXXXXX"
-    case "$tmpdir_template" in
-        *[[:space:]]*)
-            echo "Unable to use installer TMPDIR template with whitespace: $tmpdir_template" >&2
-            return 1
-            ;;
-    esac
-
-    update_run_in_target_context "" mkdir -p "$tmpdir_parent" || return $?
-    tmpdir="$(update_run_in_target_context "" mktemp -d "$tmpdir_template" 2>/dev/null)" || {
-        echo "Unable to create installer TMPDIR from template: $tmpdir_template" >&2
-        return 1
-    }
-    if [[ -z "$tmpdir" ]]; then
-        echo "Unable to create installer TMPDIR from template: $tmpdir_template" >&2
+    if [[ -n "$expected_home" && "$target_home" != "$expected_home" ]]; then
+        echo "Installer staging target home changed: expected '$expected_home', resolved '$target_home'; retry after correcting target-user configuration" >&2
         return 1
     fi
-
-    printf '%s\n' "$tmpdir"
+    if ! declare -F acfs_prepare_installer_tmpdir >/dev/null; then
+        # Local staging preflight must not refresh checksums or download bytes.
+        # shellcheck source=security.sh
+        source "$SCRIPT_DIR/security.sh" || return 1
+    fi
+    acfs_prepare_installer_tmpdir "$target_home" "$tool" update_run_in_target_context ""
 }
 
 # Prepare the private TMPDIR for one verified installer run (#451). Upstream
@@ -6549,8 +6539,8 @@ update_private_installer_tmpdir() {
     local current_user=""
 
     [[ $'\n'"$env_assignment" != *$'\n'TMPDIR=* ]] || return 0
-    tmpdir="$(update_prepare_target_installer_tmpdir "$tool" 2>/dev/null)" || tmpdir=""
-    if [[ "$tmpdir" == /* && "$tmpdir" != *[[:space:]]* ]]; then
+    tmpdir="$(update_prepare_target_installer_tmpdir "$tool")" || tmpdir=""
+    if [[ "$tmpdir" == /* && "$tmpdir" != *$'\n'* && "$tmpdir" != *$'\r'* ]]; then
         printf '%s\n' "$tmpdir"
         return 0
     fi
@@ -9311,10 +9301,15 @@ update_go() {
 # destination is inside a freshly created private staging directory; callers
 # verify its complete content before it can authorize execution or a receipt.
 update_download_release_file() {
-    local release_url="$1" release_path="$2" release_limit="$3" curl_bin=""
+    local release_url="$1" release_path="$2" release_limit="$3" curl_bin="" sh_bin=""
     [[ "$release_url" == https://* && "$release_limit" =~ ^[0-9]+$ ]] || return 1
     curl_bin="$(update_system_binary_path curl)" || return 1
-    UPDATE_CMD_TIMEOUT=180 update_run_bounded_in_target_context "$curl_bin" \
+    sh_bin="$(update_system_binary_path sh)" || return 1
+    # Set the mask AFTER switching accounts: sudo/runuser policy may replace
+    # the invoking shell's mask. Release evidence must stay non-writable by
+    # other users even when the caller uses Ubuntu's ordinary umask 002.
+    UPDATE_CMD_TIMEOUT=180 update_run_bounded_in_target_context "$sh_bin" \
+        -c 'umask 077; exec "$@"' _ "$curl_bin" \
         --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
         --connect-timeout 10 --max-time 175 --max-redirs 5 --max-filesize "$release_limit" \
         -A 'agentic_coding_flywheel_setup-agent (+https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup)' \
@@ -9337,38 +9332,16 @@ update_agent_mail_stage_release() {
     [[ "$archive_sha" =~ ^[a-f0-9]{64}$ ]] || return 1
     python_bin="$(update_system_binary_path python3)" || return 1
     timeout_bin="$(update_system_binary_path timeout)" || return 1
-    stage_dir="$(update_run_in_target_context "" "$timeout_bin" --signal=KILL 15 "$python_bin" -I -c '
-import os, secrets, stat, sys
-home = sys.argv[1]
-try:
-    if (home != os.environ.get("HOME") or not home.startswith("/") or home == "/"
-            or os.path.normpath(home) != home or "\n" in home or "\r" in home):
-        raise ValueError("invalid target home")
-    parent = None
-    for name in (home, ".cache", "acfs", "installer-tmp"):
-        if parent is not None:
-            try:
-                os.mkdir(name, 0o700, dir_fd=parent)
-            except FileExistsError:
-                pass
-        fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
-        info = os.fstat(fd)
-        if info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) & 0o022:
-            raise ValueError("unsafe staging parent")
-        if parent is not None:
-            os.close(parent)
-        parent = fd
-    name = "mcp_agent_mail." + secrets.token_hex(16)
-    os.mkdir(name, 0o700, dir_fd=parent)
-    os.close(parent)
-    print(os.path.join(home, ".cache", "acfs", "installer-tmp", name))
-except (OSError, ValueError):
-    sys.exit(1)
-' "$target_home")" || return 1
+    stage_dir="$(update_prepare_target_installer_tmpdir mcp_agent_mail "$target_home")" || return 1
     [[ -n "$stage_dir" ]] || return 1
-    if ! update_download_release_file "$artifact_url" "$stage_dir/$artifact_name" 1073741824 \
-        || ! update_download_release_file "$release_base/SHA256SUMS" "$stage_dir/SHA256SUMS" 1048576 \
-        || ! update_download_release_file "$release_base/SHA256SUMS.minisig" "$stage_dir/SHA256SUMS.minisig" 1048576; then
+    if ! (
+        # Scope all release transport to a private mask without changing the
+        # updater's shell state; the target runner also enforces it after sudo.
+        umask 077
+        update_download_release_file "$artifact_url" "$stage_dir/$artifact_name" 1073741824 \
+            && update_download_release_file "$release_base/SHA256SUMS" "$stage_dir/SHA256SUMS" 1048576 \
+            && update_download_release_file "$release_base/SHA256SUMS.minisig" "$stage_dir/SHA256SUMS.minisig" 1048576
+    ); then
         rc=1
     elif ! proof="$(update_run_in_target_context "" "$timeout_bin" --signal=KILL 180 "$python_bin" -I -c '
 import hashlib, json, os, pathlib, stat, sys, tarfile
@@ -11631,7 +11604,7 @@ update_ensure_writable_tmpdir() {
     candidates+=("/data/tmp" "/var/tmp")
     # Only a HOME we own: root updating another user must not leave a
     # root-owned directory in that user's home.
-    if [[ -n "${HOME:-}" && -O "$HOME" ]] && mkdir -p "$home_tmp" 2>/dev/null; then
+    if [[ -n "${HOME:-}" && -O "$HOME" ]] && (umask 077; mkdir -p "$home_tmp") 2>/dev/null; then
         candidates+=("$home_tmp")
     fi
 

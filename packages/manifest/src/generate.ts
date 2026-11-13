@@ -1481,31 +1481,17 @@ function generateVerifiedInstallerSnippet(module: Module): string[] {
       'local verified_installer_tmpdir=""',
       'local verified_installer_tmpdir_suffix=""',
       "local verified_installer_tmpdir_owned=false",
-      'local verified_installer_mkdir_bin=""',
-      'local verified_installer_mktemp_bin=""',
       'if [[ "$verified_installer_tmpdir_template" != *XXXXXX* ]]; then',
       `    log_error "${escapeBash(module.id)}: installer TMPDIR template must contain XXXXXX: $verified_installer_tmpdir_template"`,
-      "    verified_installer_env_ready=false",
-      'elif ! verified_installer_mkdir_bin="$(acfs_generated_system_binary_path mkdir 2>/dev/null)"; then',
-      `    log_error "${escapeBash(module.id)}: trusted mkdir not found for installer TMPDIR"`,
-      "    verified_installer_env_ready=false",
-      'elif ! verified_installer_mktemp_bin="$(acfs_generated_system_binary_path mktemp 2>/dev/null)"; then',
-      `    log_error "${escapeBash(module.id)}: trusted mktemp not found for installer TMPDIR"`,
       "    verified_installer_env_ready=false",
       'elif [[ "$verified_installer_tmpdir_parent" != "$TARGET_HOME/.cache/acfs/installer-tmp" ]]; then',
       `    log_error "${escapeBash(module.id)}: installer TMPDIR parent escaped the approved target-home path"`,
       "    verified_installer_env_ready=false",
-      'elif [[ -L "$TARGET_HOME" || -L "$TARGET_HOME/.cache" || -L "$TARGET_HOME/.cache/acfs" || -L "$verified_installer_tmpdir_parent" ]]; then',
-      `    log_error "${escapeBash(module.id)}: refusing installer TMPDIR through a symlinked target-home path"`,
+      "elif ! acfs_security_init; then",
+      `    log_error "${escapeBash(module.id)}: acfs_security_init failed - check security.sh and checksums.yaml"`,
       "    verified_installer_env_ready=false",
-      'elif ! run_as_target "$verified_installer_mkdir_bin" -p "$verified_installer_tmpdir_parent"; then',
-      `    log_error "${escapeBash(module.id)}: failed to prepare installer TMPDIR parent: $verified_installer_tmpdir_parent"`,
-      "    verified_installer_env_ready=false",
-      'elif [[ ! -d "$verified_installer_tmpdir_parent" || -L "$TARGET_HOME" || -L "$TARGET_HOME/.cache" || -L "$TARGET_HOME/.cache/acfs" || -L "$verified_installer_tmpdir_parent" ]]; then',
-      `    log_error "${escapeBash(module.id)}: installer TMPDIR parent is not a confined real directory"`,
-      "    verified_installer_env_ready=false",
-      'elif ! verified_installer_tmpdir="$(run_as_target "$verified_installer_mktemp_bin" -d "$verified_installer_tmpdir_template" 2>/dev/null)"; then',
-      `    log_error "${escapeBash(module.id)}: failed to create installer TMPDIR from template: $verified_installer_tmpdir_template"`,
+      `elif ! verified_installer_tmpdir="$(acfs_prepare_installer_tmpdir "$TARGET_HOME" ${shellQuote(tool)} run_as_target)"; then`,
+      `    log_error "${escapeBash(module.id)}: failed to prepare private installer TMPDIR"`,
       "    verified_installer_env_ready=false",
       'elif [[ -z "$verified_installer_tmpdir" ]]; then',
       `    log_error "${escapeBash(module.id)}: installer TMPDIR creation returned an empty path"`,
@@ -1524,17 +1510,12 @@ function generateVerifiedInstallerSnippet(module: Module): string[] {
   }
 
   const securityInitCondition = hasTmpdirEnv
-    ? 'if [[ "$verified_installer_env_ready" = "true" ]] && acfs_security_init; then'
+    ? 'if [[ "$verified_installer_env_ready" = "true" ]]; then'
     : "if acfs_security_init; then";
   const securityInitFailureLines = hasTmpdirEnv
     ? [
-        '    if [[ "$verified_installer_env_ready" != "true" ]]; then',
-        `        log_error "${escapeBash(module.id)}: verified installer environment setup failed"`,
-        '        ACFS_LAST_MODULE_FAILURE_REASON="environment setup"',
-        "    else",
-        `        log_error "${escapeBash(module.id)}: acfs_security_init failed - check security.sh and checksums.yaml"`,
-        '        ACFS_LAST_MODULE_FAILURE_REASON="environment setup"',
-        "    fi",
+        `    log_error "${escapeBash(module.id)}: verified installer environment setup failed"`,
+        '    ACFS_LAST_MODULE_FAILURE_REASON="environment setup"',
       ]
     : [
         `    log_error "${escapeBash(module.id)}: acfs_security_init failed - check security.sh and checksums.yaml"`,
@@ -1761,10 +1742,10 @@ function generateVerifiedInstallerSnippet(module: Module): string[] {
   if (tmpdirEnvValue) {
     lines.push(
       "",
-      "# Remove this run's TMPDIR on every outcome. Only the exact directory mktemp",
-      "# returned, and the template check accepted, qualifies. It is re-checked here",
-      "# and removed as the target user; a cleanup problem only warns, so it can",
-      "# never change the install result or its failure reason.",
+      "# Remove this run's TMPDIR on every outcome. Only the exact directory the",
+      "# private staging helper returned and the template check accepted qualifies.",
+      "# It is re-checked and removed as the target user; a cleanup problem only",
+      "# warns and never changes the install result or its failure reason.",
       'if [[ "$verified_installer_tmpdir_owned" = "true" ]]; then',
       '    local verified_installer_rm_bin=""',
       '    if [[ "$verified_installer_tmpdir" != "$verified_installer_tmpdir_prefix"* || -z "$verified_installer_tmpdir_suffix" || "$verified_installer_tmpdir_suffix" == *[!A-Za-z0-9]* || "$verified_installer_tmpdir" != "$verified_installer_tmpdir_parent/"* || "$verified_installer_tmpdir_parent" != "$TARGET_HOME/.cache/acfs/installer-tmp" || -L "$TARGET_HOME" || -L "$TARGET_HOME/.cache" || -L "$TARGET_HOME/.cache/acfs" || -L "$verified_installer_tmpdir_parent" || -L "$verified_installer_tmpdir" ]]; then',

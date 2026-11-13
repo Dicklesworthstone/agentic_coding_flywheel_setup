@@ -7,6 +7,7 @@ cryptographic authenticity. Signed-manifest verification is tested separately.
 No package manager, external network, real tool installation or service runs.
 """
 from contextlib import contextmanager
+import errno
 import fcntl
 import hashlib
 import io
@@ -14,8 +15,10 @@ import json
 import os
 from pathlib import Path
 import pwd
+import select
 import shlex
 import stat
+import struct
 import subprocess
 import tarfile
 import tempfile
@@ -265,6 +268,476 @@ class IdempotencyFixture(unittest.TestCase):
     def assert_receipt_refused(self, *, mode="match", **kwargs):
         result = self.receipt_call(mode, code=None, **kwargs)
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+
+
+class InstallerStagingTests(unittest.TestCase):
+    """Real filesystem staging checks; preserve fixtures and replaced paths.
+
+    Race tests run the exact embedded production Python. Test-side barriers
+    change syscall scheduling while a separate process replaces directories;
+    no ownership, identity, or permission result is mocked.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        if os.name != "posix" or not Path("/bin/bash").is_file():
+            raise unittest.SkipTest("requires Bash and a POSIX filesystem")
+        cls.artifacts = Path(tempfile.mkdtemp(prefix="acfs-installer-staging-", dir="/tmp"))
+        print("Installer staging artifacts:", cls.artifacts, flush=True)
+
+    def setUp(self):
+        self.base = Path(tempfile.mkdtemp(prefix="case-", dir=self.artifacts))
+        self.home = self.base / "target home"
+        self.home.mkdir(mode=0o700)
+        self.env = {
+            "PATH": "/usr/bin:/bin", "HOME": str(self.home),
+            "TARGET_HOME": str(self.home), "REPO_ROOT": str(ROOT),
+            "TEST_ROOT": str(self.base), "NO_COLOR": "1", "ACFS_INTERACTIVE": "false",
+        }
+
+    def shell(self, body, **env):
+        return subprocess.run(
+            ["/bin/bash", "--noprofile", "--norc", "-c",
+             'source "$REPO_ROOT/scripts/lib/security.sh"\n' + body],
+            env=self.env | env, text=True, capture_output=True, timeout=15,
+        )
+
+    def prepare(self, home=None, *, mask="002"):
+        home = self.home if home is None else home
+        return self.shell(
+            'umask "$TEST_UMASK"\nacfs_prepare_installer_tmpdir "$HOME" cass\n',
+            HOME=str(home), TARGET_HOME=str(home), TEST_UMASK=mask,
+        )
+
+    def assert_private_path(self, path, home):
+        self.assertEqual(path.parent, home / ".cache/acfs/installer-tmp")
+        self.assertTrue(path.name.startswith("cass."), path)
+        for component in (home / ".cache", home / ".cache/acfs",
+                          home / ".cache/acfs/installer-tmp", path):
+            info = component.lstat()
+            self.assertTrue(stat.S_ISDIR(info.st_mode), component)
+            self.assertEqual(info.st_uid, os.geteuid(), component)
+            self.assertEqual(stat.S_IMODE(info.st_mode), 0o700, component)
+
+    def assert_refused(self, result, component, *, mode=None):
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.stdout, "", result.stdout + result.stderr)
+        self.assertIn(str(component), result.stderr)
+        if mode is not None:
+            self.assertIn(f"{mode:04o}", result.stderr)
+        self.assertRegex(result.stderr.lower(), r"inspect|repair|recover|chmod")
+
+    def cache_tree(self, home=None):
+        home = self.home if home is None else home
+        parent = home
+        for name in (".cache", "acfs", "installer-tmp"):
+            parent = parent / name
+            parent.mkdir(mode=0o755)
+            parent.chmod(0o755)
+        return parent
+
+    @staticmethod
+    def staging_source():
+        return (ROOT / "scripts/lib/security.sh").read_text().split(
+            "<<'ACFS_INSTALLER_STAGING_PY'\n", 1
+        )[1].split("\nACFS_INSTALLER_STAGING_PY", 1)[0]
+
+    def test_fresh_staging_is_private_under_002_and_022_without_changing_caller_umask(self):
+        for mask in ("002", "022"):
+            with self.subTest(umask=mask):
+                home = self.base / ("home-" + mask)
+                home.mkdir(mode=0o700)
+                result = self.shell(r'''
+umask "$TEST_UMASK"
+before="$(umask)"
+acfs_prepare_installer_tmpdir "$HOME" cass || exit $?
+[[ "$(umask)" == "$before" ]] || exit 89
+''', HOME=str(home), TARGET_HOME=str(home), TEST_UMASK=mask)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assert_private_path(Path(result.stdout.strip()), home)
+
+    def test_repeated_staging_allocates_distinct_private_directories_and_preserves_previous_run(self):
+        first = self.prepare()
+        self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+        first_dir = Path(first.stdout.strip())
+        sentinel = first_dir / "other-run-data"
+        sentinel.write_text("keep\n")
+        second = self.prepare(mask="022")
+        self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
+        second_dir = Path(second.stdout.strip())
+        self.assertNotEqual(first_dir, second_dir)
+        self.assert_private_path(first_dir, self.home)
+        self.assert_private_path(second_dir, self.home)
+        self.assertEqual(sentinel.read_text(), "keep\n")
+
+    def test_notification_debounce_cannot_seed_unsafe_staging_ancestors(self):
+        for mask in ("002", "022"):
+            with self.subTest(umask=mask):
+                home = self.base / ("notify-" + mask)
+                home.mkdir(mode=0o700)
+                result = self.shell(r'''
+source "$REPO_ROOT/scripts/lib/notify.sh"
+umask "$TEST_UMASK"
+before="$(umask)"
+_acfs_notify_debounce_allowed staging-regression || exit 95
+[[ -f "$HOME/.cache/acfs/notify/staging-regression.ts" ]] || exit 96
+acfs_prepare_installer_tmpdir "$HOME" cass || exit $?
+[[ "$(umask)" == "$before" ]] || exit 97
+''', HOME=str(home), TARGET_HOME=str(home), TEST_UMASK=mask)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assert_private_path(Path(result.stdout.strip()), home)
+                self.assertEqual(stat.S_IMODE((home / ".cache/acfs/notify").stat().st_mode), 0o700)
+
+    def test_owned_0775_acfs_directories_are_tightened_with_visible_diagnostics(self):
+        parent = self.cache_tree()
+        dedicated = (parent.parent, parent)
+        for directory in dedicated:
+            directory.chmod(0o775)
+        sentinel = parent / "existing-cache-data"
+        sentinel.write_text("keep\n")
+        result = self.prepare()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        for directory in dedicated:
+            self.assertEqual(stat.S_IMODE(directory.stat().st_mode), 0o755)
+            self.assertIn(str(directory), result.stderr)
+        self.assertIn("0775", result.stderr)
+        self.assertEqual(stat.S_IMODE((self.home / ".cache").stat().st_mode), 0o755)
+        self.assertEqual(sentinel.read_text(), "keep\n")
+        repeated = self.prepare()
+        self.assertEqual(repeated.returncode, 0, repeated.stdout + repeated.stderr)
+        self.assertNotIn("0775", repeated.stderr)
+
+    def test_general_home_and_cache_0775_are_refused_without_permission_changes(self):
+        for kind in ("home", "cache"):
+            with self.subTest(component=kind):
+                home = self.base / kind
+                home.mkdir(mode=0o700)
+                component = home if kind == "home" else home / ".cache"
+                if kind == "cache":
+                    component.mkdir(mode=0o755)
+                component.chmod(0o775)
+                result = self.prepare(home)
+                self.assert_refused(result, component, mode=0o775)
+                self.assertIn(str(os.geteuid()), result.stderr)
+                self.assertEqual(stat.S_IMODE(component.stat().st_mode), 0o775)
+                self.assertFalse((home / ".cache/acfs").exists())
+
+    def test_world_writable_and_shared_special_mode_acfs_directories_are_not_repaired(self):
+        for mode in (0o777, 0o1775, 0o2775):
+            with self.subTest(mode=f"{mode:04o}"):
+                home = self.base / f"home-{mode:04o}"
+                home.mkdir(mode=0o700)
+                parent = self.cache_tree(home)
+                component = parent.parent
+                component.chmod(mode)
+                result = self.prepare(home)
+                self.assert_refused(result, component, mode=mode)
+                self.assertEqual(stat.S_IMODE(component.stat().st_mode), mode)
+                self.assertEqual(list(parent.iterdir()), [])
+
+    def test_foreign_owned_home_is_refused_without_creating_or_chmodding_anything(self):
+        # /etc is an actual foreign-owned directory for unprivileged callers,
+        # not a mocked stat result. No write can succeed there in this test.
+        foreign = Path("/etc")
+        before = foreign.stat()
+        if before.st_uid == os.geteuid():
+            self.skipTest("requires a real readable directory owned by a different UID")
+        result = self.prepare(foreign)
+        self.assert_refused(result, foreign, mode=stat.S_IMODE(before.st_mode))
+        self.assertIn(str(before.st_uid), result.stderr)
+        self.assertIn(str(os.geteuid()), result.stderr)
+        after = foreign.stat()
+        self.assertEqual((after.st_uid, after.st_mode, after.st_mtime_ns),
+                         (before.st_uid, before.st_mode, before.st_mtime_ns))
+
+    def test_named_or_default_posix_acl_prevents_automatic_permission_repair(self):
+        if not hasattr(os, "setxattr"):
+            self.skipTest("requires POSIX ACL extended attributes")
+        # Linux POSIX ACL xattr version 2: owner, named user, owning group,
+        # mask, other. Use a mapped UID even in single-UID user namespaces;
+        # the presence of a named ACL must disable automatic mask changes.
+        acl = struct.pack("<I", 2) + b"".join(
+            struct.pack("<HHI", tag, permissions, identifier)
+            for tag, permissions, identifier in (
+                (1, 7, 0xffffffff), (2, 7, os.geteuid()),
+                (4, 5, 0xffffffff), (16, 7, 0xffffffff), (32, 5, 0xffffffff),
+            )
+        )
+        for attribute in ("system.posix_acl_access", "system.posix_acl_default"):
+            with self.subTest(acl=attribute):
+                home = self.base / attribute
+                home.mkdir(mode=0o700)
+                component = self.cache_tree(home).parent
+                component.chmod(0o775)
+                try:
+                    os.setxattr(component, attribute, acl)
+                except OSError as error:
+                    if error.errno in (errno.ENOTSUP, errno.EOPNOTSUPP):
+                        self.skipTest("fixture filesystem does not support POSIX ACLs")
+                    raise
+                result = self.prepare(home)
+                self.assert_refused(result, component, mode=0o775)
+                self.assertEqual(stat.S_IMODE(component.stat().st_mode), 0o775)
+                self.assertEqual(os.getxattr(component, attribute), acl)
+
+    def test_shared_primary_group_membership_disables_automatic_repair(self):
+        component = self.cache_tree().parent
+        component.chmod(0o775)
+        # Simulate only the NSS group database: actual filesystem ownership,
+        # descriptor identity, mode checks and chmod behavior stay real.
+        program = f'''
+import grp, sys
+original = grp.getgrgid
+def shared_group(gid):
+    group = original(gid)
+    return grp.struct_group((group.gr_name, group.gr_passwd, group.gr_gid,
+                             list(group.gr_mem) + ["another-group-member"]))
+grp.getgrgid = shared_group
+sys.argv = ["acfs-installer-staging", {str(self.home)!r}, "cass"]
+exec(compile({self.staging_source()!r}, "security.sh:ACFS_INSTALLER_STAGING_PY", "exec"))
+'''
+        result = subprocess.run(["/usr/bin/python3", "-I", "-c", program],
+                                env=self.env, text=True, capture_output=True, timeout=15)
+        self.assert_refused(result, component, mode=0o775)
+        self.assertEqual(stat.S_IMODE(component.stat().st_mode), 0o775)
+
+    def test_symlink_in_every_home_or_cache_component_is_refused(self):
+        for index, names in enumerate(((), (".cache",), (".cache", "acfs"),
+                                       (".cache", "acfs", "installer-tmp"))):
+            with self.subTest(component=names):
+                home = self.base / f"home-{index}"
+                home.mkdir(mode=0o700)
+                parent = self.cache_tree(home)
+                component = home.joinpath(*names)
+                saved = self.base / f"preserved-{index}"
+                component.rename(saved)
+                component.symlink_to(saved, target_is_directory=True)
+                marker = saved / "operator-data"
+                marker.write_text("keep\n")
+                result = self.prepare(home)
+                self.assert_refused(result, component)
+                self.assertTrue(component.is_symlink())
+                self.assertEqual(marker.read_text(), "keep\n")
+                self.assertFalse(any(child.name.startswith("cass.") for child in parent.iterdir()))
+
+    def test_symlink_above_home_is_refused_instead_of_being_resolved(self):
+        actual = self.base / "actual-parent"
+        actual.mkdir(mode=0o700)
+        home = actual / "home"
+        home.mkdir(mode=0o700)
+        alias = self.base / "alias-parent"
+        alias.symlink_to(actual, target_is_directory=True)
+        result = self.prepare(alias / "home")
+        self.assert_refused(result, alias)
+        self.assertFalse((home / ".cache").exists())
+
+    def test_regular_file_and_fifo_components_fail_promptly_and_are_preserved(self):
+        for kind in ("regular", "fifo"):
+            with self.subTest(component=kind):
+                home = self.base / kind
+                home.mkdir(mode=0o700)
+                component = home / ".cache"
+                if kind == "regular":
+                    component.write_text("keep\n")
+                else:
+                    os.mkfifo(component, 0o600)
+                result = self.prepare(home)
+                self.assert_refused(result, component)
+                if kind == "regular":
+                    self.assertEqual(component.read_text(), "keep\n")
+                else:
+                    self.assertTrue(stat.S_ISFIFO(component.lstat().st_mode))
+
+    def test_unreadable_component_reports_its_exact_path_and_permissions(self):
+        component = self.home / ".cache"
+        component.mkdir(mode=0o700)
+        component.chmod(0o000)
+        try:
+            probe = os.open(component, os.O_RDONLY | os.O_DIRECTORY)
+        except PermissionError:
+            pass
+        else:
+            os.close(probe)
+            self.skipTest("runtime can bypass directory permission bits")
+        result = self.prepare()
+        self.assert_refused(result, component, mode=0o000)
+        self.assertEqual(stat.S_IMODE(component.stat().st_mode), 0o000)
+
+    def test_target_runner_prefix_is_preserved_and_used_for_creation(self):
+        result = self.shell(r'''
+staging_runner() {
+    [[ "$1" == "literal argument" && "$2" == "" ]] || return 87
+    shift 2
+    printf 'runner-called\n' > "$TEST_ROOT/runner"
+    HOME="$TARGET_HOME" "$@"
+}
+acfs_prepare_installer_tmpdir "$TARGET_HOME" cass staging_runner "literal argument" ""
+''', HOME=str(self.base), TARGET_HOME=str(self.home))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assert_private_path(Path(result.stdout.strip()), self.home)
+        self.assertEqual((self.base / "runner").read_text(), "runner-called\n")
+
+    def test_handwritten_install_update_and_doctor_paths_use_the_same_private_contract(self):
+        entries = {
+            "stack": r'''
+source "$REPO_ROOT/scripts/lib/stack.sh"
+_stack_run_as_user() { bash -c "$1"; }
+_stack_prepare_target_installer_tmpdir cass
+''',
+            "update": r'''
+source "$REPO_ROOT/scripts/lib/update.sh"
+update_target_user() { id -un; }
+update_target_home() { printf '%s\n' "$HOME"; }
+update_run_in_target_context() { shift; "$@"; }
+update_prepare_target_installer_tmpdir cass
+''',
+            "doctor": r'''
+source "$REPO_ROOT/scripts/lib/doctor_fix.sh"
+doctor_fix_require_security() { :; }
+doctor_fix_runtime_home() { printf '%s\n' "$HOME"; }
+doctor_fix_run_in_runtime_context() { shift; "$@"; }
+doctor_fix_prepare_target_installer_tmpdir cass
+''',
+        }
+        for entry, script in entries.items():
+            for mask in ("002", "022"):
+                with self.subTest(entry=entry, umask=mask):
+                    home = self.base / f"{entry}-{mask}"
+                    home.mkdir(mode=0o700)
+                    result = self.shell('umask "$TEST_UMASK"\n' + script,
+                                        HOME=str(home), TARGET_HOME=str(home), TEST_UMASK=mask)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assert_private_path(Path(result.stdout.strip()), home)
+
+    def test_release_download_sets_private_umask_after_target_account_handoff(self):
+        curl = self.base / "fixture-curl"
+        curl.write_text(r'''#!/bin/sh
+printf '%s\n' "$@" > "$TEST_ROOT/curl-argv"
+umask > "$TEST_ROOT/curl-umask"
+while [ "$#" -gt 0 ]; do
+    if [ "$1" = --output ]; then
+        printf 'release fixture\n' > "$2"
+        exit 0
+    fi
+    shift
+done
+exit 92
+''')
+        curl.chmod(0o700)
+        result = self.shell(r'''
+source "$REPO_ROOT/scripts/lib/update.sh"
+update_system_binary_path() {
+    case "$1" in
+        curl) printf '%s\n' "$TEST_ROOT/fixture-curl" ;;
+        sh) printf '%s\n' /bin/sh ;;
+        timeout) printf '%s\n' /usr/bin/timeout ;;
+        *) return 1 ;;
+    esac
+}
+update_run_in_target_context() {
+    [[ "$1" == "" ]] || return 93
+    shift
+    # Model an account-switch policy replacing the parent's mask. The
+    # production download command must set its mask inside this boundary.
+    (umask 002; "$@")
+}
+umask 022
+update_download_release_file https://fixture.invalid/release "$TEST_ROOT/release" 1048576 || exit $?
+[[ "$(umask)" == 0022 ]] || exit 94
+''')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual((self.base / "release").read_text(), "release fixture\n")
+        self.assertEqual(stat.S_IMODE((self.base / "release").stat().st_mode), 0o600)
+        self.assertEqual(int((self.base / "curl-umask").read_text().strip(), 8), 0o077)
+        argv = (self.base / "curl-argv").read_text().splitlines()
+        self.assertEqual(argv[argv.index("--proto") + 1], "=https")
+        self.assertEqual(argv[argv.index("--proto-redir") + 1], "=https")
+        self.assertEqual(argv[argv.index("--max-filesize") + 1], "1048576")
+        self.assertEqual(argv[-1], "https://fixture.invalid/release")
+
+    def racing_prepare(self, *, operation, replacement):
+        parent = self.cache_tree()
+        component = parent.parent
+        if operation == "fchmod":
+            component.chmod(0o775)
+        victim = self.base / "unrelated-directory"
+        victim.mkdir(mode=0o775)
+        victim.chmod(0o775)
+        sentinel = victim / "operator-data"
+        sentinel.write_text("keep\n")
+        original = component.stat()
+        source = self.staging_source()
+        ready_read, ready_write = os.pipe()
+        resume_read, resume_write = os.pipe()
+        harness = f'''
+import os, sys
+ready, resume = {ready_write}, {resume_read}
+triggered = False
+def barrier():
+    global triggered
+    triggered = True
+    os.write(ready, b"ready")
+    if os.read(resume, 1) != b"x":
+        raise RuntimeError("race harness did not resume")
+original_open, original_fchmod = os.open, os.fchmod
+def intercepted_open(path, flags, *args, **kwargs):
+    fd = original_open(path, flags, *args, **kwargs)
+    if {operation!r} == "open" and not triggered:
+        info = os.fstat(fd)
+        if (info.st_dev, info.st_ino) == {(original.st_dev, original.st_ino)!r}:
+            barrier()
+    return fd
+def intercepted_fchmod(fd, mode):
+    if {operation!r} == "fchmod" and not triggered:
+        info = os.fstat(fd)
+        if (info.st_dev, info.st_ino) == {(original.st_dev, original.st_ino)!r}:
+            barrier()
+    return original_fchmod(fd, mode)
+os.open, os.fchmod = intercepted_open, intercepted_fchmod
+sys.argv = ["acfs-installer-staging", {str(self.home)!r}, "cass"]
+exec(compile({source!r}, "security.sh:ACFS_INSTALLER_STAGING_PY", "exec"))
+'''
+        process = subprocess.Popen(
+            ["/usr/bin/python3", "-I", "-c", harness], env=self.env,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            pass_fds=(ready_write, resume_read),
+        )
+        os.close(ready_write)
+        os.close(resume_read)
+        try:
+            ready, _, _ = select.select([ready_read], [], [], 5)
+            self.assertTrue(ready, "production helper never reached the race barrier")
+            signal = os.read(ready_read, 5)
+            if signal != b"ready":
+                stdout, stderr = process.communicate(timeout=5)
+                self.fail("helper exited before the race barrier: " + stdout + stderr)
+            component.rename(self.base / "preserved-open-directory")
+            if replacement == "symlink":
+                component.symlink_to(victim, target_is_directory=True)
+            else:
+                component.mkdir(mode=0o755)
+            os.write(resume_write, b"x")
+            stdout, stderr = process.communicate(timeout=10)
+            result = subprocess.CompletedProcess(process.args, process.returncode, stdout, stderr)
+            self.assert_refused(result, component)
+            self.assertEqual(stat.S_IMODE(victim.stat().st_mode), 0o775)
+            self.assertEqual(sentinel.read_text(), "keep\n")
+            self.assertEqual(list(victim.iterdir()), [sentinel])
+        finally:
+            os.close(ready_read)
+            os.close(resume_write)
+            if process.poll() is None:
+                process.kill()
+                process.communicate()
+
+    def test_concurrent_symlink_replacement_after_open_is_refused(self):
+        self.racing_prepare(operation="open", replacement="symlink")
+
+    def test_concurrent_same_mode_directory_replacement_after_open_is_refused(self):
+        self.racing_prepare(operation="open", replacement="directory")
+
+    def test_concurrent_replacement_during_owned_permission_repair_cannot_chmod_target(self):
+        self.racing_prepare(operation="fchmod", replacement="symlink")
 
 
 class ReleaseReceiptTests(IdempotencyFixture):
@@ -842,6 +1315,75 @@ printf 'COUNTS=%s,%s,%s,%s\n' "$SUCCESS_COUNT" "$SKIP_COUNT" "$FAIL_COUNT" "$HEL
     def events(self):
         path = self.base / "events"
         return path.read_text().splitlines() if path.exists() else []
+
+    def assert_umask_staging_cycle(self, mask):
+        before = f"umask {mask}\n" + r'''
+trap 'umask > "$TEST_ROOT/final-umask"' EXIT
+'''
+        first = self.agent_mail(before=before)
+        self.assertIn("COUNTS=1,0,0,0", first.stdout, first.stdout + first.stderr)
+        arguments = (self.base / "installer-arguments").read_text().splitlines()
+        artifact = arguments[arguments.index("--artifact-url") + 1]
+        archive = Path(unquote(urlsplit(artifact).path))
+        for component in (self.home / ".cache", self.home / ".cache/acfs",
+                          self.home / ".cache/acfs/installer-tmp", archive.parent):
+            self.assertEqual(stat.S_IMODE(component.stat().st_mode), 0o700, component)
+            self.assertEqual(component.stat().st_uid, os.geteuid(), component)
+        for evidence in (archive, archive.parent / "SHA256SUMS",
+                         archive.parent / "SHA256SUMS.minisig"):
+            # The transport stub is an ordinary shell cat. This therefore
+            # exercises the production staging scope's restrictive umask.
+            self.assertEqual(stat.S_IMODE(evidence.stat().st_mode), 0o600, evidence)
+        self.assertEqual(int((self.base / "final-umask").read_text().strip(), 8), int(mask, 8))
+        for _ in range(2):
+            repeated = self.agent_mail(before=before)
+            self.assertIn("COUNTS=0,1,0,0", repeated.stdout, repeated.stdout + repeated.stderr)
+            self.assertEqual(int((self.base / "final-umask").read_text().strip(), 8), int(mask, 8))
+        self.assertEqual(self.events().count("archive-download"), 1)
+        self.assertEqual(self.events().count("install"), 1)
+
+    def test_authenticated_staging_and_repeated_updates_work_under_umask_002(self):
+        self.assert_umask_staging_cycle("002")
+
+    def test_authenticated_staging_and_repeated_updates_work_under_umask_022(self):
+        self.assert_umask_staging_cycle("022")
+
+    def test_authenticated_staging_repairs_owned_0775_acfs_directories(self):
+        cache = self.home / ".cache"
+        cache.mkdir(mode=0o755)
+        acfs = cache / "acfs"
+        parent = acfs / "installer-tmp"
+        acfs.mkdir(mode=0o775)
+        parent.mkdir(mode=0o775)
+        for directory in (acfs, parent):
+            directory.chmod(0o775)
+        sentinel = parent / "other-update-data"
+        sentinel.write_text("keep\n")
+        result = self.agent_mail(before="umask 002\n")
+        self.assertIn("COUNTS=1,0,0,0", result.stdout, result.stdout + result.stderr)
+        for directory in (acfs, parent):
+            self.assertEqual(stat.S_IMODE(directory.stat().st_mode), 0o755)
+            self.assertIn(str(directory), result.stderr)
+        self.assertEqual(sentinel.read_text(), "keep\n")
+        repeated = self.agent_mail(before="umask 002\n")
+        self.assertIn("COUNTS=0,1,0,0", repeated.stdout, repeated.stdout + repeated.stderr)
+        self.assertEqual(self.events().count("archive-download"), 1)
+
+    def test_unsafe_shared_cache_reports_exact_component_before_release_download(self):
+        cache = self.home / ".cache"
+        cache.mkdir(mode=0o775)
+        cache.chmod(0o775)
+        result = self.agent_mail(before="umask 002\n")
+        self.assertIn("COUNTS=0,0,1,0", result.stdout, result.stdout + result.stderr)
+        self.assertIn(str(cache), result.stderr)
+        self.assertIn("0775", result.stderr)
+        self.assertIn(str(os.geteuid()), result.stderr)
+        self.assertRegex(result.stderr.lower(), r"inspect|repair|recover|chmod")
+        self.assertEqual(stat.S_IMODE(cache.stat().st_mode), 0o775)
+        self.assertFalse((cache / "acfs").exists())
+        for event in ("archive-download", "manifest-download", "signature-download", "install"):
+            self.assertNotIn(event, self.events())
+        self.assertFalse(self.receipt.exists())
 
     def test_repeated_identical_updates_download_and_install_only_once(self):
         self.assertFalse(self.receipt.exists())

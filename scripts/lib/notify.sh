@@ -304,7 +304,10 @@ _acfs_notify_debounce_allowed() {
     fi
 
     [[ -n "$_ACFS_NOTIFY_STATE_DIR" ]] || return 0
-    mkdir -p "$_ACFS_NOTIFY_STATE_DIR" 2>/dev/null || return 0
+    # This cache can be the first ACFS path created on an account. Do not seed
+    # writable ancestors that later authenticated installer staging must refuse.
+    # Leave existing directory permissions, and the caller's umask, untouched.
+    (umask 077; mkdir -p "$_ACFS_NOTIFY_STATE_DIR") 2>/dev/null || return 0
 
     # Sanitise the key so it is safe for a filename
     local safe_key
