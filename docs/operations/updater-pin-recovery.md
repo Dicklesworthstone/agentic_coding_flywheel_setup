@@ -120,6 +120,29 @@ The authenticated comment must name `mcp_agent_mail_rust` and the exact release
 tag. The chosen archive must have one unambiguous checksum entry. A genuine
 signature from another tag does not satisfy this check.
 
+Installer approval and adapter review are separate trust decisions. The adapter
+accepts only explicitly reviewed installer hashes; publishing a new checksum
+does not automatically authorize receipt reuse or ACFS's local-archive route.
+The reviewed revisions are
+[`bc796a2d`](https://github.com/Dicklesworthstone/mcp_agent_mail_rust/commit/bc796a2da6e56164d2c26328de1f5934de28df13)
+(`3de2d65d…`) and
+[`baa88392`](https://github.com/Dicklesworthstone/mcp_agent_mail_rust/commit/baa88392d75dedd13c0761cf88eadfd218ef7ee0)
+(`16c12f59…`). Their signature key, release metadata, archive checks, offline
+arguments, destination lock, and binary transaction behavior are unchanged.
+The latter revision delays Python launcher, environment, and client takeover
+until database migration verifies. Installer failure still prevents ACFS from
+writing a receipt. An unreviewed pin retains the independently verified upstream
+installation path and is identified in the update log; it is never accepted by
+matching whatever checksum happens to be published.
+
+The release-contract regressions load the actual shipped checksum metadata and
+authenticate retained release metadata with real Minisign. This catches a
+checksum refresh that would otherwise silently disable the reviewed adapter.
+When the upstream installer changes, review its exact bytes and relevant
+behavior before adding an approved hash, then run these regressions. The
+installer hash is part of the receipt contract, so receipts from another
+approved installer revision still require a new verified installation.
+
 ACFS then compares this release contract with evidence from its last successful
 verified installation. That evidence binds:
 

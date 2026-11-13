@@ -1810,6 +1810,41 @@ if (( ${#release[@]} )); then printf '%s\n' "${release[@]}"; fi
         self.assertEqual(first[0], 0)
         self.assertEqual(second, first)
 
+    def test_shipped_installer_pin_resolves_a_real_signed_release(self):
+        # Exercise the installed metadata boundary instead of copying another
+        # approved pin into this fixture. A checksum refresh must not silently
+        # disable authenticated staging and release receipts for every update.
+        metadata = subprocess.run(
+            ["/bin/bash", "--noprofile", "--norc", "-c", r'''
+source "$REPO_ROOT/scripts/lib/security.sh"
+load_checksums "$REPO_ROOT/checksums.yaml" || exit 1
+printf '%s\n%s\n' "${KNOWN_INSTALLERS[mcp_agent_mail]}" "$(get_checksum mcp_agent_mail)"
+'''],
+            env=self.env | {"REPO_ROOT": str(ROOT)},
+            text=True, capture_output=True, timeout=10,
+        )
+        self.assertEqual(metadata.returncode, 0, metadata.stdout + metadata.stderr)
+        installer_url, installer_sha = metadata.stdout.splitlines()
+        self.assertEqual(installer_url, self.INSTALLER_URL)
+        self.assertRegex(installer_sha, r"^[0-9a-f]{64}$")
+
+        status, values, events = self.contract(
+            TEST_INSTALLER_URL=installer_url, TEST_INSTALLER_SHA=installer_sha,
+            TEST_VERSION="",
+        )
+        self.assertEqual(status, 0, "Shipped Agent Mail installer pin has no reviewed release adapter")
+        self.assertEqual(values[1:], [
+            "v0.3.40",
+            f"{self.RELEASE_BASE}/v0.3.40/mcp-agent-mail-x86_64-unknown-linux-musl.tar.xz",
+            "cd7784066ced9e53f52d20cd5785f5c785c05cd5a2d214a3165348eb67703c56",
+        ])
+        record = json.loads(values[0])
+        self.assertEqual(record["installer"], {"url": installer_url, "sha256": installer_sha})
+        self.assertEqual(record["release"]["manifest"], hashlib.sha256(self.MANIFEST).hexdigest())
+        self.assertEqual(record["release"]["signature"], hashlib.sha256(self.SIGNATURE).hexdigest())
+        self.assertEqual(events, ["latest", f"{self.RELEASE_BASE}/v0.3.40/SHA256SUMS",
+                                  f"{self.RELEASE_BASE}/v0.3.40/SHA256SUMS.minisig"])
+
     def test_version_without_prefix_and_latest_resolution_select_the_signed_tag(self):
         for version in ("0.3.40", ""):
             with self.subTest(version=version):
@@ -1865,6 +1900,16 @@ if (( ${#release[@]} )); then printf '%s\n' "${release[@]}"; fi
                 status, _, events = self.contract(TEST_VERSION="", **overrides)
                 self.assertNotEqual(status, 0)
                 self.assertEqual(events, [])
+
+    def test_unreviewed_pin_explains_the_verified_upstream_fallback(self):
+        unknown_pin = "f" * 64
+        status, _, events = self.contract(TEST_INSTALLER_SHA=unknown_pin, TEST_VERSION="")
+        self.assertNotEqual(status, 0)
+        self.assertEqual(events, [])
+        log = (self.base / "update.log").read_text()
+        self.assertIn(f"release adapter has not reviewed installer SHA-256 {unknown_pin}", log)
+        self.assertIn("using the independently verified upstream installer", log)
+        self.assertIn("Maintainers must review the adapter before enabling release reuse", log)
 
     def test_offline_and_custom_installer_contracts_decline_before_metadata_fetch(self):
         overrides = {

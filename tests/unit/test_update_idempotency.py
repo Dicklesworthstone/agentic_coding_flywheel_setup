@@ -46,6 +46,9 @@ update_target_home() { printf '%s\n' "$TEST_HOME"; }
 
 AGENT_MAIL_FIXTURE = r'''
 source "$REPO_ROOT/scripts/lib/security.sh"
+# Keep the real admission gate available to tests that exercise rejection of
+# installer revisions outside the explicitly reviewed release adapter.
+fixture_production_release_resolver="$(declare -f update_agent_mail_release_contract)"
 UPDATE_SECURITY_READY=true
 ACFS_HOLDS_FILE="$TEST_ROOT/holds.yaml"
 FORCE_MODE="${TEST_FORCE:-false}"
@@ -1834,6 +1837,48 @@ update_release_receipt() {
         self.assertEqual(self.events().count("install"), 2)
         self.assertEqual(self.events().count("installer-download"), 2)
         self.assertFalse(self.receipt.exists())
+        arguments = (self.base / "installer-arguments").read_text().splitlines()
+        self.assertEqual(arguments, ["--dest", str(self.install), "--yes", "--no-service", "--force"])
+
+    def test_unreviewed_installer_revision_cannot_reuse_an_existing_release_receipt(self):
+        official_url = (
+            "https://raw.githubusercontent.com/Dicklesworthstone/"
+            "mcp_agent_mail_rust/refs/heads/main/install.sh"
+        )
+        approved_url = "KNOWN_INSTALLERS[mcp_agent_mail]=" + shlex.quote(official_url) + "\n"
+        # Establish release evidence through the documented trust fixture. A
+        # later checksum approval alone must not grant adapter compatibility.
+        first = self.agent_mail(before=approved_url)
+        self.assertIn("COUNTS=1,0,0,0", first.stdout, first.stdout + first.stderr)
+        previous = json.loads(self.receipt.read_text())
+        self.assertEqual(previous["contract"]["installer"]["url"], official_url)
+        with self.installer.open("a") as stream:
+            stream.write("# newly approved script without an adapter review\n")
+        revised_pin = hashlib.sha256(self.installer.read_bytes()).hexdigest()
+        self.assertNotEqual(previous["contract"]["installer"]["sha256"], revised_pin)
+        real_resolver = approved_url + r'''
+eval "$fixture_production_release_resolver"
+update_tool_latest_release_tag() {
+    printf 'unreviewed-release-lookup\n' >> "$TEST_ROOT/events"
+    return 99
+}
+update_curl() {
+    printf 'unreviewed-metadata-download\n' >> "$TEST_ROOT/events"
+    return 99
+}
+'''
+        for _ in range(2):
+            result = self.agent_mail(before=real_resolver)
+            self.assertIn("COUNTS=1,0,0,0", result.stdout, result.stdout + result.stderr)
+            self.assertTrue(json.loads(self.receipt.read_text()).get("invalidated"))
+        events = self.events()
+        self.assertEqual(events.count("installer-download"), 3)
+        self.assertEqual(events.count("install"), 3)
+        # Only the first, authenticated fixture contract staged release files.
+        for kind in ("archive", "manifest", "signature"):
+            self.assertEqual(events.count(kind + "-download"), 1)
+        self.assertNotIn("unreviewed-release-lookup", events)
+        self.assertNotIn("unreviewed-metadata-download", events)
         arguments = (self.base / "installer-arguments").read_text().splitlines()
         self.assertEqual(arguments, ["--dest", str(self.install), "--yes", "--no-service", "--force"])
 

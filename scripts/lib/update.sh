@@ -9853,7 +9853,19 @@ update_agent_mail_release_contract() {
     local installer_url="$2" installer_sha="$3"
     am_contract_result=()
     [[ "$installer_url" == https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail_rust/refs/heads/main/install.sh ]] || return 1
-    [[ "$installer_sha" == 3de2d65db5405432e56e28eddfd5046226fc8d2bedf53b7fb56a003aa9e88454 ]] || return 1
+    # Reviewed upstream revisions bc796a2d and baa88392 share this archive,
+    # signature and destination-lock contract. The latter only defers Python
+    # migration takeover until verification succeeds. Keep approval explicit:
+    # a checksum refresh alone must never authorize a new receipt adapter.
+    case "$installer_sha" in
+        3de2d65db5405432e56e28eddfd5046226fc8d2bedf53b7fb56a003aa9e88454|\
+        16c12f599faa11e633dd6bcf9a4f9fb4c0436a7a7514b249eff295bf0ef00af8)
+            ;;
+        *)
+            log_to_file "MCP Agent Mail release adapter has not reviewed installer SHA-256 ${installer_sha:-<missing>}; using the independently verified upstream installer. Maintainers must review the adapter before enabling release reuse."
+            return 1
+            ;;
+    esac
     # Archive-derived inventory and target-account lock coordination require
     # Python. Without it retain the existing verified installer path.
     update_system_binary_path python3 >/dev/null || return 1
