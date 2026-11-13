@@ -111,6 +111,36 @@ with test-side syscall barriers and a separate process replacing paths. Kernel
 ownership and ACL cases explicitly report skips when the host cannot support
 them.
 
+### Existing runtime permissions
+
+The updater's runtime mode repair also operates through retained, no-follow
+directory descriptors. Every traversed runtime directory must belong to the
+executing account; root does not repair another user's runtime. Ancestors must
+have safe ownership and permissions. Foreign directories, world-writable
+directories, shared groups, and directories with sharing ACLs are refused with
+their exact path and observed owner/mode, and their subtrees are left alone.
+
+Eligible private-group runtime directories can be tightened from `0775` to
+`0755`. Owned regular files such as `0664` or `0666` can lose group/other write
+while retaining their other permission bits. File repair also requires a private
+group and no sharing ACL; it refuses multiple hard links because the same inode
+could also exist outside the runtime. Symlinks and special files are never
+followed or changed. The runtime root's `.git` metadata remains excluded.
+
+Repair opens each object relative to its checked parent, compares the open
+object with its directory entry, and uses `fchmod` on that descriptor. It
+rechecks directory ancestry before and after mutations, so a substituted path
+cannot redirect permission changes. Dry-run performs the checks and reports
+eligible changes without modifying modes. Traversal is bounded and does not
+collect an entire runtime tree into command-line arguments.
+
+This remains a best-effort maintenance operation. An unsafe component or an
+interrupted repair is logged as incomplete; deployment and execution keep their
+independent unsafe-path checks. Review the named component's intended ownership
+and sharing before retrying. Do not recursively chmod or chown a shared tree.
+As with installer staging, this does not provide lifetime isolation from a
+malicious process running as the same account after validation returns.
+
 ### Agent Mail
 
 For the reviewed Linux release-archive installer, ACFS resolves the exact

@@ -4258,32 +4258,29 @@ sync_acfs_deployed() {
 # (0002, Ubuntu's default for login users) installer copies, git pulls of a
 # self-managed ~/.acfs and the syncs above all leave 664/775 modes, so
 # `acfs swarm inventory probe-fleet` refused ACFS's own runtime as
-# unsafe_input_file. Strip group/other write from what this user owns there.
+# unsafe_input_file. Normalize private, owned runtime objects without following
+# mutable pathnames for chmod or changing foreign/shared subtrees.
 update_normalize_runtime_modes() {
     local acfs_home="${1:-}"
-    local find_bin=""
-    local chmod_bin=""
+    local python_bin=""
+    local timeout_bin=""
     local stat_bin=""
     local runtime_owner=""
-    local path=""
-    local i=0
-    local failed=false
-    local -a owner_test=()
-    local -a writable=()
+    local repair_output="" repair_line="" repair_status=0
 
     acfs_home="${acfs_home%/}"
     [[ -n "$acfs_home" && "$acfs_home" == /* ]] || return 0
     [[ "$acfs_home" != "${HOME%/}" ]] || return 0
-    [[ -d "$acfs_home" && ! -L "$acfs_home" ]] || return 0
-    find_bin="$(update_system_binary_path find 2>/dev/null || true)"
-    chmod_bin="$(update_system_binary_path chmod 2>/dev/null || true)"
-    [[ -n "$find_bin" && -n "$chmod_bin" ]] || return 0
+    [[ -d "$acfs_home" || -L "$acfs_home" ]] || return 0
+    python_bin="$(update_system_binary_path python3 2>/dev/null || true)"
+    timeout_bin="$(update_system_binary_path timeout 2>/dev/null || true)"
+    if [[ -z "$python_bin" || -z "$timeout_bin" ]]; then
+        log_to_file "Skipped runtime mode repair under $acfs_home: trusted Python/timeout unavailable"
+        return 0
+    fi
 
-    # Root never changes modes inside a tree another user can write: between
-    # find and chmod that user could swap an entry for a symlink, and root's
-    # chmod would follow it (e.g. to /tmp). A user-owned runtime is repaired by
-    # its owner's own update (the nightly runs as that user); root repairs
-    # only a runtime that root owns.
+    # Keep the early root refusal, but do not treat it as authority for the
+    # descendants. The helper checks every opened directory and file again.
     if [[ "$EUID" == 0 ]]; then
         stat_bin="$(update_system_binary_path stat 2>/dev/null || true)"
         if [[ -n "$stat_bin" ]]; then
@@ -4294,29 +4291,260 @@ update_normalize_runtime_modes() {
             return 0
         fi
     fi
-    owner_test=(-user "$EUID")
 
-    while IFS= read -r -d '' path; do
-        writable+=("$path")
-    done < <("$find_bin" "$acfs_home" -xdev -path "$acfs_home/.git" -prune -o \
-        \( -type f -o -type d \) "${owner_test[@]}" \( -perm -020 -o -perm -002 \) -print0 2>/dev/null)
-    [[ ${#writable[@]} -gt 0 ]] || return 0
+    repair_output="$("$timeout_bin" --signal=KILL 60 "$python_bin" -I -u - \
+        "$acfs_home" "${DRY_RUN:-false}" <<'ACFS_RUNTIME_MODES_PY'
+import errno
+import grp
+import os
+import pwd
+import stat
+import sys
 
-    if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        log_to_file "Would remove group/other write from ${#writable[@]} path(s) under $acfs_home"
-        return 0
+root, dry_run = sys.argv[1:]
+dry_run = dry_run == "true"
+uid, gid = os.geteuid(), os.getegid()
+held, scans = [], []
+changed = skipped = 0
+private_group_result = None
+directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+
+
+class Refused(ValueError):
+    pass
+
+
+class Replaced(Refused):
+    pass
+
+
+def identity(info):
+    # Concurrent creation of unrelated children must not invalidate a directory.
+    return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid)
+
+
+def refuse(path, reason, info=None, replaced=False):
+    observed = (f"uid={info.st_uid}, gid={info.st_gid}, "
+                f"mode={stat.S_IMODE(info.st_mode):04o}" if info else "ownership/mode unavailable")
+    error = Replaced if replaced else Refused
+    raise error(f"Runtime mode repair refused {path!r}: {reason} ({observed}). "
+                "Stop concurrent writers and review this component's ownership, group and ACL sharing; "
+                "repair only an intended private runtime, without recursive chmod/chown or following links.")
+
+
+def record(error):
+    global skipped
+    skipped += 1
+    print(str(error), flush=True)
+
+
+def named_info(parent, name, path):
+    try:
+        return os.stat(name, dir_fd=parent, follow_symlinks=False)
+    except OSError as error:
+        refuse(path, f"cannot inspect component: {error.strerror}", replaced=True)
+
+
+def fence():
+    for node in held:
+        current = os.fstat(node["fd"])
+        if identity(current) != node["identity"]:
+            refuse(node["path"], "directory identity or permissions changed", current, replaced=True)
+        if node["parent"] is not None:
+            named = named_info(node["parent"], node["name"], node["path"])
+            if identity(named) != identity(current):
+                refuse(node["path"], "directory path was replaced", named, replaced=True)
+
+
+def private_group():
+    global private_group_result
+    if private_group_result is None:
+        try:
+            account, group = pwd.getpwuid(uid), grp.getgrgid(gid)
+            private_group_result = (account.pw_gid == gid and group.gr_name == account.pw_name
+                                    and not (set(group.gr_mem) - {account.pw_name})
+                                    and not any(other.pw_uid != uid and other.pw_gid == gid
+                                                for other in pwd.getpwall()))
+        except (KeyError, OSError):
+            private_group_result = False
+    return private_group_result
+
+
+def has_acl(fd, path, info):
+    if not hasattr(os, "getxattr"):
+        refuse(path, "ACL inspection is unavailable", info)
+    for attribute in ("system.posix_acl_access", "system.posix_acl_default"):
+        try:
+            if os.getxattr(fd, attribute):
+                return True
+        except OSError as error:
+            if error.errno not in (errno.ENODATA, errno.ENOTSUP, errno.EOPNOTSUPP):
+                refuse(path, f"cannot inspect sharing ACL: {error.strerror}", info)
+    return False
+
+
+def open_directory(parent, name, path, managed, device=None):
+    global changed
+    before = named_info(parent, name, path)
+    if not stat.S_ISDIR(before.st_mode):
+        refuse(path, "symlink or non-directory component", before)
+    if before.st_uid not in ((uid,) if managed else (0, uid)):
+        refuse(path, "foreign-owned directory; subtree was not traversed", before)
+    if device is not None and before.st_dev != device:
+        refuse(path, "different filesystem; subtree was not traversed", before)
+    try:
+        fd = os.open(name, directory_flags, dir_fd=parent)
+    except OSError as error:
+        refuse(path, f"cannot open directory without following links: {error.strerror}", before)
+    node = {"fd": fd, "parent": parent, "name": name, "path": path,
+            "identity": identity(before)}
+    held.append(node)
+    try:
+        current = os.fstat(fd)
+        if identity(current) != identity(before):
+            refuse(path, "directory changed while opening", current, replaced=True)
+        mode = stat.S_IMODE(current.st_mode)
+        sticky_tmp = (not managed and path in ("/tmp", "/var/tmp")
+                      and current.st_uid == 0 and mode == 0o1777)
+        if mode & 0o022 and not sticky_tmp:
+            if (not managed or current.st_gid != gid or mode & 0o7002
+                    or not private_group() or has_acl(fd, path, current)):
+                refuse(path, "shared or writable directory is not eligible for private repair", current)
+            fence()
+            if not dry_run:
+                tightened = mode & ~0o022
+                os.fchmod(fd, tightened)
+                after = os.fstat(fd)
+                expected = (current.st_dev, current.st_ino, stat.S_IFDIR | tightened, uid, current.st_gid)
+                if identity(after) != expected:
+                    refuse(path, "directory changed during permission repair", after, replaced=True)
+                node["identity"] = identity(after)
+                fence()
+            changed += 1
+        fence()
+        return node
+    except BaseException:
+        held.pop()
+        os.close(fd)
+        raise
+
+
+def normalize_file(parent, name, path, before):
+    global changed
+    mode = stat.S_IMODE(before.st_mode)
+    if not mode & 0o022:
+        return
+    if before.st_uid != uid:
+        refuse(path, "foreign-owned file", before)
+    if before.st_nlink != 1:
+        refuse(path, "multiply-linked file may also exist outside the runtime", before)
+    if before.st_gid != gid or mode & 0o7000 or not private_group():
+        refuse(path, "shared group or special-mode file", before)
+    try:
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=parent)
+    except OSError as error:
+        refuse(path, f"cannot open file without following links: {error.strerror}", before)
+    try:
+        current = os.fstat(fd)
+        if identity(current) != identity(before) or current.st_nlink != 1:
+            refuse(path, "file changed while opening", current)
+        if has_acl(fd, path, current):
+            refuse(path, "file has a sharing ACL", current)
+        fence()
+        named = named_info(parent, name, path)
+        if identity(named) != identity(current) or named.st_nlink != 1:
+            refuse(path, "file path was replaced before permission repair", named)
+        if not dry_run:
+            tightened = mode & ~0o022
+            os.fchmod(fd, tightened)
+            after = os.fstat(fd)
+            expected = (current.st_dev, current.st_ino, stat.S_IFREG | tightened, uid, current.st_gid)
+            if identity(after) != expected or after.st_nlink != 1:
+                refuse(path, "file changed during permission repair", after)
+            fence()
+            named = named_info(parent, name, path)
+            if identity(named) != identity(after) or named.st_nlink != 1:
+                refuse(path, "file path was replaced during permission repair", named)
+        changed += 1
+    finally:
+        os.close(fd)
+
+
+try:
+    if (not root.startswith("/") or root.startswith("//") or root == "/"
+            or os.path.normpath(root) != root or any(char in root for char in "\r\n\x00")):
+        refuse(root, "runtime path must be canonical and absolute")
+    parent = open_directory(None, "/", "/", False)
+    parts, path = root.split("/")[1:], ""
+    for index, part in enumerate(parts):
+        path += "/" + part
+        parent = open_directory(parent["fd"], part, path, index == len(parts) - 1)
+    device = os.fstat(parent["fd"]).st_dev
+    scans.append((parent, os.scandir(parent["fd"])))
+    while scans:
+        node, entries = scans[-1]
+        try:
+            entry = next(entries)
+        except StopIteration:
+            fence()
+            entries.close()
+            scans.pop()
+            held.pop()
+            os.close(node["fd"])
+            continue
+        if node["path"] == root and entry.name == ".git":
+            continue
+        child_path = node["path"] + "/" + entry.name
+        try:
+            before = named_info(node["fd"], entry.name, child_path)
+            if stat.S_ISDIR(before.st_mode):
+                child = open_directory(node["fd"], entry.name, child_path, True, device)
+                try:
+                    iterator = os.scandir(child["fd"])
+                except OSError:
+                    held.pop()
+                    os.close(child["fd"])
+                    raise
+                scans.append((child, iterator))
+            elif stat.S_ISREG(before.st_mode):
+                normalize_file(node["fd"], entry.name, child_path, before)
+            # Symlinks and special files are never followed or chmodded.
+        except Replaced:
+            raise
+        except Refused as error:
+            record(error)
+        except OSError as error:
+            record(f"Runtime mode repair refused {child_path!r}: {error.strerror}")
+    fence()
+except Refused as error:
+    record(error)
+except OSError as error:
+    component = held[-1]["path"] if held else root
+    record(f"Runtime mode repair refused {component!r}: {error.strerror}")
+finally:
+    for _, iterator in reversed(scans):
+        iterator.close()
+    for node in reversed(held):
+        os.close(node["fd"])
+
+if changed:
+    action = "Would remove" if dry_run else "Removed"
+    print(f"{action} group/other write from {changed} path(s) under {root}", flush=True)
+if skipped:
+    print(f"Runtime mode repair incomplete under {root}: {skipped} unsafe component(s) refused; "
+          "review the exact-component diagnostics before retrying.", flush=True)
+    sys.exit(1)
+ACFS_RUNTIME_MODES_PY
+    )" || repair_status=$?
+    while IFS= read -r repair_line; do
+        [[ -z "$repair_line" ]] || log_to_file "$repair_line"
+    done <<< "$repair_output"
+    if [[ "$repair_status" -ne 0 ]]; then
+        log_to_file "Unable to complete safe runtime mode repair under $acfs_home (helper exit $repair_status)"
     fi
-    # Batches keep a large runtime (caches, node_modules) under ARG_MAX. Paths
-    # are absolute (find starts from one), so no option terminator is needed;
-    # BSD chmod would read a "--" after the mode as a file name.
-    for ((i = 0; i < ${#writable[@]}; i += 500)); do
-        "$chmod_bin" go-w "${writable[@]:i:500}" 2>/dev/null || failed=true
-    done
-    if [[ "$failed" == false ]]; then
-        log_to_file "Removed group/other write from ${#writable[@]} path(s) under $acfs_home"
-    else
-        log_to_file "Unable to remove group/other write from every path under $acfs_home"
-    fi
+    # Best effort only; deployment and execution retain their independent
+    # unsafe-path checks. A refusal is logged, never advertised as full repair.
+    return 0
 }
 
 sync_acfs_global_wrapper() (

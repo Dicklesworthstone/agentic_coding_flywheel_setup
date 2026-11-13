@@ -273,6 +273,285 @@ class IdempotencyFixture(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
+class RuntimeModeNormalizationTests(IdempotencyFixture):
+    """Repair only private runtime objects, with all replaced paths retained."""
+
+    def setUp(self):
+        super().setUp()
+        self.runtime = self.home / ".acfs"
+        self.runtime.mkdir(mode=0o755)
+
+    def runtime_file(self, path, mode=0o666):
+        path.write_text("retained runtime fixture\n")
+        path.chmod(mode)
+        return path
+
+    def normalize(self, runtime=None):
+        return self.shell(r'''
+log_to_file() { printf '%s\n' "$*" >&2; }
+update_normalize_runtime_modes "$TEST_RUNTIME_ROOT"
+''', TEST_RUNTIME_ROOT=str(self.runtime if runtime is None else runtime))
+
+    def assert_skipped(self, result, component):
+        # The shell API is deliberately best effort. A refusal must be visible
+        # even though it does not change the surrounding updater's exit status.
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(str(component), result.stderr)
+        self.assertIn("incomplete", result.stderr.lower())
+
+    def runtime_source(self):
+        text = SOURCE.read_text()
+        marker = "<<'ACFS_RUNTIME_MODES_PY'\n"
+        self.assertIn(marker, text)
+        return text.split(marker, 1)[1].split("\nACFS_RUNTIME_MODES_PY\n", 1)[0]
+
+    def test_world_writable_and_special_directories_preserve_their_subtrees(self):
+        unsafe = []
+        for mode in (0o777, 0o1775, 0o2775):
+            directory = self.runtime / f"shared-{mode:04o}"
+            directory.mkdir(mode=0o755)
+            directory.chmod(mode)
+            payload = self.runtime_file(directory / "shared-script.sh")
+            unsafe.append((directory, payload, mode))
+        private = self.runtime_file(self.runtime / "private-script.sh", 0o664)
+        result = self.normalize()
+        for directory, payload, mode in unsafe:
+            with self.subTest(mode=f"{mode:04o}"):
+                self.assertEqual(stat.S_IMODE(directory.stat().st_mode), mode)
+                self.assertEqual(stat.S_IMODE(payload.stat().st_mode), 0o666)
+                self.assert_skipped(result, directory)
+        self.assertEqual(stat.S_IMODE(private.stat().st_mode), 0o644)
+
+    def test_hardlinked_files_do_not_change_the_alias_outside_the_runtime(self):
+        payload = self.runtime_file(self.runtime / "linked-script.sh")
+        outside = self.base / "outside-script.sh"
+        os.link(payload, outside)
+        private = self.runtime_file(self.runtime / "private-script.sh", 0o664)
+        result = self.normalize()
+        self.assertEqual(stat.S_IMODE(payload.stat().st_mode), 0o666)
+        self.assertEqual(stat.S_IMODE(outside.stat().st_mode), 0o666)
+        self.assertEqual(payload.stat().st_nlink, 2)
+        self.assertEqual(outside.read_text(), "retained runtime fixture\n")
+        self.assertEqual(stat.S_IMODE(private.stat().st_mode), 0o644)
+        self.assert_skipped(result, payload)
+
+    def test_symlink_above_runtime_cannot_redirect_permission_repairs(self):
+        payload = self.runtime_file(self.runtime / "script.sh")
+        alias = self.base / "home-alias"
+        alias.symlink_to(self.home, target_is_directory=True)
+        result = self.normalize(alias / self.runtime.name)
+        self.assertEqual(stat.S_IMODE(payload.stat().st_mode), 0o666)
+        self.assertTrue(alias.is_symlink())
+        self.assert_skipped(result, alias)
+
+    def test_symlinked_runtime_root_is_diagnosed_and_preserved(self):
+        payload = self.runtime_file(self.runtime / "script.sh")
+        alias = self.home / "runtime-alias"
+        alias.symlink_to(self.runtime, target_is_directory=True)
+        result = self.normalize(alias)
+        self.assertEqual(stat.S_IMODE(payload.stat().st_mode), 0o666)
+        self.assertTrue(alias.is_symlink())
+        self.assert_skipped(result, alias)
+
+    def test_writable_ancestor_is_not_repaired_or_used_for_traversal(self):
+        payload = self.runtime_file(self.runtime / "script.sh")
+        self.home.chmod(0o775)
+        result = self.normalize()
+        self.assertEqual(stat.S_IMODE(self.home.stat().st_mode), 0o775)
+        self.assertEqual(stat.S_IMODE(payload.stat().st_mode), 0o666)
+        self.assert_skipped(result, self.home)
+
+    def test_symlink_leaves_never_change_external_files_or_directories(self):
+        outside = self.base / "outside-runtime"
+        outside.mkdir(mode=0o755)
+        outside.chmod(0o777)
+        payload = self.runtime_file(outside / "script.sh")
+        (self.runtime / "directory-link").symlink_to(outside, target_is_directory=True)
+        (self.runtime / "file-link").symlink_to(payload)
+        private = self.runtime_file(self.runtime / "private-script.sh", 0o664)
+        self.normalize()
+        self.assertEqual(stat.S_IMODE(outside.stat().st_mode), 0o777)
+        self.assertEqual(stat.S_IMODE(payload.stat().st_mode), 0o666)
+        self.assertEqual(stat.S_IMODE(private.stat().st_mode), 0o644)
+        self.assertTrue((self.runtime / "directory-link").is_symlink())
+        self.assertTrue((self.runtime / "file-link").is_symlink())
+
+    def test_actual_foreign_owned_runtime_is_refused_without_traversal(self):
+        # This is a real foreign UID, not a modeled stat result. The candidate
+        # helper must reject it before enumeration or any chmod is attempted.
+        foreign = Path("/etc")
+        before = foreign.stat()
+        if before.st_uid == os.geteuid():
+            self.skipTest("requires a readable directory owned by a different UID")
+        program = f'''
+import os, sys
+def forbidden(*args, **kwargs):
+    raise AssertionError("unexpected foreign traversal or mutation")
+os.scandir = os.fchmod = forbidden
+sys.argv = ["acfs-runtime-modes", {str(foreign)!r}, "false"]
+exec(compile({self.runtime_source()!r}, "update.sh:ACFS_RUNTIME_MODES_PY", "exec"))
+'''
+        result = subprocess.run(["/usr/bin/python3", "-I", "-c", program],
+                                env=self.env, text=True, capture_output=True, timeout=15)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn(str(foreign), result.stdout)
+        self.assertIn(f"uid={before.st_uid}", result.stdout)
+        self.assertIn("foreign-owned", result.stdout)
+        self.assertNotIn("unexpected foreign traversal or mutation", result.stdout + result.stderr)
+        after = foreign.stat()
+        self.assertEqual((after.st_uid, after.st_mode, after.st_mtime_ns),
+                         (before.st_uid, before.st_mode, before.st_mtime_ns))
+
+    def test_only_runtime_root_git_metadata_is_pruned(self):
+        root_git = self.runtime / ".git"
+        root_git.mkdir(mode=0o755)
+        root_git.chmod(0o775)
+        root_head = self.runtime_file(root_git / "HEAD", 0o664)
+        nested = self.runtime / "nested"
+        nested.mkdir(mode=0o755)
+        nested_git = nested / ".git"
+        nested_git.mkdir(mode=0o755)
+        nested_head = self.runtime_file(nested_git / "HEAD", 0o664)
+        self.normalize()
+        self.assertEqual(stat.S_IMODE(root_git.stat().st_mode), 0o775)
+        self.assertEqual(stat.S_IMODE(root_head.stat().st_mode), 0o664)
+        self.assertEqual(stat.S_IMODE(nested_head.stat().st_mode), 0o644)
+
+    def test_named_or_default_acl_blocks_permission_changes(self):
+        if not hasattr(os, "setxattr"):
+            self.skipTest("requires POSIX ACL extended attributes")
+        for kind, attribute in (("file", "system.posix_acl_access"),
+                                ("directory", "system.posix_acl_access"),
+                                ("directory", "system.posix_acl_default")):
+            with self.subTest(kind=kind, acl=attribute):
+                component = self.runtime / (kind + "-" + attribute)
+                if kind == "file":
+                    self.runtime_file(component, 0o664)
+                    permissions = (6, 6, 4, 6, 4)
+                else:
+                    component.mkdir(mode=0o755)
+                    component.chmod(0o775)
+                    permissions = (7, 7, 5, 7, 5)
+                acl = struct.pack("<I", 2) + b"".join(
+                    struct.pack("<HHI", tag, permission, identifier)
+                    for (tag, identifier), permission in zip(
+                        ((1, 0xffffffff), (2, os.geteuid()), (4, 0xffffffff),
+                         (16, 0xffffffff), (32, 0xffffffff)), permissions)
+                )
+                try:
+                    os.setxattr(component, attribute, acl)
+                except OSError as error:
+                    if error.errno in (errno.ENOTSUP, errno.EOPNOTSUPP):
+                        self.skipTest("fixture filesystem does not support POSIX ACLs")
+                    raise
+                before = component.stat()
+                result = self.normalize()
+                self.assert_skipped(result, component)
+                self.assertEqual(component.stat().st_mode, before.st_mode)
+                self.assertEqual(os.getxattr(component, attribute), acl)
+
+    def test_modeled_shared_group_membership_preserves_directory_and_file_modes(self):
+        directory = self.runtime / "shared-group"
+        directory.mkdir(mode=0o755)
+        directory.chmod(0o775)
+        payload = self.runtime_file(directory / "script.sh")
+        top_file = self.runtime_file(self.runtime / "shared-file.sh", 0o664)
+        # Only the NSS membership result is modeled. UID/GID, paths, modes,
+        # descriptor identity and fchmod all use the real filesystem.
+        program = f'''
+import grp, sys
+original = grp.getgrgid
+def shared_group(gid):
+    group = original(gid)
+    return grp.struct_group((group.gr_name, group.gr_passwd, group.gr_gid,
+                             list(group.gr_mem) + ["another-group-member"]))
+grp.getgrgid = shared_group
+sys.argv = ["acfs-runtime-modes", {str(self.runtime)!r}, "false"]
+exec(compile({self.runtime_source()!r}, "update.sh:ACFS_RUNTIME_MODES_PY", "exec"))
+'''
+        result = subprocess.run(["/usr/bin/python3", "-I", "-c", program],
+                                env=self.env, text=True, capture_output=True, timeout=15)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(str(directory), result.stdout + result.stderr)
+        self.assertIn(str(top_file), result.stdout + result.stderr)
+        self.assertEqual(stat.S_IMODE(directory.stat().st_mode), 0o775)
+        self.assertEqual(stat.S_IMODE(payload.stat().st_mode), 0o666)
+        self.assertEqual(stat.S_IMODE(top_file.stat().st_mode), 0o664)
+
+    def replacing_runtime_path(self, kind):
+        payload = self.runtime_file(self.runtime / "script.sh", 0o664)
+        outside = self.base / "outside-runtime"
+        outside.mkdir(mode=0o755)
+        victim = self.runtime_file(outside / "script.sh")
+        original = payload.stat()
+        ready_read, ready_write = os.pipe()
+        resume_read, resume_write = os.pipe()
+        program = f'''
+import os, sys
+ready, resume = {ready_write}, {resume_read}
+triggered = False
+def barrier(fd):
+    global triggered
+    info = os.fstat(fd)
+    if not triggered and (info.st_dev, info.st_ino) == {(original.st_dev, original.st_ino)!r}:
+        triggered = True
+        os.write(ready, b"ready")
+        if os.read(resume, 1) != b"x":
+            raise RuntimeError("replacement harness did not resume")
+original_open, original_fchmod = os.open, os.fchmod
+def intercepted_open(path, flags, *args, **kwargs):
+    fd = original_open(path, flags, *args, **kwargs)
+    if {kind!r} == "ancestor":
+        barrier(fd)
+    return fd
+def intercepted_fchmod(fd, mode):
+    if {kind!r} == "file":
+        barrier(fd)
+    return original_fchmod(fd, mode)
+os.open, os.fchmod = intercepted_open, intercepted_fchmod
+sys.argv = ["acfs-runtime-modes", {str(self.runtime)!r}, "false"]
+exec(compile({self.runtime_source()!r}, "update.sh:ACFS_RUNTIME_MODES_PY", "exec"))
+'''
+        process = subprocess.Popen(
+            ["/usr/bin/python3", "-I", "-c", program], env=self.env,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            pass_fds=(ready_write, resume_read),
+        )
+        os.close(ready_write)
+        os.close(resume_read)
+        try:
+            ready, _, _ = select.select([ready_read], [], [], 5)
+            self.assertTrue(ready, "production helper never reached the replacement barrier")
+            signal = os.read(ready_read, 5)
+            if signal != b"ready":
+                stdout, stderr = process.communicate(timeout=5)
+                self.fail("helper exited before replacement: " + stdout + stderr)
+            component = payload if kind == "file" else self.runtime
+            component.rename(self.base / "preserved-original")
+            component.symlink_to(victim if kind == "file" else outside,
+                                 target_is_directory=(kind == "ancestor"))
+            os.write(resume_write, b"x")
+            stdout, stderr = process.communicate(timeout=10)
+            self.assertNotEqual(process.returncode, 0, stdout + stderr)
+            self.assertIn(str(component), stdout + stderr)
+            self.assertIn("incomplete", (stdout + stderr).lower())
+            self.assertTrue(component.is_symlink())
+            self.assertEqual(stat.S_IMODE(victim.stat().st_mode), 0o666)
+            self.assertEqual(victim.read_text(), "retained runtime fixture\n")
+        finally:
+            os.close(ready_read)
+            os.close(resume_write)
+            if process.poll() is None:
+                process.kill()
+                process.communicate()
+
+    def test_concurrent_file_replacement_cannot_chmod_symlink_target(self):
+        self.replacing_runtime_path("file")
+
+    def test_concurrent_ancestor_replacement_cannot_redirect_runtime_repairs(self):
+        self.replacing_runtime_path("ancestor")
+
+
 class InstallerStagingTests(unittest.TestCase):
     """Real filesystem staging checks; preserve fixtures and replaced paths.
 
