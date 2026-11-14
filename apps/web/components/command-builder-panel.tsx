@@ -338,13 +338,10 @@ function SavedCommandBuilderPanel() {
     if (normalizeSSHUsername(trimmed)) return null;
     return "Use lowercase letters, numbers, dots, underscores, or hyphens, and start with a lowercase letter or underscore.";
   }, [usernameDraft]);
-  const effectiveUsername = useMemo(() => {
-    const trimmed = usernameDraft.trim();
-    if (!trimmed || usernameError) {
-      return username;
-    }
-    return trimmed;
-  }, [username, usernameDraft, usernameError]);
+  const effectiveUsername = useMemo(
+    () => normalizeSSHUsername(usernameDraft),
+    [usernameDraft],
+  );
   const normalizedRefDraft = useMemo(() => {
     const trimmed = refDraft.trim();
     if (!trimmed) return null;
@@ -355,6 +352,12 @@ function SavedCommandBuilderPanel() {
     if (!trimmed) return null;
     return normalizedRefDraft;
   }, [normalizedRefDraft, refDraft]);
+  const refError = useMemo(() => {
+    const value = refDraft.trim();
+    if (!value || normalizedRefDraft) return null;
+    return "Enter a valid git branch, tag, or commit before generating commands.";
+  }, [normalizedRefDraft, refDraft]);
+  const hasInvalidDraft = Boolean(usernameError || refError);
 
   const moduleSelection = useMemo(
     () => ({
@@ -389,7 +392,7 @@ function SavedCommandBuilderPanel() {
   }, [moduleSelection]);
 
   const commands = useMemo(() => {
-    if (!ready || !effectiveIP || !plan.ok) return null;
+    if (!ready || !effectiveIP || !effectiveUsername || !plan.ok || hasInvalidDraft) return null;
     return buildCommands({
       ip: effectiveIP,
       os: effectiveOS,
@@ -398,16 +401,13 @@ function SavedCommandBuilderPanel() {
       ref: effectiveRef,
       moduleSelection,
     });
-  }, [ready, effectiveIP, effectiveOS, effectiveUsername, mode, effectiveRef, moduleSelection, plan.ok]);
-
-  const refError = useMemo(() => {
-    const value = refDraft.trim();
-    if (!value || normalizedRefDraft) return null;
-    return "Invalid git ref format. Command generation falls back to main.";
-  }, [normalizedRefDraft, refDraft]);
+  }, [ready, effectiveIP, effectiveOS, effectiveUsername, mode, effectiveRef, moduleSelection, plan.ok, hasInvalidDraft]);
 
   const handleShare = useCallback(() => {
-    if (!ready || !effectiveIP || !plan.ok || hasUnshareableSelection) return;
+    if (
+      !ready || !effectiveIP || !effectiveUsername || !plan.ok ||
+      hasInvalidDraft || hasUnshareableSelection
+    ) return;
     const url = buildShareURL({
       ip: effectiveIP,
       os: effectiveOS,
@@ -427,6 +427,7 @@ function SavedCommandBuilderPanel() {
     effectiveRef,
     moduleSelection,
     plan.ok,
+    hasInvalidDraft,
     hasUnshareableSelection,
   ]);
 
@@ -458,7 +459,8 @@ function SavedCommandBuilderPanel() {
     const trimmed = usernameDraft.trim();
     const normalized = normalizeSSHUsername(trimmed);
     if (!normalized) {
-      setUsernameDraft(username);
+      // Keep the rejected choice visible. Resetting on blur would re-enable
+      // commands for the saved account while the user tries to copy them.
       return;
     }
 
@@ -519,7 +521,7 @@ function SavedCommandBuilderPanel() {
             variant="ghost"
             size="sm"
             onClick={handleShare}
-            disabled={!plan.ok || hasUnshareableSelection}
+            disabled={!plan.ok || hasInvalidDraft || hasUnshareableSelection}
             title={
               hasUnshareableSelection
                 ? "Copy the exact command below; shared links cannot preserve this module selection."
@@ -824,6 +826,10 @@ function SavedCommandBuilderPanel() {
       ) : !plan.ok ? (
         <p className="py-4 text-center text-sm text-muted-foreground">
           Resolve the install plan conflict above to generate commands.
+        </p>
+      ) : hasInvalidDraft ? (
+        <p role="alert" className="py-4 text-center text-sm text-destructive">
+          Correct the SSH username or git ref in Advanced settings to generate commands.
         </p>
       ) : (
         <p className="py-4 text-center text-sm text-muted-foreground">

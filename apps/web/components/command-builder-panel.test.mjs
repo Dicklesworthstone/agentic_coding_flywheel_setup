@@ -525,3 +525,105 @@ test("observing another saved ref permanently discards the previous uncommitted 
   assert.doesNotMatch(item.copies.at(-1), /v1\.2\.3-local|v2\.0\.0/);
   assert.equal(item.buildCalls.at(-1).ref, "v1.2.3");
 });
+
+for (const invalid of ["", "root", "bad user", "Admin"]) {
+  test(`invalid username ${JSON.stringify(invalid)} withholds commands and sharing until corrected`, async () => {
+    const item = fixture();
+    item.preferences.username = "saved-user";
+    item.preferences.ref = "v1.2.3";
+    item.render().button("Advanced").props.onClick();
+    let view = item.render();
+    assert.match(view.command(), /TARGET_USER="saved-user"/);
+    view.input("cb-user").props.onChange({ target: { value: invalid } });
+    const previousCalls = item.buildCalls.length;
+    view = item.render();
+    assert.equal(view.command(), "", "an invalid draft cannot authorize the saved username");
+    assert.equal(item.buildCalls.length, previousCalls);
+    assert.equal(view.input("cb-user").props["aria-invalid"], "true");
+    assert.equal(view.button("Share link").props.disabled, true);
+    view.button("Share link").props.onClick();
+    assert.deepEqual(item.shares, []);
+    assert.deepEqual(item.copies, []);
+
+    view.input("cb-user").props.onBlur();
+    view = item.render();
+    assert.equal(view.input("cb-user").props.value, invalid, "blur must not replace the invalid choice");
+    assert.equal(item.preferences.username, "saved-user");
+    assert.equal(view.command(), "");
+
+    view.input("cb-user").props.onChange({ target: { value: "corrected-user" } });
+    view = item.render();
+    assert.equal(view.button("Share link").props.disabled, false);
+    await view.button("Copy Run installer command").props.onClick();
+    assert.match(item.copies.at(-1), /TARGET_USER="corrected-user"/);
+    assert.match(item.copies.at(-1), /--ref "v1\.2\.3"/);
+    assert.doesNotMatch(item.copies.at(-1), /saved-user/);
+    view.input("cb-user").props.onBlur();
+    assert.equal(item.preferences.username, "corrected-user");
+  });
+}
+
+for (const invalid of ["bad ref", "feature..name", "-flag", "master"]) {
+  test(`invalid ref ${JSON.stringify(invalid)} cannot become a main installer or shared link`, async () => {
+    const item = fixture();
+    item.preferences.username = "dev-user";
+    item.preferences.ref = "v1.2.3";
+    item.render().button("Advanced").props.onClick();
+    let view = item.render();
+    view.input("cb-ref").props.onChange({ target: { value: invalid } });
+    const previousCalls = item.buildCalls.length;
+    view = item.render();
+    assert.equal(view.command(), "", "an invalid ref must not fall back to main");
+    assert.equal(item.buildCalls.length, previousCalls);
+    assert.equal(view.input("cb-ref").props["aria-invalid"], "true");
+    assert.equal(view.button("Share link").props.disabled, true);
+    view.button("Share link").props.onClick();
+    assert.deepEqual(item.shares, []);
+    assert.deepEqual(item.copies, []);
+
+    view.input("cb-ref").props.onBlur();
+    view = item.render();
+    assert.equal(view.input("cb-ref").props.value, invalid);
+    assert.equal(item.preferences.ref, "v1.2.3");
+    assert.equal(view.command(), "");
+    view.button("Advanced").props.onClick();
+    view = item.render();
+    assert.equal(view.command(), "");
+    assert.match(view.alert(), /Advanced settings/);
+    view.button("Advanced").props.onClick();
+    view = item.render();
+
+    view.input("cb-ref").props.onChange({ target: { value: "v2.0.0" } });
+    view = item.render();
+    assert.equal(view.button("Share link").props.disabled, false);
+    await view.button("Copy Run installer command").props.onClick();
+    assert.match(item.copies.at(-1), /--ref "v2\.0\.0"/);
+    assert.match(item.copies.at(-1), /TARGET_USER="dev-user"/);
+    assert.doesNotMatch(item.copies.at(-1), /\/main\/|v1\.2\.3/);
+    view.input("cb-ref").props.onBlur();
+    assert.equal(item.preferences.ref, "v2.0.0");
+  });
+}
+
+test("explicitly clearing a ref restores main while preserving the guided subset", async () => {
+  const item = fixture();
+  item.preferences.profile = "cloud-only";
+  item.preferences.setupProfile = "cloud-only";
+  item.preferences.ref = "v1.2.3";
+  item.render().button("Advanced").props.onClick();
+  let view = item.render();
+  view.input("cb-ref").props.onChange({ target: { value: "bad ref" } });
+  view = item.render();
+  assert.equal(view.command(), "");
+  view.input("cb-ref").props.onChange({ target: { value: "" } });
+  view = item.render();
+  await view.button("Copy Run installer command").props.onClick();
+  assert.match(item.copies.at(-1), /\/main\/install\.sh/);
+  assert.doesNotMatch(item.copies.at(-1), /--ref|--profile|--only-phase/);
+  for (const id of ["cloud.wrangler", "cloud.supabase", "cloud.vercel", "users.ubuntu", "acfs.doctor"]) {
+    assert.ok(item.copies.at(-1).includes(`--only "${id}"`));
+  }
+  assert.equal(view.button("Share link").props.disabled, true);
+  view.input("cb-ref").props.onBlur();
+  assert.equal(item.preferences.ref, null);
+});
