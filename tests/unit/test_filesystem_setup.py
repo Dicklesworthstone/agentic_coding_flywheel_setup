@@ -113,6 +113,7 @@ install_asset() {
     printf '# fixture early doctor\n' > "$2"
 }
 '''
+            program += function("acfs_legacy_module_selected") + "\n"
             # These are the same fixed-path substitutions used by the existing
             # PostgreSQL installer tests, not product test-only configuration.
             program += function("setup_filesystem").replace("/data", str(self.root / "data"))

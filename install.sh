@@ -7906,6 +7906,12 @@ acfs_install_sudoers_dropin() {
 # Returns 0 when the module should run, 1 when it was deselected.
 acfs_legacy_module_selected() {
     local module_id="$1"
+    # The resolved plan is authoritative even without explicit CLI filters:
+    # optional/default-off modules must not leak into an ordinary Arch install.
+    if [[ "${ACFS_GENERATED_SELECTION_READY:-false}" == true ]]; then
+        should_run_module "$module_id"
+        return $?
+    fi
     declare -f acfs_selection_filters_active >/dev/null 2>&1 || return 0
     acfs_selection_filters_active || return 0
     should_run_module "$module_id"
@@ -8142,6 +8148,11 @@ setup_filesystem() {
     set_phase "filesystem" "Filesystem Setup"
     log_step "2/9" "Setting up filesystem..."
 
+    if ! acfs_legacy_module_selected "base.filesystem"; then
+        log_detail "Skipping filesystem setup (base.filesystem is not selected)"
+        return 0
+    fi
+
     if acfs_use_generated_category "filesystem"; then
         log_detail "Using generated installers for filesystem (phase 3)"
         acfs_run_generated_category_phase "filesystem" "3" || return 1
@@ -8269,7 +8280,7 @@ setup_shell() {
     fi
 
     # Install zsh
-    if ! binary_installed "zsh"; then
+    if acfs_legacy_module_selected "shell.zsh" && ! binary_installed "zsh"; then
         log_detail "Installing zsh"
         if [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
             try_step "Installing zsh (pacman)" acfs_arch_pkg_install zsh git || return 1
@@ -8278,6 +8289,19 @@ setup_shell() {
         fi
     fi
 
+    if acfs_legacy_module_selected "shell.omz"; then
+        setup_shell_legacy_omz || return 1
+    fi
+
+    # Installing the zsh package alone must not change an existing login shell.
+    if acfs_legacy_module_selected "shell.login"; then
+        try_step "Setting zsh as default shell" set_default_shell || return 1
+    fi
+
+    log_success "Shell setup complete"
+}
+
+setup_shell_legacy_omz() {
     # Install Oh My Zsh for target user
     # (Ubuntu path only; Arch-family systems keep their existing prompt setup.)
     # Check multiple possible locations for existing installation
@@ -8440,11 +8464,6 @@ EOF
     fi
     [[ -f "$user_zprofile" ]] && $SUDO chown "$TARGET_USER:$TARGET_USER" "$user_zprofile" 2>/dev/null || true
 
-    # The generated manifest path calls this same helper. A failed or unverifiable
-    # account change must fail the phase, preserving the original shell for recovery.
-    try_step "Setting zsh as default shell" set_default_shell || return 1
-
-    log_success "Shell setup complete"
 }
 
 # ============================================================
@@ -8495,53 +8514,55 @@ install_cli_tools() {
     set_phase "cli_tools" "CLI Tools"
     log_step "4/9" "Installing CLI tools..."
 
-    local used_generated_cli=false
-    local used_generated_network=false
-
-    # Every generated category in this phase runs before the phase result is
-    # decided; an early `return 1` from cli used to skip network (Tailscale)
-    # and tools entirely.
+    # Keep category failures independent, and apply the same resolved plan to
+    # generated and authored paths (including Arch's pacman installers).
     local cli_phase_rc=0
     if acfs_use_generated_category "cli"; then
         log_detail "Using generated installers for cli (phase 5)"
         acfs_run_generated_category_phase "cli" "5" || cli_phase_rc=1
-        used_generated_cli=true
+    elif acfs_legacy_module_selected "cli.modern"; then
+        install_cli_tools_legacy_modern || cli_phase_rc=1
     fi
 
     if acfs_use_generated_category "network"; then
         log_detail "Using generated installers for network (phase 5)"
         acfs_run_generated_category_phase "network" "5" || cli_phase_rc=1
-        used_generated_network=true
-    fi
-
-    # tools phase 5: lazygit, lazydocker — bug #146 audit follow-up
-    if acfs_use_generated_category "tools"; then
-        log_detail "Using generated installers for tools (phase 5)"
-        acfs_run_generated_category_phase "tools" "5" || cli_phase_rc=1
-    fi
-
-    if [[ "$used_generated_cli" == "true" ]]; then
-        if [[ "$used_generated_network" != "true" ]]; then
-            # Preserve legacy Tailscale install when network isn't generated yet.
-            if acfs_should_skip_module "network.tailscale"; then
-                log_detail "Tailscale already installed"
+    elif acfs_legacy_module_selected "network.tailscale"; then
+        if acfs_should_skip_module "network.tailscale"; then
+            log_detail "Tailscale already installed"
+        else
+            log_detail "Installing Tailscale..."
+            if acfs_try_module_step "network.tailscale" "Installing Tailscale" install_tailscale; then
+                log_success "Tailscale installed"
             else
-                log_detail "Installing Tailscale..."
-                if acfs_try_module_step "network.tailscale" "Installing Tailscale" install_tailscale; then
-                    log_success "Tailscale installed"
-                else
-                    log_warn "Tailscale installation failed (optional, continuing)"
+                log_warn "Tailscale installation failed (continuing with the remaining phases)"
+                if acfs_legacy_module_is_required "network.tailscale"; then
+                    cli_phase_rc=1
                 fi
             fi
         fi
-        if [[ "$cli_phase_rc" -ne 0 ]]; then
-            log_warn "CLI tools phase finished with generated-module failures (see summary); the phase will be retried on resume"
-            return 1
-        fi
-        log_success "CLI tools installed"
-        return 0
     fi
 
+    if acfs_use_generated_category "tools"; then
+        log_detail "Using generated installers for tools (phase 5)"
+        acfs_run_generated_category_phase "tools" "5" || cli_phase_rc=1
+    else
+        if acfs_legacy_module_selected "tools.lazygit"; then
+            install_cli_tools_legacy_lazygit || cli_phase_rc=1
+        fi
+        if acfs_legacy_module_selected "tools.lazydocker"; then
+            install_cli_tools_legacy_lazydocker || cli_phase_rc=1
+        fi
+    fi
+
+    if [[ "$cli_phase_rc" -ne 0 ]]; then
+        log_warn "CLI tools phase finished with module failures (see summary); the phase will be retried on resume"
+        return 1
+    fi
+    log_success "CLI tools installed"
+}
+
+install_cli_tools_legacy_modern() {
     # Install gum if not already installed (install_gum_early may have skipped
     # if curl/gpg weren't available at that point)
     if binary_installed "gum"; then
@@ -8636,7 +8657,7 @@ install_cli_tools() {
 
     # Install optional packages - batch install for speed (14→1 package-manager calls)
     if [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
-        local -a arch_optional_pkgs=(lsd eza bat fd btop dust neovim htop tree ncdu httpie entr mtr pv docker docker-compose cosign lazygit lazydocker)
+        local -a arch_optional_pkgs=(lsd eza bat fd btop dust neovim htop tree ncdu httpie entr mtr pv docker docker-compose cosign)
         log_detail "Installing optional pacman packages"
         try_step_optional "Installing optional CLI packages" acfs_arch_pkg_install "${arch_optional_pkgs[@]}" || {
             log_detail "Batch install failed, trying packages individually"
@@ -8664,6 +8685,16 @@ install_cli_tools() {
         fi
     fi
 
+    # Docker belongs to cli.modern; selecting another phase-5 tool must not
+    # install the daemon or grant the target account Docker group privileges.
+    if getent group docker &>/dev/null; then
+        try_step_optional "Adding $TARGET_USER to docker group" $SUDO usermod -aG docker "$TARGET_USER" || true
+    else
+        log_detail "Docker group not found, skipping group membership"
+    fi
+}
+
+install_cli_tools_legacy_lazygit() {
     # Robust lazygit install (apt or binary fallback)
     if ! binary_installed "lazygit"; then
         log_detail "Installing lazygit..."
@@ -8713,6 +8744,14 @@ install_cli_tools() {
         fi
     fi
 
+}
+
+install_cli_tools_legacy_lazydocker() {
+    # Try pacman independently of cli.modern; lazydocker is its own module.
+    if [[ "$ACFS_DISTRO_FAMILY" == "arch" ]] && ! binary_installed "lazydocker"; then
+        try_step_optional "Installing lazydocker package" acfs_arch_pkg_install lazydocker || true
+    fi
+
     # Robust lazydocker install (binary fallback)
     if ! binary_installed "lazydocker"; then
         log_detail "Installing lazydocker..."
@@ -8753,32 +8792,6 @@ install_cli_tools() {
         fi
     fi
 
-    # Add user to docker group (only if docker group exists)
-    if getent group docker &>/dev/null; then
-        try_step_optional "Adding $TARGET_USER to docker group" $SUDO usermod -aG docker "$TARGET_USER" || true
-    else
-        log_detail "Docker group not found, skipping group membership"
-    fi
-
-    # Tailscale VPN for secure remote access (bt5)
-    if [[ "$used_generated_network" == "true" ]]; then
-        log_detail "Tailscale handled by generated network installers"
-    elif acfs_should_skip_module "network.tailscale"; then
-        log_detail "Tailscale already installed"
-    else
-        log_detail "Installing Tailscale..."
-        if acfs_try_module_step "network.tailscale" "Installing Tailscale" install_tailscale; then
-            log_success "Tailscale installed"
-        else
-            log_warn "Tailscale installation failed (optional, continuing)"
-        fi
-    fi
-
-    if [[ "$cli_phase_rc" -ne 0 ]]; then
-        log_warn "CLI tools phase finished with generated-module failures (see summary); the phase will be retried on resume"
-        return 1
-    fi
-    log_success "CLI tools installed"
 }
 
 # ============================================================
@@ -9315,7 +9328,7 @@ install_agents_phase() {
         # CI/doctor expectations: ensure `claude` resolves to ~/.local/bin/claude.
         # The native installer can choose non-standard paths, and bun installs land in ~/.bun/bin.
         local claude_bin_local="$ACFS_BIN_DIR/claude"
-        if [[ ! -x "$claude_bin_local" ]]; then
+        if acfs_legacy_module_selected "agents.claude" && [[ ! -x "$claude_bin_local" ]]; then
             acfs_ensure_primary_bin_dir 2>/dev/null || true
 
             local claude_candidate=""
@@ -9354,7 +9367,9 @@ install_agents_phase() {
     # checks require claude to exist at ~/.local/bin/claude or ~/.bun/bin/claude.
     local claude_bin_local="$ACFS_BIN_DIR/claude"
     local claude_bin_bun="$TARGET_HOME/.bun/bin/claude"
-    if [[ -x "$claude_bin_local" ]] && acfs_verify_module "agents.claude"; then
+    if ! acfs_legacy_module_selected "agents.claude"; then
+        log_detail "Skipping Claude Code (agents.claude is not selected)"
+    elif [[ -x "$claude_bin_local" ]] && acfs_verify_module "agents.claude"; then
         log_detail "Claude Code already installed ($claude_bin_local)"
     elif [[ -x "$claude_bin_bun" ]] \
         && acfs_run_verification_command target_user "$claude_bin_bun" --version >/dev/null 2>&1; then
@@ -9408,11 +9423,11 @@ install_agents_phase() {
 
     # Prefer ~/.local/bin for Claude to avoid PATH conflict warnings in acfs doctor.
     # (If Claude was installed via bun, link it into ~/.local/bin which is earlier in PATH.)
-    if [[ ! -x "$claude_bin_local" && -x "$claude_bin_bun" ]]; then
+    if acfs_legacy_module_selected "agents.claude" && [[ ! -x "$claude_bin_local" && -x "$claude_bin_bun" ]]; then
         acfs_ensure_primary_bin_dir 2>/dev/null || true
         try_step "Linking Claude Code into $ACFS_BIN_DIR" acfs_link_primary_bin_command "$claude_bin_bun" "claude" || true
     fi
-    if ! acfs_verify_module "agents.claude"; then
+    if acfs_legacy_module_selected "agents.claude" && ! acfs_verify_module "agents.claude"; then
         ACFS_MODULE_FAILURES+=("agents.claude (required verification failed after install attempts)")
         agents_phase_rc=1
     fi
@@ -9421,7 +9436,9 @@ install_agents_phase() {
     # Uses fallback chain: @latest -> unversioned -> pinned 0.87.0
     # npm can 404 briefly after publishing; pinned version is reliable fallback
     local codex_install_blocked=false
-    if acfs_should_skip_module "agents.codex"; then
+    if ! acfs_legacy_module_selected "agents.codex"; then
+        log_detail "Skipping Codex CLI (agents.codex is not selected)"
+    elif acfs_should_skip_module "agents.codex"; then
         log_detail "Codex CLI already installed and verified"
     elif [[ ! -x "$bun_bin" ]]; then
         log_error "Bun not found at $bun_bin; Codex CLI installation will be retried after the languages phase succeeds"
@@ -9448,7 +9465,7 @@ install_agents_phase() {
 
     # Create wrapper script that uses bun as runtime (avoids node PATH issues)
     local codex_bin_local="$ACFS_BIN_DIR/codex"
-    if [[ -x "$bun_bin" && -x "$TARGET_HOME/.bun/bin/codex" && ! -x "$codex_bin_local" ]]; then
+    if acfs_legacy_module_selected "agents.codex" && [[ -x "$bun_bin" && -x "$TARGET_HOME/.bun/bin/codex" && ! -x "$codex_bin_local" ]]; then
         local codex_wrapper_tmp=""
         local mktemp_bin="" chmod_bin="" rm_bin=""
         mktemp_bin="$(acfs_early_system_binary_path mktemp 2>/dev/null || true)"
@@ -9466,7 +9483,7 @@ install_agents_phase() {
             "$rm_bin" -f "$codex_wrapper_tmp" 2>/dev/null || true
         fi
     fi
-    if ! acfs_verify_module "agents.codex"; then
+    if acfs_legacy_module_selected "agents.codex" && ! acfs_verify_module "agents.codex"; then
         if [[ "$codex_install_blocked" != true ]]; then
             log_error "Codex CLI installation failed (configured executable is not functional)"
             # Name bun's real global bin dir when the install itself succeeded
@@ -9479,7 +9496,9 @@ install_agents_phase() {
 
     # Antigravity CLI (agy): standalone native binary. The locked wrapper keeps
     # the model/settings/DCG hook pinned while leaving the real agy binary intact.
-    if acfs_should_skip_module "agents.antigravity"; then
+    if ! acfs_legacy_module_selected "agents.antigravity"; then
+        log_detail "Skipping Antigravity CLI (agents.antigravity is not selected)"
+    elif acfs_should_skip_module "agents.antigravity"; then
         log_detail "Antigravity CLI already installed"
     else
         log_detail "Installing Antigravity CLI for $TARGET_USER"
@@ -9487,10 +9506,14 @@ install_agents_phase() {
             log_warn "Antigravity installer returned nonzero; verifying the required launcher postcondition"
         fi
     fi
-    if ! install_agy_locked_launchers; then
+    if acfs_legacy_module_selected "agents.antigravity" && ! install_agy_locked_launchers; then
         ACFS_MODULE_FAILURES+=("agents.antigravity (locked launcher or dcg priming failed)")
         agents_phase_rc=1
     fi
+
+    # These modules are phase 7 in the manifest. Keeping them in the legacy
+    # stack phase made a targeted agent install skip the requested tool.
+    install_agents_legacy_optional || agents_phase_rc=1
 
     if [[ "$agents_phase_rc" -ne 0 ]]; then
         log_error "Coding agents phase finished with required-agent failures"
@@ -9498,6 +9521,65 @@ install_agents_phase() {
     fi
 
     log_success "Coding agents installed"
+}
+
+install_agents_legacy_optional() {
+    local failures_before=${#ACFS_MODULE_FAILURES[@]}
+
+    # Grok CLI (xAI)
+    if ! acfs_legacy_module_selected "agents.grok"; then
+        log_detail "Skipping Grok CLI (agents.grok is not selected)"
+    elif binary_installed "grok"; then
+        log_detail "Grok CLI already installed"
+    else
+        log_detail "Installing Grok CLI"
+        # Keep the verified-installer capability identical to the manifest
+        # contract. A custom ACFS_BIN_DIR is handled by the link step below.
+        acfs_try_module_step "agents.grok" "Installing Grok CLI" acfs_run_verified_upstream_script_as_target_with_env "grok" "bash" "GROK_BIN_DIR=$TARGET_HOME/.local/bin" || acfs_optional_module_install_failed "grok" "Grok CLI"
+        local grok_installed_bin=""
+        local grok_candidate=""
+        for grok_candidate in "$TARGET_HOME/.local/bin/grok" "$TARGET_HOME/.grok/bin/grok"; do
+            if [[ -x "$grok_candidate" ]]; then
+                grok_installed_bin="$grok_candidate"
+                break
+            fi
+        done
+        if [[ ! -x "$ACFS_BIN_DIR/grok" ]] && [[ -n "$grok_installed_bin" ]]; then
+            acfs_try_module_step "agents.grok" "Linking grok into $ACFS_BIN_DIR" acfs_link_primary_bin_command "$grok_installed_bin" "grok" || log_warn "Could not link grok into $ACFS_BIN_DIR"
+        fi
+    fi
+
+    # oh-my-pi (omp)
+    if ! acfs_legacy_module_selected "agents.omp"; then
+        log_detail "Skipping oh-my-pi (agents.omp is not selected)"
+    elif binary_installed "omp"; then
+        log_detail "oh-my-pi already installed"
+    else
+        log_detail "Installing oh-my-pi"
+        # --binary forces the prebuilt release binary (default ~/.local/bin) so
+        # the install stays deterministic even when bun is present.
+        acfs_try_module_step "agents.omp" "Installing oh-my-pi" acfs_run_verified_upstream_script_as_target "omp" "sh" --binary || acfs_optional_module_install_failed "omp" "oh-my-pi"
+        if [[ ! -x "$ACFS_BIN_DIR/omp" ]] && [[ -x "$TARGET_HOME/.local/bin/omp" ]]; then
+            acfs_try_module_step "agents.omp" "Linking omp into $ACFS_BIN_DIR" acfs_link_primary_bin_command "$TARGET_HOME/.local/bin/omp" "omp" || log_warn "Could not link omp into $ACFS_BIN_DIR"
+        fi
+    fi
+
+    # OpenCode
+    if ! acfs_legacy_module_selected "agents.opencode"; then
+        log_detail "Skipping OpenCode (agents.opencode is not selected)"
+    elif binary_installed "opencode"; then
+        log_detail "OpenCode already installed"
+    else
+        log_detail "Installing OpenCode"
+        acfs_try_module_step "agents.opencode" "Installing OpenCode" acfs_run_verified_upstream_script_as_target "opencode" "bash" || acfs_optional_module_install_failed "opencode" "OpenCode"
+        # The upstream installer hardcodes ~/.opencode/bin; normalize it into
+        # the ACFS bin dir in the same phase as the manifest module.
+        if [[ -x "$TARGET_HOME/.opencode/bin/opencode" ]]; then
+            acfs_try_module_step "agents.opencode" "Linking opencode into $ACFS_BIN_DIR" acfs_link_primary_bin_command "$TARGET_HOME/.opencode/bin/opencode" "opencode" || log_warn "Could not link opencode into $ACFS_BIN_DIR"
+        fi
+    fi
+
+    (( ${#ACFS_MODULE_FAILURES[@]} == failures_before ))
 }
 
 # ============================================================
@@ -9964,6 +10046,10 @@ install_cloud_db_legacy_cloud() {
         else
             local cli
             for cli in wrangler supabase vercel; do
+                if ! acfs_legacy_module_selected "cloud.$cli"; then
+                    log_detail "Skipping $cli (cloud.$cli is not selected)"
+                    continue
+                fi
                 if [[ "$cli" == "supabase" ]]; then
                     if [[ -x "$ACFS_BIN_DIR/supabase" ]] || [[ -x "$TARGET_HOME/.bun/bin/supabase" ]]; then
                         log_detail "supabase already installed"
@@ -10249,7 +10335,9 @@ install_stack_phase() {
     fi
 
     # NTM (Named Tmux Manager)
-    if acfs_should_skip_module "stack.ntm"; then
+    if ! acfs_legacy_module_selected "stack.ntm"; then
+        log_detail "Skipping NTM (stack.ntm is not selected)"
+    elif acfs_should_skip_module "stack.ntm"; then
         log_detail "NTM already installed"
     else
         log_detail "Installing NTM"
@@ -10269,7 +10357,7 @@ install_stack_phase() {
     # NTM ships with outdated defaults; create config with current recommended models
     local ntm_config_dir="$TARGET_HOME/.config/ntm"
     local ntm_config_file="$ntm_config_dir/config.toml"
-    if binary_installed "ntm"; then
+    if acfs_legacy_module_selected "stack.ntm" && binary_installed "ntm"; then
         if [[ ! -f "$ntm_config_file" ]]; then
             log_detail "Creating NTM config with current model defaults"
             run_as_target mkdir -p "$ntm_config_dir" || true
@@ -10821,7 +10909,9 @@ UNIT_EOF
     fi
 
     # Ultimate Bug Scanner
-    if acfs_should_skip_module "stack.ultimate_bug_scanner"; then
+    if ! acfs_legacy_module_selected "stack.ultimate_bug_scanner"; then
+        log_detail "Skipping UBS (stack.ultimate_bug_scanner is not selected)"
+    elif acfs_should_skip_module "stack.ultimate_bug_scanner"; then
         log_detail "Ultimate Bug Scanner already installed"
     else
         log_detail "Installing Ultimate Bug Scanner"
@@ -10831,7 +10921,9 @@ UNIT_EOF
     fi
 
     # Beads Rust
-    if acfs_should_skip_module "stack.beads_rust"; then
+    if ! acfs_legacy_module_selected "stack.beads_rust"; then
+        log_detail "Skipping Beads Rust (stack.beads_rust is not selected)"
+    elif acfs_should_skip_module "stack.beads_rust"; then
         log_detail "Beads Rust already installed"
     else
         log_detail "Installing Beads Rust"
@@ -10839,7 +10931,9 @@ UNIT_EOF
     fi
 
     # Beads Viewer
-    if acfs_should_skip_module "stack.beads_viewer"; then
+    if ! acfs_legacy_module_selected "stack.beads_viewer"; then
+        log_detail "Skipping Beads Viewer (stack.beads_viewer is not selected)"
+    elif acfs_should_skip_module "stack.beads_viewer"; then
         log_detail "Beads Viewer already installed"
     else
         log_detail "Installing Beads Viewer"
@@ -10847,7 +10941,9 @@ UNIT_EOF
     fi
 
     # CASS (Coding Agent Session Search)
-    if acfs_should_skip_module "stack.cass"; then
+    if ! acfs_legacy_module_selected "stack.cass"; then
+        log_detail "Skipping CASS (stack.cass is not selected)"
+    elif acfs_should_skip_module "stack.cass"; then
         log_detail "CASS already installed"
     else
         log_detail "Installing CASS"
@@ -10855,7 +10951,9 @@ UNIT_EOF
     fi
 
     # CASS Memory System
-    if acfs_should_skip_module "stack.cm"; then
+    if ! acfs_legacy_module_selected "stack.cm"; then
+        log_detail "Skipping CM (stack.cm is not selected)"
+    elif acfs_should_skip_module "stack.cm"; then
         log_detail "CASS Memory System already installed"
     else
         log_detail "Installing CASS Memory System"
@@ -10863,7 +10961,9 @@ UNIT_EOF
     fi
 
     # CAAM (Coding Agent Account Manager)
-    if acfs_should_skip_module "stack.caam"; then
+    if ! acfs_legacy_module_selected "stack.caam"; then
+        log_detail "Skipping CAAM (stack.caam is not selected)"
+    elif acfs_should_skip_module "stack.caam"; then
         log_detail "CAAM already installed"
     else
         log_detail "Installing CAAM"
@@ -10873,7 +10973,9 @@ UNIT_EOF
     # SLB (Simultaneous Launch Button)
     # The upstream install script calls GitHub API for latest version, which hits rate limits in CI.
     # We install via .deb package directly to avoid this.
-    if binary_installed "slb"; then
+    if ! acfs_legacy_module_selected "stack.slb"; then
+        log_detail "Skipping SLB (stack.slb is not selected)"
+    elif binary_installed "slb"; then
         log_detail "SLB already installed"
     elif [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
         # No .deb/dpkg on Arch-family; use the upstream bash installer.
@@ -10890,7 +10992,9 @@ UNIT_EOF
     fi
 
     # RU (Repo Updater)
-    if acfs_should_skip_module "stack.ru"; then
+    if ! acfs_legacy_module_selected "stack.ru"; then
+        log_detail "Skipping RU (stack.ru is not selected)"
+    elif acfs_should_skip_module "stack.ru"; then
         log_detail "RU already installed"
     else
         log_detail "Installing RU"
@@ -10898,7 +11002,9 @@ UNIT_EOF
     fi
 
     # RCH (Remote Compilation Helper)
-    if binary_installed "rch"; then
+    if ! acfs_legacy_module_selected "stack.rch"; then
+        log_detail "Skipping RCH (stack.rch is not selected)"
+    elif binary_installed "rch"; then
         log_detail "RCH already installed"
     elif [[ "$(uname -m 2>/dev/null)" == aarch64 || "$(uname -m 2>/dev/null)" == arm64 ]]; then
         # RCH releases (v2.1.16) have no aarch64 Linux build, so its installer
@@ -10911,7 +11017,9 @@ UNIT_EOF
     fi
 
     # FrankenSearch (fsfs)
-    if binary_installed "fsfs"; then
+    if ! acfs_legacy_module_selected "stack.frankensearch"; then
+        log_detail "Skipping FrankenSearch (stack.frankensearch is not selected)"
+    elif binary_installed "fsfs"; then
         log_detail "FrankenSearch already installed"
     else
         log_detail "Installing FrankenSearch"
@@ -10928,7 +11036,9 @@ UNIT_EOF
     fi
 
     # Process Triage (pt)
-    if binary_installed "pt"; then
+    if ! acfs_legacy_module_selected "stack.process_triage"; then
+        log_detail "Skipping Process Triage (stack.process_triage is not selected)"
+    elif binary_installed "pt"; then
         log_detail "Process Triage already installed"
     else
         log_detail "Installing Process Triage"
@@ -10936,7 +11046,9 @@ UNIT_EOF
     fi
 
     # Storage Ballast Helper (sbh)
-    if binary_installed "sbh"; then
+    if ! acfs_legacy_module_selected "stack.storage_ballast_helper"; then
+        log_detail "Skipping SBH (stack.storage_ballast_helper is not selected)"
+    elif binary_installed "sbh"; then
         log_detail "Storage Ballast Helper already installed"
     else
         log_detail "Installing Storage Ballast Helper"
@@ -10944,7 +11056,9 @@ UNIT_EOF
     fi
 
     # Cross-Agent Session Resumer (casr)
-    if binary_installed "casr"; then
+    if ! acfs_legacy_module_selected "stack.cross_agent_session_resumer"; then
+        log_detail "Skipping CASR (stack.cross_agent_session_resumer is not selected)"
+    elif binary_installed "casr"; then
         log_detail "CASR already installed"
     else
         log_detail "Installing CASR"
@@ -10952,7 +11066,9 @@ UNIT_EOF
     fi
 
     # Doodlestein Self-Releaser (dsr) — modular bash project with verified installer
-    if binary_installed "dsr"; then
+    if ! acfs_legacy_module_selected "stack.doodlestein_self_releaser"; then
+        log_detail "Skipping DSR (stack.doodlestein_self_releaser is not selected)"
+    elif binary_installed "dsr"; then
         log_detail "DSR already installed"
     else
         log_detail "Installing DSR"
@@ -10960,7 +11076,9 @@ UNIT_EOF
     fi
 
     # Agent Settings Backup (asb)
-    if binary_installed "asb"; then
+    if ! acfs_legacy_module_selected "stack.agent_settings_backup"; then
+        log_detail "Skipping ASB (stack.agent_settings_backup is not selected)"
+    elif binary_installed "asb"; then
         log_detail "ASB already installed"
     else
         log_detail "Installing ASB"
@@ -10980,7 +11098,9 @@ UNIT_EOF
         fi
     fi
 
-    if [[ "$pcr_installed" == "true" ]]; then
+    if ! acfs_legacy_module_selected "stack.pcr"; then
+        log_detail "Skipping PCR (stack.pcr is not selected)"
+    elif [[ "$pcr_installed" == "true" ]]; then
         log_detail "Post-Compact Reminder already installed"
     elif ! binary_installed "claude"; then
         log_detail "Skipping Post-Compact Reminder because Claude Code is not installed"
@@ -10990,7 +11110,9 @@ UNIT_EOF
     fi
 
     # Eidetic Engine (ee)
-    if binary_installed "ee"; then
+    if ! acfs_legacy_module_selected "stack.eidetic_engine_cli"; then
+        log_detail "Skipping EE (stack.eidetic_engine_cli is not selected)"
+    elif binary_installed "ee"; then
         log_detail "Eidetic Engine already installed"
     else
         log_detail "Installing Eidetic Engine"
@@ -10998,7 +11120,9 @@ UNIT_EOF
     fi
 
     # Franken Markdown (fmd)
-    if binary_installed "fmd"; then
+    if ! acfs_legacy_module_selected "stack.franken_markdown"; then
+        log_detail "Skipping FMD (stack.franken_markdown is not selected)"
+    elif binary_installed "fmd"; then
         log_detail "Franken Markdown already installed"
     else
         log_detail "Installing Franken Markdown"
@@ -11006,7 +11130,9 @@ UNIT_EOF
     fi
 
     # Pi Agent Rust (pi)
-    if binary_installed "pi"; then
+    if ! acfs_legacy_module_selected "stack.pi_agent_rust"; then
+        log_detail "Skipping PI (stack.pi_agent_rust is not selected)"
+    elif binary_installed "pi"; then
         log_detail "Pi Agent already installed"
     else
         log_detail "Installing Pi Agent"
@@ -11014,7 +11140,9 @@ UNIT_EOF
     fi
 
     # Power Failure Resumer (pfr)
-    if binary_installed "pfr"; then
+    if ! acfs_legacy_module_selected "stack.power_failure_resumer"; then
+        log_detail "Skipping PFR (stack.power_failure_resumer is not selected)"
+    elif binary_installed "pfr"; then
         log_detail "Power Failure Resumer already installed"
     else
         log_detail "Installing Power Failure Resumer"
@@ -11022,7 +11150,9 @@ UNIT_EOF
     fi
 
     # DCG (Destructive Command Guard)
-    if acfs_should_skip_module "stack.dcg"; then
+    if ! acfs_legacy_module_selected "stack.dcg"; then
+        log_detail "Skipping DCG (stack.dcg is not selected)"
+    elif acfs_should_skip_module "stack.dcg"; then
         log_detail "DCG already installed"
     else
         log_info "Installing DCG (Destructive Command Guard)..."
@@ -11045,20 +11175,22 @@ UNIT_EOF
         dcg_bin="/usr/local/bin/dcg"
     fi
 
-    if [[ -n "$dcg_bin" ]]; then
+    if acfs_legacy_module_selected "stack.dcg" && [[ -n "$dcg_bin" ]]; then
         if try_step "Registering DCG hook" run_as_target "$dcg_bin" install; then
             log_success "DCG hook registered with Claude Code"
         else
             log_warn "DCG hook registration failed"
             log_detail "Next steps: run: dcg install and check with: dcg doctor"
         fi
-    else
+    elif acfs_legacy_module_selected "stack.dcg"; then
         log_warn "DCG hook not registered (dcg binary not found in standard paths)"
         log_detail "Install DCG first, then run: dcg install"
     fi
 
     # Token-Optimized Notation (tru)
-    if binary_installed "toon"; then
+    if ! acfs_legacy_module_selected "utils.toon_rust"; then
+        log_detail "Skipping TRU (utils.toon_rust is not selected)"
+    elif binary_installed "toon"; then
         log_detail "TRU already installed"
     else
         log_detail "Installing TRU"
@@ -11066,7 +11198,9 @@ UNIT_EOF
     fi
 
     # Automated Plan Reviser (apr)
-    if binary_installed "apr"; then
+    if ! acfs_legacy_module_selected "stack.automated_plan_reviser"; then
+        log_detail "Skipping APR (stack.automated_plan_reviser is not selected)"
+    elif binary_installed "apr"; then
         log_detail "APR already installed"
     else
         log_detail "Installing APR"
@@ -11074,36 +11208,19 @@ UNIT_EOF
     fi
 
     # Chat Shared Conversation to File (csctf)
-    if binary_installed "csctf"; then
+    if ! acfs_legacy_module_selected "utils.csctf"; then
+        log_detail "Skipping CSCTF (utils.csctf is not selected)"
+    elif binary_installed "csctf"; then
         log_detail "CSCTF already installed"
     else
         log_detail "Installing CSCTF"
         acfs_try_module_step "utils.csctf" "Installing CSCTF" acfs_run_verified_upstream_script_as_target "csctf" "bash" || acfs_optional_module_install_failed "csctf" "CSCTF"
     fi
 
-    # Grok CLI (xAI)
-    if binary_installed "grok"; then
-        log_detail "Grok CLI already installed"
-    else
-        log_detail "Installing Grok CLI"
-        # Keep the verified-installer capability identical to the manifest
-        # contract. A custom ACFS_BIN_DIR is handled by the link step below.
-        acfs_try_module_step "agents.grok" "Installing Grok CLI" acfs_run_verified_upstream_script_as_target_with_env "grok" "bash" "GROK_BIN_DIR=$TARGET_HOME/.local/bin" || acfs_optional_module_install_failed "grok" "Grok CLI"
-        local grok_installed_bin=""
-        local grok_candidate=""
-        for grok_candidate in "$TARGET_HOME/.local/bin/grok" "$TARGET_HOME/.grok/bin/grok"; do
-            if [[ -x "$grok_candidate" ]]; then
-                grok_installed_bin="$grok_candidate"
-                break
-            fi
-        done
-        if [[ ! -x "$ACFS_BIN_DIR/grok" ]] && [[ -n "$grok_installed_bin" ]]; then
-            acfs_try_module_step "agents.grok" "Linking grok into $ACFS_BIN_DIR" acfs_link_primary_bin_command "$grok_installed_bin" "grok" || log_warn "Could not link grok into $ACFS_BIN_DIR"
-        fi
-    fi
-
     # Get Image from Internet Link (giil)
-    if binary_installed "giil"; then
+    if ! acfs_legacy_module_selected "utils.giil"; then
+        log_detail "Skipping GIIL (utils.giil is not selected)"
+    elif binary_installed "giil"; then
         log_detail "GIIL already installed"
     else
         log_detail "Installing GIIL"
@@ -11111,7 +11228,9 @@ UNIT_EOF
     fi
 
     # JeffreysPrompts CLI (jfp)
-    if binary_installed "jfp"; then
+    if ! acfs_legacy_module_selected "stack.jeffreysprompts"; then
+        log_detail "Skipping JFP (stack.jeffreysprompts is not selected)"
+    elif binary_installed "jfp"; then
         log_detail "JFP already installed"
     else
         log_detail "Installing JFP"
@@ -11119,7 +11238,9 @@ UNIT_EOF
     fi
 
     # Markdown Web Browser (mdwb)
-    if binary_installed "mdwb"; then
+    if ! acfs_legacy_module_selected "utils.mdwb"; then
+        log_detail "Skipping MDWB (utils.mdwb is not selected)"
+    elif binary_installed "mdwb"; then
         log_detail "MDWB already installed"
     else
         log_detail "Installing MDWB"
@@ -11127,41 +11248,19 @@ UNIT_EOF
     fi
 
     # Meta Skill (ms)
-    if acfs_should_skip_module "stack.meta_skill"; then
+    if ! acfs_legacy_module_selected "stack.meta_skill"; then
+        log_detail "Skipping Meta Skill (stack.meta_skill is not selected)"
+    elif acfs_should_skip_module "stack.meta_skill"; then
         log_detail "Meta Skill already installed"
     else
         log_detail "Installing Meta Skill"
         acfs_try_module_step "stack.meta_skill" "Installing Meta Skill" acfs_run_verified_upstream_script_as_target "ms" "bash" --easy-mode || acfs_optional_module_install_failed "ms" "Meta Skill"
     fi
 
-    # oh-my-pi (omp)
-    if binary_installed "omp"; then
-        log_detail "oh-my-pi already installed"
-    else
-        log_detail "Installing oh-my-pi"
-        # --binary forces the prebuilt release binary (default ~/.local/bin) so
-        # the install stays deterministic even when bun is present.
-        acfs_try_module_step "agents.omp" "Installing oh-my-pi" acfs_run_verified_upstream_script_as_target "omp" "sh" --binary || acfs_optional_module_install_failed "omp" "oh-my-pi"
-        if [[ ! -x "$ACFS_BIN_DIR/omp" ]] && [[ -x "$TARGET_HOME/.local/bin/omp" ]]; then
-            acfs_try_module_step "agents.omp" "Linking omp into $ACFS_BIN_DIR" acfs_link_primary_bin_command "$TARGET_HOME/.local/bin/omp" "omp" || log_warn "Could not link omp into $ACFS_BIN_DIR"
-        fi
-    fi
-
-    # OpenCode
-    if binary_installed "opencode"; then
-        log_detail "OpenCode already installed"
-    else
-        log_detail "Installing OpenCode"
-        acfs_try_module_step "agents.opencode" "Installing OpenCode" acfs_run_verified_upstream_script_as_target "opencode" "bash" || acfs_optional_module_install_failed "opencode" "OpenCode"
-        # The upstream installer hardcodes ~/.opencode/bin, which is on no PATH ACFS
-        # manages; normalize the binary into the ACFS bin dir like claude/codex.
-        if [[ -x "$TARGET_HOME/.opencode/bin/opencode" ]]; then
-            acfs_try_module_step "agents.opencode" "Linking opencode into $ACFS_BIN_DIR" acfs_link_primary_bin_command "$TARGET_HOME/.opencode/bin/opencode" "opencode" || log_warn "Could not link opencode into $ACFS_BIN_DIR"
-        fi
-    fi
-
     # Network Observer (rano)
-    if binary_installed "rano"; then
+    if ! acfs_legacy_module_selected "utils.rano"; then
+        log_detail "Skipping RANO (utils.rano is not selected)"
+    elif binary_installed "rano"; then
         log_detail "RANO already installed"
     else
         log_detail "Installing RANO"
@@ -11169,7 +11268,9 @@ UNIT_EOF
     fi
 
     # Source to Prompt TUI (s2p)
-    if binary_installed "s2p"; then
+    if ! acfs_legacy_module_selected "utils.s2p"; then
+        log_detail "Skipping S2P (utils.s2p is not selected)"
+    elif binary_installed "s2p"; then
         log_detail "S2P already installed"
     else
         log_detail "Installing S2P"
@@ -11192,7 +11293,9 @@ UNIT_EOF
     fi
 
     # X Archive Search (xf)
-    if binary_installed "xf"; then
+    if ! acfs_legacy_module_selected "utils.xf"; then
+        log_detail "Skipping XF (utils.xf is not selected)"
+    elif binary_installed "xf"; then
         log_detail "XF already installed"
     else
         log_detail "Installing XF"
@@ -11200,7 +11303,9 @@ UNIT_EOF
     fi
 
     # Brenner Bot
-    if binary_installed "brenner"; then
+    if ! acfs_legacy_module_selected "stack.brenner_bot"; then
+        log_detail "Skipping Brenner Bot (stack.brenner_bot is not selected)"
+    elif binary_installed "brenner"; then
         log_detail "Brenner Bot already installed"
     else
         log_detail "Installing Brenner Bot"

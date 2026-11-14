@@ -70,6 +70,244 @@ _update_lib_sources() {
     grep -Fq 'user_login_shell_configured "$TARGET_USER"' "$PROJECT_ROOT/scripts/lib/doctor.sh"
 }
 
+# Run the authored installer phases with the real manifest resolver. Only
+# package/network/account transports are inert; selectors, phase routing and
+# module failure handling execute unchanged. Every writable path is private.
+_run_authored_phase_selection() {
+    local selection_kind="$1" phase="$2"
+    shift 2
+    local body
+    body=$(cat <<'AUTHORED_TEST'
+fixture="$(mktemp -d "$3/authored.XXXXXX")"
+TARGET_HOME="$fixture/home"
+TARGET_USER=fixture
+ACFS_HOME="$TARGET_HOME/.acfs"
+ACFS_LOG_DIR="$ACFS_HOME/logs"
+ACFS_BIN_DIR="$TARGET_HOME/.local/bin"
+ACFS_LIB_DIR="$fixture/no-libraries"
+ACFS_DISTRO_FAMILY=arch
+ACFS_MANIFEST_INDEX_LOADED=true
+ACFS_MODULE_FAILURES=()
+ACFS_OPTIONAL_MODULE_SKIPS=()
+ACFS_SAVED_SELECTION_ACTIVE=false
+ONLY_MODULES=(); ONLY_PHASES=(); SKIP_MODULES=(); SKIP_TAGS=(); SKIP_CATEGORIES=()
+ACFS_SAVED_SELECTION_MODULES=(); ACFS_SAVED_REQUESTED_MODULES=()
+NO_DEPS=true
+MODE=vibe
+SKIP_CLOUD=false
+SUDO=fixture_privileged
+EVENTS="$fixture/events"
+mkdir -p "$ACFS_BIN_DIR" "$TARGET_HOME/.bun/bin" "$ACFS_HOME"
+: > "$EVENTS"
+# Existing unrelated tools must not authorize configuration changes.
+printf '#!/bin/sh\nexit 99\n' > "$ACFS_BIN_DIR/dcg"
+chmod 755 "$ACFS_BIN_DIR/dcg"
+printf '#!/bin/sh\nexit 99\n' > "$TARGET_HOME/.bun/bin/bun"
+chmod 755 "$TARGET_HOME/.bun/bin/bun"
+source "$2/scripts/lib/install_helpers.sh"
+source "$2/scripts/generated/manifest_index.sh"
+for helper in acfs_legacy_module_selected acfs_legacy_module_is_required acfs_try_module_step acfs_module_id_for_verified_installer_tool acfs_optional_module_install_failed setup_filesystem; do
+    eval "$(sed -n "/^${helper}() {$/,/^}$/p" "$1")"
+done
+# Whole regions retain embedded heredocs, which contain column-zero braces.
+eval "$(sed -n '/^setup_shell() {$/,/^_target_has_nvm_node() {$/p' "$1" | sed '$d')"
+eval "$(sed -n '/^install_agents_phase() {$/,/^acfs_postgres_run_as_owner() {$/p' "$1" | sed '$d')"
+eval "$(sed -n '/^install_cloud_db_legacy_cloud() {$/,/^install_cloud_db() {$/p' "$1" | sed '$d')"
+eval "$(sed -n '/^install_stack_phase() {$/,/^acfs_resolve_existing_config_write_path() {$/p' "$1" | sed '$d')"
+selection_kind="$4"
+phase="$5"
+shift 5
+case "$selection_kind" in
+    only) ONLY_MODULES=("$@") ;;
+    saved)
+        ACFS_SAVED_SELECTION_ACTIVE=true
+        ACFS_SAVED_SELECTION_MODULES=("$@")
+        ACFS_SAVED_REQUESTED_MODULES=("$@")
+        ;;
+    skip) SKIP_MODULES=("$@") ;;
+    defaults) ;;
+    *) exit 98 ;;
+esac
+# Keep resolver warnings (for example --no-deps) separate from mutation events.
+# Retain diagnostics in the fixture and replay them if resolution itself fails.
+selection_rc=0
+acfs_resolve_selection >"$fixture/selection.log" 2>&1 || selection_rc=$?
+if (( selection_rc != 0 )); then
+    cat "$fixture/selection.log" >&2
+    exit "$selection_rc"
+fi
+trace() { printf '%s\n' "$*" >> "$EVENTS"; }
+set_phase() { :; }
+log_step() { :; }
+log_info() { :; }
+log_detail() { :; }
+log_success() { :; }
+log_warn() { :; }
+log_error() { trace "error:$*"; }
+acfs_use_generated_category() { [[ ",${GENERATED_CATEGORIES:-}," == *",$1,"* ]]; }
+acfs_run_generated_category_phase() { trace "generated:$1:$2"; }
+try_step() { trace "step:$1"; shift; "$@"; }
+try_step_optional() { try_step "$@"; }
+fixture_privileged() { trace "privileged:$*"; }
+acfs_arch_pkg_install() { trace "packages:$*"; }
+acfs_arch_pkg_install_each() { trace "packages-each:$*"; }
+acfs_should_skip_module() { return 1; }
+acfs_verify_module() { trace "verify:$1"; [[ "$1" != "${FAIL_MODULE:-}" ]]; }
+acfs_run_verification_command() { return 0; }
+acfs_run_verified_upstream_script_as_target() { trace "upstream:$1"; [[ "$1" != "${FAIL_TOOL:-}" ]]; }
+acfs_run_verified_upstream_script_as_target_with_env() { acfs_run_verified_upstream_script_as_target "$@"; }
+acfs_early_system_binary_path() { return 1; }
+acfs_ensure_primary_bin_dir() { trace primary-bin; }
+acfs_note_bun_global_bin_mismatch() { :; }
+acfs_warn_bun_global_binary_missing() { :; }
+acfs_link_primary_bin_command() { trace "link:$*"; }
+install_asset() { trace "asset:$1"; }
+acfs_chown_tree() { trace "chown:$*"; }
+acfs_chown_target_home() { trace "chown-home:$*"; }
+acfs_install_workspace_template() { trace "workspace-template:$*"; }
+set_default_shell() { trace login-shell; }
+install_agy_locked_launchers() { trace agy-launcher; }
+install_tailscale() { trace tailscale; [[ "${FAIL_TOOL:-}" != tailscale ]]; }
+install_github_cli() { trace github-cli; }
+install_supabase_cli_release() { trace supabase; }
+run_as_target() {
+    trace "target:$*"
+    if [[ "$1" == tee ]]; then cat >/dev/null; fi
+    return 0
+}
+_smoke_run_as_target() { return 0; }
+command_exists() { return 1; }
+binary_installed() {
+    case "$1" in
+        gum|rg|tmux|fzf|direnv|jq|git-lfs|lsof|dig|strace|rsync|zstd|gh|minisign|sqlite3|nc) return 0 ;;
+        *) [[ ",${PRESENT_BINARIES:-}," == *",$1,"* ]] ;;
+    esac
+}
+binary_path() { binary_installed "$1" && printf '/usr/bin/true\n'; }
+getent() { [[ "$1" == group && "$2" == docker ]]; }
+pacman() { return 0; }
+result=0
+case "$phase" in
+    filesystem) setup_filesystem || result=$? ;;
+    shell) setup_shell || result=$? ;;
+    cli) install_cli_tools || result=$? ;;
+    agents) install_agents_phase || result=$? ;;
+    cloud) install_cloud_db_legacy_cloud || result=$? ;;
+    stack) install_stack_phase || result=$? ;;
+    selection)
+        for module in "${ACFS_MODULES_IN_ORDER[@]}"; do
+            if acfs_legacy_module_selected "$module"; then trace "selected:$module"; fi
+        done
+        ;;
+    *) exit 97 ;;
+esac
+cat "$EVENTS"
+exit "$result"
+AUTHORED_TEST
+)
+    run env FAIL_TOOL="${FAIL_TOOL:-}" FAIL_MODULE="${FAIL_MODULE:-}" \
+        PRESENT_BINARIES="${PRESENT_BINARIES:-}" GENERATED_CATEGORIES="${GENERATED_CATEGORIES:-}" \
+        /bin/bash -p -euo pipefail -c "$body" authored-selection \
+        "${ACFS_AUTHORED_TEST_INSTALL_SH:-$INSTALL_SH}" "$PROJECT_ROOT" "$BATS_TEST_TMPDIR" "$selection_kind" "$phase" "$@"
+}
+
+@test "authored filesystem skip-only selection does not create or modify directories" {
+    _run_authored_phase_selection skip filesystem base.filesystem
+    [[ "$status" -eq 0 ]]
+    [[ -z "$output" ]]
+}
+
+@test "authored Tailscale-only installs never provision CLI packages or Docker privileges" {
+    for kind in only saved; do
+        _run_authored_phase_selection "$kind" cli network.tailscale
+        [[ "$status" -eq 0 ]]
+        [[ "$output" == *"tailscale"* ]]
+        [[ "$output" != *"packages:"* && "$output" != *"privileged:"* ]]
+        [[ "$output" != *"verify:cli.modern"* && "$output" != *"lazygit"* && "$output" != *"lazydocker"* ]]
+    done
+}
+
+@test "authored CLI and individual developer tools retain independent positive installers" {
+    _run_authored_phase_selection only cli cli.modern
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == *"packages:ripgrep tmux"* && "$output" == *"usermod -aG docker fixture"* ]]
+    [[ "$output" != *"lazygit"* && "$output" != *"lazydocker"* && "$output" != *"tailscale"* ]]
+
+    for tool in lazygit lazydocker; do
+        _run_authored_phase_selection only cli "tools.$tool"
+        [[ "$status" -eq 0 ]]
+        [[ "$output" == *"packages:$tool"* ]]
+        [[ "$output" != *"packages:ripgrep"* && "$output" != *"usermod"* && "$output" != *"tailscale"* ]]
+    done
+}
+
+@test "mixed generated CLI and authored networking honor the same selection" {
+    GENERATED_CATEGORIES=cli _run_authored_phase_selection only cli tools.lazygit
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == *"generated:cli:5"* && "$output" == *"packages:lazygit"* ]]
+    [[ "$output" != *"tailscale"* && "$output" != *"usermod"* ]]
+}
+
+@test "authored shell package and login choices do not overwrite unrelated shell configuration" {
+    _run_authored_phase_selection only shell shell.zsh
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == *"packages:zsh git"* ]]
+    [[ "$output" != *"asset:"* && "$output" != *"login-shell"* ]]
+
+    _run_authored_phase_selection only shell shell.login
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == *"login-shell"* ]]
+    [[ "$output" != *"packages:"* && "$output" != *"asset:"* ]]
+
+    _run_authored_phase_selection only shell shell.omz
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == *"asset:acfs/zsh/acfs.zshrc"* ]]
+    [[ "$output" != *"packages:"* && "$output" != *"login-shell"* ]]
+}
+
+@test "authored stack subset avoids unrelated upstream installers and existing tool hooks" {
+    for kind in only saved; do
+        PRESENT_BINARIES=ntm,claude _run_authored_phase_selection "$kind" stack stack.beads_rust
+        [[ "$status" -eq 0 ]]
+        [[ "$output" == *"upstream:br"* ]]
+        [[ "$(printf '%s\n' "$output" | grep -c '^upstream:')" -eq 1 ]]
+        [[ "$output" != *"target:"* && "$output" != *"asset:"* && "$output" != *"Registering DCG"* ]]
+    done
+}
+
+@test "authored selected module failures remain failures" {
+    FAIL_TOOL=br _run_authored_phase_selection only stack stack.beads_rust
+    [[ "$status" -ne 0 && "$output" == *"upstream:br"* ]]
+    FAIL_TOOL=tailscale _run_authored_phase_selection only cli network.tailscale
+    [[ "$status" -ne 0 && "$output" == *"tailscale"* ]]
+    FAIL_TOOL=omp _run_authored_phase_selection only agents agents.omp
+    [[ "$status" -ne 0 && "$output" == *"upstream:omp"* ]]
+}
+
+@test "optional authored coding agents install in their manifest phase without other agents" {
+    for agent in grok omp opencode; do
+        _run_authored_phase_selection only agents "agents.$agent"
+        [[ "$status" -eq 0 ]]
+        [[ "$output" == *"upstream:$agent"* ]]
+        [[ "$(printf '%s\n' "$output" | grep -c '^upstream:')" -eq 1 ]]
+        [[ "$output" != *"agy-launcher"* && "$output" != *"verify:agents.claude"* && "$output" != *"verify:agents.codex"* ]]
+    done
+}
+
+@test "authored cloud subset does not install unrelated provider CLIs" {
+    _run_authored_phase_selection only cloud cloud.vercel
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == *"vercel@latest"* ]]
+    [[ "$output" != *"supabase"* && "$output" != *"wrangler"* ]]
+}
+
+@test "authored default selection excludes manifest opt-in tools without CLI filters" {
+    _run_authored_phase_selection defaults selection
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == *"selected:stack.beads_rust"* ]]
+    [[ "$output" != *"selected:agents.grok"* && "$output" != *"selected:agents.omp"* && "$output" != *"selected:agents.opencode"* ]]
+}
+
 @test "every scripts/lib runtime library installed by install.sh is synced by update.sh" {
     local missing=""
     local src

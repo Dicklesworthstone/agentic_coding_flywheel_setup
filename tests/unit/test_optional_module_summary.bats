@@ -252,11 +252,11 @@ legacy_setup() {
     [[ "${ACFS_OPTIONAL_MODULE_SKIPS[0]}" == "stack.xf (verified installer failed)" ]]
 }
 
-@test "legacy stack phase routes every optional installer failure through acfs_optional_module_install_failed" {
+@test "legacy agent and stack phases route every optional installer failure through acfs_optional_module_install_failed" {
     # Static guard: a new legacy call site written as `|| log_warn "... may have failed"`
     # would silently drop out of the summary again.
     local phase
-    phase="$(sed -n '/^install_stack_phase() {$/,/^}$/p' "$INSTALL_SH")"
+    phase="$(sed -n -e '/^install_stack_phase() {$/,/^}$/p' -e '/^install_agents_legacy_optional() {$/,/^}$/p' "$INSTALL_SH")"
     [[ -n "$phase" ]]
     run grep -c 'acfs_optional_module_install_failed "' <<< "$phase"
     (( output >= 38 ))
@@ -288,9 +288,9 @@ legacy_setup() {
     [[ "${ACFS_MODULE_VERIFIED_INSTALLER_TOOL[stack.mcp_agent_mail]}" == "mcp_agent_mail" ]]
 
     legacy_setup
-    # Every tool key the legacy stack phase reports resolves to a real manifest module.
+    # Every tool key the legacy agent and stack phases report resolves to a real manifest module.
     local phase tool id
-    phase="$(sed -n '/^install_stack_phase() {$/,/^}$/p' "$INSTALL_SH")"
+    phase="$(sed -n -e '/^install_stack_phase() {$/,/^}$/p' -e '/^install_agents_legacy_optional() {$/,/^}$/p' "$INSTALL_SH")"
     while IFS= read -r tool; do
         id="$(acfs_module_id_for_verified_installer_tool "$tool")"
         [[ -n "${ACFS_MODULE_CATEGORY[$id]:-}" ]] || {

@@ -763,6 +763,14 @@ EOF_STATE
 # commands; readiness checks execute those commands instead of testing presence.
 setup_agents_phase_fixture() {
     source_lib state
+    source_lib install_helpers
+    source "$PROJECT_ROOT/scripts/generated/manifest_index.sh"
+    ACFS_MANIFEST_INDEX_LOADED=true
+    ONLY_MODULES=(agents.claude agents.codex agents.antigravity)
+    ONLY_PHASES=(); SKIP_MODULES=(); SKIP_TAGS=(); SKIP_CATEGORIES=()
+    ACFS_SAVED_SELECTION_ACTIVE=false
+    NO_DEPS=true
+    acfs_resolve_selection
     export TARGET_HOME="$BATS_TEST_TMPDIR/agents-home"
     export TARGET_USER="$(id -un)"
     export ACFS_HOME="$BATS_TEST_TMPDIR/agents-state"
@@ -776,6 +784,7 @@ setup_agents_phase_fixture() {
     : > "$AGENT_ATTEMPTS"
 
     local install_source="${ACFS_AGENT_TEST_INSTALL_SH:-$PROJECT_ROOT/install.sh}"
+    eval "$(sed -n '/^acfs_legacy_module_selected() {$/,/^}$/p' "$install_source")"
     eval "$(sed -n '/^install_agents_phase() {$/,/^acfs_postgres_run_as_owner() {$/p' "$install_source" | sed '$d')"
 
     agent_write_executable() {
