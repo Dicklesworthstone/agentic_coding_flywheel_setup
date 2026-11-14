@@ -1447,6 +1447,103 @@ printf 'COUNTS=%s,%s,%s\n' "$SUCCESS_COUNT" "$SKIP_COUNT" "$FAIL_COUNT"
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         return result.stdout + result.stderr
 
+    def write_selection(self, modules):
+        directory = self.home / ".acfs"
+        self.owned_dir(directory)
+        self.write_input(directory / "state.json", json.dumps({
+            "target_home": str(self.home), "target_user": self.account.pw_name,
+            "module_selection": {"schema_version": 1, "selected_modules": modules},
+        }))
+
+    def test_stack_update_skips_selected_ubuntu_only_module_on_arch(self):
+        self.write_selection(["stack.srps"])
+        self.write_maintenance_tool("flywheel-update-agents-md")
+        checkpoint = self.home / ".acfs/state.json"
+        saved_selection = checkpoint.read_bytes()
+        output = self.run_update(command=r'''
+ACFS_DISTRO_FAMILY=arch FORCE_MODE=true
+update_require_security() { printf 'unexpected-security\n' >> "$TEST_ROOT/events.tsv"; return 1; }
+update_run_verified_installer() { printf '%s\n' "$*" >> "$TEST_ROOT/events.tsv"; }
+update_stack
+update_root_agents_md
+update_run_selected_module stack.srps printf 'UNSUPPORTED-INSTALL\n'
+''')
+        self.assertEqual(self.events(), [])
+        self.assertEqual(checkpoint.read_bytes(), saved_selection)
+        self.assertNotIn("UNSUPPORTED-INSTALL", output)
+        self.assertIn("not applicable on arch", (self.base / "update.log").read_text())
+        self.assertIn("COUNTS=0,", output)
+
+    def test_stack_update_keeps_selected_module_on_supported_family(self):
+        self.write_selection(["stack.srps"])
+        self.run_update(command=r'''
+ACFS_DISTRO_FAMILY=ubuntu
+update_require_security() { return 0; }
+update_run_verified_installer() { printf '%s\n' "$*" >> "$TEST_ROOT/events.tsv"; }
+update_stack
+''')
+        self.assertEqual(self.events(), [["srps"]])
+
+    def test_legacy_scope_also_honors_manifest_platforms(self):
+        output = self.run_update(command=r'''
+ACFS_DISTRO_FAMILY=arch FORCE_MODE=true
+update_run_selected_module stack.srps printf 'UNSUPPORTED-INSTALL\n'
+update_run_selected_module stack.ntm printf 'PORTABLE-INSTALL\n'
+''')
+        self.assertNotIn("UNSUPPORTED-INSTALL", output)
+        self.assertIn("PORTABLE-INSTALL", output)
+
+    def test_manifest_platforms_gate_runtime_agents_cloud_and_shell(self):
+        modules = ["lang.bun", "agents.omp", "cloud.vercel", "shell.omz"]
+        self.write_selection(modules)
+        for tool in ("bun", "omp", "vercel"):
+            self.write_native_tool(tool)
+        # The same generated data format supports every category; this fixture
+        # adds restrictions without changing any production manifest policy.
+        index = self.base / "restricted-index.sh"
+        index.write_text("ACFS_MODULES_IN_ORDER=(\n" + "".join(
+            f'  "{module}"\n' for module in modules) + ")\n"
+            "declare -gA ACFS_MODULE_FAMILIES=(\n" + "".join(
+            f"  ['{module}']=\"ubuntu\"\n" for module in modules) + ")\n")
+        output = self.run_update(command=r'''
+ACFS_DISTRO_FAMILY=arch FORCE_MODE=true
+_UPDATE_MANIFEST_INDEX="$TEST_ROOT/restricted-index.sh"
+update_omz() { printf 'unexpected-omz\n' >> "$TEST_ROOT/events.tsv"; }
+update_p10k() { printf 'unexpected-p10k\n' >> "$TEST_ROOT/events.tsv"; }
+update_zsh_plugins() { printf 'unexpected-plugins\n' >> "$TEST_ROOT/events.tsv"; }
+# Runtime publication has its own tests; keep this dispatch test confined to
+# the fixture's account-owned modules and shell configuration.
+sync_acfs_deployed() { :; }
+sync_acfs_global_wrapper() { :; }
+sync_acfs_global_command_links() { :; }
+update_bun
+update_agents
+update_cloud
+update_shell
+''')
+        self.assertEqual(self.events(), [])
+        self.assertFalse((self.home / ".profile").exists())
+        self.assertFalse((self.home / ".zprofile").exists())
+        self.assertFalse((self.home / ".zshrc").exists())
+        self.assertIn("COUNTS=0,", output)
+
+    def test_malformed_manifest_platform_data_stops_before_update(self):
+        self.write_selection(["lang.bun"])
+        self.write_native_tool("bun")
+        index = self.base / "malformed-index.sh"
+        index.write_text('ACFS_MODULES_IN_ORDER=(\n  "lang.bun"\n)\n'
+                         'declare -gA ACFS_MODULE_FAMILIES=(\n'
+                         '  [\'lang.bun\']="$(touch SHOULD-NOT-EXECUTE)"\n)\n')
+        output = self.run_update(command=r'''
+ACFS_DISTRO_FAMILY=arch FORCE_MODE=true
+_UPDATE_MANIFEST_INDEX="$TEST_ROOT/malformed-index.sh"
+if update_bun; then printf 'UNEXPECTED-ACCEPT\n'; else printf 'PLATFORM-REFUSED\n'; fi
+''')
+        self.assertEqual(self.events(), [])
+        self.assertIn("PLATFORM-REFUSED", output)
+        self.assertNotIn("UNEXPECTED-ACCEPT", output)
+        self.assertFalse((self.work / "SHOULD-NOT-EXECUTE").exists())
+
     def test_agent_native_updates_keep_deadlines_and_continue(self):
         for tool in ("agy", "agy-real", "omp", "opencode"):
             self.write_native_tool(tool)

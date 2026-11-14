@@ -441,6 +441,8 @@ REBOOT_REQUIRED=false
 # exported selectors. Keep one validated snapshot across self-update and all
 # component dispatch in this process.
 UPDATE_MODULE_SELECTION_READY=false
+UPDATE_DISTRO_FAMILY=""
+declare -gA UPDATE_MODULE_FAMILIES=()
 
 # Logging
 UPDATE_LOG_DIR="${UPDATE_LOG_DIR:-${HOME:-/tmp}/.acfs/logs/updates}"
@@ -926,10 +928,95 @@ update_load_module_selection() {
         mapfile -t known_modules <<< "$catalog"
         state_validate_module_selection_catalog "${known_modules[@]}" || return 1
     fi
+    update_load_module_platforms || return 1
     if [[ -n "${ACFS_STATE_INSTALL_MODE:-}" ]]; then
         export MODE="$ACFS_STATE_INSTALL_MODE"
     fi
     UPDATE_MODULE_SELECTION_READY=true
+}
+
+# Read the manifest's platform constraints as data, just like the module
+# catalogue above. Never source a generated index merely to decide whether a
+# command may run. An absent map means the manifest declares no restrictions;
+# a partial or malformed map is an error, not permission to run every module.
+update_load_module_platforms() {
+    local awk_bin="" metadata="" module="" families=""
+    declare -gA UPDATE_MODULE_FAMILIES=()
+    UPDATE_DISTRO_FAMILY=""
+    awk_bin="$(update_system_binary_path awk 2>/dev/null || true)"
+    if [[ "${ACFS_STATE_SELECTION_MODE:-invalid}" == legacy \
+        && ! -e "$_UPDATE_MANIFEST_INDEX" && ! -L "$_UPDATE_MANIFEST_INDEX" ]]; then
+        # Pre-selection installations may not have a bundled index yet. Keep
+        # their existing recovery path; any supplied map must still validate.
+        metadata=""
+    elif [[ -z "$awk_bin" || ! -f "$_UPDATE_MANIFEST_INDEX" ]] || ! metadata="$("$awk_bin" '
+        /^declare -gA ACFS_MODULE_FAMILIES=\($/ {
+            if (found++) bad=1
+            inside=1
+            next
+        }
+        inside && /^\)$/ { inside=0; complete=1; next }
+        inside {
+            if ($0 !~ /^  \[\047[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)+\047\]="(ubuntu|arch)( (ubuntu|arch))*"$/) {
+                bad=1
+                next
+            }
+            row=$0
+            sub(/^  \[\047/, "", row)
+            split(row, fields, "\047\\]=\"")
+            id=fields[1]
+            families=fields[2]
+            sub(/"$/, "", families)
+            if (seen[id]++) bad=1
+            print id "\t" families
+        }
+        END { if (inside || bad || (found && !complete)) exit 1 }
+    ' "$_UPDATE_MANIFEST_INDEX")"; then
+        echo "Unable to read ACFS module platform constraints; no component updates were run" >&2
+        return 1
+    fi
+    while IFS=$'\t' read -r module families; do
+        [[ -n "$module" ]] || continue
+        UPDATE_MODULE_FAMILIES["$module"]="$families"
+    done <<< "$metadata"
+
+    case "${ACFS_DISTRO_FAMILY:-}" in
+        ubuntu|arch) UPDATE_DISTRO_FAMILY="$ACFS_DISTRO_FAMILY" ;;
+        "")
+            if [[ -r /etc/os-release ]] && grep -Eq '^(ID_LIKE=.*arch|ID="?(arch|omarchy)"?$)' /etc/os-release; then
+                UPDATE_DISTRO_FAMILY=arch
+            else
+                UPDATE_DISTRO_FAMILY=ubuntu
+            fi
+            ;;
+        *)
+            echo "Unsupported ACFS_DISTRO_FAMILY; expected ubuntu or arch" >&2
+            return 1
+            ;;
+    esac
+}
+
+# Maintenance eligibility is the saved intent intersected with the manifest's
+# platform constraints. Keep the saved selection intact: omitting a module on
+# this host must not silently erase the operator's requested installation.
+update_module_is_selected() {
+    local module="${1:-}" candidate="" families=""
+    state_module_is_selected "$module" || return $?
+    families="${UPDATE_MODULE_FAMILIES[$module]:-}"
+    [[ -n "$families" ]] || return 0
+    for candidate in $families; do
+        [[ "$candidate" != "$UPDATE_DISTRO_FAMILY" ]] || return 0
+    done
+    return 1
+}
+
+update_module_skip_reason() {
+    local module="$1"
+    if state_module_is_selected "$module" && [[ -n "${UPDATE_MODULE_FAMILIES[$module]:-}" ]]; then
+        printf 'not applicable on %s (supports %s)' "$UPDATE_DISTRO_FAMILY" "${UPDATE_MODULE_FAMILIES[$module]}"
+    else
+        printf 'not selected for this installation'
+    fi
 }
 
 update_selection_has_prefix() {
@@ -941,7 +1028,9 @@ update_selection_has_prefix() {
     esac
     for prefix in "$@"; do
         for module in "${ACFS_STATE_SELECTED_MODULES[@]}"; do
-            [[ "$module" == "$prefix"* ]] && return 0
+            if [[ "$module" == "$prefix"* ]] && update_module_is_selected "$module"; then
+                return 0
+            fi
         done
     done
     return 1
@@ -951,10 +1040,10 @@ update_run_selected_module() {
     local module="$1"
     shift
     update_load_module_selection || return 1
-    if state_module_is_selected "$module"; then
+    if update_module_is_selected "$module"; then
         "$@"
     else
-        log_item "skip" "$module" "not selected for this installation"
+        log_item "skip" "$module" "$(update_module_skip_reason "$module")"
     fi
 }
 
@@ -962,12 +1051,12 @@ update_run_selected_module() {
 # Public entrypoints and managed configuration belong to their manifest module.
 update_deployed_asset_is_selected() {
     case "$1" in
-        tmux/tmux.conf) state_module_is_selected cli.modern ;;
-        onboard/*) state_module_is_selected acfs.onboard ;;
-        bin/acfs) state_module_is_selected acfs.doctor ;;
-        bin/acfs-update) state_module_is_selected acfs.update ;;
-        bin/agy-locked) state_module_is_selected agents.antigravity ;;
-        zsh/*|completions/*) state_module_is_selected shell.omz ;;
+        tmux/tmux.conf) update_module_is_selected cli.modern ;;
+        onboard/*) update_module_is_selected acfs.onboard ;;
+        bin/acfs) update_module_is_selected acfs.doctor ;;
+        bin/acfs-update) update_module_is_selected acfs.update ;;
+        bin/agy-locked) update_module_is_selected agents.antigravity ;;
+        zsh/*|completions/*) update_module_is_selected shell.omz ;;
         *) return 0 ;;
     esac
 }
@@ -3384,7 +3473,7 @@ update_claude_settings_has_legacy_git_safety_guard_hook() {
 cleanup_legacy_git_safety_guard() {
     [[ "$UPDATE_AGENTS" == true ]] || return 0
     update_load_module_selection || return 1
-    state_module_is_selected agents.claude || return 0
+    update_module_is_selected agents.claude || return 0
     local runtime_home=""
     runtime_home="$(update_runtime_shell_home 2>/dev/null || true)"
     [[ -n "$runtime_home" ]] || return 0
@@ -3497,7 +3586,7 @@ cleanup_legacy_git_safety_guard() {
 cleanup_legacy_bv_alias() {
     [[ "$UPDATE_STACK" == true ]] || return 0
     update_load_module_selection || return 1
-    state_module_is_selected stack.beads_viewer || return 0
+    update_module_is_selected stack.beads_viewer || return 0
     local runtime_home=""
     runtime_home="$(update_runtime_shell_home 2>/dev/null || true)"
     [[ -n "$runtime_home" ]] || return 0
@@ -3573,7 +3662,7 @@ cleanup_legacy_bv_alias() {
 cleanup_legacy_br_alias() {
     [[ "$UPDATE_STACK" == true ]] || return 0
     update_load_module_selection || return 1
-    state_module_is_selected stack.beads_rust || return 0
+    update_module_is_selected stack.beads_rust || return 0
     local runtime_home=""
     runtime_home="$(update_runtime_shell_home 2>/dev/null || true)"
     [[ -n "$runtime_home" ]] || return 0
@@ -3605,8 +3694,8 @@ cleanup_legacy_br_alias() {
 cleanup_unmanaged_atuin_init() {
     [[ "$UPDATE_SHELL" == true ]] || return 0
     update_load_module_selection || return 1
-    state_module_is_selected shell.omz || return 0
-    state_module_is_selected tools.atuin || return 0
+    update_module_is_selected shell.omz || return 0
+    update_module_is_selected tools.atuin || return 0
     local runtime_home=""
     runtime_home="$(update_runtime_shell_home 2>/dev/null || true)"
     [[ -n "$runtime_home" ]] || return 0
@@ -3694,7 +3783,7 @@ update_atomic_deploy_file() (
 # Re-deploy acfs.zshrc from repo to ~/.acfs/ if repo copy is newer
 sync_acfs_zshrc() {
     update_load_module_selection || return 1
-    state_module_is_selected shell.omz || return 0
+    update_module_is_selected shell.omz || return 0
     local repo_zshrc="$ACFS_REPO_ROOT/acfs/zsh/acfs.zshrc"
     local runtime_home=""
     runtime_home="$(update_runtime_shell_home 2>/dev/null || true)"
@@ -3730,7 +3819,7 @@ sync_acfs_zshrc() {
 
 sync_acfs_zsh_loader() {
     update_load_module_selection || return 1
-    state_module_is_selected shell.omz || return 0
+    update_module_is_selected shell.omz || return 0
     local runtime_home=""
     runtime_home="$(update_runtime_shell_home 2>/dev/null || true)"
     [[ -n "$runtime_home" ]] || return 0
@@ -3796,7 +3885,7 @@ _update_sed_literal() {
 
 sync_acfs_profile_paths() {
     update_load_module_selection || return 1
-    state_module_is_selected shell.omz || return 0
+    update_module_is_selected shell.omz || return 0
     local runtime_home=""
     runtime_home="$(update_runtime_shell_home 2>/dev/null || true)"
     [[ -n "$runtime_home" ]] || return 0
@@ -3856,7 +3945,7 @@ sync_acfs_profile_paths() {
 
 sync_acfs_zprofile_paths() {
     update_load_module_selection || return 1
-    state_module_is_selected shell.omz || return 0
+    update_module_is_selected shell.omz || return 0
     local runtime_home=""
     runtime_home="$(update_runtime_shell_home 2>/dev/null || true)"
     [[ -n "$runtime_home" ]] || return 0
@@ -4560,7 +4649,7 @@ ACFS_RUNTIME_MODES_PY
 
 sync_acfs_global_wrapper() (
     update_load_module_selection || exit 1
-    state_module_is_selected acfs.doctor || exit 0
+    update_module_is_selected acfs.doctor || exit 0
     local source_ref="${1:-}"
     local deployed_file="${2:-/usr/local/bin/acfs}"
     local repo_rel="scripts/acfs-global"
@@ -4648,8 +4737,8 @@ sync_acfs_global_command_links() {
         dest_path="${spec#*:}"
 
         case "$dest_path" in
-            */acfs-update) state_module_is_selected acfs.update || continue ;;
-            */onboard) state_module_is_selected acfs.onboard || continue ;;
+            */acfs-update) update_module_is_selected acfs.update || continue ;;
+            */onboard) update_module_is_selected acfs.onboard || continue ;;
         esac
 
         if [[ ! -x "$source_path" ]]; then
@@ -7964,7 +8053,7 @@ update_apt() {
         return 0
     fi
     update_load_module_selection || return 1
-    state_module_is_selected base.system || return 0
+    update_module_is_selected base.system || return 0
 
     # Arch-family (Arch, Omarchy): the system package manager is pacman, and
     # partial upgrades are unsupported there, so the only correct operation is
@@ -8373,7 +8462,7 @@ update_bun() {
         return 0
     fi
     update_load_module_selection || return 1
-    state_module_is_selected lang.bun || return 0
+    update_module_is_selected lang.bun || return 0
 
     log_section "Bun Runtime"
 
@@ -8653,8 +8742,8 @@ update_agents() {
         fi
     fi
 
-    if ! state_module_is_selected agents.claude; then
-        log_item "skip" "Claude Code" "not selected for this installation"
+    if ! update_module_is_selected agents.claude; then
+        log_item "skip" "Claude Code" "$(update_module_skip_reason agents.claude)"
     elif [[ -n "$claude_path" ]] && [[ "$bun_claude_detected" != "true" || "$FORCE_MODE" != "true" ]]; then
         capture_version_before "claude"
 
@@ -8704,8 +8793,8 @@ update_agents() {
     # Codex CLI via bun (--trust allows postinstall scripts)
     # Uses fallback chain: @latest -> unversioned -> pinned 0.87.0
     # npm can 404 briefly after publishing; pinned version is reliable fallback
-    if ! state_module_is_selected agents.codex; then
-        log_item "skip" "Codex CLI" "not selected for this installation"
+    if ! update_module_is_selected agents.codex; then
+        log_item "skip" "Codex CLI" "$(update_module_skip_reason agents.codex)"
     elif [[ -z "$bun_bin" ]]; then
         # One line for one cause: a missing Bun only matters through Codex, so
         # it is reported once, against Codex (it used to be a Bun line plus a
@@ -8782,8 +8871,8 @@ update_agents() {
         agy_bin="$(update_binary_path agy 2>/dev/null || true)"
     fi
 
-    if ! state_module_is_selected agents.antigravity; then
-        log_item "skip" "Antigravity CLI" "not selected for this installation"
+    if ! update_module_is_selected agents.antigravity; then
+        log_item "skip" "Antigravity CLI" "$(update_module_skip_reason agents.antigravity)"
     elif [[ -n "$agy_bin" ]]; then
         capture_version_before "agy"
         run_cmd "Antigravity CLI" update_run_bounded_in_target_context "$agy_bin" update
@@ -8809,8 +8898,8 @@ update_agents() {
 
     # oh-my-pi (omp) is a standalone self-updating native binary; prefer its
     # native 'omp update', fall back to the verified installer for fresh installs.
-    if ! state_module_is_selected agents.omp; then
-        log_item "skip" "oh-my-pi (omp)" "not selected for this installation"
+    if ! update_module_is_selected agents.omp; then
+        log_item "skip" "oh-my-pi (omp)" "$(update_module_skip_reason agents.omp)"
     elif update_binary_exists omp; then
         local omp_bin=""
         omp_bin="$(update_binary_path omp 2>/dev/null || true)"
@@ -8837,8 +8926,8 @@ update_agents() {
     # OpenCode ships its own 'opencode upgrade'; prefer that, and fall back to
     # the verified installer for fresh installs under --force. (Before this
     # block the updater never touched opencode at all.)
-    if ! state_module_is_selected agents.opencode; then
-        log_item "skip" "OpenCode" "not selected for this installation"
+    if ! update_module_is_selected agents.opencode; then
+        log_item "skip" "OpenCode" "$(update_module_skip_reason agents.opencode)"
     elif update_binary_exists opencode; then
         local opencode_bin=""
         local opencode_timeout_bin=""
@@ -8880,8 +8969,8 @@ update_agents() {
     # Grok CLI has no documented native self-update; refresh by re-running the
     # verified installer. GROK_BIN_DIR keeps the binary in the ACFS bin dir
     # instead of the upstream default ~/.grok/bin.
-    if ! state_module_is_selected agents.grok; then
-        log_item "skip" "Grok CLI" "not selected for this installation"
+    if ! update_module_is_selected agents.grok; then
+        log_item "skip" "Grok CLI" "$(update_module_skip_reason agents.grok)"
     elif update_binary_exists grok || [[ "$FORCE_MODE" == "true" ]]; then
         if update_require_security; then
             local grok_bin_dir=""
@@ -9232,8 +9321,8 @@ update_cloud() {
     [[ -n "$bun_bin" ]] && has_bun=true
 
     # Wrangler (--trust allows postinstall scripts for native binaries)
-    if ! state_module_is_selected cloud.wrangler; then
-        log_item "skip" "Wrangler" "not selected for this installation"
+    if ! update_module_is_selected cloud.wrangler; then
+        log_item "skip" "Wrangler" "$(update_module_skip_reason cloud.wrangler)"
     elif update_binary_exists wrangler || [[ "$FORCE_MODE" == "true" ]]; then
         if [[ "$has_bun" == "true" ]]; then
             run_cmd_bun_with_retry "Wrangler (Cloudflare)" update_run_bounded_in_target_context "$bun_bin" install -g --trust wrangler@latest
@@ -9245,8 +9334,8 @@ update_cloud() {
     fi
 
     # Supabase (verified GitHub release binary; installed to ~/.local/bin)
-    if ! state_module_is_selected cloud.supabase; then
-        log_item "skip" "Supabase CLI" "not selected for this installation"
+    if ! update_module_is_selected cloud.supabase; then
+        log_item "skip" "Supabase CLI" "$(update_module_skip_reason cloud.supabase)"
     elif update_binary_exists supabase || [[ "$FORCE_MODE" == "true" ]]; then
         local supabase_primary_bin=""
         capture_version_before "supabase"
@@ -9266,8 +9355,8 @@ update_cloud() {
     fi
 
     # Vercel (--trust allows postinstall scripts for native binaries)
-    if ! state_module_is_selected cloud.vercel; then
-        log_item "skip" "Vercel CLI" "not selected for this installation"
+    if ! update_module_is_selected cloud.vercel; then
+        log_item "skip" "Vercel CLI" "$(update_module_skip_reason cloud.vercel)"
     elif update_binary_exists vercel || [[ "$FORCE_MODE" == "true" ]]; then
         if [[ "$has_bun" == "true" ]]; then
             run_cmd_bun_with_retry "Vercel CLI" update_run_bounded_in_target_context "$bun_bin" install -g --trust vercel@latest
@@ -9281,8 +9370,8 @@ update_cloud() {
     # GitHub CLI (gh) - update extensions
     local gh_bin=""
     gh_bin="$(update_binary_path gh 2>/dev/null || true)"
-    if ! state_module_is_selected cli.modern; then
-        log_item "skip" "GitHub CLI" "not selected for this installation"
+    if ! update_module_is_selected cli.modern; then
+        log_item "skip" "GitHub CLI" "$(update_module_skip_reason cli.modern)"
     elif [[ -n "$gh_bin" ]]; then
         capture_version_before "gh"
         # Update gh extensions if any are installed
@@ -9342,7 +9431,7 @@ update_rust() {
         return 0
     fi
     update_load_module_selection || return 1
-    state_module_is_selected lang.rust || return 0
+    update_module_is_selected lang.rust || return 0
 
     # Native rustup updates and forced nightly repair must honor the same
     # per-tool hold as the verified fresh-install path.
@@ -9404,8 +9493,8 @@ update_cargo_tools() {
     local cargo_bin=""
     cargo_bin="$(update_rust_binary_path cargo 2>/dev/null || true)"
     if [[ -z "$cargo_bin" ]]; then
-        if [[ "$FORCE_MODE" == "true" ]] && state_module_is_selected tools.ast_grep; then
-            if [[ "$DRY_RUN" == "true" ]] && state_module_is_selected lang.rust \
+        if [[ "$FORCE_MODE" == "true" ]] && update_module_is_selected tools.ast_grep; then
+            if [[ "$DRY_RUN" == "true" ]] && update_module_is_selected lang.rust \
                 && ! update_tool_hold_details rust; then
                 # update_rust previews the prerequisite without creating Cargo.
                 run_cmd "Update ast-grep (after Rust installation)" \
@@ -9428,7 +9517,7 @@ update_cargo_tools() {
         local binary_name="${entry#*|}"
 
         case "$tool" in
-            ast-grep) state_module_is_selected tools.ast_grep || continue ;;
+            ast-grep) update_module_is_selected tools.ast_grep || continue ;;
             # cli.modern owns apt packages, not these separate Cargo installs.
             # Keep maintenance of existing extras only for legacy installations.
             *) [[ "${ACFS_STATE_SELECTION_MODE:-invalid}" == legacy ]] || continue ;;
@@ -9455,7 +9544,7 @@ update_uv() {
         return 0
     fi
     update_load_module_selection || return 1
-    state_module_is_selected lang.uv || return 0
+    update_module_is_selected lang.uv || return 0
 
     log_section "Python Tools (uv)"
 
@@ -9493,7 +9582,7 @@ update_go() {
         return 0
     fi
     update_load_module_selection || return 1
-    state_module_is_selected lang.go || return 0
+    update_module_is_selected lang.go || return 0
 
     log_section "Go Runtime"
 
@@ -10439,7 +10528,7 @@ update_stack() {
     # installs/updates them individually below.  Previously only --skip-cass
     # was passed, causing brenner's install_toolchain() to redundantly rebuild
     # NTM and CM from source — a 5+ hour hang on slow machines (fixes #210).
-    if state_module_is_selected stack.brenner_bot; then
+    if update_module_is_selected stack.brenner_bot; then
         capture_version_before "brenner"
         run_cmd "Brenner Bot" update_run_verified_installer brenner_bot --skip-ntm --skip-cass --skip-cm
         if capture_version_after "brenner"; then
@@ -10448,7 +10537,7 @@ update_stack() {
     fi
 
     # Selected tools retain their existing install/update and failure handling.
-    if state_module_is_selected stack.ntm; then
+    if update_module_is_selected stack.ntm; then
         capture_version_before "ntm"
         update_run_verified_installer_or_existing_on_transient "NTM" ntm ntm ntm || true
         if capture_version_after "ntm"; then
@@ -10459,7 +10548,7 @@ update_stack() {
     # minisign (issue #375): the MCP Agent Mail and CAAM installers fail
     # closed without it, so provision it once here, before either runs.
     local minisign_ready=true
-    if state_module_is_selected stack.mcp_agent_mail || state_module_is_selected stack.caam; then
+    if update_module_is_selected stack.mcp_agent_mail || update_module_is_selected stack.caam; then
         update_ensure_minisign || minisign_ready=false
     fi
 
@@ -10481,7 +10570,7 @@ update_stack() {
 
     # JeffreysPrompts (jfp) - only update if already installed
     # Note: JFP requires a paid subscription to jeffreysprompts.com
-    if state_module_is_selected stack.jeffreysprompts && update_binary_exists jfp; then
+    if update_module_is_selected stack.jeffreysprompts && update_binary_exists jfp; then
         run_cmd "JeffreysPrompts" update_run_verified_installer jfp
     fi
 
@@ -10512,8 +10601,8 @@ update_stack() {
     # CAAM - always install/update. Releases >= 0.1.18 are minisign-signed and
     # the installer fails closed without minisign (#375); a held CAAM still
     # skips through the shared path regardless.
-    if ! state_module_is_selected stack.caam; then
-        log_item "skip" "CAAM" "not selected for this installation"
+    if ! update_module_is_selected stack.caam; then
+        log_item "skip" "CAAM" "$(update_module_skip_reason stack.caam)"
     elif [[ "$minisign_ready" == "true" || "$DRY_RUN" == "true" ]] || update_tool_hold_details caam; then
         run_cmd "CAAM" update_run_verified_installer caam
     else
@@ -10532,7 +10621,7 @@ update_stack() {
     # usable and versionable.
     update_run_selected_module stack.dcg update_run_verified_installer_or_existing_on_transient "DCG" dcg dcg dcg --easy-mode || true
     # Re-register hook after install/update to ensure latest version is active
-    if state_module_is_selected stack.dcg && state_module_is_selected agents.claude \
+    if update_module_is_selected stack.dcg && update_module_is_selected agents.claude \
         && update_binary_exists dcg && update_binary_exists claude; then
         local dcg_bin=""
         dcg_bin="$(update_binary_path dcg 2>/dev/null || true)"
@@ -10550,8 +10639,8 @@ update_stack() {
     # user through sudo, sudo drops the caller's environment. Binary, hook and
     # daemon updates are unaffected; rch installers that predate the variable
     # ignore it.
-    if ! state_module_is_selected stack.rch; then
-        log_item "skip" "RCH" "not selected for this installation"
+    if ! update_module_is_selected stack.rch; then
+        log_item "skip" "RCH" "$(update_module_skip_reason stack.rch)"
     elif [[ "${RCH_SKIP_SKILL:-}" == "1" ]]; then
         run_cmd "RCH" update_run_verified_installer_with_env rch "RCH_SKIP_SKILL=1" --easy-mode
     else
@@ -10590,7 +10679,7 @@ update_stack() {
     update_run_selected_module stack.cross_agent_session_resumer run_cmd "CASR" update_run_verified_installer casr
 
     # ASCII Art Diagram Corrector (aadc) - update when installed, or install with --force
-    if state_module_is_selected utils.aadc && { update_binary_exists aadc || [[ "$FORCE_MODE" == "true" ]]; }; then
+    if update_module_is_selected utils.aadc && { update_binary_exists aadc || [[ "$FORCE_MODE" == "true" ]]; }; then
         capture_version_before "aadc"
         run_cmd "AADC" update_run_cargo_git_source_install https://github.com/Dicklesworthstone/aadc.git aadc
         if capture_version_after "aadc"; then
@@ -10601,7 +10690,7 @@ update_stack() {
     fi
 
     # Rust Proxy (rust_proxy) - update when installed, or install with --force
-    if state_module_is_selected utils.rust_proxy && { update_binary_exists rust_proxy || [[ "$FORCE_MODE" == "true" ]]; }; then
+    if update_module_is_selected utils.rust_proxy && { update_binary_exists rust_proxy || [[ "$FORCE_MODE" == "true" ]]; }; then
         capture_version_before "rust_proxy"
         run_cmd "Rust Proxy" update_run_cargo_git_source_install https://github.com/Dicklesworthstone/rust_proxy.git rust_proxy
         if capture_version_after "rust_proxy"; then
@@ -10612,7 +10701,7 @@ update_stack() {
     fi
 
     # Agent Settings Backup (asb) - update when installed, or install with --force
-    if state_module_is_selected stack.agent_settings_backup && { update_binary_exists asb || [[ "$FORCE_MODE" == "true" ]]; }; then
+    if update_module_is_selected stack.agent_settings_backup && { update_binary_exists asb || [[ "$FORCE_MODE" == "true" ]]; }; then
         run_cmd "ASB" update_run_asb_installer
     fi
 
@@ -10620,8 +10709,8 @@ update_stack() {
     local pcr_hook_script=""
     pcr_hook_script="$(update_runtime_primary_bin_dir 2>/dev/null || true)"
     [[ -n "$pcr_hook_script" ]] && pcr_hook_script="$pcr_hook_script/claude-post-compact-reminder"
-    if ! state_module_is_selected stack.pcr; then
-        log_item "skip" "PCR" "not selected for this installation"
+    if ! update_module_is_selected stack.pcr; then
+        log_item "skip" "PCR" "$(update_module_skip_reason stack.pcr)"
     elif ! update_binary_exists claude; then
         log_item "skip" "PCR" "Claude Code not installed"
     elif [[ -z "$pcr_hook_script" ]]; then
@@ -11150,7 +11239,7 @@ update_report_service_binary_drift() {
                 continue
                 ;;
         esac
-        if ! state_module_is_selected "$module"; then
+        if ! update_module_is_selected "$module"; then
             log_to_file "ACFS_UPDATE_RESTART_SERVICES: leaving '$name' running because $module is not selected for this installation"
             continue
         fi
