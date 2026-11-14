@@ -29,17 +29,18 @@ import {
 import { TrackedLink } from "@/components/tracked-link";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { defaultManifestAgents, manifestAgents } from "@/lib/generated/manifest-web-index";
+import { manifestSelectionProfiles } from "@/lib/generated/manifest-modules";
+import { manifestAgents } from "@/lib/generated/manifest-web-index";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
+import { resolveModuleSelection } from "@/lib/moduleSelection";
 import {
-  getGoogleSsoServices,
-  getServicesByTier,
-  SERVICES,
+  getSelectedAuthServices,
   type Service,
   type ServiceTier,
 } from "@/lib/services";
-import { useCheckedServices } from "@/lib/userPreferences";
+import { useCheckedServices, useModuleProfile, useModuleSelection } from "@/lib/userPreferences";
 import { withCurrentSearch } from "@/lib/utils";
+import { useWizardInstallation } from "@/lib/wizardInstallation";
 import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
 
 const TIER_META: Record<
@@ -53,8 +54,8 @@ const TIER_META: Record<
   }
 > = {
   essential: {
-    title: "Essential (Do these now)",
-    description: "Two accounts you need to start your first project.",
+    title: "Essential (Start here)",
+    description: "Core services for the tools in your selected setup.",
     icon: <Shield className="h-5 w-5" />,
     accentClass: "bg-green/20 text-green",
     defaultOpen: true,
@@ -238,8 +239,40 @@ function TierSection({ tier, services, checkedServices, onToggleService }: TierS
 export default function AccountsPage() {
   const router = useRouter();
   const [isNavigating, setIsNavigating] = useState(false);
-  const [checkedServiceIds, toggleService] = useCheckedServices();
+  const [checkedServiceIds, toggleService, checkedServicesLoaded] = useCheckedServices();
   const checkedServices = useMemo(() => new Set(checkedServiceIds), [checkedServiceIds]);
+  const [moduleProfile, setModuleProfile, moduleProfileLoaded] = useModuleProfile();
+  const [moduleSelection, moduleSelectionLoaded] = useModuleSelection();
+  const installationSession = useWizardInstallation();
+  const reviewedInstallation =
+    installationSession?.status === "active" ? installationSession.installation : null;
+  const ready =
+    checkedServicesLoaded &&
+    moduleProfileLoaded &&
+    moduleSelectionLoaded &&
+    (!installationSession || ["saved", "active"].includes(installationSession.status));
+  const modulePlan = useMemo(
+    () => (ready ? resolveModuleSelection(moduleSelection) : null),
+    [ready, moduleSelection],
+  );
+  const canContinue = ready && modulePlan?.ok === true && modulePlan.selectedCount > 0;
+  const selectedModules = useMemo(
+    () => new Set(modulePlan?.included.map((module) => module.id) ?? []),
+    [modulePlan],
+  );
+  // The same dependency-complete plan supplies signup guidance and the later
+  // Status Check authentication cards. A profile label alone loses exact skips.
+  const selectedServices = useMemo(
+    () => Object.values(getSelectedAuthServices(selectedModules)).flat(),
+    [selectedModules],
+  );
+  const selectedAgents = manifestAgents.filter((agent) => selectedModules.has(agent.moduleId));
+  const subscriptionServices = selectedServices.filter((service) => service.requiresSubscription);
+  const selectedCheckedIds = useMemo(
+    () => selectedServices.filter((service) => checkedServices.has(service.id))
+      .map((service) => service.id),
+    [selectedServices, checkedServices],
+  );
 
   // Analytics tracking for this wizard step
   const { markComplete } = useWizardAnalytics({
@@ -249,38 +282,108 @@ export default function AccountsPage() {
   });
 
   const handleContinue = useCallback(() => {
+    if (!canContinue || isNavigating) return;
     markComplete({
-      accounts_checked: Array.from(checkedServices),
-      accounts_count: checkedServices.size,
+      accounts_checked: selectedCheckedIds,
+      accounts_count: selectedCheckedIds.length,
     });
     markStepComplete(7);
     setIsNavigating(true);
     router.push(withCurrentSearch("/wizard/preflight-check"));
-  }, [router, markComplete, checkedServices]);
+  }, [router, markComplete, selectedCheckedIds, canContinue, isNavigating]);
 
   const handleSkip = useCallback(() => {
+    if (!canContinue || isNavigating) return;
     markComplete({ skipped: true });
     markStepComplete(7);
     setIsNavigating(true);
     router.push(withCurrentSearch("/wizard/preflight-check"));
-  }, [router, markComplete]);
+  }, [router, markComplete, canContinue, isNavigating]);
 
   // Dock "Next" = Continue; "Skip for now" stays an explicit inline choice.
   const forwardCtaRef = useWizardForwardNav({
     onContinue: handleContinue,
-    disabled: isNavigating,
+    disabled: isNavigating || !canContinue,
     loading: isNavigating,
     label: "Continue to pre-flight check",
   });
 
   const tieredServices: Record<ServiceTier, Service[]> = {
-    essential: getServicesByTier("essential").sort(sortByOrder),
-    recommended: getServicesByTier("recommended").sort(sortByOrder),
-    optional: getServicesByTier("optional").sort(sortByOrder),
+    essential: selectedServices.filter((service) => service.tier === "essential").sort(sortByOrder),
+    recommended: selectedServices.filter((service) => service.tier === "recommended").sort(sortByOrder),
+    optional: selectedServices.filter((service) => service.tier === "optional").sort(sortByOrder),
   };
 
   const essentialServices = tieredServices.essential;
   const essentialChecked = essentialServices.filter((s) => checkedServices.has(s.id));
+
+  if (!ready) {
+    return (
+      <p role="status" className="py-8">
+        Loading your selected setup before showing account guidance...
+      </p>
+    );
+  }
+
+  const selectionControl = (
+    <section
+      aria-labelledby="accounts-selection-heading"
+      className="space-y-3 rounded-xl border border-border/50 bg-card/50 p-4"
+    >
+      <h2 id="accounts-selection-heading" className="text-lg font-semibold">
+        Choose your tools before signing up
+      </h2>
+      {reviewedInstallation ? (
+        <p role="status" className="text-sm text-muted-foreground">
+          Using reviewed team profile: {reviewedInstallation.displayName}. These accounts follow
+          its exact module selection. Discard the reviewed installation above before changing it.
+        </p>
+      ) : (
+        <>
+          <label htmlFor="accounts-profile" className="block text-sm font-medium">
+            Installation profile
+          </label>
+          <select
+            id="accounts-profile"
+            value={moduleProfile}
+            onChange={(event) => {
+              const profile = manifestSelectionProfiles.find(
+                (item) => item.id === event.target.value && !item.mode,
+              );
+              if (profile) setModuleProfile(profile.id);
+            }}
+            className="min-h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          >
+            {manifestSelectionProfiles.filter((profile) => !profile.mode).map((profile) => (
+              <option key={profile.id} value={profile.id}>{profile.label}</option>
+            ))}
+          </select>
+          <p className="text-sm text-muted-foreground">
+            This choice also applies to Run Installer. Account checkboxes only record your progress;
+            they do not add or remove tools from the installation.
+          </p>
+        </>
+      )}
+      <p role="status" className="text-sm text-muted-foreground">
+        {canContinue
+          ? `${modulePlan.selectedCount} modules selected, including dependencies.`
+          : "This selection cannot produce an installation plan. Choose a valid profile before continuing."}
+      </p>
+    </section>
+  );
+
+  if (!canContinue) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold">Set up your accounts</h1>
+        {selectionControl}
+        <AlertCard variant="error" title="Account guidance unavailable">
+          Review the selected modules before creating accounts. No signup or authentication
+          commands are shown for an invalid or empty installation.
+        </AlertCard>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -298,44 +401,40 @@ export default function AccountsPage() {
           </div>
         </div>
         <p className="text-muted-foreground">
-          Set up essential accounts for your <Jargon term="vps">VPS</Jargon> now. Recommended and
-          optional services can wait until you need them.
+          Set up accounts for the tools selected for your <Jargon term="vps">VPS</Jargon>.
+          You can wait until installation is complete to sign in.
         </p>
       </div>
 
+      {selectionControl}
+
       {/* Cost warning - prominent placement for subscription services */}
-      <AlertCard variant="warning" icon={DollarSign} title="Subscription costs ahead">
-        Some AI coding agents require expensive subscriptions to use after installation:
+      {subscriptionServices.length > 0 && <AlertCard variant="warning" icon={DollarSign} title="Check account access before subscribing">
+        Review the plan requirements for the selected agents you intend to use:
         <ul className="mt-2 list-inside list-disc space-y-1 text-sm">
-          <li>
-            <strong>Claude Code</strong>: Requires Claude Max ($200/mo)
-          </li>
-          <li>
-            <strong>Codex CLI</strong>: Requires ChatGPT Pro ($200/mo)
-          </li>
-          <li>
-            <strong>Antigravity CLI</strong>: Requires eligible Google/Gemini access
-          </li>
+          {subscriptionServices.map((service) => (
+            <li key={service.id}><strong>{service.name}</strong>: {service.subscriptionNote ?? service.shortDescription}</li>
+          ))}
         </ul>
         <p className="mt-2 text-sm">
-          <strong>You don&apos;t need all of them!</strong> Start with one agent (Claude Code is
-          recommended) and add others later if you want different AI perspectives.
+          Start with the agent you plan to use. Installing an agent does not require signing up
+          for every service, and an existing eligible account may be sufficient.
         </p>
-      </AlertCard>
+      </AlertCard>}
 
-      {/* Google SSO tip - uses getGoogleSsoServices() to show count */}
-      <AlertCard variant="tip" icon={Sparkles} title="Quick signup with Google">
-        {getGoogleSsoServices().length} of {SERVICES.length} services support Google SSO. Use the
+      {/* Count only accounts that belong to the current installation. */}
+      {selectedServices.some((service) => service.supportsGoogleSso) && <AlertCard variant="tip" icon={Sparkles} title="Quick signup with Google">
+        {selectedServices.filter((service) => service.supportsGoogleSso).length} of {selectedServices.length} selected services support Google SSO. Use the
         same Google account for all of them to streamline your setup. That makes that one account
         worth protecting:{" "}
         <Link href="/docs/security" className="font-medium text-primary hover:underline">
           how to secure it, and what to do if it is compromised
         </Link>
         .
-      </AlertCard>
+      </AlertCard>}
 
       {/* Progress indicator */}
-      <div className="rounded-xl border border-border/50 bg-card/50 p-4">
+      {essentialServices.length > 0 && <div className="rounded-xl border border-border/50 bg-card/50 p-4">
         <div className="flex items-center justify-between">
           <span className="text-sm text-muted-foreground">Essential accounts:</span>
           <span className="font-medium">
@@ -354,7 +453,12 @@ export default function AccountsPage() {
             }}
           />
         </div>
-      </div>
+      </div>}
+
+      {selectedServices.length === 0 && <AlertCard variant="info" title="No listed accounts needed for this selection">
+        Your selected modules do not use the services listed in this step. Continue to pre-flight
+        checks; you can create additional accounts later if you add tools that need them.
+      </AlertCard>}
 
       {/* Service tiers */}
       <div className="space-y-4">
@@ -371,42 +475,36 @@ export default function AccountsPage() {
 
       {/* Compatible agents roster - generated from acfs.manifest.yaml so the
           accounts you sign up for always match the agents ACFS can install. */}
-      <section aria-labelledby="compatible-agents-heading" className="space-y-3">
+      {selectedAgents.length > 0 && <section aria-labelledby="compatible-agents-heading" className="space-y-3">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/20">
             <Bot className="h-5 w-5 text-primary" />
           </div>
           <div>
             <h2 id="compatible-agents-heading" className="text-lg font-semibold">
-              Compatible agents
+              Coding agents in your selection
             </h2>
             <p className="text-sm text-muted-foreground">
-              ACFS installs {defaultManifestAgents.length} of these {manifestAgents.length} agents
-              by default. Each one needs its own account, so sign up only for the agents you plan to
-              use.
+              Your plan includes {selectedAgents.length} coding agents. Use their sign-in commands
+              after installation, and create accounts only for the agents you intend to use.
             </p>
           </div>
         </div>
-        <AgentRoster variant="surface" />
-      </section>
+        <AgentRoster variant="surface" agents={selectedAgents} />
+      </section>}
 
       {/* Beginner Guide */}
-      <SimplerGuide>
+      {selectedServices.length > 0 && <SimplerGuide>
         <div className="space-y-6">
-          <GuideExplain term="Why do I need all these accounts?">
-            You don&apos;t need all of them right now! We&apos;ve organized them into three tiers:
-            <br />
-            <br />
-            <strong>Essential (do now):</strong> GitHub for code backup and Claude Code for AI
-            assistance. These two are all you need to start.
-            <br />
-            <br />
-            <strong>Recommended (after first project):</strong> Add Codex CLI and Antigravity CLI
-            for more AI options with different perspectives.
-            <br />
-            <br />
-            <strong>Optional (when you need them):</strong> Cloud platforms for deployment,
-            databases, and VPN access. Set these up when your project needs them.
+          <GuideExplain term="Which accounts do I need?">
+            This page lists services for your selected tools, including their dependencies.
+            Set up the accounts you expect to use; signing up can wait until after installation.
+            {essentialServices.length > 0 && (
+              <p className="mt-3">
+                <strong>Start here:</strong> {essentialServices.map((service) => service.name).join(" and ")}.
+                The other listed services can wait until your project needs them.
+              </p>
+            )}
           </GuideExplain>
 
           <GuideSection title="How to Sign Up Efficiently">
@@ -417,13 +515,13 @@ export default function AccountsPage() {
               </GuideStep>
 
               <GuideStep number={2} title="Check the box after signing up">
-                After you create an essential account, check the box next to it. Recommended and
-                optional checkboxes are just notes for later.
+                Check the box next to each account you already have or create. These are progress
+                notes; they do not change the tools you selected.
               </GuideStep>
 
-              <GuideStep number={3} title="Focus on the Essential tier first">
-                Knock out the two essential accounts. You can leave recommended and optional
-                services for later.
+              <GuideStep number={3} title="Start with the tools you plan to use">
+                Create accounts for your immediate work. You can return for the remaining
+                services when you need them.
               </GuideStep>
 
               <GuideStep number={4} title="You can come back later">
@@ -439,7 +537,7 @@ export default function AccountsPage() {
             losing your place here.
           </GuideTip>
 
-          <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+          {selectedAgents.length > 0 && <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
             <Link href="/learn/agent-commands" className="flex items-center gap-3 text-sm">
               <BookOpen className="h-5 w-5 text-primary" />
               <div>
@@ -449,30 +547,30 @@ export default function AccountsPage() {
                 </p>
               </div>
             </Link>
-          </div>
+          </div>}
         </div>
-      </SimplerGuide>
+      </SimplerGuide>}
 
       {/* Skip reassurance note */}
       <div className="rounded-xl border border-muted bg-muted/30 p-4">
         <p className="text-sm text-muted-foreground">
           <strong className="text-foreground">Don&apos;t want to create accounts now?</strong>{" "}
           That&apos;s completely fine! You can skip this step and create accounts after
-          installation. The ACFS installer will still install all the tools—you&apos;ll just need to
-          authenticate them later when you&apos;re ready to use them.
+          installation. The ACFS installer follows your selected modules; authenticate the tools
+          you need when you&apos;re ready to use them.
         </p>
       </div>
 
       {/* Action buttons */}
       <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:justify-end">
-        <Button variant="outline" onClick={handleSkip} disabled={isNavigating}>
+        <Button variant="outline" onClick={handleSkip} disabled={isNavigating || !canContinue}>
           Skip for now
         </Button>
         <Button
           ref={forwardCtaRef}
           data-wizard-primary-cta
           onClick={handleContinue}
-          disabled={isNavigating}
+          disabled={isNavigating || !canContinue}
           size="lg"
           disableMotion
         >
