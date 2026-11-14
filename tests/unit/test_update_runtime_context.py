@@ -33,6 +33,8 @@ def snapshot_update_runtime(directory, update_source):
         "scripts/lib/update.sh": update_source,
         "scripts/lib/state.sh": (ROOT / "scripts/lib/state.sh").read_text(),
         "scripts/lib/progress.sh": (ROOT / "scripts/lib/progress.sh").read_text(),
+        "scripts/lib/security.sh": (ROOT / "scripts/lib/security.sh").read_text(),
+        "scripts/lib/holds.sh": (ROOT / "scripts/lib/holds.sh").read_text(),
         "scripts/generated/manifest_index.sh":
             (ROOT / "scripts/generated/manifest_index.sh").read_text(),
     }
@@ -655,6 +657,341 @@ esac
         self.assertIn("COUNTS=0,0,1", output)
         self.assertIn("exit code: 17", (self.base / "update.log").read_text())
         self.assertEqual(list(self.caller.iterdir()), [])
+
+    def write_nvm_fixture(self, directory=None, *, default="node", version="0.39.7",
+                          installed=True, npm=False):
+        directory = directory or self.home / ".nvm"
+        prefix = "fixture=" + shlex.quote(str(self.base)) + "\n"
+        event = r'''
+fixture_nvm_event() {
+    local operation="$1"; shift
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$operation" "$EUID" "$HOME" "$PWD" "${NVM_DIR-<unset>}" \
+        "${XDG_CONFIG_HOME-<unset>}" "${PROFILE-<unset>}" "$*" >> "$fixture/events.tsv"
+}
+'''
+        library = prefix + event + r'''
+fixture_nvm_event nvm-source "$@"
+[[ ! -f "$NVM_DIR/hang-source" ]] || /bin/sleep 5
+nvm_alias() {
+    fixture_nvm_event nvm_alias "$@"
+    [[ -f "$NVM_DIR/alias/$1" ]] || return 2
+    cat "$NVM_DIR/alias/$1"
+}
+nvm() {
+    fixture_nvm_event nvm "$@"
+    case "$1" in
+        --version)
+            if [[ -f "$NVM_DIR/fail-nvm-version" && "$(cat "$NVM_DIR/fixture-version")" != 0.40.1 ]]; then
+                return 17
+            fi
+            cat "$NVM_DIR/fixture-version"
+            ;;
+        version)
+            [[ "$2" == default && -x "$NVM_DIR/versions/node/v20.19.0/bin/node" ]] || return 3
+            printf 'v20.19.0\n'
+            ;;
+        version-remote)
+            if [[ "$2" == v[0-9]* ]]; then printf '%s\n' "$2"
+            else printf 'v22.20.0\n'; fi
+            ;;
+        which)
+            if [[ "$2" == default ]]; then
+                local default_version=v20.19.0
+                [[ ! -f "$NVM_DIR/default-installed-version" ]] || read -r default_version < "$NVM_DIR/default-installed-version"
+                printf '%s\n' "$NVM_DIR/versions/node/$default_version/bin/node"
+            elif [[ "$2" == current ]]; then
+                printf '%s\n' "$NVM_DIR/versions/node/${NVM_FIXTURE_CURRENT:?}/bin/node"
+            else return 64; fi
+            ;;
+        install)
+            [[ ! -f "$NVM_DIR/hang-install" ]] || /bin/sleep 5
+            [[ ! -f "$NVM_DIR/fail-install" ]] || return 17
+            shift
+            local migrate=false
+            if [[ "${1:-}" == --reinstall-packages-from=* ]]; then
+                printf '%s\n' "${1#*=}" > "$NVM_DIR/migrated-packages"
+                migrate=true
+                shift
+            fi
+            [[ $# == 1 ]] || return 64
+            printf '%s\n' "$1" > "$NVM_DIR/installed-selector"
+            local installed_version=v22.20.0
+            [[ "$1" != v[0-9]* ]] || installed_version="$1"
+            mkdir -p "$NVM_DIR/versions/node/$installed_version/bin"
+            cp "$fixture/node-payload" "$NVM_DIR/versions/node/$installed_version/bin/node"
+            chmod 0755 "$NVM_DIR/versions/node/$installed_version/bin/node"
+            if [[ "$migrate" == true ]]; then
+                cp "$fixture/node-payload" "$NVM_DIR/versions/node/$installed_version/bin/npm"
+                chmod 0755 "$NVM_DIR/versions/node/$installed_version/bin/npm"
+            fi
+            ;;
+        use)
+            [[ "${2:-}" != --silent ]] || shift
+            NVM_FIXTURE_CURRENT=v22.20.0
+            [[ "$2" != v[0-9]* ]] || NVM_FIXTURE_CURRENT="$2"
+            export NVM_FIXTURE_CURRENT
+            printf '%s\n' "$NVM_FIXTURE_CURRENT" > "$NVM_DIR/default-installed-version"
+            ;;
+        alias)
+            [[ "$2" == default && $# == 3 ]] || return 64
+            mkdir -p "$NVM_DIR/alias"
+            printf '%s\n' "$3" > "$NVM_DIR/alias/default"
+            ;;
+        *) return 64 ;;
+    esac
+}
+'''
+        node = "#!/bin/bash\nset -euo pipefail\n" + prefix + event + r'''
+fixture_nvm_event node "$@"
+[[ "$*" == --version ]] || exit 64
+[[ ! -f "$NVM_DIR/fail-node-version" ]] || exit 18
+installed_version="${0%/bin/*}"
+printf '%s\n' "${installed_version##*/}"
+'''
+        installer = "#!/bin/bash\nset -euo pipefail\n" + prefix + event + r'''
+fixture_nvm_event nvm-installer "$@"
+[[ ! -f "$fixture/hang-nvm-installer" ]] || /bin/sleep 5
+[[ ! -f "$fixture/fail-nvm-installer" ]] || exit 19
+[[ "${PROFILE:-}" == /dev/null && "${NVM_DIR:-}" == /* ]] || exit 65
+for selector in NODE_VERSION NVM_SOURCE NVM_INSTALL_VERSION NVM_INSTALL_GITHUB_REPO METHOD NVM_INSTALL_THIRD_PARTY_HOOK; do
+    [[ ! -v "$selector" ]] || exit 66
+done
+mkdir -p "$NVM_DIR"
+cp "$fixture/nvm-payload" "$NVM_DIR/nvm.sh"
+printf '0.40.1\n' > "$NVM_DIR/fixture-version"
+'''
+        for name, content in (("nvm-payload", library), ("node-payload", node),
+                              ("nvm-installer", installer)):
+            self.write_input(self.base / name, content)
+        if installed:
+            self.owned_dir(directory)
+            self.write_input(directory / "nvm.sh", library)
+            self.write_input(directory / "fixture-version", version + "\n")
+            if default is not None:
+                self.owned_dir(directory / "alias")
+                self.write_input(directory / "alias/default", default + "\n")
+            if npm:
+                binaries = directory / "versions/node/v20.19.0/bin"
+                self.owned_dir(binaries)
+                for name in ("node", "npm"):
+                    self.write_input(binaries / name, node)
+                    (binaries / name).chmod(0o755)
+        return directory
+
+    def nvm_command(self, setup=""):
+        # Only acquisition is replaced: the verified-installer dispatcher,
+        # private staging, account transport, deadlines and nvm/Node phase run
+        # normally against local inert payloads. No URL is contacted.
+        return r'''
+source "${UPDATE_TEST_LIBRARY%/*}/security.sh"
+source "${UPDATE_TEST_LIBRARY%/*}/holds.sh"
+ACFS_HOLDS_FILE="$TEST_HOME/.acfs/holds.yaml"
+KNOWN_INSTALLERS=([nvm]="https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh")
+update_require_security() { return 0; }
+get_checksum() { [[ "$1" == nvm ]] && sha256sum "$TEST_ROOT/nvm-installer" | awk '{print $1}'; }
+verify_checksum() {
+    [[ "$1" == "${KNOWN_INSTALLERS[nvm]}" && "$3" == nvm ]] || return 95
+    [[ "$2" == "$(get_checksum nvm)" ]] || return 95
+    printf 'download\n' >> "$TEST_HOME/nvm-downloads"
+    cat "$TEST_ROOT/nvm-installer"
+}
+# Retain the real private staging directory for fixture inspection.
+update_remove_target_installer_tmpdir() { :; }
+''' + setup + "\nupdate_nvm\n"
+
+    def assert_nvm_success(self, output, directory, selector):
+        self.assertIn("COUNTS=1,0,0", output)
+        events = self.events()
+        self.assert_target_events(events)
+        self.assertTrue(all(event[4] == str(directory) for event in events), events)
+        self.assertTrue(all(event[-1] == "--no-use" for event in events if event[0] == "nvm-source"))
+        self.assertTrue(any(event[0] == "nvm" and event[-1] == "--version" for event in events))
+        self.assertTrue(any(event[0] == "node" and event[-1] == "--version" for event in events))
+        self.assertTrue(any(event[0] == "nvm" and event[-1] == "version-remote " + selector
+                            for event in events))
+        installed = selector if selector.startswith("v") else "v22.20.0"
+        self.assertEqual((directory / "installed-selector").read_text(), installed + "\n")
+        self.assertEqual((directory / "installed-selector").stat().st_uid, self.account.pw_uid)
+
+    def test_nvm_updates_manager_and_preserves_default_channel(self):
+        directory = self.write_nvm_fixture(default="lts/*", npm=True)
+        output = self.run_update(command=self.nvm_command())
+        self.assert_nvm_success(output, directory, "lts/*")
+        self.assertEqual((directory / "alias/default").read_text(), "lts/*\n")
+        self.assertEqual((directory / "fixture-version").read_text(), "0.40.1\n")
+        self.assertEqual((directory / "migrated-packages").read_text(), "v20.19.0\n")
+        self.assertIn("install --reinstall-packages-from=v20.19.0 v22.20.0",
+                      [event[-1] for event in self.events() if event[0] == "nvm"])
+        self.assertEqual((self.home / "nvm-downloads").read_text().splitlines(), ["download"])
+        original_count = len(self.events())
+        output = self.run_update(command=self.nvm_command())
+        self.assert_nvm_success(output, directory, "lts/*")
+        repeated = self.events()[original_count:]
+        self.assertEqual([event[-1] for event in repeated
+                          if event[0] == "nvm" and event[-1].startswith("install ")],
+                         ["install v22.20.0"])
+        self.assertEqual((directory / "alias/default").read_text(), "lts/*\n")
+        self.assertEqual((self.home / "nvm-downloads").read_text().splitlines(), ["download"])
+
+    def test_nvm_same_account_preserves_absolute_override_and_pinned_alias(self):
+        directory = self.write_nvm_fixture(self.home / "custom nvm", default="v20.19.0")
+        output = self.run_update(command=self.nvm_command(), overrides={"NVM_DIR": str(directory)})
+        self.assert_nvm_success(output, directory, "v20.19.0")
+        self.assertEqual((directory / "alias/default").read_text(), "v20.19.0\n")
+        self.assertFalse((self.home / ".nvm").exists())
+
+    def test_nvm_same_account_relative_override_keeps_original_working_directory(self):
+        directory = self.write_nvm_fixture(self.work / "relative nvm", default="node")
+        output = self.run_update(command=self.nvm_command(), overrides={"NVM_DIR": "relative nvm"})
+        self.assert_nvm_success(output, directory, "node")
+        self.assertFalse((self.home / "relative nvm").exists())
+
+    def assert_cross_account_nvm_home(self, relative):
+        directory = self.write_nvm_fixture(self.home / relative)
+        output = self.run_update(cross=True, transport="runuser", command=self.nvm_command(),
+                                 overrides={"NVM_DIR": str(self.caller / "foreign-nvm"),
+                                            "XDG_CONFIG_HOME": str(self.caller / "foreign-xdg"),
+                                            "NODE_VERSION": "v0.0.1", "NVM_NODEJS_ORG_MIRROR": "https://invalid.example"})
+        self.assert_nvm_success(output, directory, "node")
+        self.assertTrue(all(event[5] != str(self.caller / "foreign-xdg") for event in self.events()))
+        self.assertEqual(list(self.caller.iterdir()), [])
+
+    def test_nvm_cross_account_ignores_callers_nvm_and_xdg_selectors(self):
+        self.assert_cross_account_nvm_home(".nvm")
+
+    def test_nvm_cross_account_finds_targets_xdg_installation(self):
+        self.assert_cross_account_nvm_home(".config/nvm")
+
+    def test_nvm_newer_manager_is_not_downgraded_but_node_updates(self):
+        directory = self.write_nvm_fixture(version="0.40.2")
+        output = self.run_update(command=self.nvm_command())
+        self.assert_nvm_success(output, directory, "node")
+        self.assertFalse((self.home / "nvm-downloads").exists())
+        self.assertFalse(any(event[0] == "nvm-installer" for event in self.events()))
+        self.assertEqual((directory / "fixture-version").read_text(), "0.40.2\n")
+
+    def test_nvm_absent_skips_unless_force_repairs_it(self):
+        directory = self.write_nvm_fixture(installed=False)
+        output = self.run_update(command=self.nvm_command())
+        self.assertIn("COUNTS=0,1,0", output)
+        self.assertEqual(self.events(), [])
+        self.assertFalse((self.home / "nvm-downloads").exists())
+        output = self.run_update(command=self.nvm_command("FORCE_MODE=true"))
+        self.assert_nvm_success(output, directory, "node")
+        self.assertEqual((directory / "alias/default").read_text(), "node\n")
+        actions = [(event[0], event[-1]) for event in self.events()]
+        self.assertLess(actions.index(("node", "--version")), actions.index(("nvm", "alias default node")))
+
+    def test_nvm_dry_run_never_sources_downloads_or_creates_installation(self):
+        directory = self.write_nvm_fixture(installed=False)
+        output = self.run_update(dry_run=True, command=self.nvm_command("FORCE_MODE=true"))
+        self.assertIn("COUNTS=0,1,0", output)
+        self.assertFalse(directory.exists())
+        self.write_nvm_fixture(default="lts/*")
+        self.run_update(dry_run=True, command=self.nvm_command())
+        self.assertEqual(self.events(), [])
+        self.assertFalse((self.home / "nvm-downloads").exists())
+        self.assertEqual((directory / "alias/default").read_text(), "lts/*\n")
+
+    def test_nvm_hold_precedes_source_download_and_force(self):
+        directory = self.write_nvm_fixture()
+        self.owned_dir(self.home / ".acfs")
+        self.write_input(self.home / ".acfs/holds.yaml", 'holds:\n  nvm:\n'
+                         '    held_version: "current"\n    owner: "fixture"\n'
+                         '    reason: "keep manager and Node"\n    expiry: ""\n')
+        output = self.run_update(command=self.nvm_command("FORCE_MODE=true"))
+        self.assertIn("COUNTS=0,1,0", output)
+        self.assertEqual(self.events(), [])
+        self.assertFalse((self.home / "nvm-downloads").exists())
+        self.assertFalse((directory / "installed-selector").exists())
+        self.assertIn("keep manager and Node", (self.base / "update.log").read_text())
+
+    def test_nvm_runtime_selection_and_platform_gate_all_execution(self):
+        self.write_nvm_fixture()
+        self.run_update(command=self.nvm_command("UPDATE_RUNTIME=false"))
+        self.owned_dir(self.home / ".acfs")
+        checkpoint = self.home / ".acfs/state.json"
+        self.write_input(checkpoint, json.dumps({"target_home": str(self.home),
+            "target_user": self.account.pw_name,
+            "module_selection": {"schema_version": 1, "selected_modules": ["lang.bun"]}}))
+        self.run_update(command=self.nvm_command("FORCE_MODE=true"))
+        self.write_input(checkpoint, json.dumps({"target_home": str(self.home),
+            "target_user": self.account.pw_name,
+            "module_selection": {"schema_version": 1, "selected_modules": ["lang.nvm"]}}))
+        self.write_input(self.base / "nvm-platform-index.sh", 'ACFS_MODULES_IN_ORDER=(\n  "lang.nvm"\n)\n'
+                         'declare -gA ACFS_MODULE_FAMILIES=(\n  [\'lang.nvm\']="ubuntu"\n)\n')
+        saved = checkpoint.read_bytes()
+        self.run_update(command=self.nvm_command('FORCE_MODE=true ACFS_DISTRO_FAMILY=arch\n'
+                         '_UPDATE_MANIFEST_INDEX="$TEST_ROOT/nvm-platform-index.sh"'))
+        self.assertEqual(self.events(), [])
+        self.assertFalse((self.home / "nvm-downloads").exists())
+        self.assertEqual(checkpoint.read_bytes(), saved)
+
+    def test_nvm_dangling_default_alias_is_preserved_and_refused(self):
+        directory = self.write_nvm_fixture(default=None)
+        self.owned_dir(directory / "alias")
+        alias = directory / "alias/default"
+        alias.symlink_to("missing-default")
+        output = self.run_update(command=self.nvm_command())
+        self.assertIn("COUNTS=0,0,1", output)
+        self.assertTrue(alias.is_symlink())
+        self.assertEqual(os.readlink(alias), "missing-default")
+        self.assertFalse((directory / "alias/missing-default").exists())
+        self.assertFalse((directory / "installed-selector").exists())
+
+    def test_nvm_installer_failure_stops_before_node_stage(self):
+        directory = self.write_nvm_fixture()
+        self.write_input(self.base / "fail-nvm-installer", "fixture\n")
+        output = self.run_update(command=self.nvm_command())
+        self.assertIn("COUNTS=0,0,1", output)
+        self.assertTrue(any(event[0] == "nvm-installer" for event in self.events()))
+        self.assertFalse(any(event[0] == "nvm" and event[-1].startswith("install ") for event in self.events()))
+        self.assertFalse((directory / "installed-selector").exists())
+        self.assertIn("exit code: 19", (self.base / "update.log").read_text())
+
+    def test_nvm_installer_timeout_stops_before_node_stage(self):
+        directory = self.write_nvm_fixture()
+        self.write_input(self.base / "hang-nvm-installer", "fixture\n")
+        output = self.run_update(command=self.nvm_command(), timeout="0.1")
+        self.assertIn("COUNTS=0,0,1", output)
+        self.assertFalse((directory / "installed-selector").exists())
+        self.assertRegex((self.base / "update.log").read_text(), r"exit code: (124|137)")
+
+    def test_nvm_node_install_timeout_is_counted_and_does_not_set_default(self):
+        directory = self.write_nvm_fixture(default=None)
+        self.write_input(directory / "hang-install", "fixture\n")
+        output = self.run_update(command=self.nvm_command(), timeout="0.1")
+        self.assertIn("COUNTS=0,0,1", output)
+        self.assertFalse((directory / "alias/default").exists())
+        self.assertFalse((directory / "installed-selector").exists())
+        self.assertRegex((self.base / "update.log").read_text(), r"exit code: (124|137)")
+
+    def test_nvm_source_probe_is_bounded_before_installer_download(self):
+        directory = self.write_nvm_fixture()
+        self.write_input(directory / "hang-source", "fixture\n")
+        output = self.run_update(command=self.nvm_command(), timeout="0.1")
+        self.assertIn("COUNTS=0,0,1", output)
+        self.assertFalse((self.home / "nvm-downloads").exists())
+        self.assertFalse((directory / "installed-selector").exists())
+
+    def test_nvm_node_readiness_failure_is_not_reported_as_success(self):
+        directory = self.write_nvm_fixture(default=None)
+        self.write_input(directory / "fail-node-version", "fixture\n")
+        output = self.run_update(command=self.nvm_command())
+        self.assertIn("COUNTS=0,0,1", output)
+        self.assertTrue(any(event[0] == "node" and event[-1] == "--version" for event in self.events()))
+        self.assertFalse((directory / "alias/default").exists())
+
+    def test_nvm_probe_failure_requires_explicit_force_repair(self):
+        directory = self.write_nvm_fixture()
+        self.write_input(directory / "fail-nvm-version", "fixture\n")
+        output = self.run_update(command=self.nvm_command())
+        self.assertIn("COUNTS=0,0,1", output)
+        self.assertFalse((self.home / "nvm-downloads").exists())
+        self.assertFalse((directory / "installed-selector").exists())
+        output = self.run_update(command=self.nvm_command("FORCE_MODE=true"))
+        self.assert_nvm_success(output, directory, "node")
 
     def test_native_uv_retries_as_target_and_succeeds_without_fallback(self):
         self.write_native_tool("uv")

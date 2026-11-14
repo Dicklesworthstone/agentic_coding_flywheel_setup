@@ -249,14 +249,14 @@ exit "${FIXTURE_UPDATE_RC:-0}"
         self.assert_no_update()
 
 
-UPDATE = ROOT / "scripts/lib/update.sh"
+UPDATE = Path(os.environ.get("ACFS_UPDATE_TEST_LIBRARY", ROOT / "scripts/lib/update.sh"))
 # Every step main() runs is a no-op except update_apt, which sets the counters
 # that decide main's exit status. Logging and the exit-status logic are real.
 UPDATE_MAIN_STUBS = r'''
 for fn in ensure_path update_ensure_writable_tmpdir update_acfs_self \
     update_procwatch_start update_procwatch_stop update_ensure_jq_available \
     cleanup_legacy_git_safety_guard cleanup_legacy_br_alias cleanup_legacy_bv_alias \
-    cleanup_unmanaged_atuin_init update_bun update_agents update_cloud update_rust \
+    cleanup_unmanaged_atuin_init update_bun update_nvm update_agents update_cloud update_rust \
     update_cargo_tools update_uv update_go update_shell update_stack \
     update_root_agents_md update_report_service_binary_drift print_summary; do
     eval "$fn() { :; }"
@@ -394,6 +394,18 @@ class DirectUpdateRecordTests(unittest.TestCase):
         result = self.record(0)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.read_state()["outcome"], "success")
+
+    def test_update_main_refreshes_nvm_before_agents(self):
+        # Isolate main's dispatch ordering; the runtime tests retain the real
+        # saved-selection and platform admission paths for update_nvm itself.
+        result = self.run_update_main("--yes", "--quiet", "--no-self-update", overrides=r'''
+update_bootstrap_admit() { :; }
+update_load_module_selection() { :; }
+update_nvm() { printf 'nvm\n' >> "$HOME/runtime-dispatch"; }
+update_agents() { printf 'agents\n' >> "$HOME/runtime-dispatch"; }
+''')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual((self.home / "runtime-dispatch").read_text().splitlines(), ["nvm", "agents"])
 
     def test_update_main_records_a_full_noninteractive_run(self):
         self.write_interrupted()

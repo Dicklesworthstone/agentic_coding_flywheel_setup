@@ -840,7 +840,7 @@ After installation, keeping tools current is handled by `acfs-update`. It provid
 ```bash
 acfs-update                  # Update apt, runtimes, shell, agents, cloud CLIs, and stack tools
 acfs-update --agents-only    # Only update coding agents
-acfs-update --runtime-only   # Only update runtimes (bun, rust, uv, go)
+acfs-update --runtime-only   # Only update runtimes (node/nvm, bun, rust, uv, go)
 acfs-update --dry-run        # Preview changes without making them
 acfs-update --yes --quiet --no-self-update
                              # Automated mode that avoids changing the ACFS tree itself
@@ -873,6 +873,7 @@ accepts one. Verified installers are staged in a system directory instead of
 | **System** | apt packages | `apt update && apt upgrade` |
 | **Shell** | OMZ, P10K, plugins | `git pull` on each repo |
 | **Shell** | Atuin, Zoxide | Re-run upstream installers |
+| **Runtime** | Node.js / nvm | Update the default Node release; refresh older nvm through its verified installer |
 | **Runtime** | Bun | `bun upgrade` |
 | **Runtime** | Rust | `rustup update stable` |
 | **Runtime** | uv (Python) | `uv self update` |
@@ -886,6 +887,15 @@ accepts one. Verified installers are staged in a system directory instead of
 | **Cloud** | Supabase | GitHub release tarball (sha256 checksums) |
 | **Stack** | ntm, slb, ubs, dcg, ru, etc. | Re-run upstream installers |
 
+Node updates follow the existing nvm default: `node` tracks the latest release,
+`lts/*` tracks LTS, and exact version pins stay pinned. Custom aliases and the
+default are preserved, and nvm is asked to migrate global packages from the previous
+default when its Node and npm executables are available. A missing default is initialized
+to `node`. Older nvm versions advance to the checksum-approved installer version;
+newer versions are retained. `acfs hold nvm` pauses both nvm and Node maintenance.
+`--force` can repair a missing selected installation without adding an omitted
+module. Defaults of `system` or `none` leave Node outside nvm maintenance.
+
 ### Options
 
 **Category Selection:**
@@ -894,7 +904,7 @@ accepts one. Verified installers are staged in a system directory instead of
 --agents-only    Only update coding agents
 --cloud-only     Only update cloud CLIs
 --shell-only     Only update shell tools (OMZ, P10K, plugins, Atuin, Zoxide)
---runtime-only   Only update runtimes (bun, rust, uv, go)
+--runtime-only   Only update runtimes (node/nvm, bun, rust, uv, go)
 --stack          Include Agent Flywheel stack tools (enabled by default)
 ```
 
@@ -904,7 +914,7 @@ accepts one. Verified installers are staged in a system directory instead of
 --no-agents      Skip agent updates
 --no-cloud       Skip cloud CLI updates
 --no-shell       Skip shell tool updates
---no-runtime     Skip runtime updates (bun, rust, uv, go)
+--no-runtime     Skip runtime updates (node/nvm, bun, rust, uv, go)
 ```
 
 **Behavior:**

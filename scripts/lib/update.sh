@@ -1623,7 +1623,7 @@ update_finish_cmd_skip() {
 update_is_pin_failure() {
     [[ "${1:-}" == "$UPDATE_EXIT_CHECKSUM" ]] || return 1
     case "${2:-}" in
-        update_run_verified_installer|update_run_verified_installer_with_env|update_install_missing_runtime) return 0 ;;
+        update_run_verified_installer|update_run_verified_installer_with_env|update_install_missing_runtime|update_nvm_and_node) return 0 ;;
         update_run_verified_installer_with_target_tmpdir|_run_claude_installer_with_timeout) return 0 ;;
         update_run_pcr_installer_and_verify|update_run_slb_verified_install|update_migrate_bun_claude|update_run_asb_installer) return 0 ;;
         *) return 1 ;;
@@ -8457,6 +8457,225 @@ update_install_missing_runtime() {
     fi
 }
 
+# nvm is a shell function, so binary discovery cannot find its installation.
+# Keep explicit same-account locations, but never use the caller's nvm tree
+# when maintaining another account. Do not source a profile to discover it.
+update_nvm_install_dir() {
+    local target_user="" current_user="" target_home="" xdg_home="" nvm_dir=""
+    target_user="$(update_target_user)" || return 1
+    current_user="$(update_current_user)" || return 1
+    target_home="$(update_target_home "$target_user")" || return 1
+    [[ -n "$target_home" && "$target_home" == /* && "$target_home" != / ]] || return 1
+
+    xdg_home="$target_home/.config"
+    if [[ "$target_user" == "$current_user" ]]; then
+        if [[ -n "${NVM_DIR:-}" ]]; then
+            nvm_dir="$(update_maintenance_absolute_path "$NVM_DIR")" || return 1
+        elif [[ -n "${XDG_CONFIG_HOME:-}" ]]; then
+            xdg_home="$(update_maintenance_absolute_path "$XDG_CONFIG_HOME")" || return 1
+        fi
+    fi
+    if [[ -z "$nvm_dir" ]]; then
+        for nvm_dir in "$target_home/.nvm" "$xdg_home/nvm" "$target_home/.config/nvm"; do
+            [[ ! -s "$nvm_dir/nvm.sh" ]] || break
+        done
+        if [[ ! -s "$nvm_dir/nvm.sh" ]]; then
+            nvm_dir="$target_home/.nvm"
+            if [[ "$target_user" == "$current_user" && -n "${XDG_CONFIG_HOME:-}" ]]; then
+                nvm_dir="$xdg_home/nvm"
+            fi
+        fi
+    fi
+    nvm_dir="${nvm_dir%/}"
+    [[ -n "$nvm_dir" && "$nvm_dir" != / && "$nvm_dir" != *$'\n'* && "$nvm_dir" != *$'\r'* ]] || return 1
+    printf '%s\n' "$nvm_dir"
+}
+
+# Keep installer holds/checksum classifications in the caller, while every
+# source, version probe and mutation executes under the target user's UID.
+# shellcheck disable=SC2317,SC2329  # invoked indirectly via run_cmd()
+update_nvm_and_node() {
+    local nvm_dir="$1" target_user="" current_user="" name=""
+    local nvm_env="" current_version="" approved_version="" probe_rc=0 node_rc=0
+    local -a nvm_runner=()
+    target_user="$(update_target_user)" || return 1
+    current_user="$(update_current_user)" || return 1
+    update_verified_installer_runner nvm_runner || return 1
+
+    # The verified installer chooses its own pinned source. Ambient installer
+    # selectors, shell startup hooks and Git worktree overrides must not change
+    # that source or redirect its checkout. Local bindings restore the caller's
+    # environment when this function returns.
+    for name in BASH_ENV ENV NVM_SOURCE NVM_INSTALL_VERSION NVM_INSTALL_GITHUB_REPO \
+        METHOD NODE_VERSION NVM_INSTALL_THIRD_PARTY_HOOK \
+        GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+        GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_CONFIG GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT; do
+        local "$name"
+        unset "$name"
+    done
+    if [[ "$target_user" != "$current_user" ]]; then
+        while IFS= read -r name; do
+            case "${name^^}" in
+                NVM_*|NPM_CONFIG_*|NODE_OPTIONS|NODE_PATH|PREFIX|XDG_CONFIG_HOME|XDG_CACHE_HOME|XDG_DATA_HOME|XDG_STATE_HOME)
+                    local "$name"
+                    unset "$name"
+                    ;;
+            esac
+        done < <(compgen -e)
+    fi
+    nvm_env="NVM_DIR=$nvm_dir"$'\n'"PROFILE=/dev/null"
+
+    if ! update_require_security; then
+        printf 'Cannot load the approved nvm installer and checksum.\n' >&2
+        return 1
+    fi
+    if [[ "${KNOWN_INSTALLERS[nvm]:-}" =~ /nvm/v([0-9]+\.[0-9]+\.[0-9]+)/install\.sh$ ]]; then
+        approved_version="${BASH_REMATCH[1]}"
+    else
+        printf 'Cannot determine the approved nvm version from its installer URL.\n' >&2
+        return 1
+    fi
+
+    if [[ -s "$nvm_dir/nvm.sh" ]]; then
+        current_version="$(update_run_in_target_context "$nvm_env" "${nvm_runner[@]}" --noprofile --norc -c '
+            . "$NVM_DIR/nvm.sh" --no-use >/dev/null || exit $?
+            nvm --version
+        ')" || probe_rc=$?
+        if [[ "$probe_rc" -ne 0 || ! "$current_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            if [[ "$FORCE_MODE" != true ]]; then
+                printf 'nvm version verification failed; use --force to repair this selected runtime.\n' >&2
+                return 1
+            fi
+            current_version=""
+        fi
+    fi
+
+    # Refresh an older/missing manager through the approved installer, without
+    # downgrading a newer nvm installed by the operator.
+    if [[ -z "$current_version" ]] \
+        || [[ "$(printf '%s\n' "$approved_version" "$current_version" | sort -V | head -n 1)" != "$approved_version" ]]; then
+        update_run_bounded_in_target_context mkdir -p -- "$nvm_dir" || return 1
+        update_run_verified_installer_with_env nvm "$nvm_env" || return $?
+    fi
+
+    update_run_in_target_context "$nvm_env" "${nvm_runner[@]}" --noprofile --norc -c '
+        if [[ ! -s "$NVM_DIR/nvm.sh" ]]; then
+            printf "nvm installer completed without nvm.sh.\n" >&2
+            exit 1
+        fi
+        . "$NVM_DIR/nvm.sh" --no-use || exit $?
+        manager_version=$(nvm --version) || exit $?
+        if [[ ! "$manager_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+            || [[ "$(printf "%s\n" "$1" "$manager_version" | sort -V | head -n 1)" != "$1" ]]; then
+            printf "nvm did not reach the approved version %s.\n" "$1" >&2
+            exit 1
+        fi
+        printf "nvm %s\n" "$manager_version"
+
+        selector=node
+        had_default=false
+        if [[ -e "$NVM_DIR/alias/default" || -L "$NVM_DIR/alias/default" ]]; then
+            had_default=true
+            if [[ ! -f "$NVM_DIR/alias/default" || ! -r "$NVM_DIR/alias/default" ]]; then
+                printf "Cannot read the existing nvm default alias.\n" >&2
+                exit 1
+            fi
+            selector=$(nvm_alias default) || exit $?
+        fi
+        # Resolve user aliases without freezing nvm-managed rolling LTS aliases
+        # to the exact release recorded before the remote version lookup.
+        declare -A seen=()
+        for ((depth=0; depth<32; depth++)); do
+            if [[ -z "$selector" || "$selector" == -* || "$selector" == *[[:space:]]* ]]; then
+                printf "Invalid nvm default alias.\n" >&2
+                exit 1
+            fi
+            case "$selector" in
+                node|stable|lts/*|system|none) break ;;
+            esac
+            [[ ! "$selector" =~ ^v?[0-9]+([.][0-9]+){0,2}$ ]] || break
+            if [[ -n "${seen[$selector]:-}" ]]; then
+                printf "Cyclic nvm default alias: %s\n" "$selector" >&2
+                exit 1
+            fi
+            seen[$selector]=1
+            selector=$(nvm_alias "$selector") || exit $?
+        done
+        if [[ "$depth" -eq 32 ]]; then
+            printf "nvm default alias exceeds the resolution limit.\n" >&2
+            exit 1
+        fi
+        case "$selector" in
+            system|none)
+                printf "Preserving nvm default %s; Node is not managed by nvm.\n" "$selector"
+                exit 0
+                ;;
+        esac
+
+        install_args=()
+        previous_node=$(nvm which default 2>/dev/null) || previous_node=""
+        previous_version=""
+        if [[ "$previous_node" == "$NVM_DIR"/versions/node/*/bin/node \
+            && -x "$previous_node" && -x "${previous_node%/node}/npm" ]]; then
+            previous_version="${previous_node%/bin/node}"
+            previous_version="${previous_version##*/}"
+        fi
+        # Capture the old default before a remote LTS lookup refreshes aliases.
+        # Exact, different versions work across nvm releases; asking newer nvm
+        # to reinstall packages from its current version fails on a no-op run.
+        desired_version=$(nvm version-remote "$selector") || exit $?
+        if [[ ! "$desired_version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            printf "Cannot resolve the requested Node release: %s\n" "$selector" >&2
+            exit 1
+        fi
+        if [[ -n "$previous_version" && "$previous_version" != "$desired_version" ]]; then
+            install_args+=("--reinstall-packages-from=$previous_version")
+        fi
+        nvm install "${install_args[@]}" "$desired_version" || exit $?
+        nvm use "$desired_version" || exit $?
+        node_bin=$(nvm which current) || exit $?
+        if [[ "$node_bin" != "$NVM_DIR"/versions/node/*/bin/node || ! -x "$node_bin" ]]; then
+            printf "nvm did not activate an installed Node executable.\n" >&2
+            exit 1
+        fi
+        node_version=$("$node_bin" --version) || exit $?
+        if [[ "$node_version" != "$desired_version" ]]; then
+            printf "Node verification expected %s, got %s.\n" "$desired_version" "$node_version" >&2
+            exit 1
+        fi
+        printf "Node.js %s\n" "$node_version"
+        if [[ "$had_default" == false ]]; then
+            nvm alias default node || exit $?
+        fi
+    ' acfs-nvm "$approved_version" || node_rc=$?
+    # Only the checksum wrapper may classify a refusal as result 95.
+    [[ "$node_rc" -ne "$UPDATE_EXIT_CHECKSUM" ]] || node_rc=1
+    return "$node_rc"
+}
+
+update_nvm() {
+    [[ "$UPDATE_RUNTIME" == true ]] || return 0
+    update_load_module_selection || return 1
+    update_module_is_selected lang.nvm || return 0
+    if update_tool_hold_details nvm; then
+        log_item "skip" "nvm / Node.js" "HELD: $UPDATE_LAST_HOLD_DETAILS"
+        update_note_held_tool nvm
+        return 0
+    fi
+
+    log_section "Node.js (nvm)"
+    local nvm_dir=""
+    if ! nvm_dir="$(update_nvm_install_dir)"; then
+        log_item "fail" "nvm / Node.js" "cannot resolve the target installation"
+        return 0
+    fi
+    if [[ ! -s "$nvm_dir/nvm.sh" && "$FORCE_MODE" != true ]]; then
+        log_item "skip" "nvm / Node.js" "not installed"
+        return 0
+    fi
+    run_cmd "nvm / Node.js" update_nvm_and_node "$nvm_dir"
+}
+
 update_bun() {
     if [[ "$UPDATE_RUNTIME" != "true" ]]; then
         return 0
@@ -11400,7 +11619,7 @@ CATEGORY OPTIONS (select what to update):
   --agents-only      Only update coding agents (Claude, Codex, Antigravity, omp, Grok)
   --cloud-only       Only update cloud CLIs (Wrangler, Supabase, Vercel, gh, gcloud)
   --shell-only       Only update shell tools (OMZ, P10K, plugins, Atuin, Zoxide)
-  --runtime-only     Only update runtimes (Bun, Rust, uv, Go)
+  --runtime-only     Only update runtimes (Node/nvm, Bun, Rust, uv, Go)
   --stack-only       Only update Agent Flywheel stack tools
   --stack            Include Agent Flywheel stack tools (enabled by default)
 
@@ -11410,7 +11629,7 @@ SKIP OPTIONS (exclude categories from update):
   --no-agents        Skip coding agent updates
   --no-cloud         Skip cloud CLI updates
   --no-shell         Skip shell tool updates
-  --no-runtime       Skip runtime updates (Bun, Rust, uv, Go)
+  --no-runtime       Skip runtime updates (Node/nvm, Bun, Rust, uv, Go)
   --no-stack         Skip Agent Flywheel stack tool updates
 
 BEHAVIOR OPTIONS:
@@ -11502,7 +11721,8 @@ WHAT EACH CATEGORY UPDATES:
             Supabase CLI (verified GitHub release tarball + sha256 checksums)
             GitHub CLI (gh extension upgrade --all)
             Google Cloud SDK (gcloud components update)
-  runtime:  Bun (bun upgrade), Rust (rustup update), uv (uv self update), Go (apt-managed)
+  runtime:  Node.js (nvm default channel, preserves version pins and global packages)
+            Bun (bun upgrade), Rust (rustup update), uv (uv self update), Go (apt-managed)
   stack:    Agent Flywheel stack tools (verified upstream installers)
             Installs missing tools and updates existing ones automatically:
             NTM, Agent Mail, Meta Skill, APR, pt, xf, UBS, BV, BR, CASS, CM,
@@ -12271,6 +12491,7 @@ main() {
 
     # Run updates
     update_apt
+    update_nvm
     update_bun
     update_agents
     update_cloud
