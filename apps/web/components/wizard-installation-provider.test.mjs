@@ -135,6 +135,7 @@ function fixture(sessionEntries = new Map(), initialPath = "/wizard/run-installe
     URL,
     URLSearchParams,
     Event,
+    TextEncoder,
     TextDecoder,
     crypto: webcrypto,
     structuredClone,
@@ -373,11 +374,9 @@ function fixture(sessionEntries = new Map(), initialPath = "/wizard/run-installe
   // Independent consumers are loaded only by their corresponding helper. They
   // retain fresh exports per fixture, without compiling every route for an SSR
   // hydration-only check.
-  let statusPage;
-  function getStatusPage() {
-    if (statusPage) return statusPage;
-    // The status page still uses the real health hook with the same doubles.
-    const health = load(new URL("../lib/hooks/useInstallationHealth.ts", import.meta.url), {
+  let healthHook;
+  function getHealthHook() {
+    return (healthHook ??= load(new URL("../lib/hooks/useInstallationHealth.ts", import.meta.url), {
       react,
       "@tanstack/react-query": { useQuery, useQueryClient: () => queryClient },
       "@/components/command-card": {
@@ -388,23 +387,18 @@ function fixture(sessionEntries = new Map(), initialPath = "/wizard/run-installe
       "@/lib/generated/manifest-modules": catalogue,
       "@/lib/inputValidation": inputValidation,
       "@/lib/installerCheckpoint": load(new URL("../lib/installerCheckpoint.ts", import.meta.url), {}),
-      "@/lib/moduleSelection": {
-        getMissingWizardPrerequisites: selections.getMissingWizardPrerequisites,
-        resolveModuleSelection: () => ({
-          ok: true,
-          included: [],
-          errors: [],
-          warnings: [],
-          selectedCount: 1,
-        }),
-      },
+      "@/lib/moduleSelection": selections,
       "@/lib/userPreferences": preferences,
       "@/lib/utils": { safeGetItem: () => null },
       "@/lib/wizardInstallation": contextModule,
-    });
+    }));
+  }
+  let statusPage;
+  function getStatusPage() {
+    if (statusPage) return statusPage;
     statusPage = load(new URL("../app/wizard/status-check/page.tsx", import.meta.url), {
       ...common,
-      "@/lib/hooks/useInstallationHealth": health,
+      "@/lib/hooks/useInstallationHealth": getHealthHook(),
       "@tanstack/react-query": { useQuery },
       "next/link": { default: "link" },
       "next/navigation": { useRouter: () => ({ push() {}, replace() {} }) },
@@ -428,6 +422,49 @@ function fixture(sessionEntries = new Map(), initialPath = "/wizard/run-installe
       "@/lib/hooks/useWizardAnalytics": { useWizardAnalytics: () => ({ markComplete() {} }) },
     });
     return statusPage;
+  }
+  let learnPage;
+  function getLearnPage() {
+    if (learnPage) return learnPage;
+    const lessons = load(new URL("../lib/lessons.ts", import.meta.url), {});
+    const progress = load(new URL("../lib/lessonProgress.ts", import.meta.url), {
+      react,
+      "./lessons": lessons,
+      "./utils": common["@/lib/utils"],
+      "@tanstack/react-query": {},
+    });
+    const learningPath = load(new URL("../lib/learningPath.ts", import.meta.url), {
+      "./generated/manifest-tools": load(new URL("../lib/generated/manifest-tools.ts", import.meta.url), {}),
+      "./generated/manifest-agents": load(new URL("../lib/generated/manifest-agents.ts", import.meta.url), {}),
+      "./lessons": lessons,
+      "./moduleSelection": selections,
+    });
+    const doctor = load(new URL("./doctor-report-panel.tsx", import.meta.url), {
+      ...common,
+      "next/link": { default: "link" },
+      "@/lib/doctorReport": load(new URL("../lib/doctorReport.ts", import.meta.url), {}),
+      "@/lib/generated/manifest-modules": { ...selectionCatalogue, ...catalogue },
+      "@/lib/hooks/useInstallationHealth": getHealthHook(),
+      "@/lib/vpsProviders": { ACFS_RECOMMENDED_UBUNTU: "26.04" },
+    });
+    learnPage = load(new URL("../app/learn/page.tsx", import.meta.url), {
+      ...common,
+      "next/link": { default: "link" },
+      "next/navigation": { useRouter: () => ({ push() {}, replace() {} }) },
+      "@/components/motion": { motion: new Proxy({}, { get: (_object, tag) => `motion-${String(tag)}` }) },
+      "@/components/doctor-report-panel": doctor,
+      "@/lib/analytics": { getLessonFunnelData: () => ({}), initLessonFunnel() {}, sendEvent() {} },
+      "@/lib/design-tokens": { springs: {} },
+      "@/lib/hooks/useReducedMotion": { useReducedMotion: () => true },
+      "@/lib/lessonProgress": {
+        ...progress,
+        getCompletedLessons: () => [],
+        useCompletedLessons: () => ({ completedLessons: [], hasLoaded: true }),
+      },
+      "@/lib/learningPath": learningPath,
+      "@/lib/utils": { ...common["@/lib/utils"], isInteractiveKeyboardTarget: () => false },
+    });
+    return learnPage;
   }
   let commandPanel;
   function getCommandPanel() {
@@ -575,6 +612,8 @@ function fixture(sessionEntries = new Map(), initialPath = "/wizard/run-installe
     copies,
     panel: () => ui("panel", () => panel.TeamProfileImportPanel()),
     statusPage: () => ui("status-page", () => getStatusPage().default()),
+    learnPage: () => ui("learn-page", () => getLearnPage().default()),
+    health: () => invoke("health-consumer", () => getHealthHook().useInstallationHealth()),
     commands: () => ui("command-panel", () => getCommandPanel().CommandBuilderPanel()),
     root: () => getRootLayout().default({ children: jsx("route", {}) }),
     providerType: component.WizardInstallationProvider,
@@ -701,6 +740,93 @@ test("visiting a public route leaves its preference consumers unchanged and reta
   assert.equal(f.hooks().user[0], "ubuntu");
   f.navigate("/wizard/run-installer");
   assert.equal(f.session().installation, first);
+});
+
+for (const route of ["/learn", "/learn/tools/claude-code"]) {
+  test(`the reviewed installation survives the onboarding handoff to ${route}`, async () => {
+    const f = await activeFixture();
+    const installation = f.session().installation;
+    const saved = [...f.local];
+    const writes = plain(f.storageWrites);
+    f.navigate(route);
+    assert.equal(f.session()?.installation, installation);
+    const values = f.hooks();
+    assert.equal(values.user[0], "team-user");
+    assert.equal(values.mode[0], "safe");
+    assert.equal(values.ref[0], "v1.2.3");
+    assert.deepEqual(plain(values.selection[0]), plain(installation.moduleSelection));
+    assert.equal(values.selection[1], true);
+    assert.equal(f.hasChildren(), true, "learning pages remain accessible");
+    assert.deepEqual([...f.local], saved);
+    assert.deepEqual(f.storageWrites, writes);
+    f.navigate("/wizard/status-check");
+    assert.equal(f.session().installation, installation);
+  });
+}
+
+test("a pending review on the Learning Hub cannot revive the saved full installation", () => {
+  const f = fixture(new Map([[key, "review-required"]]), "/learn");
+  const saved = [...f.local];
+  f.render();
+  assert.equal(f.session()?.status, "review_required");
+  assert.equal(f.session().installation, null);
+  assert.equal(f.hasChildren(), true, "the lesson catalogue must stay public");
+  assert.equal(f.hooks().selection[1], false);
+  assert.equal(f.hooks().user[2], false);
+  assert.equal(f.commands().nodes.some((node) => node.type === "code"), false);
+  assert.deepEqual([...f.local], saved);
+  assert.deepEqual(f.storageWrites, []);
+});
+
+test("Learning Hub recommendations and Doctor use the exact approved stack, account and mode", async () => {
+  const f = await activeFixture();
+  const installation = f.session().installation;
+  f.navigate("/learn");
+  const view = f.learnPage();
+  const recommendations = view.nodes
+    .map((node) => node.props["data-recommendation-id"])
+    .filter(Boolean);
+  assert.deepEqual(recommendations, ["lesson-welcome", "tool-claude-code", "command-reference"]);
+  assert.match(view.text(), /Using reviewed team profile:.*Team Example/);
+  assert.ok(view.nodes.some((node) => node.type === "input" && node.props.type === "file"));
+  const health = f.health();
+  assert.equal(health.sshUsername, "team-user");
+  assert.equal(health.reinstallCommand, installation.command);
+  assert.deepEqual(
+    plain(health.selectedPlan.included.map((module) => module.id)),
+    ["base.system", "users.ubuntu", "agents.claude"],
+  );
+  assert.equal(f.hooks().mode[0], "safe");
+});
+
+for (const unavailable of [false, true]) {
+  test(`Learning Hub offers recovery without hiding lessons when context is ${unavailable ? "unavailable" : "pending"}`, () => {
+    const f = fixture(new Map([[key, "review-required"]]), "/learn");
+    if (unavailable) f.storage.getItem = () => { throw new Error("storage blocked"); };
+    f.render();
+    const view = f.learnPage();
+    assert.match(view.text(), unavailable ? /cannot read its session storage/ : /needs review again/);
+    assert.match(view.text(), /All Lessons/);
+    assert.ok(view.nodes.some((node) => node.type === "link" && node.props.href === "/wizard/run-installer"));
+    assert.ok(view.nodes.some((node) => node.type === "link" && node.props.href === "/learn/welcome"));
+    assert.ok(!view.nodes.some((node) => node.props["data-recommendation-id"]));
+    assert.ok(!view.nodes.some((node) => node.type === "input" && node.props.type === "file"));
+    assert.equal(f.health().reinstallCommand, null);
+    assert.deepEqual(f.storageWrites, []);
+  });
+}
+
+test("a first-time Learning Hub visitor retains generic guidance without assuming a full install", () => {
+  const f = fixture(new Map(), "/learn");
+  f.local.delete("agent-flywheel-vps-ip");
+  f.render();
+  const view = f.learnPage();
+  const recommendations = view.nodes.find((node) => node.props["data-testid"] === "learning-recommendations");
+  assert.equal(recommendations?.props["data-persona"], "getting-started");
+  assert.equal(recommendations?.props["data-fallback"], "no-selection");
+  assert.match(view.text(), /All Lessons/);
+  assert.ok(!view.nodes.some((node) => node.type === "input" && node.props.type === "file"));
+  assert.deepEqual(f.storageWrites, []);
 });
 
 test("reload cannot reconstruct an approval or silently show saved/default wizard commands", async () => {

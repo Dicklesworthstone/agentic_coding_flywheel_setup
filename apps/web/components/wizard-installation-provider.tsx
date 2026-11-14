@@ -68,6 +68,7 @@ export function WizardInstallationProvider({ children }: { children: ReactNode }
   const pathname = usePathname();
   const inWizard =
     pathname === null || pathname === "/wizard" || pathname?.startsWith("/wizard/") === true;
+  const inLearning = pathname === "/learn" || pathname?.startsWith("/learn/") === true;
   const [, , modeReady] = useSavedInstallMode();
   const [, profileReady] = useSavedModuleSelection();
   const [, , refReady] = useSavedACFSRef();
@@ -204,8 +205,19 @@ export function WizardInstallationProvider({ children }: { children: ReactNode }
     [status, installation, activate, discard, blockEdit],
   );
 
-  // Public/non-wizard routes keep their original behavior. The root provider
-  // still retains an in-memory installation for a later client-side return.
+  // Learning follows the same installation through the post-install handoff.
+  // Keep the catalogue public even when a review is pending: consumers must
+  // withhold personalized commands/reports until their context is ready, while
+  // lessons remain readable. Activation still requires the wizard review flow.
+  if (inLearning) {
+    return (
+      <WizardInstallationContext.Provider value={session}>
+        {children}
+      </WizardInstallationContext.Provider>
+    );
+  }
+  // Other public routes keep their original preference behavior. The root
+  // provider retains the installation for a later return to setup or learning.
   if (!inWizard) return <>{children}</>;
   // An unreadable guard blocks everything once this document has seen a pending
   // or active review. Storage that was never readable here (cookies/site data

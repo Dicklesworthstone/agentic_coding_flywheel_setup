@@ -35,7 +35,7 @@ import {
   TOTAL_LESSONS,
   useCompletedLessons,
 } from "@/lib/lessonProgress";
-import { isInteractiveKeyboardTarget } from "@/lib/utils";
+import { isInteractiveKeyboardTarget, withCurrentSearch } from "@/lib/utils";
 import { recommendLearningPath, type LearningGoal } from "@/lib/learningPath";
 import { useModuleSelection } from "@/lib/userPreferences";
 import { useWizardInstallation } from "@/lib/wizardInstallation";
@@ -257,10 +257,12 @@ export default function LearnDashboard() {
   const hasTrackedPageView = useRef(false);
   const [selection, selectionLoaded] = useModuleSelection();
   const installation = useWizardInstallation();
+  const installationNeedsReview = installation?.status === "review_required" ||
+    installation?.status === "unavailable";
   const [learningGoal, setLearningGoal] = useState<LearningGoal>("learn");
   const [doctorNeedsAttention, setDoctorNeedsAttention] = useState<boolean | null>(null);
   const receiveDoctorFindings = useCallback((value: boolean | null) => setDoctorNeedsAttention(value), []);
-  const hasSelection = installation?.status === "active" || installation?.status === "saved" ||
+  const hasSelection = installation?.status === "active" ||
     selection.profile !== "full" || completedLessons.length > 0;
   const learningPath = hasLoaded && selectionLoaded ? recommendLearningPath({ completedLessons,
     selection: hasSelection ? selection : undefined, goal: learningGoal, doctorNeedsAttention: doctorNeedsAttention === true }) : null;
@@ -441,6 +443,11 @@ export default function LearnDashboard() {
               <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
                 Based on this browser&apos;s progress and selected stack. A selection does not verify installation.
               </p>
+              {installation?.status === "active" && installation.installation && (
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Using reviewed team profile: {installation.installation.displayName}.
+                </p>
+              )}
             </div>
             <label className="flex shrink-0 flex-col gap-2 text-sm font-medium">
               What are you working on?
@@ -452,7 +459,19 @@ export default function LearnDashboard() {
               </select>
             </label>
           </div>
-          {!learningPath ? <p role="status" className="mt-5 text-sm">Loading your local learning context...</p> : (
+          {installationNeedsReview ? (
+            <div role="status" className="mt-5 space-y-2 text-sm">
+              <p>
+                {installation.status === "unavailable"
+                  ? "Your installation context is unavailable because this browser cannot read its session storage."
+                  : "Your reviewed installation needs review again before personalized recommendations or doctor reports are available."}
+              </p>
+              <p>You can keep reading the lessons below.</p>
+              <Link href={withCurrentSearch("/wizard/run-installer")} className="inline-flex min-h-11 items-center underline">
+                Review installation choices in the setup wizard
+              </Link>
+            </div>
+          ) : !learningPath ? <p role="status" className="mt-5 text-sm">Loading your local learning context...</p> : (
             <ol className="mt-5 grid gap-3 md:grid-cols-3" data-testid="learning-recommendations" data-persona={learningPath.persona}
               data-signals={learningPath.signalIds.join(",")} data-fallback={learningPath.fallbackReason ?? "none"}>
               {learningPath.recommendations.map((recommendation, index) => (
