@@ -7,6 +7,7 @@ The real updater entrypoint uses stubbed components and disposable runtime
 files. No package operations, host cleanup, real sleeps, network, or systemd
 changes are performed.
 """
+import configparser
 import datetime
 import json
 import os
@@ -74,6 +75,7 @@ class NightlyUpdateTests(unittest.TestCase):
         updater.write_text('''#!/usr/bin/env bash
 if [[ "${1:-}" == --help ]]; then echo --no-self-update; exit 0; fi
 printf '%s\\n' "$*" >> "$FIXTURE/updates"
+umask > "$FIXTURE/update-umask"
 exit "${FIXTURE_UPDATE_RC:-0}"
 ''')
         updater.chmod(0o755)
@@ -95,9 +97,9 @@ exit "${FIXTURE_UPDATE_RC:-0}"
             (self.home / name).write_text("\n".join(values) + "\n")
             (self.home / f"{name}.count").write_text("0\n")
 
-    def run_wrapper(self, rc=0, **env):
+    def run_wrapper(self, rc=0, *, umask=-1, **env):
         result = subprocess.run(["bash", str(WRAPPER)], env={**self.env, **env},
-                                capture_output=True, text=True, timeout=10)
+                                capture_output=True, text=True, timeout=10, umask=umask)
         self.assertEqual(result.returncode, rc, result.stdout + result.stderr)
         return result.stdout + result.stderr
 
@@ -112,6 +114,23 @@ exit "${FIXTURE_UPDATE_RC:-0}"
 
     def assert_no_update(self):
         self.assertFalse((self.home / "updates").exists())
+
+    def test_permissive_umask_is_reset_before_logs_and_updater(self):
+        self.run_wrapper(umask=0o002, ACFS_NIGHTLY_SELF_UPDATE="true")
+        self.assertEqual(int((self.home / "update-umask").read_text().strip(), 8), 0o022)
+        self.assertEqual((self.home / "updates").read_text().splitlines(), ["--yes --quiet"])
+        logs = list((self.acfs / "logs/updates").glob("nightly-*.log"))
+        self.assertEqual(len(logs), 1)
+        for path in (self.acfs / "logs", self.acfs / "logs/updates", *logs):
+            self.assertEqual(path.stat().st_mode & 0o022, 0, str(path))
+        self.assertEqual(self.state.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(self.read_state()["outcome"], "success")
+
+    def test_service_pins_umask_independently_of_user_manager(self):
+        # systemd allows repeated Environment directives and literal %h values.
+        service = configparser.ConfigParser(interpolation=None, strict=False)
+        service.read(ROOT / "scripts/templates/acfs-nightly-update.service")
+        self.assertEqual(service["Service"].get("UMask"), "0022")
 
     def test_repeated_skips_count_nights_not_attempts_or_same_day_reruns(self):
         for day in range(4):
@@ -218,8 +237,10 @@ exit "${FIXTURE_UPDATE_RC:-0}"
         self.assert_no_update()
 
     def test_reader_is_safe_to_source_without_side_effects(self):
-        result = subprocess.run(["bash", "-c", 'before=$-; old_home=$HOME; source "$1"; '
-                                 '[[ "$before" == "$-" && "$old_home" == "$HOME" ]]; '
+        result = subprocess.run(["bash", "-c", 'umask 0002; old_umask=$(umask); '
+                                 'before=$-; old_home=$HOME; source "$1"; '
+                                 '[[ "$before" == "$-" && "$old_home" == "$HOME" '
+                                 '&& "$old_umask" == "$(umask)" ]] || exit 91; '
                                  'declare -F acfs_nightly_state_read', "test", str(WRAPPER)],
                                 env=self.env, capture_output=True, text=True, timeout=5)
         self.assertEqual(result.returncode, 0, result.stderr)

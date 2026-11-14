@@ -58,6 +58,13 @@ _acfs_update_is_direct_run() {
     [[ "${BASH_SOURCE[0]:-$0}" == "$0" ]]
 }
 
+# Bootstrap rejects group/other-writable code. Pin the mask before any Git or
+# filesystem writes so manual updates are safe even from a shell with umask
+# 0002 (#515). Sourcing helper functions must preserve the caller's mask.
+if _acfs_update_is_direct_run; then
+    umask 0022
+fi
+
 _acfs_update_acquire_lock() {
     local target_home="${1:-}" flock_bin="" rc=0
     if [[ -z "$target_home" || "$target_home" != /* || ! -d "$target_home/." || "$target_home/." -ef / ]]; then

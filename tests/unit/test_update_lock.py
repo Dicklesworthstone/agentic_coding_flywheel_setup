@@ -115,6 +115,56 @@ class UpdateLockTests(unittest.TestCase):
         self.assertEqual(list(self.home.iterdir()), [])
         self.assertFalse((self.base / "legacy-lock").exists())
 
+    def test_startup_makes_git_clone_and_pull_modes_umask_independent(self):
+        origin = self.base / "origin"
+        origin.mkdir()
+        template = self.base / "empty-git-template"
+        template.mkdir()
+        env = {key: value for key, value in self.env.items() if not key.startswith("GIT_")}
+        env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL="/dev/null",
+                   GIT_TEMPLATE_DIR=str(template), TEST_ORIGIN=str(origin))
+
+        def git(*args):
+            return subprocess.run(["git", *args], env=env, capture_output=True,
+                                  text=True, check=True, timeout=5, umask=0o022)
+
+        git("-C", str(origin), "init", "--quiet", "--initial-branch=main")
+        for name, mode in (("data", 0o644), ("update.sh", 0o755)):
+            path = origin / name
+            path.write_text("original revision\n")
+            path.chmod(mode)
+        git("-C", str(origin), "add", ".")
+        git("-C", str(origin), "-c", "user.name=ACFS Test", "-c",
+            "user.email=acfs-test@example.invalid", "commit", "--quiet", "-m", "original")
+        for mask in ("0000", "0002", "0022"):
+            git("clone", "--quiet", "--no-hardlinks", str(origin), str(self.base / f"pull-{mask}"))
+        for name in ("data", "update.sh"):
+            (origin / name).write_text("updated revision\n")
+        git("-C", str(origin), "-c", "user.name=ACFS Test", "-c",
+            "user.email=acfs-test@example.invalid", "commit", "--quiet", "-am", "updated")
+
+        # These real, local Git operations run immediately after the actual
+        # updater startup, before any other updater code could repair modes.
+        self.runner.write_text(self.startup + r'''
+git clone --quiet --no-hardlinks "$TEST_ORIGIN" "$TEST_FRESH"
+git -C "$TEST_PULL" pull --quiet --ff-only
+''')
+        for mask in ("0000", "0002", "0022"):
+            with self.subTest(umask=mask):
+                fresh = self.base / f"clone-{mask}"
+                pulled = self.base / f"pull-{mask}"
+                code, out, err = self.quick(before=f"umask {mask}",
+                                            env={**env, "TEST_FRESH": str(fresh), "TEST_PULL": str(pulled)})
+                self.assertEqual(code, 0, out + err)
+                for checkout in (fresh, pulled):
+                    for name, mode in (("data", 0o644), ("update.sh", 0o755)):
+                        path = checkout / name
+                        self.assertEqual(path.read_text(), "updated revision\n")
+                        self.assertEqual(path.stat().st_mode & 0o777, mode, str(path))
+                    for path in (checkout, checkout / ".git", checkout / ".git/index",
+                                 checkout / ".git/config", checkout / ".git/refs/heads/main"):
+                        self.assertEqual(path.stat().st_mode & 0o022, 0, str(path))
+
     def test_second_update_reports_busy_not_success(self):
         self.holder()
         code, out, err = self.quick()
@@ -256,7 +306,9 @@ class UpdateLockTests(unittest.TestCase):
 
     def test_sourcing_does_not_lock_or_close_callers_descriptor(self):
         self.holder()
-        command = f'exec 9<"$HOME/."; source {shlex.quote(str(self.runner))}; [[ "$HOME" -ef /proc/self/fd/9 ]]; printf "source-returned\\n"'
+        command = (f'umask 0002; exec 9<"$HOME/."; source {shlex.quote(str(self.runner))}; '
+                   '[[ "$HOME" -ef /proc/self/fd/9 && "$(umask)" == 0002 ]] || exit 91; '
+                   'printf "source-returned\\n"')
         result = subprocess.run(["/bin/bash", "-c", command], env=self.env,
                                 capture_output=True, timeout=5)
         self.assertEqual(result.returncode, 0, result.stderr.decode())

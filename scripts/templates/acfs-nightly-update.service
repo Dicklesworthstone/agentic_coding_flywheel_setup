@@ -9,6 +9,9 @@ After=default.target
 [Service]
 Type=oneshot
 
+# Git updates must not create group-writable code rejected by bootstrap (#515).
+UMask=0022
+
 # Run the pre-flight wrapper (not acfs-update directly)
 ExecStart=%h/.acfs/scripts/nightly-update.sh
 

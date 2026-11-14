@@ -220,6 +220,10 @@ fi
 
 set -euo pipefail
 
+# Match the updater and service defaults even when invoked from a permissive
+# shell or an older installed unit. Keep this after the source-only guard.
+umask 0022
+
 sanitize_abs_nonroot_path() {
     local path_value="${1:-}"
 
