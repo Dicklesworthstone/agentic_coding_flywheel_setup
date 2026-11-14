@@ -3373,8 +3373,9 @@ update_claude_settings_has_legacy_git_safety_guard_hook() {
 }
 
 # Clean up legacy git_safety_guard artifacts from pre-DCG installations
-# This runs on every update to ensure stale files are removed
+# This accompanies coding-agent updates, not unrelated category-only runs.
 cleanup_legacy_git_safety_guard() {
+    [[ "$UPDATE_AGENTS" == true ]] || return 0
     update_load_module_selection || return 1
     state_module_is_selected agents.claude || return 0
     local runtime_home=""
@@ -3487,6 +3488,7 @@ cleanup_legacy_git_safety_guard() {
 }
 
 cleanup_legacy_bv_alias() {
+    [[ "$UPDATE_STACK" == true ]] || return 0
     update_load_module_selection || return 1
     state_module_is_selected stack.beads_viewer || return 0
     local runtime_home=""
@@ -3562,6 +3564,7 @@ cleanup_legacy_bv_alias() {
 # Fix stale aliases in deployed acfs.zshrc
 # Older versions aliased br='bun run dev', which shadows beads_rust (br).
 cleanup_legacy_br_alias() {
+    [[ "$UPDATE_STACK" == true ]] || return 0
     update_load_module_selection || return 1
     state_module_is_selected stack.beads_rust || return 0
     local runtime_home=""
@@ -3593,6 +3596,7 @@ cleanup_legacy_br_alias() {
 # loader really carries the init, so atuin never ends up uninitialized. Only
 # the exact stock line is touched; a customized invocation is left alone.
 cleanup_unmanaged_atuin_init() {
+    [[ "$UPDATE_SHELL" == true ]] || return 0
     update_load_module_selection || return 1
     state_module_is_selected shell.omz || return 0
     state_module_is_selected tools.atuin || return 0
@@ -10663,8 +10667,15 @@ update_stack() {
 # Flywheel Agent Guide Generation (~/.acfs/docs/flywheel-agent-guide.md)
 # ============================================================
 update_root_agents_md() {
+    [[ "$UPDATE_AGENTS" == true || "$UPDATE_STACK" == true ]] || return 0
     update_load_module_selection || return 1
-    update_selection_has_prefix agents. stack. || return 0
+    # Intersect the requested update categories with saved installation scope.
+    # An agents-only installation must not regenerate guidance on --stack-only
+    # (or vice versa) just because one side of each condition is selected.
+    if ! { [[ "$UPDATE_AGENTS" == true ]] && update_selection_has_prefix agents.; } \
+        && ! { [[ "$UPDATE_STACK" == true ]] && update_selection_has_prefix stack.; }; then
+        return 0
+    fi
     log_section "Agent Guide"
 
     local root_agents_generator=""
@@ -11071,7 +11082,7 @@ update_report_service_binary_drift() {
     local -a requested_names=()
     local -a restart_services=()
     local reported=false
-    local name="" output="" restart_rc=0
+    local name="" module="" output="" restart_rc=0
 
     [[ "$DRY_RUN" == "true" ]] && return 0
 
@@ -11116,6 +11127,26 @@ update_report_service_binary_drift() {
             continue
         fi
         [[ " ${stale_services[*]} " == *" $name "* ]] || continue
+        if [[ "$UPDATE_STACK" != true ]]; then
+            log_to_file "ACFS_UPDATE_RESTART_SERVICES: leaving '$name' running because stack updates are disabled"
+            continue
+        fi
+        # A standing nightly restart opt-in cannot enlarge a targeted update
+        # or take ownership of services omitted from this installation.
+        update_load_module_selection || return 1
+        case "$name" in
+            agent-mail) module=stack.mcp_agent_mail ;;
+            cm) module=stack.cm ;;
+            cass) module=stack.cass ;;
+            *)
+                log_to_file "ACFS_UPDATE_RESTART_SERVICES: leaving '$name' running because its manifest module is unknown"
+                continue
+                ;;
+        esac
+        if ! state_module_is_selected "$module"; then
+            log_to_file "ACFS_UPDATE_RESTART_SERVICES: leaving '$name' running because $module is not selected for this installation"
+            continue
+        fi
         [[ " ${restart_services[*]-} " == *" $name "* ]] || restart_services+=("$name")
     done
 

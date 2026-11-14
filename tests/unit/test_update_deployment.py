@@ -1663,6 +1663,133 @@ printf 'checkpoint-accepted\n' >> "$TEST_EVENTS"
         self.assertEqual(self.installers(), ["omp"])
         self.assertFalse(any(event.startswith("native:") for event in self.events()))
 
+    def maintenance_files(self):
+        contents = {
+            ".claude/settings.json": json.dumps({
+                "hooks": {"PreToolUse": [{"hooks": [
+                    {"type": "command", "command": "python3 ~/.claude/hooks/git_safety_guard.py"},
+                    {"type": "command", "command": "keep-review-marker"},
+                ]}]},
+            }) + "\n",
+            ".acfs/zsh/acfs.zshrc": "alias br='bun run dev'\n# atuin init zsh\n",
+            ".zshrc.local": "# preserved setting\nalias bv='beads_viewer'\n",
+            ".zshrc": 'eval "$(atuin init zsh)"\n',
+        }
+        for path, content in contents.items():
+            self.write(self.home, path, content)
+        self.write(self.bin, "flywheel-update-agents-md", "#!/bin/sh\nexit 0\n", 0o755)
+        return contents
+
+    def test_category_flags_also_limit_real_config_cleanup_and_guide_generation(self):
+        self.selection("agents.claude", "shell.omz", "tools.atuin", "stack.beads_rust",
+                       "stack.beads_viewer", "cloud.vercel", "lang.uv")
+        all_paths = {".claude/settings.json", ".acfs/zsh/acfs.zshrc", ".zshrc.local", ".zshrc"}
+        for flags, changed_paths, guide in (
+            ("--cloud-only", set(), False),
+            ("--runtime-only", set(), False),
+            ("--apt-only", set(), False),
+            ("--agents-only", {".claude/settings.json"}, True),
+            ("--stack-only", {".acfs/zsh/acfs.zshrc", ".zshrc.local"}, True),
+            ("--shell-only", {".zshrc"}, False),
+            ("--no-agents --no-stack --no-shell", set(), False),
+            ("", all_paths, True),
+        ):
+            with self.subTest(flags=flags):
+                before = self.maintenance_files()
+                self.events_file.write_text("")
+                self.shell(f"main --yes --no-self-update {flags}\n",
+                           TEST_PRESENT="bun,uv,vercel,flywheel-update-agents-md")
+                changed = {path for path, content in before.items()
+                           if (self.home / path).read_text() != content}
+                self.assertEqual(changed, changed_paths)
+                self.assertEqual(any(event.startswith("maintenance:guide ")
+                                     for event in self.events()), guide)
+                settings = json.loads((self.home / ".claude/settings.json").read_text())
+                commands = [hook["command"]
+                            for entry in settings["hooks"]["PreToolUse"] for hook in entry["hooks"]]
+                self.assertIn("keep-review-marker", commands)
+                self.assertIn("# preserved setting", (self.home / ".zshrc.local").read_text())
+
+    def test_enabled_categories_do_not_clean_config_for_omitted_modules(self):
+        self.selection("acfs.update")
+        before = self.maintenance_files()
+        self.shell("main --yes --no-self-update --force\n",
+                   TEST_PRESENT="flywheel-update-agents-md")
+        self.assertEqual({path: (self.home / path).read_text() for path in before}, before)
+        self.assertFalse(any(event.startswith("maintenance:guide ") for event in self.events()))
+
+    def test_agent_guide_requires_matching_category_and_selected_modules(self):
+        self.maintenance_files()
+        for module, flags, expected in (
+            ("agents.claude", "--stack-only", False),
+            ("stack.ntm", "--agents-only", False),
+            ("agents.claude", "--agents-only", True),
+            ("stack.ntm", "--stack-only", True),
+        ):
+            with self.subTest(module=module, flags=flags):
+                self.selection(module)
+                self.events_file.write_text("")
+                self.shell(f"main --yes --no-self-update {flags}\n",
+                           TEST_PRESENT="flywheel-update-agents-md")
+                self.assertEqual(any(event.startswith("maintenance:guide ")
+                                     for event in self.events()), expected)
+
+    def drift_service(self):
+        # The production drift dispatcher and saved-scope reader run unchanged.
+        # Only actual service observation/restart is an inert executable.
+        self.write(self.acfs, "scripts/lib/acfs-services.sh", r'''#!/bin/bash
+set -eu
+case "$1" in
+    drift)
+        for service in agent-mail cm cass; do
+            if [[ -f "$TEST_ROOT/restarted-$service" ]]; then
+                printf '%s|ok|pid 7 runs the installed executable\n' "$service"
+            else
+                printf '%s|stale|pid 7 runs the old executable\n' "$service"
+            fi
+        done
+        ;;
+    restart)
+        printf 'restart:%s\n' "$2" >> "$TEST_EVENTS"
+        printf 'restarted\n' > "$TEST_ROOT/restarted-$2"
+        ;;
+    *) exit 64 ;;
+esac
+''', 0o755)
+
+    def test_category_only_main_does_not_restart_excluded_stack_services(self):
+        self.selection("stack.cm")
+        self.drift_service()
+        for flags in ("--cloud-only", "--agents-only", "--runtime-only", "--apt-only", "--shell-only"):
+            with self.subTest(flags=flags):
+                self.events_file.write_text("")
+                result = self.shell(
+                    "update_procwatch_start() { :; }\nupdate_procwatch_stop() { :; }\n"
+                    f"main --yes --no-self-update {flags}\n",
+                    dispatch=False, ACFS_UPDATE_RESTART_SERVICES="agent-mail,cm,cass",
+                )
+                self.assertIn("cm: pid 7 runs the old executable", result.stdout)
+                self.assertEqual(self.events(), [])
+                self.assertFalse((self.base / "restarted-cm").exists())
+
+    def test_service_restart_opt_in_is_intersected_with_saved_module_scope(self):
+        self.selection("stack.cm")
+        self.drift_service()
+        result = self.shell("update_report_service_binary_drift\n", dispatch=False,
+                            ACFS_UPDATE_RESTART_SERVICES="agent-mail,cm,cass,cm")
+        self.assertEqual(self.events(), ["restart:cm"])
+        self.assertIn("Restarted cm; it now runs the installed binary", result.stdout)
+        self.assertFalse((self.base / "restarted-agent-mail").exists())
+        self.assertFalse((self.base / "restarted-cass").exists())
+
+    def test_legacy_service_restart_opt_in_still_restarts_all_requested_stale_services(self):
+        self.drift_service()
+        result = self.shell("update_report_service_binary_drift\n", dispatch=False,
+                            ACFS_UPDATE_RESTART_SERVICES="agent-mail,cm,cass")
+        self.assertEqual(self.events(), ["restart:agent-mail", "restart:cm", "restart:cass"])
+        for service in ("agent-mail", "cm", "cass"):
+            self.assertIn(f"Restarted {service}; it now runs the installed binary", result.stdout)
+
     def test_invalid_scope_stops_main_before_self_update_or_component_mutation(self):
         for invalid in (
             {"schema_version": 2, "selected_modules": ["stack.ntm"]},
