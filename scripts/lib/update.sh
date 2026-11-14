@@ -420,6 +420,10 @@ UPDATE_LAST_SMOKE_DETAIL=""
 
 # Flags
 UPDATE_APT=true
+# Runtime-only maintenance can update Go's package without a system upgrade.
+# An explicit --no-apt still disables that targeted package operation.
+UPDATE_GO_PACKAGES=true
+UPDATE_APT_INDEX_READY=false
 UPDATE_AGENTS=true
 UPDATE_CLOUD=true
 UPDATE_RUNTIME=true
@@ -8097,7 +8101,9 @@ update_apt() {
     fi
 
     # Run apt update
-    run_cmd_sudo_with_retry_status "apt update" env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 apt-get update -y || true
+    if run_cmd_sudo_with_retry_status "apt update" env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 apt-get update -y -o APT::Update::Error-Mode=any; then
+        [[ "$DRY_RUN" == true ]] || UPDATE_APT_INDEX_READY=true
+    fi
 
     # Get list of upgradable packages before upgrade
     local upgradable_list=""
@@ -9796,52 +9802,153 @@ update_uv() {
     fi
 }
 
-update_go() {
-    if [[ "$UPDATE_RUNTIME" != "true" ]]; then
+# Package presence does not establish ownership of the selected Go executable:
+# a manual /usr/local/go can shadow an installed golang-go package. Follow the
+# selected command's symlinks and require an exact dpkg ownership/status match.
+update_go_apt_packages() {
+    local go_path="$1" dpkg_bin="" readlink_bin="" resolved="" owners="" line="" package="" status=""
+    [[ "$go_path" == /* ]] || return 1
+    dpkg_bin="$(update_system_binary_path dpkg-query)" || return 1
+    readlink_bin="$(update_system_binary_path readlink)" || return 1
+    resolved="$(_run_bounded "$readlink_bin" -f -- "$go_path")" || return 1
+    [[ -n "$resolved" && "$resolved" == /* ]] || return 1
+    owners="$(_run_bounded "$dpkg_bin" -S "$resolved" 2>/dev/null)" || return 1
+    while IFS= read -r line; do
+        [[ "$line" == *": $resolved" ]] || continue
+        package="${line%": $resolved"}"
+        [[ "$package" =~ ^golang(-[0-9]+[.][0-9]+)?-go(:[a-z0-9]+)?$ ]] || continue
+        status="$(_run_bounded "$dpkg_bin" -W '-f=${Status}' "$package" 2>/dev/null)" || continue
+        [[ "$status" == "install ok installed" ]] || continue
+        # The normal distro command follows its default Go metapackage. A
+        # separately selected versioned compiler stays on its own package.
+        if [[ "$go_path" == /usr/bin/go || "$go_path" == /bin/go ]]; then
+            status="$(_run_bounded "$dpkg_bin" -W '-f=${Status}' golang-go 2>/dev/null)" || status=""
+            if [[ "$status" == "install ok installed" && "${package%%:*}" != golang-go ]]; then
+                printf '%s\n' golang-go
+            fi
+        fi
+        # Target the actual compiler too: its security/point release can
+        # change while the metapackage's minimum dependency remains satisfied.
+        printf '%s\n' "$package"
         return 0
+    done <<< "$owners"
+    return 1
+}
+
+# Probe the installed compiler, not a toolchain selected/downloaded by the
+# caller's environment or workspace. User-owned Go must never execute as root.
+# shellcheck disable=SC2317,SC2329  # invoked indirectly via run_cmd()
+update_verify_go() {
+    local go_path="${1:-}" env_bin="" bash_bin=""
+    [[ -n "$go_path" ]] || go_path="$(update_binary_path go 2>/dev/null || true)"
+    if [[ -z "$go_path" || ! -x "$go_path" || -d "$go_path" ]]; then
+        printf 'Go verification failed: no usable target Go executable.\n' >&2
+        return 1
     fi
+    env_bin="$(update_system_binary_path env)" || return 1
+    bash_bin="$(update_system_binary_path bash)" || return 1
+    # Keep capture inside the bounded child shell too: a background writer
+    # inheriting Go's stdout must not keep the caller's substitution open.
+    update_run_bounded_in_target_context "$env_bin" -u GOROOT -u GOPATH -u BASH_ENV -u ENV \
+        GOTOOLCHAIN=local GOENV=off GOWORK=off "$bash_bin" --noprofile --norc -c '
+            version=$("$1" version) || exit $?
+            if [[ ! "$version" =~ ^go[[:blank:]]version[[:blank:]][^[:space:]]+([[:blank:]][^[:space:]]+)+$ ]]; then
+                printf "Go verification returned an invalid version: %s\n" "$version" >&2
+                exit 1
+            fi
+            printf "%s\n" "$version"
+        ' acfs-go "$go_path"
+}
+
+# Keep metadata refresh, package installation and readiness as one accounted
+# operation. A successful apt exit alone cannot establish a usable runtime.
+# shellcheck disable=SC2317,SC2329  # invoked indirectly via run_cmd()
+update_go_package_install() {
+    local package="" default_package="" apt_bin="" env_bin="" dpkg_bin="" depends="" provider="" status=""
+    local -a sudo_cmd=() install_options=() packages=("$@")
+    [[ ${#packages[@]} -gt 0 ]] || return 1
+    for package in "${packages[@]}"; do
+        [[ "$package" =~ ^golang(-[0-9]+[.][0-9]+)?-go(:[a-z0-9]+)?$ ]] || return 1
+        [[ "${package%%:*}" != golang-go ]] || default_package="$package"
+    done
+    apt_bin="$(update_system_binary_path apt-get)" || return 1
+    env_bin="$(update_system_binary_path env)" || return 1
+    if ! update_sudo_prefix sudo_cmd; then
+        printf 'Go package maintenance requires root or noninteractive sudo.\n' >&2
+        return 1
+    fi
+
+    if [[ "$FORCE_MODE" == true ]]; then
+        install_options+=(--reinstall)
+        # Reinstalling only a metapackage cannot restore a missing compiler
+        # owned by its versioned dependency. Include that installed provider.
+        if [[ -n "$default_package" ]] && dpkg_bin="$(update_system_binary_path dpkg-query)"; then
+            depends="$(_run_bounded "$dpkg_bin" -W '-f=${Depends}' "$default_package" 2>/dev/null)" || depends=""
+            if [[ "$depends" =~ (^|,[[:space:]]*)(golang-[0-9]+[.][0-9]+-go)([[:space:]]|,|$) ]]; then
+                provider="${BASH_REMATCH[2]}"
+                status="$(_run_bounded "$dpkg_bin" -W '-f=${Status}' "$provider" 2>/dev/null)" || status=""
+                if [[ "$status" == "install ok installed" && " ${packages[*]} " != *" $provider "* ]]; then
+                    packages+=("$provider")
+                fi
+            fi
+        fi
+    else
+        install_options+=(--only-upgrade)
+    fi
+
+    update_disable_needrestart_apt_hook
+    if [[ "$UPDATE_APT_INDEX_READY" != true ]]; then
+        update_run_command_capture_with_retry "Go package metadata" \
+            "${sudo_cmd[@]}" "$env_bin" DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 \
+            "$apt_bin" -o DPkg::Lock::Timeout=120 -o APT::Update::Error-Mode=any update || return $?
+        UPDATE_APT_INDEX_READY=true
+    fi
+    update_run_command_capture_with_retry "Go package installation" \
+        "${sudo_cmd[@]}" "$env_bin" DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 \
+        "$apt_bin" -o DPkg::Lock::Timeout=120 install -y "${install_options[@]}" "${packages[@]}" || return $?
+    update_verify_go
+}
+
+update_go() {
+    [[ "$UPDATE_RUNTIME" == true ]] || return 0
     update_load_module_selection || return 1
     update_module_is_selected lang.go || return 0
+    if update_tool_hold_details go; then
+        log_item "skip" "Go" "HELD: $UPDATE_LAST_HOLD_DETAILS"
+        update_note_held_tool go
+        return 0
+    fi
 
     log_section "Go Runtime"
-
-    # Check if go is installed
-    local go_path=""
+    local go_path="" apt_bin="" package_list=""
+    local -a packages=()
     go_path="$(update_binary_path go 2>/dev/null || true)"
-    if [[ -z "$go_path" ]]; then
-        log_item "skip" "Go" "not installed"
+    if [[ -z "$go_path" && ( "$FORCE_MODE" != true || "$UPDATE_GO_PACKAGES" != true ) ]]; then
+        log_item "skip" "Go" "not installed (package repair requires --force without --no-apt)"
         return 0
     fi
 
-    # Determine how Go was installed
-
-    # Check if it's apt-managed (system install)
-    if [[ "$go_path" == "/usr/bin/go" ]] || [[ "$go_path" == "/usr/local/go/bin/go" ]]; then
-        # System install - apt/pacman handles it, or manual install
-        if command -v dpkg &>/dev/null && dpkg -l golang-go &>/dev/null 2>&1; then
-            log_item "ok" "Go" "apt-managed (updated via apt upgrade)"
-            log_to_file "Go is managed by apt, skipping dedicated update"
-        elif command -v pacman &>/dev/null && pacman -Qq go &>/dev/null; then
-            log_item "ok" "Go" "pacman-managed (updated via pacman -Syu)"
-            log_to_file "Go is managed by pacman, skipping dedicated update"
-        else
-            log_item "skip" "Go" "manual install, update manually from golang.org"
-            log_to_file "Go appears to be manually installed at $go_path"
+    # Match the manifest's apt-only install gate. In particular, an Arch host
+    # must not gain Debian packages or an unsupported partial pacman upgrade.
+    if [[ "$UPDATE_DISTRO_FAMILY" != arch && "$UPDATE_GO_PACKAGES" == true ]]; then
+        apt_bin="$(update_system_binary_path apt-get 2>/dev/null || true)"
+        if [[ -n "$apt_bin" ]]; then
+            if [[ -z "$go_path" ]]; then
+                package_list=golang-go
+            else
+                package_list="$(update_go_apt_packages "$go_path" 2>/dev/null || true)"
+            fi
         fi
-        return 0
     fi
-
-    # Check for goenv or similar version managers
-    if [[ -d "$HOME/.goenv" ]]; then
-        log_item "skip" "Go" "managed by goenv, use goenv to update"
-        return 0
+    if [[ -n "$package_list" ]]; then
+        mapfile -t packages <<< "$package_list"
+        run_cmd "Go package maintenance" update_go_package_install "${packages[@]}"
+    elif [[ -n "$go_path" ]]; then
+        log_to_file "Go package changes skipped: disabled or executable not owned by an installed Go apt package ($go_path)"
+        run_cmd "Go verification (no package changes)" update_verify_go "$go_path"
+    else
+        update_finish_cmd_fail "Go" "selected runtime is missing; apt repair is unavailable on this platform. Install Go with the system package manager"
     fi
-
-    # For other installations, just log the version
-    local go_version
-    go_version=$("$go_path" version 2>/dev/null | awk '{print $3}' | sed 's/go//')
-    log_item "ok" "Go $go_version" "no auto-update available"
-    log_to_file "Go version: $go_version (path: $go_path)"
 }
 
 # Download release evidence as its owner, with bounded HTTPS transport. The
@@ -11625,7 +11732,7 @@ CATEGORY OPTIONS (select what to update):
 
 SKIP OPTIONS (exclude categories from update):
   --no-self-update   Skip ACFS self-update
-  --no-apt           Skip apt update/upgrade
+  --no-apt           Skip system package updates and targeted Go package changes
   --no-agents        Skip coding agent updates
   --no-cloud         Skip cloud CLI updates
   --no-shell         Skip shell tool updates
@@ -11722,7 +11829,8 @@ WHAT EACH CATEGORY UPDATES:
             GitHub CLI (gh extension upgrade --all)
             Google Cloud SDK (gcloud components update)
   runtime:  Node.js (nvm default channel, preserves version pins and global packages)
-            Bun (bun upgrade), Rust (rustup update), uv (uv self update), Go (apt-managed)
+            Bun (bun upgrade), Rust (rustup update), uv (uv self update)
+            Go (targeted apt update/repair; --no-apt keeps verification only)
   stack:    Agent Flywheel stack tools (verified upstream installers)
             Installs missing tools and updates existing ones automatically:
             NTM, Agent Mail, Meta Skill, APR, pt, xf, UBS, BV, BR, CASS, CM,
@@ -12328,6 +12436,7 @@ main() {
                 ;;
             --no-apt)
                 UPDATE_APT=false
+                UPDATE_GO_PACKAGES=false
                 shift
                 ;;
             --no-agents)

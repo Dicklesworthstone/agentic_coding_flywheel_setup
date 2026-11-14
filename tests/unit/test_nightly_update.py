@@ -407,6 +407,24 @@ update_agents() { printf 'agents\n' >> "$HOME/runtime-dispatch"; }
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual((self.home / "runtime-dispatch").read_text().splitlines(), ["nvm", "agents"])
 
+    def test_go_package_flags_preserve_explicit_no_apt(self):
+        for flags, packages in (
+            (("--runtime-only",), "true"),
+            (("--no-apt",), "false"),
+            (("--runtime-only", "--no-apt"), "false"),
+            (("--no-apt", "--runtime-only"), "false"),
+        ):
+            with self.subTest(flags=flags):
+                result = self.run_update_main("--yes", "--quiet", "--no-self-update", *flags, overrides=r'''
+update_bootstrap_admit() { :; }
+update_load_module_selection() { :; }
+update_go() {
+    printf '%s,%s,%s\n' "$UPDATE_RUNTIME" "$UPDATE_APT" "${UPDATE_GO_PACKAGES-unset}" > "$HOME/go-package-flags"
+}
+''')
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual((self.home / "go-package-flags").read_text(), f"true,false,{packages}\n")
+
     def test_update_main_records_a_full_noninteractive_run(self):
         self.write_interrupted()
         result = self.run_update_main("--yes", "--quiet")

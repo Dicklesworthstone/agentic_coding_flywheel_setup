@@ -877,7 +877,7 @@ accepts one. Verified installers are staged in a system directory instead of
 | **Runtime** | Bun | `bun upgrade` |
 | **Runtime** | Rust | `rustup update stable` |
 | **Runtime** | uv (Python) | `uv self update` |
-| **Runtime** | Go | `apt upgrade` (if apt-managed) |
+| **Runtime** | Go | Targeted apt package update; `--force` repairs a missing selected installation |
 | **Agents** | Claude Code | `claude update --channel latest` |
 | **Agents** | Codex | `bun install -g @latest` |
 | **Agents** | Antigravity | `agy update` (or verified installer with `--force`) |
@@ -895,6 +895,17 @@ to `node`. Older nvm versions advance to the checksum-approved installer version
 newer versions are retained. `acfs hold nvm` pauses both nvm and Node maintenance.
 `--force` can repair a missing selected installation without adding an omitted
 module. Defaults of `system` or `none` leave Node outside nvm maintenance.
+
+Go maintenance checks which installed package owns the selected executable.
+`--runtime-only` can refresh apt metadata and update that Go package without a
+full system upgrade; `--no-apt` disables Go package changes, including forced
+repair. `--force` can restore a missing selected Go installation on apt systems
+and requires successful verification afterward. Manual and goenv installations
+are preserved and verified. On Arch, Go stays under system package maintenance;
+runtime-only updates verify it without attempting a partial pacman upgrade.
+All Go version checks run as the installation user with automatic toolchain
+switching disabled. An ACFS Go hold skips the dedicated runtime step; use the
+distribution's package holds for full system upgrades.
 
 ### Options
 

@@ -658,6 +658,362 @@ esac
         self.assertIn("exit code: 17", (self.base / "update.log").read_text())
         self.assertEqual(list(self.caller.iterdir()), [])
 
+    def write_go_fixture(self, *, installed=True, package="golang-1.23-go:amd64"):
+        """Replace package tools, retaining the real updater and account runner.
+
+        The sudo fixture never elevates and only accepts the inert apt path.
+        All mutable files belong to the target, including when Python is root.
+        """
+        self.go_state = self.home / "go-fixture"
+        self.owned_dir(self.go_state / "package/bin")
+        self.owned_dir(self.go_state / "tools")
+        self.go_path = self.go_state / "go"
+        self.go_resolved = self.go_state / "package/bin/go"
+        for name, value in {
+            "owner": package, "status": "install ok installed" if installed else "unknown",
+            "meta-status": "unknown", "depends": "", "mode": "normal", "go-mode": "normal",
+            "package-events.tsv": "",
+        }.items():
+            self.write_input(self.go_state / name, value + "\n" if value else "")
+        prefix = "#!/bin/bash\nset -euo pipefail\nstate=" + shlex.quote(str(self.go_state)) + "\n"
+        go_script = prefix + "events=" + shlex.quote(str(self.events_file)) + "\n" + r'''
+printf 'go\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$EUID" "$HOME" "$PWD" "${GOTOOLCHAIN-<unset>}" "${GOENV-<unset>}" \
+    "${GOWORK-<unset>}" "${GOROOT-<unset>}" "${GOPATH-<unset>}" "$*" >> "$events"
+[[ "$*" == version ]] || exit 64
+case "$(<"$state/go-mode")" in
+    failure) printf 'fixture Go failure\n' >&2; exit 17 ;;
+    timeout) /bin/sleep 5 ;;
+    invalid) printf 'not a Go version\n'; exit 0 ;;
+esac
+printf 'go version go1.23.4 linux/amd64\n'
+'''
+        self.write_input(self.go_state / "go-payload", go_script)
+        if installed:
+            self.write_input(self.go_resolved, go_script)
+            self.go_resolved.chmod(0o755)
+            self.go_path.symlink_to(self.go_resolved)
+        scripts = {
+            "dpkg-query": r'''
+printf 'dpkg-query' >> "$state/package-events.tsv"
+printf '\t%s' "$@" >> "$state/package-events.tsv"
+printf '\n' >> "$state/package-events.tsv"
+owner="$(<"$state/owner")"
+case "${1:-}" in
+    -S)
+        [[ $# == 2 && "$2" == "$state/package/bin/go" && -n "$owner" ]] || exit 1
+        owned_path="$2"
+        [[ "$(<"$state/mode")" != wrong-owner-path ]] || owned_path="$state/unrelated-go"
+        printf '%s: %s\n' "$owner" "$owned_path"
+        ;;
+    -W)
+        [[ $# == 3 ]] || exit 97
+        case "$2:$3" in
+            '-f=${Status}:golang-go') cat "$state/meta-status" ;;
+            '-f=${Depends}:golang-go') cat "$state/depends" ;;
+            *)
+                [[ "$2" == '-f=${Status}' && ( "$3" == "$owner" || "$3" == "${owner%%:*}" ) ]] || exit 1
+                cat "$state/status"
+                ;;
+        esac
+        ;;
+    *) exit 97 ;;
+esac
+''',
+            "apt-get": r'''
+printf 'apt-get\t%s\t%s\t%s\t%s' "$EUID" "${DEBIAN_FRONTEND-<unset>}" \
+    "${NEEDRESTART_MODE-<unset>}" "${NEEDRESTART_SUSPEND-<unset>}" >> "$state/package-events.tsv"
+printf '\t%s' "$@" >> "$state/package-events.tsv"
+printf '\n' >> "$state/package-events.tsv"
+operation=""
+for argument in "$@"; do
+    case "$argument" in update|install) operation="$argument" ;; esac
+done
+mode="$(<"$state/mode")"
+case "$operation" in
+    update)
+        [[ "$mode" != update-failure ]] || { printf 'fixture metadata failure\n' >&2; exit 17; }
+        ;;
+    install)
+        [[ "$mode" != install-failure ]] || { printf 'fixture package failure\n' >&2; exit 18; }
+        [[ "$mode" != install-timeout ]] || /bin/sleep 5
+        if [[ "$mode" == transient-install && ! -f "$state/retried-install" ]]; then
+            printf 'attempted\n' > "$state/retried-install"
+            printf 'Temporary failure resolving fixture.invalid\n' >&2
+            exit 100
+        fi
+        [[ "$mode" != no-payload ]] || exit 0
+        cp "$state/go-payload" "$state/package/bin/go"
+        chmod 755 "$state/package/bin/go"
+        [[ -L "$state/go" ]] || ln -s "$state/package/bin/go" "$state/go"
+        printf 'install ok installed\n' > "$state/status"
+        [[ "$mode" != broken-payload ]] || printf 'failure\n' > "$state/go-mode"
+        ;;
+    *) printf 'unexpected package operation\n' >&2; exit 97 ;;
+esac
+''',
+            "sudo": r'''
+printf 'sudo' >> "$state/package-events.tsv"
+printf '\t%s' "$@" >> "$state/package-events.tsv"
+printf '\n' >> "$state/package-events.tsv"
+[[ "${1:-}" == -n ]] || exit 97
+allowed=false
+for argument in "$@"; do
+    [[ "$argument" != "$state/tools/apt-get" ]] || allowed=true
+done
+[[ "$allowed" == true ]] || { printf 'refusing non-fixture sudo command\n' >&2; exit 97; }
+shift
+exec "$@"
+''',
+        }
+        for name, script in scripts.items():
+            path = self.go_state / "tools" / name
+            self.write_input(path, prefix + script)
+            path.chmod(0o755)
+
+    def go_command(self, setup="", *, action="update_go"):
+        return r'''
+source "${UPDATE_TEST_LIBRARY%/*}/holds.sh"
+ACFS_HOLDS_FILE="$TEST_HOME/.acfs/holds.yaml"
+ACFS_DISTRO_FAMILY=ubuntu
+update_binary_path() {
+    [[ "$1" == go && -x "$TEST_HOME/go-fixture/go" ]] || return 1
+    printf '%s\n' "$TEST_HOME/go-fixture/go"
+}
+update_system_binary_path() {
+    case "$1" in
+        apt-get|dpkg-query) printf '%s\n' "$TEST_HOME/go-fixture/tools/$1"; return 0 ;;
+        sudo)
+            [[ "$TEST_TRANSPORT" != runuser && "$(<"$TEST_HOME/go-fixture/mode")" != no-sudo ]] || return 1
+            printf '%s\n' "$TEST_HOME/go-fixture/tools/sudo"; return 0 ;;
+    esac
+    local candidate
+    for candidate in "/usr/bin/$1" "/bin/$1" "/usr/sbin/$1" "/sbin/$1"; do
+        [[ -x "$candidate" ]] || continue
+        printf '%s\n' "$candidate"
+        return 0
+    done
+    return 1
+}
+# Host needrestart configuration is outside this isolated package fixture.
+update_disable_needrestart_apt_hook() { :; }
+''' + setup + "\n" + action + "\n"
+
+    def go_package_events(self):
+        return [line.split("\t") for line in (self.go_state / "package-events.tsv").read_text().splitlines()]
+
+    def go_apt_calls(self):
+        return [event[5:] for event in self.go_package_events() if event[0] == "apt-get"]
+
+    def assert_go_verified(self, output, *, count=1):
+        self.assertIn(f"COUNTS={count},0,0", output)
+        events = self.events()
+        self.assertEqual(len(events), count)
+        self.assert_target_events(events)
+        for event in events:
+            self.assertEqual(event[4:], ["local", "off", "off", "<unset>", "<unset>", "version"])
+
+    def test_go_missing_force_installs_and_verifies_package(self):
+        self.write_go_fixture(installed=False)
+        output = self.run_update(command=self.go_command("FORCE_MODE=true UPDATE_APT=false"))
+        self.assert_go_verified(output)
+        calls = self.go_apt_calls()
+        self.assertEqual(len(calls), 2)
+        self.assertIn("update", calls[0])
+        self.assertIn("APT::Update::Error-Mode=any", calls[0])
+        self.assertEqual(calls[1][-4:], ["install", "-y", "--reinstall", "golang-go"])
+        self.assertEqual(self.go_resolved.stat().st_uid, self.account.pw_uid)
+
+    def test_go_absence_and_explicit_package_opt_out_do_not_install(self):
+        self.write_go_fixture(installed=False)
+        for setup in ("", "FORCE_MODE=true UPDATE_GO_PACKAGES=false"):
+            with self.subTest(setup=setup):
+                output = self.run_update(command=self.go_command(setup))
+                self.assertIn("COUNTS=0,1,0", output)
+                self.assertFalse(self.go_path.exists())
+        self.assertEqual(self.go_apt_calls(), [])
+        self.assertEqual(self.events(), [])
+        self.write_input(self.go_resolved, (self.go_state / "go-payload").read_text())
+        self.go_resolved.chmod(0o755)
+        self.go_path.symlink_to(self.go_resolved)
+        output = self.run_update(command=self.go_command("FORCE_MODE=true UPDATE_GO_PACKAGES=false"))
+        self.assert_go_verified(output)
+        self.assertEqual(self.go_apt_calls(), [])
+
+    def test_go_owned_package_updates_exact_owner_and_reuses_fresh_index(self):
+        self.write_go_fixture()
+        output = self.run_update(command=self.go_command("UPDATE_APT=false", action="update_go\nupdate_go"))
+        self.assert_go_verified(output, count=2)
+        calls = self.go_apt_calls()
+        self.assertEqual(sum("update" in call for call in calls), 1)
+        installs = [call for call in calls if "install" in call]
+        self.assertEqual(len(installs), 2)
+        for call in installs:
+            self.assertIn("DPkg::Lock::Timeout=120", call)
+            self.assertEqual(call[-4:], ["install", "-y", "--only-upgrade", "golang-1.23-go:amd64"])
+        events = self.go_package_events()
+        self.assertIn(["dpkg-query", "-S", str(self.go_resolved)], events)
+        for event in events:
+            if event[0] == "apt-get":
+                self.assertEqual(event[2:5], ["noninteractive", "a", "1"])
+            elif event[0] == "sudo":
+                self.assertEqual(event[1], "-n")
+                self.assertIn(str(self.go_state / "tools/apt-get"), event)
+
+    def test_go_canonical_command_tracks_meta_and_actual_compiler_packages(self):
+        self.write_go_fixture(package="golang-1.23-go")
+        self.write_input(self.go_state / "meta-status", "install ok installed\n")
+        # Only the ownership query sees /usr/bin/go. The real host command is
+        # never selected or executed; readlink maps it to our inert compiler.
+        readlink = self.go_state / "tools/readlink"
+        self.write_input(readlink, "#!/bin/bash\n"
+                         '[[ "$*" == "-f -- /usr/bin/go" ]] || exit 97\n'
+                         "printf '%s\\n' " + shlex.quote(str(self.go_resolved)) + "\n")
+        readlink.chmod(0o755)
+        setup = r'''
+fixture_system_lookup="$(declare -f update_system_binary_path)"
+eval "${fixture_system_lookup/update_system_binary_path/fixture_system_binary_path}"
+update_system_binary_path() {
+    if [[ "$1" == readlink ]]; then printf '%s\n' "$TEST_HOME/go-fixture/tools/readlink"
+    else fixture_system_binary_path "$@"; fi
+}
+'''
+        output = self.run_update(command=self.go_command(setup, action="update_go_apt_packages /usr/bin/go"))
+        self.assertEqual(output.splitlines()[:2], ["golang-go", "golang-1.23-go"])
+        self.assertEqual(self.go_apt_calls(), [])
+        self.assertEqual(self.events(), [])
+
+    def test_go_force_repairs_installed_compiler_dependency(self):
+        self.write_go_fixture(installed=False, package="golang-1.23-go")
+        self.write_input(self.go_state / "status", "install ok installed\n")
+        self.write_input(self.go_state / "meta-status", "install ok installed\n")
+        self.write_input(self.go_state / "depends", "golang-1.23-go (>= 1.23.0), golang-src\n")
+        output = self.run_update(command=self.go_command("FORCE_MODE=true"))
+        self.assert_go_verified(output)
+        install = [call for call in self.go_apt_calls() if "install" in call]
+        self.assertEqual(len(install), 1)
+        self.assertEqual(install[0][-5:], ["install", "-y", "--reinstall", "golang-go", "golang-1.23-go"])
+        self.assertNotIn("--only-upgrade", install[0])
+
+    def test_go_manual_install_uses_bounded_target_verification(self):
+        self.write_go_fixture(package="")
+        output = self.run_update(command=self.go_command(), overrides={
+            "GOTOOLCHAIN": "go1.99.0+auto", "GOENV": str(self.caller / "go-env"),
+            "GOWORK": str(self.work / "go.work"), "GOROOT": str(self.caller / "go"),
+            "GOPATH": str(self.caller / "go-path"),
+        })
+        self.assert_go_verified(output)
+        self.assertEqual(self.go_apt_calls(), [])
+        self.assertEqual(list(self.caller.iterdir()), [])
+
+    def test_go_verification_failure_invalid_output_and_timeout_count_failures(self):
+        self.write_go_fixture(package="")
+        for mode in ("failure", "invalid", "timeout"):
+            with self.subTest(mode=mode):
+                self.write_input(self.go_state / "go-mode", mode + "\n")
+                output = self.run_update(command=self.go_command(), timeout="0.1")
+                self.assertIn("COUNTS=0,0,1", output)
+        self.assertEqual(self.go_apt_calls(), [])
+        self.assert_target_events(self.events())
+        self.assertRegex((self.base / "update.log").read_text(), r"exit code: (124|137)")
+
+    def test_go_package_failures_stop_before_readiness_and_transient_errors_retry(self):
+        self.write_go_fixture(installed=False)
+        for mode in ("update-failure", "install-failure", "install-timeout", "no-sudo"):
+            with self.subTest(mode=mode):
+                self.write_input(self.go_state / "mode", mode + "\n")
+                start = len(self.go_apt_calls())
+                output = self.run_update(command=self.go_command("FORCE_MODE=true"), timeout="0.1")
+                self.assertIn("COUNTS=0,0,1", output)
+                if mode in ("update-failure", "no-sudo"):
+                    self.assertFalse(any("install" in call for call in self.go_apt_calls()[start:]))
+                self.assertFalse(self.go_path.exists())
+                self.assertEqual(self.events(), [])
+        self.write_input(self.go_state / "mode", "transient-install\n")
+        start = len(self.go_apt_calls())
+        output = self.run_update(command=self.go_command("FORCE_MODE=true"))
+        self.assert_go_verified(output)
+        self.assertEqual(sum("install" in call for call in self.go_apt_calls()[start:]), 2)
+
+    def test_go_package_success_requires_a_working_compiler(self):
+        self.write_go_fixture(installed=False)
+        for mode in ("no-payload", "broken-payload"):
+            with self.subTest(mode=mode):
+                self.write_input(self.go_state / "mode", mode + "\n")
+                output = self.run_update(command=self.go_command("FORCE_MODE=true"))
+                self.assertIn("COUNTS=0,0,1", output)
+        self.assertEqual(len(self.events()), 1)
+        self.assert_target_events(self.events())
+
+    def test_go_dry_run_hold_and_saved_selection_block_execution(self):
+        self.write_go_fixture(installed=False)
+        output = self.run_update(dry_run=True, command=self.go_command("FORCE_MODE=true"))
+        self.assertIn("COUNTS=0,1,0", output)
+        self.run_update(command=self.go_command("UPDATE_RUNTIME=false FORCE_MODE=true"))
+        self.owned_dir(self.home / ".acfs")
+        self.write_input(self.home / ".acfs/holds.yaml", 'holds:\n  go:\n'
+                         '    held_version: "current"\n    owner: "fixture"\n'
+                         '    reason: "keep compiler"\n    expiry: ""\n')
+        output = self.run_update(command=self.go_command("FORCE_MODE=true"))
+        self.assertIn("COUNTS=0,1,0", output)
+        self.assertIn("keep compiler", (self.base / "update.log").read_text())
+        self.write_input(self.home / ".acfs/holds.yaml", "holds: {}\n")
+        checkpoint = self.home / ".acfs/state.json"
+        self.write_input(checkpoint, json.dumps({"target_home": str(self.home),
+            "target_user": self.account.pw_name,
+            "module_selection": {"schema_version": 1, "selected_modules": ["lang.bun"]}}))
+        saved = checkpoint.read_bytes()
+        self.run_update(command=self.go_command("FORCE_MODE=true"))
+        self.assertEqual(checkpoint.read_bytes(), saved)
+        self.write_input(checkpoint, json.dumps({"target_home": str(self.home),
+            "target_user": self.account.pw_name,
+            "module_selection": {"schema_version": 1, "selected_modules": ["lang.go"]}}))
+        self.write_input(self.base / "go-platform-index.sh", 'ACFS_MODULES_IN_ORDER=(\n  "lang.go"\n)\n'
+                         'declare -gA ACFS_MODULE_FAMILIES=(\n  [\'lang.go\']="ubuntu"\n)\n')
+        saved = checkpoint.read_bytes()
+        self.run_update(command=self.go_command('FORCE_MODE=true ACFS_DISTRO_FAMILY=arch\n'
+                         '_UPDATE_MANIFEST_INDEX="$TEST_ROOT/go-platform-index.sh"'))
+        self.assertEqual(checkpoint.read_bytes(), saved)
+        self.assertEqual(self.go_apt_calls(), [])
+        self.assertEqual(self.events(), [])
+        self.assertFalse(self.go_path.exists())
+
+    def test_go_unsupported_forced_repair_never_calls_apt(self):
+        self.write_go_fixture(installed=False)
+        output = self.run_update(command=self.go_command("ACFS_DISTRO_FAMILY=arch FORCE_MODE=true"))
+        self.assertIn("COUNTS=0,0,1", output)
+        self.assertIn("system package manager", (self.base / "update.log").read_text())
+        self.assertEqual(self.go_apt_calls(), [])
+        self.assertEqual(self.events(), [])
+
+    def test_go_unproven_package_ownership_does_not_replace_existing_tool(self):
+        self.write_go_fixture()
+        for mode, owner, status in (
+            ("wrong-owner-path", "golang-1.23-go:amd64", "install ok installed"),
+            ("normal", "golang-1.23-go:amd64", "deinstall ok config-files"),
+            ("normal", "unrelated-package", "install ok installed"),
+        ):
+            with self.subTest(mode=mode, owner=owner, status=status):
+                self.write_input(self.go_state / "mode", mode + "\n")
+                self.write_input(self.go_state / "owner", owner + "\n")
+                self.write_input(self.go_state / "status", status + "\n")
+                output = self.run_update(command=self.go_command("FORCE_MODE=true"))
+                self.assertIn("COUNTS=1,0,0", output)
+        self.assertEqual(self.go_apt_calls(), [])
+        self.assertEqual(len(self.events()), 3)
+        self.assert_target_events(self.events())
+
+    def test_go_cross_account_verification_uses_target_without_caller_selectors(self):
+        self.write_go_fixture(package="")
+        output = self.run_update(cross=True, transport="runuser", command=self.go_command(), overrides={
+            "GOTOOLCHAIN": "go1.99.0+auto", "GOENV": str(self.caller / "go-env"),
+            "GOWORK": str(self.work / "go.work"), "GOROOT": str(self.caller / "go"),
+            "GOPATH": str(self.caller / "go-path"),
+        })
+        self.assert_go_verified(output)
+        self.assertEqual(self.go_apt_calls(), [])
+        self.assertEqual(list(self.caller.iterdir()), [])
+
     def write_nvm_fixture(self, directory=None, *, default="node", version="0.39.7",
                           installed=True, npm=False):
         directory = directory or self.home / ".nvm"
