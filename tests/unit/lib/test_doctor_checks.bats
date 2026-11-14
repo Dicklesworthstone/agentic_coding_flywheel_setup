@@ -791,6 +791,97 @@ run_doctor_wrapper_checkpoint() {
     doctor_selection_json | jq -e '.[4].id == "tools.lazygit" and .[4].status == "skip" and .[4].fix == null' >/dev/null
 }
 
+@test "doctor manifest probes: every execution context bounds a TERM-resistant child" {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["agents.grok"]}}'
+    # Leave time for shell/transport startup while keeping the deadline plus
+    # its five-second kill grace below the finite seven-second stalled probe.
+    DEEP_CHECK_TIMEOUT=1
+    local context=""
+    for context in current target_user root; do
+        export DOCTOR_TEST_STARTED="$BATS_TEST_TMPDIR/started-$context"
+        run _doctor_run_manifest_check "$context" \
+            'printf started > "$DOCTOR_TEST_STARTED"; trap "" TERM; (trap "" TERM; sleep 7; printf escaped >> "$DOCTOR_TEST_PROBES") & wait'
+        [[ "$status" -eq 124 || "$status" -eq 137 ]] \
+            || fail "$context did not enforce the probe deadline (status $status): $output"
+        [[ -s "$DOCTOR_TEST_STARTED" ]] || fail "$context never reached the probe"
+        [[ ! -e "$DOCTOR_TEST_PROBES" ]] || fail "$context left a probe running past its deadline"
+    done
+}
+
+@test "doctor manifest probes: a timed-out selected tool does not block later checks or authorize repair" {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["agents.opencode","agents.grok"]}}'
+    DEEP_CHECK_TIMEOUT=1
+    export DOCTOR_TEST_STARTED="$BATS_TEST_TMPDIR/started-grok"
+    FIX_MODE=true
+    DOCTOR_FIX_SCOPED=true
+    MANIFEST_CHECKS=(
+        $'agents.grok\tGrok functional check\tprintf started > "$DOCTOR_TEST_STARTED"; trap "" TERM; sleep 7\toptional\tcurrent'
+        $'agents.opencode\tOpenCode functional check\tprintf opencode >> "$DOCTOR_TEST_PROBES"\trequired\tcurrent'
+        $'tools.lazygit\tExcluded probe\tprintf EXCLUDED >> "$DOCTOR_TEST_PROBES"; sleep 7\trequired\tcurrent'
+    )
+
+    check_manifest_supplemental
+    [ -s "$DOCTOR_TEST_STARTED" ]
+    [ "$(cat "$DOCTOR_TEST_PROBES")" = opencode ]
+    [ "$PASS_COUNT:$WARN_COUNT:$FAIL_COUNT:$SKIP_COUNT" = 1:1:0:1 ]
+    [ "${#DOCTOR_FIX_PENDING_IDS[@]}" -eq 0 ]
+    [[ " ${DOCTOR_FIX_OBSERVED_IDS[*]} " == *" agents.grok "* ]]
+    doctor_selection_json | jq -e '
+        .[0].id == "agents.grok" and .[0].status == "timeout" and
+        (.[0].details | contains("deadline")) and
+        .[1].id == "agents.opencode" and .[1].status == "pass" and
+        .[2].id == "tools.lazygit" and .[2].status == "skip" and .[2].fix == null' >/dev/null
+}
+
+@test "doctor manifest probes: missing timeout support refuses the command instead of running unbounded" {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["agents.grok"]}}'
+    _acfs_doctor_system_binary_path() {
+        [[ "$1" != timeout ]] || return 1
+        [[ -x "/usr/bin/$1" ]] || return 1
+        printf '/usr/bin/%s\n' "$1"
+    }
+
+    run -127 _doctor_run_manifest_check current 'printf UNBOUNDED >> "$DOCTOR_TEST_PROBES"'
+    [ "$status" -eq 127 ]
+    [ ! -e "$DOCTOR_TEST_PROBES" ]
+}
+
+@test "doctor manifest probes: stalled sudo admission is bounded without falling back to a different identity" {
+    [[ "$EUID" -ne 0 ]] || skip "sudo admission is only used by non-root doctor"
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["agents.grok"]}}'
+    DEEP_CHECK_TIMEOUT=1
+    export DOCTOR_TEST_STARTED="$BATS_TEST_TMPDIR/started-sudo"
+    cat > "$DOCTOR_TEST_BIN/sudo" <<'EOF'
+#!/bin/bash
+printf started > "$DOCTOR_TEST_STARTED"
+trap '' TERM
+sleep 7
+exit 1
+EOF
+    chmod +x "$DOCTOR_TEST_BIN/sudo"
+    _acfs_doctor_system_binary_path() {
+        if [[ "$1" == sudo ]]; then
+            printf '%s/sudo\n' "$DOCTOR_TEST_BIN"
+        elif [[ -x "/usr/bin/$1" ]]; then
+            printf '/usr/bin/%s\n' "$1"
+        else
+            return 1
+        fi
+    }
+
+    run _doctor_run_manifest_check root 'printf FALLBACK >> "$DOCTOR_TEST_PROBES"'
+    [[ "$status" -eq 124 || "$status" -eq 137 ]] || fail "sudo admission was not bounded: $status"
+    [ -s "$DOCTOR_TEST_STARTED" ]
+    [ ! -e "$DOCTOR_TEST_PROBES" ]
+
+    # An ordinary explicit denial still supports read-only checks in safe mode.
+    printf '#!/bin/bash\nexit 1\n' > "$DOCTOR_TEST_BIN/sudo"
+    DEEP_CHECK_TIMEOUT=15
+    run _doctor_run_manifest_check root 'printf safe-mode >> "$DOCTOR_TEST_PROBES"'
+    [ "$status" -eq 0 ]
+    [ "$(cat "$DOCTOR_TEST_PROBES")" = safe-mode ]
+}
+
 @test "doctor selection: excluded timed-out checks cannot become warnings or autofixes" {
     doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["base.system"]}}'
     FIX_MODE=true

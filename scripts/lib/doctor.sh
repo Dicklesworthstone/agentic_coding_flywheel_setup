@@ -4282,6 +4282,7 @@ _doctor_run_manifest_check() {
     local sudo_bin=""
     local runuser_bin=""
     local su_bin=""
+    local timeout_bin=""
 
     explicit_target_home="$target_home"
     if [[ -n "$explicit_target_home" ]]; then
@@ -4323,6 +4324,12 @@ _doctor_run_manifest_check() {
         log_error "Unable to locate env/bash for manifest check"
         return 1
     fi
+    timeout_bin="$(_acfs_doctor_system_binary_path timeout 2>/dev/null)" || return 127
+    [[ -n "$timeout_bin" ]] || return 127
+    # Supplemental checks execute third-party CLIs and service probes too.
+    # Bound the entire transport, including runuser/sudo, so a selected tool
+    # cannot hold the health report open or outlive its verification deadline.
+    local -a bounded_probe=(_acfs_doctor_run_bounded "$timeout_bin" "$DEEP_CHECK_TIMEOUT")
 
     if [[ "$cmd" == *"acfs_generated_"* ]]; then
         local helper_prelude=""
@@ -4383,22 +4390,22 @@ _doctor_run_manifest_check() {
             target_path="$target_path_prefix${PATH:+:$PATH}"
             local -a target_check_argv=("$bash_bin" -c 'cd "$HOME" || exit 1; exec "$@"' _ "$bash_bin" -e -o pipefail -c "$cmd")
             if [[ "$(_acfs_doctor_resolve_current_user 2>/dev/null || true)" == "$target_user" ]]; then
-                "$env_bin" TARGET_USER="$target_user" TARGET_HOME="$target_home" HOME="$target_home" PATH="$target_path" "${target_check_argv[@]}"
+                "${bounded_probe[@]}" "$env_bin" TARGET_USER="$target_user" TARGET_HOME="$target_home" HOME="$target_home" PATH="$target_path" "${target_check_argv[@]}"
                 return $?
             fi
             runuser_bin="$(_acfs_doctor_system_binary_path runuser 2>/dev/null || true)"
             if [[ $EUID -eq 0 && -n "$runuser_bin" ]]; then
-                "$runuser_bin" -u "$target_user" -- "$env_bin" TARGET_USER="$target_user" TARGET_HOME="$target_home" HOME="$target_home" PATH="$target_path" "${target_check_argv[@]}"
+                "${bounded_probe[@]}" "$runuser_bin" -u "$target_user" -- "$env_bin" TARGET_USER="$target_user" TARGET_HOME="$target_home" HOME="$target_home" PATH="$target_path" "${target_check_argv[@]}"
                 return $?
             fi
             sudo_bin="$(_acfs_doctor_system_binary_path sudo 2>/dev/null || true)"
             if [[ -n "$sudo_bin" ]]; then
-                "$sudo_bin" -n -u "$target_user" "$env_bin" TARGET_USER="$target_user" TARGET_HOME="$target_home" HOME="$target_home" PATH="$target_path" "${target_check_argv[@]}"
+                "${bounded_probe[@]}" "$sudo_bin" -n -u "$target_user" "$env_bin" TARGET_USER="$target_user" TARGET_HOME="$target_home" HOME="$target_home" PATH="$target_path" "${target_check_argv[@]}"
                 return $?
             fi
             su_bin="$(_acfs_doctor_system_binary_path su 2>/dev/null || true)"
             if [[ $EUID -eq 0 && -n "$su_bin" ]]; then
-                "$su_bin" "$target_user" -c "$(printf '%q' "$env_bin") TARGET_USER=$(printf '%q' "$target_user") TARGET_HOME=$(printf '%q' "$target_home") HOME=$(printf '%q' "$target_home") PATH=$(printf '%q' "$target_path") $(printf '%q ' "${target_check_argv[@]}")"
+                "${bounded_probe[@]}" "$su_bin" "$target_user" -c "$(printf '%q' "$env_bin") TARGET_USER=$(printf '%q' "$target_user") TARGET_HOME=$(printf '%q' "$target_home") HOME=$(printf '%q' "$target_home") PATH=$(printf '%q' "$target_path") $(printf '%q ' "${target_check_argv[@]}")"
                 return $?
             fi
             return 1
@@ -4406,18 +4413,28 @@ _doctor_run_manifest_check() {
         root)
             if [[ $EUID -eq 0 ]]; then
                 if [[ -n "$target_home" ]] && [[ "$target_home" == /* ]] && [[ "$target_home" != "/" ]]; then
-                    "$env_bin" TARGET_USER="$target_user" TARGET_HOME="$target_home" PATH="$system_path_prefix" "$bash_bin" -e -o pipefail -c "$cmd"
+                    "${bounded_probe[@]}" "$env_bin" TARGET_USER="$target_user" TARGET_HOME="$target_home" PATH="$system_path_prefix" "$bash_bin" -e -o pipefail -c "$cmd"
                 else
-                    "$env_bin" TARGET_USER="$target_user" PATH="$system_path_prefix" "$bash_bin" -e -o pipefail -c "$cmd"
+                    "${bounded_probe[@]}" "$env_bin" TARGET_USER="$target_user" PATH="$system_path_prefix" "$bash_bin" -e -o pipefail -c "$cmd"
                 fi
                 return $?
             fi
             sudo_bin="$(_acfs_doctor_system_binary_path sudo 2>/dev/null || true)"
-            if [[ -n "$sudo_bin" ]] && "$sudo_bin" -n true >/dev/null 2>&1; then
+            local sudo_status=1
+            if [[ -n "$sudo_bin" ]]; then
+                sudo_status=0
+                "${bounded_probe[@]}" "$sudo_bin" -n true >/dev/null 2>&1 || sudo_status=$?
+                # A stalled privilege lookup is an inconclusive probe, not a
+                # denial that authorizes the read-only unprivileged fallback.
+                if [[ "$sudo_status" -eq 124 || "$sudo_status" -eq 137 ]]; then
+                    return "$sudo_status"
+                fi
+            fi
+            if [[ "$sudo_status" -eq 0 ]]; then
                 if [[ -n "$target_home" ]] && [[ "$target_home" == /* ]] && [[ "$target_home" != "/" ]]; then
-                    "$sudo_bin" -n "$env_bin" TARGET_USER="$target_user" TARGET_HOME="$target_home" PATH="$system_path_prefix" "$bash_bin" -e -o pipefail -c "$cmd"
+                    "${bounded_probe[@]}" "$sudo_bin" -n "$env_bin" TARGET_USER="$target_user" TARGET_HOME="$target_home" PATH="$system_path_prefix" "$bash_bin" -e -o pipefail -c "$cmd"
                 else
-                    "$sudo_bin" -n "$env_bin" TARGET_USER="$target_user" PATH="$system_path_prefix" "$bash_bin" -e -o pipefail -c "$cmd"
+                    "${bounded_probe[@]}" "$sudo_bin" -n "$env_bin" TARGET_USER="$target_user" PATH="$system_path_prefix" "$bash_bin" -e -o pipefail -c "$cmd"
                 fi
                 return $?
             fi
@@ -4427,17 +4444,17 @@ _doctor_run_manifest_check() {
             # current user rather than reporting every one of them as a false
             # FAIL. Tools the target user runs verify as target_user (#461).
             if [[ -n "$target_home" ]] && [[ "$target_home" == /* ]] && [[ "$target_home" != "/" ]]; then
-                "$env_bin" TARGET_USER="$target_user" TARGET_HOME="$target_home" PATH="$system_path_prefix:$PATH" "$bash_bin" -e -o pipefail -c "$cmd"
+                "${bounded_probe[@]}" "$env_bin" TARGET_USER="$target_user" TARGET_HOME="$target_home" PATH="$system_path_prefix:$PATH" "$bash_bin" -e -o pipefail -c "$cmd"
             else
-                "$env_bin" TARGET_USER="$target_user" PATH="$system_path_prefix:$PATH" "$bash_bin" -e -o pipefail -c "$cmd"
+                "${bounded_probe[@]}" "$env_bin" TARGET_USER="$target_user" PATH="$system_path_prefix:$PATH" "$bash_bin" -e -o pipefail -c "$cmd"
             fi
             return $?
             ;;
         current|*)
             if [[ -n "$target_home" ]] && [[ "$target_home" == /* ]] && [[ "$target_home" != "/" ]]; then
-                "$env_bin" TARGET_USER="$target_user" TARGET_HOME="$target_home" "$bash_bin" -e -o pipefail -c "$cmd"
+                "${bounded_probe[@]}" "$env_bin" TARGET_USER="$target_user" TARGET_HOME="$target_home" "$bash_bin" -e -o pipefail -c "$cmd"
             else
-                "$env_bin" TARGET_USER="$target_user" "$bash_bin" -e -o pipefail -c "$cmd"
+                "${bounded_probe[@]}" "$env_bin" TARGET_USER="$target_user" "$bash_bin" -e -o pipefail -c "$cmd"
             fi
             ;;
     esac
@@ -4502,8 +4519,16 @@ check_manifest_supplemental() {
         fix="$(fix_for_module "$module_id")"
 
         # Execute the check command in the same context the manifest expects.
-        if _doctor_run_manifest_check "$run_as" "$cmd" &>/dev/null; then
+        local probe_status=0
+        _doctor_run_manifest_check "$run_as" "$cmd" &>/dev/null || probe_status=$?
+        if [[ "$probe_status" -eq 0 ]]; then
             check "$id" "$tool_name" "pass" "$desc"
+        elif [[ "$probe_status" -eq 124 || "$probe_status" -eq 137 ]]; then
+            # GNU timeout returns 137 after kill escalation. A killed probe is
+            # inconclusive, including one terminated externally: do not claim
+            # a healthy tool or automatically reinstall it in --fix mode.
+            check_with_timeout_status "$id" "$tool_name" "timeout" \
+                "$desc (verification exceeded its ${DEEP_CHECK_TIMEOUT}s deadline or was terminated)" "$fix"
         elif [[ "$req_flag" == "optional" ]]; then
             # Optional tools use "warn" status (not critical failures)
             # Still provide fix suggestion so users know how to install if desired
