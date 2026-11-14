@@ -1717,6 +1717,78 @@ update_p10k
         self.assertTrue(any(row[2].startswith("60 ") for row in rows), rows)
         self.assertTrue(any(row[2].startswith("--kill-after=30s 5 ") for row in rows), rows)
 
+    def nvm_wrapper_handoff(self, *, foreign_caller):
+        wrapper = Path(os.environ.get("ACFS_UPDATE_TEST_WRAPPER", ROOT / "scripts/acfs-update")).read_text()
+        entrypoint = 'main "$@"\n'
+        self.assertTrue(wrapper.endswith(entrypoint))
+        # Load the complete real wrapper without its final main call so this
+        # unit case can invoke the account-handoff boundary directly. Account
+        # identity and privileged transport are fixtures, not real UID changes;
+        # env construction and execution remain the production implementation.
+        module = self.base / "wrapper-functions.sh"
+        self.write_input(module, wrapper[:-len(entrypoint)])
+        transport = self.base / "fixture-account-transport"
+        self.write_input(transport, r'''#!/bin/bash
+set -euo pipefail
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -n|-H|--) shift ;;
+        -u) [[ "$2" == "$TEST_USER" ]] || exit 64; shift 2 ;;
+        *) break ;;
+    esac
+done
+exec "$@"
+''')
+        transport.chmod(0o755)
+        selectors = (
+            "NVM_DIR", "NVM_BIN", "NVM_INC", "NVM_CD_FLAGS",
+            "NVM_NODEJS_ORG_MIRROR", "NVM_IOJS_ORG_MIRROR", "NVM_AUTH_HEADER",
+            "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_RUNTIME_DIR",
+            "NPM_CONFIG_USERCONFIG", "npm_config_userconfig", "NPM_CONFIG_GLOBALCONFIG", "npm_config_globalconfig",
+            "NPM_CONFIG_CACHE", "npm_config_cache", "NPM_CONFIG_PREFIX", "npm_config_prefix",
+            "PREFIX", "NODE_OPTIONS", "NODE_PATH", "BASH_ENV", "ENV",
+        )
+        configured = {name: str(self.caller / name) for name in selectors}
+        env = configured | {
+            "PATH": "/usr/bin:/bin", "HOME": str(self.home), "TARGET_HOME": str(self.home),
+            "TEST_ROOT": str(self.base), "TEST_USER": self.account.pw_name,
+            "TEST_CALLER": "foreign-caller" if foreign_caller else self.account.pw_name,
+            "ACFS_STATE_FILE": "", "ACFS_SYSTEM_STATE_FILE": str(self.base / "no-system-state"),
+            "ACFS_HOME": "", "ACFS_BIN_DIR": "", "ACFS_KEEP_FIXTURE": "preserved",
+        }
+        body = r'''
+source "$TEST_ROOT/wrapper-functions.sh"
+resolve_current_user() { printf '%s\n' "$TEST_CALLER"; }
+system_binary_path() {
+    if [[ "$1" == sudo || "$1" == runuser ]]; then
+        printf '%s\n' "$TEST_ROOT/fixture-account-transport"
+        return 0
+    fi
+    local candidate
+    for candidate in "/usr/bin/$1" "/bin/$1" "/usr/sbin/$1" "/sbin/$1"; do
+        if [[ -x "$candidate" ]]; then printf '%s\n' "$candidate"; return 0; fi
+    done
+    return 1
+}
+exec_as_target_user "$TEST_USER" /usr/bin/env
+'''
+        result = subprocess.run(["/bin/bash", "--noprofile", "--norc", "-p", "-c", body],
+                                env=env, cwd=self.work, text=True, capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        observed = dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
+        self.assertEqual(observed["HOME"], str(self.home))
+        self.assertEqual(observed["ACFS_KEEP_FIXTURE"], "preserved")
+        return configured, observed
+
+    def test_nvm_public_handoff_discards_foreign_selectors_before_identity_changes(self):
+        configured, observed = self.nvm_wrapper_handoff(foreign_caller=True)
+        for name in configured:
+            self.assertNotIn(name, observed, name)
+
+    def test_nvm_public_handoff_preserves_same_account_selectors(self):
+        configured, observed = self.nvm_wrapper_handoff(foreign_caller=False)
+        for name, value in configured.items():
+            self.assertEqual(observed.get(name), value, name)
 
 class AgentPackageDeadlineTests(unittest.TestCase):
     """Exercise agent/package deadlines without requiring account privileges.

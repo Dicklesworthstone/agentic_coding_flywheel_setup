@@ -955,9 +955,18 @@ exec_as_target_user() {
   }
   if [[ "$current_user" != "$user" ]]; then
     # The library runs as the target after this handoff, so it cannot identify
-    # caller-owned Rust stores by UID any more. Clear only those selectors at
-    # the account boundary; direct same-account updates keep their overrides.
-    env_args+=(-u CARGO_HOME -u RUSTUP_HOME -u RUSTUP_TOOLCHAIN)
+    # caller-owned runtime stores or configuration by UID any more. Clear those
+    # selectors at the account boundary; same-account updates keep overrides.
+    env_args+=(
+      -u CARGO_HOME -u RUSTUP_HOME -u RUSTUP_TOOLCHAIN
+      -u NVM_DIR -u NVM_BIN -u NVM_INC -u NVM_CD_FLAGS
+      -u NVM_NODEJS_ORG_MIRROR -u NVM_IOJS_ORG_MIRROR -u NVM_AUTH_HEADER
+      -u XDG_CONFIG_HOME -u XDG_CACHE_HOME -u XDG_DATA_HOME -u XDG_STATE_HOME -u XDG_RUNTIME_DIR
+      -u NPM_CONFIG_USERCONFIG -u npm_config_userconfig
+      -u NPM_CONFIG_GLOBALCONFIG -u npm_config_globalconfig
+      -u NPM_CONFIG_CACHE -u npm_config_cache -u NPM_CONFIG_PREFIX -u npm_config_prefix
+      -u PREFIX -u NODE_OPTIONS -u NODE_PATH -u BASH_ENV -u ENV
+    )
   fi
 
   if [[ -n "$sanitized_target_home" ]]; then
