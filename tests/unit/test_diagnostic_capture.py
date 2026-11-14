@@ -119,6 +119,7 @@ class DiagnosticCaptureTests(unittest.TestCase):
             with self.subTest(mode=mode):
                 code = probe + "\ndoctor_version_probe /usr/bin/timeout 1 " + mode + \
                     " /bin/bash -c 'printf \"fixture version\\nsecond line\\n\" >&2'"
+                # Repository helper and literal fixture, no external input. ubs:ignore[py.security.command-injection]
                 result = subprocess.run(["/bin/bash", "-c", code], capture_output=True,
                                         text=True, timeout=3)
                 self.assertEqual(result.returncode, 0, result.stderr)
@@ -134,6 +135,7 @@ class DiagnosticCaptureTests(unittest.TestCase):
                            "time.sleep(30)\n")
         code = "set -o pipefail\n" + probe + \
             "\ndoctor_version_probe /usr/bin/timeout 0.1 discard /usr/bin/python3 " + shlex.quote(str(fixture))
+        # Repository helper and shell-quoted fixture path. ubs:ignore[py.security.command-injection]
         process = subprocess.Popen(["/bin/bash", "-c", code], stdout=subprocess.PIPE,
                                    stderr=subprocess.PIPE, text=True, start_new_session=True)
         try:
@@ -213,6 +215,13 @@ class DiagnosticCaptureTests(unittest.TestCase):
                 "JSON_MODE=true; HAS_GUM=false",
                 f"run_with_timeout {deadline} fixture {argv}",
             ])
+        if kind == "onboard":
+            source = ROOT / "packages/onboard/onboard.sh"
+            return "\n".join([
+                definition(source, "onboard_system_binary_path"),
+                definition(source, "onboard_run_auth_probe"),
+                f"onboard_run_auth_probe {deadline} {argv}",
+            ])
         source = ROOT / "scripts/lib/support.sh"
         return "\n".join([
             definition(source, "support_system_binary_path"),
@@ -252,6 +261,9 @@ class DiagnosticCaptureTests(unittest.TestCase):
     def test_swarm_probe_bounds_wrapper_exit_with_live_grandchild(self):
         self.check_wrapper_timeout("swarm")
 
+    def test_onboard_probe_bounds_wrapper_exit_with_live_grandchild(self):
+        self.check_wrapper_timeout("onboard")
+
     def test_live_info_bounds_wrapper_exit_with_live_grandchild(self):
         fixture, stop, identity = self.wrapper_with_resistant_grandchild()
         collector = self.root / "collector.sh"
@@ -284,6 +296,7 @@ class DiagnosticCaptureTests(unittest.TestCase):
         # Only dependency discovery is replaced; run the actual probe helper.
         before, call = code.rsplit("\n", 1)
         code = before + '\nswarm_status_binary_path() { return 1; }\n' + call
+        # Repository helper, literal override, and quoted argv. ubs:ignore[py.security.command-injection]
         result = subprocess.run(["/bin/bash", "-c", code], capture_output=True,
                                 text=True, timeout=3)
         self.assertNotEqual(result.returncode, 0)
@@ -294,6 +307,28 @@ class DiagnosticCaptureTests(unittest.TestCase):
             with self.subTest(deadline=deadline):
                 marker = self.root / f"invalid-deadline-probe-ran-{index}"
                 code = self.bounded_probe("swarm", ["/usr/bin/touch", str(marker)],
+                                          deadline=shlex.quote(deadline))
+                result = subprocess.run(["/bin/bash", "-c", code], capture_output=True,
+                                        text=True, timeout=3)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse(marker.exists())
+
+    def test_onboard_missing_timeout_does_not_execute_unbounded_probe(self):
+        marker = self.root / "onboard-unbounded-probe-ran"
+        code = self.bounded_probe("onboard", ["/usr/bin/touch", str(marker)], deadline="1")
+        before, call = code.rsplit("\n", 1)
+        code = before + '\nonboard_system_binary_path() { return 1; }\n' + call
+        # Repository helper, literal override, and quoted argv. ubs:ignore[py.security.command-injection]
+        result = subprocess.run(["/bin/bash", "-c", code], capture_output=True,
+                                text=True, timeout=3)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(marker.exists(), "Missing timeout ran an unbounded auth probe")
+
+    def test_onboard_rejects_deadlines_that_disable_or_reinterpret_timeout(self):
+        for index, deadline in enumerate(("0", "0.000", "-1", "--help", "NaN", "1h")):
+            with self.subTest(deadline=deadline):
+                marker = self.root / f"onboard-invalid-deadline-probe-ran-{index}"
+                code = self.bounded_probe("onboard", ["/usr/bin/touch", str(marker)],
                                           deadline=shlex.quote(deadline))
                 result = subprocess.run(["/bin/bash", "-c", code], capture_output=True,
                                         text=True, timeout=3)
@@ -321,7 +356,7 @@ class DiagnosticCaptureTests(unittest.TestCase):
             "sys.exit(41)"
         )
         first_line = json.dumps([argument]) + "\n"
-        for kind in ("version", "deep", "support", "swarm"):
+        for kind in ("version", "deep", "support", "swarm", "onboard"):
             with self.subTest(kind=kind):
                 code = self.bounded_probe(kind, ["/usr/bin/python3", "-c", probe, argument], deadline="2")
                 result = subprocess.run(["/bin/bash", "-c", code], capture_output=True,
@@ -337,10 +372,11 @@ class DiagnosticCaptureTests(unittest.TestCase):
         hook = self.root / "bash-env"
         marker = self.root / "hook-ran"
         hook.write_text("printf 'unexpected startup' > " + shlex.quote(str(marker)))
-        for kind in ("version", "deep", "support", "swarm"):
+        for kind in ("version", "deep", "support", "swarm", "onboard"):
             with self.subTest(kind=kind):
                 code = "export BASH_ENV=" + shlex.quote(str(hook)) + "\n" + \
                     self.bounded_probe(kind, ["/usr/bin/printf", "%s\\n", "version 1"], deadline="2")
+                # Repository helper and quoted startup-hook fixture. ubs:ignore[py.security.command-injection]
                 result = subprocess.run(["/bin/bash", "-c", code], capture_output=True,
                                         text=True, timeout=5)
                 self.assertEqual(result.returncode, 0, result.stderr)
@@ -348,7 +384,7 @@ class DiagnosticCaptureTests(unittest.TestCase):
                 self.assertFalse(marker.exists(), "Guardian executed a user shell startup hook")
 
     def test_native_137_is_preserved_as_failure_not_relabelled_timeout(self):
-        for kind in ("version", "deep", "support", "swarm"):
+        for kind in ("version", "deep", "support", "swarm", "onboard"):
             with self.subTest(kind=kind):
                 code = self.bounded_probe(kind, ["/bin/bash", "-c", "printf 'native failure\\n'; exit 137"], deadline="2")
                 result = subprocess.run(["/bin/bash", "-c", code], capture_output=True,
@@ -356,6 +392,95 @@ class DiagnosticCaptureTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 137, result.stderr)
                 self.assertEqual(result.stdout, "native failure\n")
                 self.assertEqual(result.stderr, "")
+
+    def onboard_auth_check(self, service: str, body: str, *, stdin=""):
+        home = self.root / "onboard-home"
+        home.mkdir(exist_ok=True)
+        fixture = self.root / "provider probe"
+        fixture.write_text("#!/bin/bash\n" + body + "\n")
+        fixture.chmod(0o755)
+        # Provider discovery is the fixture boundary; the shipped auth checks,
+        # credential parsing, timeout process group and stdin isolation are real.
+        code = "\n".join([
+            "source " + shlex.quote(str(ROOT / "packages/onboard/onboard.sh")),
+            "onboard_effective_runtime_home() { printf '%s\\n' " + shlex.quote(str(home)) + "; }",
+            "onboard_runtime_binary_path() { printf '%s\\n' " + shlex.quote(str(fixture)) + "; }",
+            "check_auth_status " + shlex.quote(service),
+        ])
+        env = dict(os.environ)
+        for name in ("VERCEL_TOKEN", "SUPABASE_ACCESS_TOKEN", "CLOUDFLARE_API_TOKEN"):
+            env.pop(name, None)
+        env.update(TARGET_HOME=str(home), ACFS_HOME=str(self.acfs),
+                   ACFS_SYSTEM_STATE_FILE=str(self.root / "absent-state.json"))
+        # Trusted test fixture; source path and service are quoted. ubs:ignore[py.security.command-injection]
+        return subprocess.run(["/bin/bash", "-c", code], capture_output=True,
+                              text=True, input=stdin, timeout=9, env=env)
+
+    def test_onboard_live_auth_rejects_failed_commands_with_success_shaped_output(self):
+        for service, output in (("tailscale", '{"BackendState":"Running"}'),
+                                ("github", "Logged in to github.com"),
+                                ("vercel", "fixture-user"),
+                                ("cloudflare", "You are logged in with an OAuth Token")):
+            with self.subTest(service=service):
+                result = self.onboard_auth_check(service, "printf '%s\\n' " + shlex.quote(output) + "\nexit 1")
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertEqual(result.stdout, "", "Raw provider output must stay private")
+
+    def test_onboard_cloudflare_rejects_success_exit_when_not_authenticated(self):
+        result = self.onboard_auth_check("cloudflare", "printf '%s\\n' 'You are not authenticated. Please run wrangler login.'")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(result.stdout, "")
+
+    def test_onboard_live_auth_requires_nonblank_identity_output(self):
+        for service in ("vercel", "cloudflare"):
+            with self.subTest(service=service):
+                result = self.onboard_auth_check(service, "printf '  \\n\\t\\n'")
+                self.assertEqual(result.returncode, 1, result.stderr)
+
+    def test_onboard_live_auth_deadline_never_accepts_early_identity_output(self):
+        # Exercise the shipped five-second deadline, including escalation when
+        # the actual provider process ignores TERM after printing an identity.
+        started = time.monotonic()
+        result = self.onboard_auth_check("vercel", "trap '' TERM\nprintf 'fixture-user\\n'\nsleep 30")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertLess(time.monotonic() - started, 8)
+        self.assertEqual(result.stdout, "")
+
+    def test_onboard_probe_bounds_descendants_after_provider_exits_normally(self):
+        # A successful parent can leave an inherited output pipe open. The
+        # complete capture still needs a deadline, not just the parent's wait.
+        fixture = self.root / "early-exit-provider.py"
+        fixture.write_text("import subprocess,sys\n"
+                           "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(10)'])\n"
+                           "print('fixture-user')\n")
+        code = self.bounded_probe("onboard", ["/usr/bin/python3", str(fixture)], deadline="0.1")
+        started = time.monotonic()
+        # Repository helper and shell-quoted fixture path. ubs:ignore[py.security.command-injection]
+        result = subprocess.run(["/bin/bash", "-c", code], capture_output=True,
+                                text=True, timeout=4)
+        self.assertIn(result.returncode, (124, 137), result.stderr)
+        self.assertLess(time.monotonic() - started, 3)
+        self.assertEqual(result.stdout, "fixture-user\n")
+
+    def test_onboard_live_auth_probes_once_without_consuming_menu_input(self):
+        for service, output in (("tailscale", '{"BackendState":"Running"}'),
+                                ("github", "Logged in to github.com"),
+                                ("vercel", "fixture-user"),
+                                ("cloudflare", "You are logged in with an OAuth Token")):
+            with self.subTest(service=service):
+                captured = self.root / (service + "-stdin")
+                calls = self.root / (service + "-calls")
+                body = "\n".join([
+                    "IFS= read -r answer || true",
+                    "printf '%s' \"$answer\" > " + shlex.quote(str(captured)),
+                    "printf 'called\\n' >> " + shlex.quote(str(calls)),
+                    "printf '%s\\n' " + shlex.quote(output),
+                ])
+                result = self.onboard_auth_check(service, body, stdin="m\n")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(captured.read_text(), "", "Provider consumed the user's menu choice")
+                self.assertEqual(calls.read_text(), "called\n")
+                self.assertEqual(result.stdout, "")
 
 
 if __name__ == "__main__":

@@ -2047,6 +2047,39 @@ reset_progress() {
 # Authentication Check Functions
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Live status commands must not consume the next menu choice or wait forever
+# for a provider. Keep a guardian alive through TERM so a wrapper exiting early
+# cannot leave its children holding the captured output pipe open.
+onboard_run_auth_probe() {
+    (( $# >= 2 )) || return 1
+    local timeout_secs="$1" timeout_bin="" bash_bin="" sleep_bin="" cat_bin=""
+    shift
+    [[ "$timeout_secs" =~ ^[0-9]+([.][0-9]+)?$ && "$timeout_secs" == *[1-9]* ]] || return 1
+    timeout_bin="$(onboard_system_binary_path timeout 2>/dev/null)" || return 127
+    bash_bin="$(onboard_system_binary_path bash 2>/dev/null)" || return 127
+    sleep_bin="$(onboard_system_binary_path sleep 2>/dev/null)" || return 127
+    cat_bin="$(onboard_system_binary_path cat 2>/dev/null)" || return 127
+
+    # -p prevents BASH_ENV and imported shell functions from changing the
+    # guardian. Arguments stay separate; only provider stdout is captured.
+    "$timeout_bin" -k 1 "$timeout_secs" "$bash_bin" --noprofile --norc -p -c '
+        set +e
+        set +m
+        set -o pipefail
+        guardian_sleep=$1
+        guardian_cat=$2
+        shift 2
+        trap '\''trap "" HUP INT QUIT TERM; while :; do "$guardian_sleep" 1; done'\'' HUP INT QUIT TERM
+        # Keep the monitored pipeline alive until stdout reaches EOF, even if
+        # the provider exits normally and leaves a child holding the pipe open.
+        "$@" | "$guardian_cat" &
+        probe_pid=$!
+        probe_status=0
+        wait "$probe_pid" || probe_status=$?
+        exit "$probe_status"
+    ' _ "$sleep_bin" "$cat_bin" "$@" </dev/null 2>/dev/null
+}
+
 # Check service readiness using the existing credential and provider checks.
 # Returns: 0 = stored credentials or a successful live check,
 #          1 = needs attention, 2 = not installed.
@@ -2073,11 +2106,12 @@ check_auth_status() {
             if [[ -z "$tailscale_bin" || ! -x "$tailscale_bin" ]]; then
                 return 2
             fi
-            local status="unknown"
+            local status="unknown" tailscale_output=""
+            tailscale_output="$(onboard_run_auth_probe 5 "$tailscale_bin" status --json)" || return 1
             if command -v jq &>/dev/null; then
-                status=$("$tailscale_bin" status --json 2>/dev/null | jq -r '.BackendState // "unknown"' 2>/dev/null || echo "unknown")
+                status=$(printf '%s\n' "$tailscale_output" | jq -r '.BackendState // "unknown"' 2>/dev/null || echo "unknown")
             else
-                if "$tailscale_bin" status --json 2>/dev/null | grep -q '"BackendState"[[:space:]]*:[[:space:]]*"[[:space:]]*Running"'; then
+                if printf '%s\n' "$tailscale_output" | grep -q '"BackendState"[[:space:]]*:[[:space:]]*"[[:space:]]*Running"'; then
                     status="Running"
                 fi
             fi
@@ -2137,7 +2171,7 @@ check_auth_status() {
             if [[ -z "$gh_bin" || ! -x "$gh_bin" ]]; then
                 return 2
             fi
-            "$gh_bin" auth status -h github.com &>/dev/null && return 0 || return 1
+            onboard_run_auth_probe 5 "$gh_bin" auth status -h github.com >/dev/null && return 0 || return 1
             ;;
         vercel)
             local vercel_bin=""
@@ -2149,8 +2183,9 @@ check_auth_status() {
                 return 0
             fi
             local vercel_output=""
-            vercel_output="$("$vercel_bin" whoami 2>/dev/null || true)"
-            if [[ -n "$vercel_output" ]] && [[ "${vercel_output,,}" != *"not logged"* ]]; then
+            if vercel_output="$(onboard_run_auth_probe 5 "$vercel_bin" whoami)" &&
+                has_nonblank_value "$vercel_output" &&
+                [[ "${vercel_output,,}" != *"not logged"* && "${vercel_output,,}" != *"not authenticated"* ]]; then
                 return 0
             fi
 
@@ -2193,7 +2228,10 @@ check_auth_status() {
                 return 0
             fi
             # Prefer the CLI check when available (more reliable than config file presence).
-            if "$wrangler_bin" whoami &>/dev/null; then
+            local wrangler_output=""
+            if wrangler_output="$(onboard_run_auth_probe 5 "$wrangler_bin" whoami)" &&
+                has_nonblank_value "$wrangler_output" &&
+                [[ "${wrangler_output,,}" != *"not authenticated"* && "${wrangler_output,,}" != *"not logged"* ]]; then
                 return 0
             fi
             return 1
