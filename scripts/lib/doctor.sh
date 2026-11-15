@@ -4966,6 +4966,52 @@ legacy_gemini_auth_artifact_exists() {
     return 1
 }
 
+# A saved credential is meaningful only after the selected agent responds.
+# Bound the whole responsiveness probe, including Antigravity's help fallback,
+# with the same guardian used by manifest checks. A timeout is inconclusive:
+# never continue to a cached credential or queue an automatic reinstall.
+doctor_check_agent_auth_binary() {
+    local id="$1" label="$2" binary="$3" fix="$4"
+    local allow_help="${5:-false}"
+    local timeout_bin="" bash_bin="" probe_status=0
+    local -a probe=("$binary" --version)
+
+    timeout_bin="$(_acfs_doctor_system_binary_path timeout 2>/dev/null || true)"
+    if [[ -z "$timeout_bin" ]]; then
+        check "$id" "$label" "fail" "bounded binary verification unavailable (timeout is required)" "$fix"
+        return 1
+    fi
+    if [[ "$allow_help" == true ]]; then
+        bash_bin="$(_acfs_doctor_system_binary_path bash 2>/dev/null || true)"
+        if [[ -z "$bash_bin" ]]; then
+            check "$id" "$label" "fail" "bounded binary verification unavailable (bash is required)" "$fix"
+            return 1
+        fi
+        # Pass the absolute executable as data, not shell source. Both attempts
+        # share one deadline, and a terminated first attempt is never retried.
+        probe=("$bash_bin" --noprofile --norc -p -c '
+            "$1" --version
+            status=$?
+            case "$status" in
+                0|124|137|143) exit "$status" ;;
+            esac
+            "$1" --help
+        ' _ "$binary")
+    fi
+
+    _acfs_doctor_run_bounded "$timeout_bin" "$DEEP_CHECK_TIMEOUT" "${probe[@]}" &>/dev/null || probe_status=$?
+    if [[ "$probe_status" -eq 0 ]]; then
+        return 0
+    fi
+    if [[ "$probe_status" -eq 124 || "$probe_status" -eq 137 || "$probe_status" -eq 143 ]]; then
+        check_with_timeout_status "$id" "$label" "timeout" \
+            "binary verification exceeded its ${DEEP_CHECK_TIMEOUT}s deadline or was terminated" "$fix"
+    else
+        check "$id" "$label" "fail" "binary error" "$fix"
+    fi
+    return 1
+}
+
 # check_claude_auth - Thorough Claude Code authentication check
 # Returns via check(): pass (auth OK), warn (partial/skipped), fail (auth broken)
 # Related: bead 325
@@ -4983,10 +5029,9 @@ check_claude_auth() {
         return
     fi
 
-    # Check if binary works
-    if ! "$claude_bin" --version &>/dev/null; then
-        check "deep.agent.claude_auth" "Claude Code auth" "fail" "binary error" "Reinstall: acfs update --force --agents-only"
-        return
+    if ! doctor_check_agent_auth_binary "deep.agent.claude_auth" "Claude Code auth" \
+        "$claude_bin" "Reinstall: acfs update --force --agents-only"; then
+        return 0
     fi
 
     # Check for credentials file (indicates previous auth)
@@ -5035,10 +5080,9 @@ check_codex_auth() {
         return
     fi
 
-    # Check if binary works
-    if ! "$codex_bin" --version &>/dev/null; then
-        check "deep.agent.codex_auth" "Codex CLI auth" "fail" "binary error" "Reinstall: bun install -g --trust @openai/codex@latest"
-        return
+    if ! doctor_check_agent_auth_binary "deep.agent.codex_auth" "Codex CLI auth" \
+        "$codex_bin" "Reinstall: bun install -g --trust @openai/codex@latest"; then
+        return 0
     fi
 
     # Determine auth.json location (respects CODEX_HOME if set)
@@ -5098,9 +5142,9 @@ check_antigravity_auth() {
         return
     fi
 
-    if ! "$agy_bin" --version &>/dev/null && ! "$agy_bin" --help &>/dev/null; then
-        check "deep.agent.antigravity_auth" "Antigravity CLI auth" "fail" "binary error" "Reinstall: acfs update --force --agents-only"
-        return
+    if ! doctor_check_agent_auth_binary "deep.agent.antigravity_auth" "Antigravity CLI auth" \
+        "$agy_bin" "Reinstall: acfs update --force --agents-only" true; then
+        return 0
     fi
 
     local antigravity_home="${ANTIGRAVITY_HOME:-$auth_home/.gemini/antigravity-cli}"
@@ -5128,10 +5172,9 @@ check_gemini_auth() {
         return
     fi
 
-    # Check if binary works
-    if ! "$gemini_bin" --version &>/dev/null; then
-        check "deep.agent.gemini_auth" "Gemini CLI auth" "fail" "binary error" "Reinstall: bun install -g --trust @google/gemini-cli@latest"
-        return
+    if ! doctor_check_agent_auth_binary "deep.agent.gemini_auth" "Gemini CLI auth" \
+        "$gemini_bin" "Reinstall: bun install -g --trust @google/gemini-cli@latest"; then
+        return 0
     fi
 
     local gemini_home="${GEMINI_CLI_HOME:-$auth_home}"
@@ -5165,9 +5208,19 @@ check_gemini_auth() {
                 check "deep.agent.gemini_auth" "Gemini CLI auth" "pass" "via GOOGLE_APPLICATION_CREDENTIALS (Vertex AI)"
                 return
             fi
-            if [[ -n "$gcloud_bin" ]] && timeout 5 "$gcloud_bin" auth application-default print-access-token >/dev/null 2>&1; then
-                check "deep.agent.gemini_auth" "Gemini CLI auth" "pass" "via gcloud ADC (Vertex AI)"
-                return
+            if [[ -n "$gcloud_bin" ]]; then
+                local gcloud_status=0
+                run_with_timeout 5 "Gemini Vertex AI credentials" "$gcloud_bin" \
+                    auth application-default print-access-token >/dev/null 2>&1 || gcloud_status=$?
+                if [[ "$gcloud_status" -eq 0 ]]; then
+                    check "deep.agent.gemini_auth" "Gemini CLI auth" "pass" "via gcloud ADC (Vertex AI)"
+                    return
+                elif [[ "$gcloud_status" -eq 124 || "$gcloud_status" -eq 137 || "$gcloud_status" -eq 143 ]]; then
+                    check_with_timeout_status "deep.agent.gemini_auth" "Gemini CLI auth" "timeout" \
+                        "Vertex AI verification exceeded its 5s deadline or was terminated" \
+                        "Check gcloud auth application-default before retrying"
+                    return
+                fi
             fi
         fi
     fi

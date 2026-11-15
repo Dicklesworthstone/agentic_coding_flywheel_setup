@@ -893,6 +893,204 @@ EOF
     doctor_selection_json | jq -e 'all(.status == "skip" and .fix == null)' >/dev/null
 }
 
+doctor_auth_probe_fixture() {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["agents.claude","agents.codex","agents.antigravity","agents.gemini","lang.bun"]}}'
+    mkdir -p "$TARGET_HOME/.claude" "$TARGET_HOME/.codex" "$TARGET_HOME/.gemini/antigravity-cli"
+    printf '%s\n' '{"claudeAiOauth":{"accessToken":"fixture-claude-oauth"}}' > "$TARGET_HOME/.claude/.credentials.json"
+    printf '%s\n' '{"tokens":{"access_token":"fixture-codex-oauth"}}' > "$TARGET_HOME/.codex/auth.json"
+    printf '%s\n' fixture-antigravity-oauth > "$TARGET_HOME/.gemini/antigravity-cli/antigravity-oauth-token"
+    printf '%s\n' '{"access_token":"fixture-gemini-oauth"}' > "$TARGET_HOME/.gemini/oauth_creds.json"
+    CODEX_HOME="$TARGET_HOME/.codex"
+    ANTIGRAVITY_HOME="$TARGET_HOME/.gemini/antigravity-cli"
+    GEMINI_CLI_HOME="$TARGET_HOME"
+    # Keep legacy Gemini's alternate providers outside this local OAuth fixture.
+    get_configured_secret() { return 1; }
+    configured_truthy_value() { return 1; }
+}
+
+@test "doctor auth probes: selected stalled agents cannot pass from cached credentials or block later checks" {
+    doctor_auth_probe_fixture
+    DEEP_CHECK_TIMEOUT=1
+    FIX_MODE=true
+    DOCTOR_FIX_SCOPED=true
+    export DOCTOR_TEST_STARTED="$BATS_TEST_TMPDIR/auth-started"
+    export DOCTOR_TEST_CHILD_PIDS="$BATS_TEST_TMPDIR/auth-child-pids"
+    local binary=""
+    for binary in claude codex agy gemini; do
+        cat > "$DOCTOR_TEST_BIN/$binary" <<'EOF'
+#!/bin/bash
+printf '%s %s\n' "${0##*/}" "$*" >> "$DOCTOR_TEST_STARTED"
+trap '' TERM
+sleep 7 &
+printf '%s\n' "$!" >> "$DOCTOR_TEST_CHILD_PIDS"
+wait
+printf escaped >> "$DOCTOR_TEST_PROBES"
+EOF
+        chmod +x "$DOCTOR_TEST_BIN/$binary"
+    done
+
+    check_claude_auth
+    check_codex_auth
+    check_antigravity_auth
+    check_gemini_auth
+    [ ! -e "$DOCTOR_TEST_PROBES" ]
+    [[ "$(wc -l < "$DOCTOR_TEST_STARTED")" -eq 4 ]] \
+        || fail "not all agents reached their probe: $(cat "$DOCTOR_TEST_STARTED"); $(doctor_selection_json)"
+    local child_pid="" child_state=""
+    while IFS= read -r child_pid; do
+        child_state="$(ps -o stat= -p "$child_pid" 2>/dev/null || true)"
+        [[ -z "$child_state" || "$child_state" == Z* ]] \
+            || fail "agent probe left child $child_pid running ($child_state)"
+    done < "$DOCTOR_TEST_CHILD_PIDS"
+    if grep -q -- --help "$DOCTOR_TEST_STARTED"; then
+        fail "timed-out Antigravity version check triggered a fallback"
+    fi
+    [ "$PASS_COUNT:$WARN_COUNT:$FAIL_COUNT:$SKIP_COUNT" = 0:4:0:0 ]
+    [ "${#DOCTOR_FIX_PENDING_IDS[@]}" -eq 0 ]
+    doctor_selection_json | jq -e '
+        length == 4 and all(.status == "timeout" and (.details | contains("deadline")))
+    ' >/dev/null
+
+    doctor_selection_binary bun
+    check_command tool.bun Bun bun "install bun"
+    [ "$PASS_COUNT" -eq 1 ]
+    [ "$(cat "$DOCTOR_TEST_PROBES")" = bun ]
+}
+
+@test "doctor auth probes: ordinary version success and Antigravity help fallback preserve authentication" {
+    doctor_auth_probe_fixture
+    doctor_selection_binary claude
+    doctor_selection_binary codex
+    doctor_selection_binary gemini
+    cat > "$DOCTOR_TEST_BIN/agy" <<'EOF'
+#!/bin/bash
+printf 'agy %s\n' "$*" >> "$DOCTOR_TEST_PROBES"
+[[ "$1" == --help ]]
+EOF
+    chmod +x "$DOCTOR_TEST_BIN/agy"
+
+    check_claude_auth
+    check_codex_auth
+    check_antigravity_auth
+    check_gemini_auth
+
+    [ "$PASS_COUNT:$WARN_COUNT:$FAIL_COUNT:$SKIP_COUNT" = 4:0:0:0 ]
+    doctor_selection_json | jq -e 'length == 4 and all(.status == "pass")' >/dev/null
+    [ "$(cat "$DOCTOR_TEST_PROBES")" = $'claude\ncodex\nagy --version\nagy --help\ngemini' ]
+}
+
+@test "doctor auth probes: missing timeout support refuses execution despite saved credentials" {
+    doctor_auth_probe_fixture
+    local binary=""
+    for binary in claude codex agy gemini; do doctor_selection_binary "$binary"; done
+    _acfs_doctor_system_binary_path() {
+        [[ "$1" != timeout ]] || return 1
+        [[ -x "/usr/bin/$1" ]] || return 1
+        printf '/usr/bin/%s\n' "$1"
+    }
+
+    check_claude_auth
+    check_codex_auth
+    check_antigravity_auth
+    check_gemini_auth
+
+    [ ! -e "$DOCTOR_TEST_PROBES" ]
+    [ "$PASS_COUNT:$WARN_COUNT:$FAIL_COUNT:$SKIP_COUNT" = 0:0:4:0 ]
+    doctor_selection_json | jq -e 'length == 4 and all(.status == "fail")' >/dev/null
+}
+
+@test "doctor auth probes: Antigravity help fallback shares the version probe deadline" {
+    doctor_auth_probe_fixture
+    DEEP_CHECK_TIMEOUT=1
+    cat > "$DOCTOR_TEST_BIN/agy" <<'EOF'
+#!/bin/bash
+printf 'agy %s\n' "$*" >> "$DOCTOR_TEST_PROBES"
+sleep 0.7
+[[ "$1" == --help ]]
+EOF
+    chmod +x "$DOCTOR_TEST_BIN/agy"
+
+    check_antigravity_auth
+
+    [ "$(cat "$DOCTOR_TEST_PROBES")" = $'agy --version\nagy --help' ]
+    [ "$PASS_COUNT:$WARN_COUNT:$FAIL_COUNT" = 0:1:0 ]
+    doctor_selection_json | jq -e 'length == 1 and .[0].status == "timeout"' >/dev/null
+}
+
+@test "doctor auth probes: nonzero binaries remain failures despite saved credentials" {
+    doctor_auth_probe_fixture
+    local binary=""
+    for binary in claude codex agy gemini; do
+        printf '#!/bin/bash\nexit 2\n' > "$DOCTOR_TEST_BIN/$binary"
+        chmod +x "$DOCTOR_TEST_BIN/$binary"
+    done
+
+    check_claude_auth
+    check_codex_auth
+    check_antigravity_auth
+    check_gemini_auth
+
+    [ "$PASS_COUNT:$WARN_COUNT:$FAIL_COUNT" = 0:0:4 ]
+    doctor_selection_json | jq -e 'length == 4 and all(.status == "fail" and .details == "binary error")' >/dev/null
+}
+
+@test "doctor auth probes: omitted agents never execute their responsiveness commands" {
+    doctor_auth_probe_fixture
+    printf '%s\n' '{"module_selection":{"schema_version":1,"selected_modules":["lang.bun"]}}' > "$DOCTOR_TEST_STATE"
+    doctor_load_module_selection
+    local binary=""
+    for binary in claude codex agy gemini; do doctor_selection_binary "$binary"; done
+
+    check_claude_auth
+    check_codex_auth
+    check_antigravity_auth
+    check_gemini_auth
+
+    [ ! -e "$DOCTOR_TEST_PROBES" ]
+    [ "$PASS_COUNT:$WARN_COUNT:$FAIL_COUNT:$SKIP_COUNT" = 0:0:0:4 ]
+    doctor_selection_json | jq -e 'length == 4 and all(.status == "skip" and .fix == null)' >/dev/null
+}
+
+@test "doctor auth probes: stalled Gemini ADC cannot fall through to saved OAuth or leave a child running" {
+    doctor_auth_probe_fixture
+    doctor_selection_binary gemini
+    configured_truthy_value() { [[ "$1" == GOOGLE_GENAI_USE_VERTEXAI ]]; }
+    get_configured_value() {
+        case "$1" in
+            GOOGLE_CLOUD_PROJECT) printf fixture-project ;;
+            GOOGLE_CLOUD_LOCATION) printf fixture-region ;;
+            *) return 1 ;;
+        esac
+    }
+    export DOCTOR_TEST_STARTED="$BATS_TEST_TMPDIR/adc-started"
+    export DOCTOR_TEST_ESCAPED="$BATS_TEST_TMPDIR/adc-escaped"
+    export DOCTOR_TEST_CHILD_PIDS="$BATS_TEST_TMPDIR/adc-child-pids"
+    cat > "$DOCTOR_TEST_BIN/gcloud" <<'EOF'
+#!/bin/bash
+printf '%s\n' "$*" > "$DOCTOR_TEST_STARTED"
+trap '' TERM
+sleep 11 &
+printf '%s\n' "$!" > "$DOCTOR_TEST_CHILD_PIDS"
+wait
+printf escaped > "$DOCTOR_TEST_ESCAPED"
+EOF
+    chmod +x "$DOCTOR_TEST_BIN/gcloud"
+    FIX_MODE=true
+    DOCTOR_FIX_SCOPED=true
+
+    check_gemini_auth
+
+    [ "$(cat "$DOCTOR_TEST_STARTED")" = 'auth application-default print-access-token' ]
+    [ ! -e "$DOCTOR_TEST_ESCAPED" ]
+    local child_state=""
+    child_state="$(ps -o stat= -p "$(cat "$DOCTOR_TEST_CHILD_PIDS")" 2>/dev/null || true)"
+    [[ -z "$child_state" || "$child_state" == Z* ]] || fail "ADC probe left its child running ($child_state)"
+    [ "$PASS_COUNT:$WARN_COUNT:$FAIL_COUNT" = 0:1:0 ]
+    [ "${#DOCTOR_FIX_PENDING_IDS[@]}" -eq 0 ]
+    doctor_selection_json | jq -e 'length == 1 and .[0].status == "timeout" and
+        (.[0].details | contains("Vertex AI"))' >/dev/null
+}
+
 @test "doctor selection: malformed saved scope stops main before diagnostics and repair initialization" {
     doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["base.system"]}}'
     printf '%s\n' '{"module_selection":{"schema_version":1,"selected_modules":[]}}' > "$DOCTOR_TEST_STATE"
