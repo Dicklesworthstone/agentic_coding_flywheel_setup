@@ -534,3 +534,360 @@ EOF
     refute_output --partial '"started_at":"broken\\"'
     [[ "$output" =~ \"started_at\":\"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\" ]]
 }
+
+helper_create_selection_runtime() {
+    ONBOARD_SELECTION_TEST_HOME="$BATS_TEST_TMPDIR/selection-home"
+    ONBOARD_SELECTION_TEST_ACFS="$ONBOARD_SELECTION_TEST_HOME/.acfs"
+    mkdir -p "$ONBOARD_SELECTION_TEST_ACFS/onboard" \
+        "$ONBOARD_SELECTION_TEST_ACFS/scripts/lib" \
+        "$ONBOARD_SELECTION_TEST_ACFS/scripts/generated"
+    cp "$PROJECT_ROOT/packages/onboard/onboard.sh" "$ONBOARD_SELECTION_TEST_ACFS/onboard/onboard.sh"
+    cp "$PROJECT_ROOT/scripts/lib/state.sh" "$PROJECT_ROOT/scripts/lib/logging.sh" \
+        "$PROJECT_ROOT/scripts/lib/gum_ui.sh" "$ONBOARD_SELECTION_TEST_ACFS/scripts/lib/"
+    cp "$PROJECT_ROOT/scripts/generated/manifest_index.sh" "$ONBOARD_SELECTION_TEST_ACFS/scripts/generated/manifest_index.sh"
+    cp "$PROJECT_ROOT/scripts/services-setup.sh" "$ONBOARD_SELECTION_TEST_ACFS/scripts/services-setup.sh"
+    helper_create_mock_lessons "$ONBOARD_SELECTION_TEST_ACFS/onboard/lessons"
+}
+
+helper_write_selection_checkpoint() {
+    jq -n --arg target_home "$ONBOARD_SELECTION_TEST_HOME" --arg target_user "$(id -un)" \
+        --argjson modules "$1" \
+        '{target_home:$target_home,target_user:$target_user,
+          module_selection:{schema_version:1,selected_modules:$modules}}' \
+        > "$ONBOARD_SELECTION_TEST_ACFS/state.json"
+}
+
+helper_run_selection_onboard() {
+    run env -u ACFS_STATE_FILE -u CODEX_HOME -u ANTHROPIC_API_KEY -u OPENAI_API_KEY \
+        -u GEMINI_API_KEY -u GOOGLE_API_KEY -u VERCEL_TOKEN -u SUPABASE_ACCESS_TOKEN -u CLOUDFLARE_API_TOKEN \
+        ACFS_HOME="$ONBOARD_SELECTION_TEST_ACFS" TARGET_HOME="$ONBOARD_SELECTION_TEST_HOME" \
+        TARGET_USER="$(id -un)" ACFS_SYSTEM_STATE_FILE="$ONBOARD_SELECTION_TEST_HOME/no-system-state.json" \
+        ACFS_PROGRESS_FILE="$ONBOARD_SELECTION_TEST_ACFS/onboard_progress.json" ACFS_LOCAL_PROGRESS=off \
+        "$@"
+}
+
+@test "onboard: selected auth screen omits excluded probes and credential rows" {
+    helper_create_selection_runtime
+    helper_write_selection_checkpoint '["agents.codex","acfs.onboard"]'
+    cp "$ONBOARD_SELECTION_TEST_ACFS/state.json" "$ONBOARD_SELECTION_TEST_HOME/state.before"
+    mkdir -p "$ONBOARD_SELECTION_TEST_HOME/.codex"
+    printf '%s\n' '{"tokens":{"access_token":"selection-fixture-secret"}}' > "$ONBOARD_SELECTION_TEST_HOME/.codex/auth.json"
+
+    helper_run_selection_onboard bash -c '
+        source "$1"
+        has_gum() { return 1; }
+        clear() { :; }
+        get_auth_status_code() { printf "PROBE:%s\n" "$1" >&2; printf "1\n"; }
+        show_auth_flow </dev/null
+    ' _ "$ONBOARD_SELECTION_TEST_ACFS/onboard/onboard.sh"
+    assert_success
+    assert_output --partial 'PROBE:codex'
+    assert_output --partial '[1] Codex CLI'
+    assert_output --partial 'codex: state=file_configured'
+    local service
+    for service in tailscale claude antigravity github vercel supabase cloudflare; do
+        refute_output --partial "PROBE:$service"
+        refute_output --partial "$service: state="
+    done
+    refute_output --partial 'selection-fixture-secret'
+    [[ ! -e "$ONBOARD_SELECTION_TEST_ACFS/onboard_progress.json" ]]
+    [[ ! -e "$ONBOARD_SELECTION_TEST_ACFS/local_progress.json" ]]
+    cmp -s "$ONBOARD_SELECTION_TEST_HOME/state.before" "$ONBOARD_SELECTION_TEST_ACFS/state.json"
+}
+
+@test "onboard: scoped credential JSON contains only selected optional services" {
+    helper_create_selection_runtime
+    helper_write_selection_checkpoint '["agents.codex","cloud.wrangler","acfs.onboard"]'
+
+    helper_run_selection_onboard bash "$ONBOARD_SELECTION_TEST_ACFS/onboard/onboard.sh" credential-status
+    assert_success
+    printf '%s' "$output" | jq -e '
+        .kind == "acfs.credential_status" and .status == "pass" and .read_only == true and
+        ([.services[].service] | sort) == ["codex","wrangler"] and
+        all(.services[]; .requirement == "optional" and .authentication == "unverified") and
+        .safety.files_mutated == false and .safety.provider_validation_performed == false' >/dev/null
+    [[ ! -e "$ONBOARD_SELECTION_TEST_ACFS/onboard_progress.json" ]]
+}
+
+@test "onboard: scoped credential capture rejects duplicate unknown or missing service rows" {
+    helper_create_selection_runtime
+    helper_write_selection_checkpoint '["agents.codex","acfs.onboard"]'
+    helper_run_selection_onboard bash "$ONBOARD_SELECTION_TEST_ACFS/onboard/onboard.sh" credential-status
+    assert_success
+    printf '%s\n' "$output" > "$ONBOARD_SELECTION_TEST_HOME/report.before.json"
+    cat > "$ONBOARD_SELECTION_TEST_ACFS/scripts/services-setup.sh" <<'EOF'
+services_setup_credential_status_json() {
+    cat "$ONBOARD_CREDENTIAL_FIXTURE"
+}
+EOF
+    local filter
+    for filter in '.services += [.services[0]]' '.services[0].service = "unknown-provider"' '.services = []'; do
+        jq "$filter" "$ONBOARD_SELECTION_TEST_HOME/report.before.json" > "$ONBOARD_SELECTION_TEST_HOME/report.json"
+        helper_run_selection_onboard env ONBOARD_CREDENTIAL_FIXTURE="$ONBOARD_SELECTION_TEST_HOME/report.json" \
+            bash "$ONBOARD_SELECTION_TEST_ACFS/onboard/onboard.sh" credential-status
+        assert_failure
+        [[ "$status" == 2 ]]
+        printf '%s' "$output" | jq -e '.status == "error" and .error == "credential_capture_unavailable"' >/dev/null
+        [[ ! -e "$ONBOARD_SELECTION_TEST_ACFS/onboard_progress.json" ]]
+    done
+}
+
+@test "onboard: no selected auth services produces an empty passive report" {
+    helper_create_selection_runtime
+    helper_write_selection_checkpoint '["acfs.onboard"]'
+
+    helper_run_selection_onboard bash "$ONBOARD_SELECTION_TEST_ACFS/onboard/onboard.sh" credential-status
+    assert_success
+    printf '%s' "$output" | jq -e '.status == "pass" and .services == [] and .summary.required_unmet == 0' >/dev/null
+    helper_run_selection_onboard bash -c '
+        source "$1"
+        has_gum() { return 1; }
+        clear() { :; }
+        get_auth_status_code() { printf "UNEXPECTED_PROVIDER_PROBE:%s\n" "$1" >&2; return 1; }
+        show_auth_flow </dev/null
+    ' _ "$ONBOARD_SELECTION_TEST_ACFS/onboard/onboard.sh"
+    assert_success
+    refute_output --partial UNEXPECTED_PROVIDER_PROBE
+    assert_output --partial 'No installed services currently need authentication.'
+}
+
+@test "onboard: direct excluded auth checks and instructions cannot bypass scope" {
+    helper_create_selection_runtime
+    helper_write_selection_checkpoint '["agents.codex","acfs.onboard"]'
+
+    helper_run_selection_onboard bash -c '
+        source "$1"
+        onboard_runtime_binary_path() { printf "UNEXPECTED_BINARY_LOOKUP:%s\n" "$1" >&2; printf /usr/bin/true; }
+        status=0
+        check_auth_status vercel || status=$?
+        [[ "$status" == 3 ]] || exit 1
+        if show_auth_service vercel; then exit 1; fi
+        printf "EXCLUDED_AUTH_REFUSED\n"
+    ' _ "$ONBOARD_SELECTION_TEST_ACFS/onboard/onboard.sh"
+    assert_success
+    assert_output --partial EXCLUDED_AUTH_REFUSED
+    refute_output --partial UNEXPECTED_BINARY_LOOKUP
+    refute_output --partial 'vercel login'
+}
+
+@test "onboard: direct auth helpers reload switched and replaced checkpoints" {
+    helper_create_selection_runtime
+    helper_write_selection_checkpoint '["agents.codex","acfs.onboard"]'
+    jq '.module_selection.selected_modules = ["cloud.vercel","acfs.onboard"]' \
+        "$ONBOARD_SELECTION_TEST_ACFS/state.json" > "$ONBOARD_SELECTION_TEST_HOME/next.json"
+
+    helper_run_selection_onboard bash -c '
+        source "$1"
+        check_auth_status vercel && status=0 || status=$?
+        [[ "$status" == 3 ]] || exit 1
+        ACFS_STATE_FILE="$2"
+        check_auth_status codex && status=0 || status=$?
+        [[ "$status" == 3 ]] || exit 1
+        printf "{invalid checkpoint\n" > "$ACFS_STATE_FILE"
+        check_auth_status codex && status=0 || status=$?
+        [[ "$status" == 4 ]] || exit 1
+        if show_auth_service codex; then exit 1; fi
+        printf "STALE_SCOPE_NOT_REUSED\n"
+    ' _ "$ONBOARD_SELECTION_TEST_ACFS/onboard/onboard.sh" "$ONBOARD_SELECTION_TEST_HOME/next.json"
+    assert_success
+    assert_output --partial STALE_SCOPE_NOT_REUSED
+    refute_output --partial 'codex login'
+    [[ ! -e "$ONBOARD_SELECTION_TEST_ACFS/onboard_progress.json" ]]
+}
+
+@test "onboard: selected missing agent stays visible and is not silently excluded" {
+    helper_create_selection_runtime
+    helper_write_selection_checkpoint '["agents.codex","acfs.onboard"]'
+
+    helper_run_selection_onboard bash -c '
+        source "$1"
+        has_gum() { return 1; }
+        clear() { :; }
+        lookup_log="$2"
+        onboard_runtime_binary_path() { printf "LOOKUP:%s\n" "$1" >> "$lookup_log"; return 1; }
+        show_auth_flow </dev/null
+        cat "$lookup_log"
+    ' _ "$ONBOARD_SELECTION_TEST_ACFS/onboard/onboard.sh" "$ONBOARD_SELECTION_TEST_HOME/lookups.log"
+    assert_success
+    assert_output --partial 'LOOKUP:codex'
+    assert_output --partial 'Codex CLI'
+    refute_output --partial 'LOOKUP:claude'
+    refute_output --partial 'LOOKUP:vercel'
+}
+
+@test "onboard: invalid scoped checkpoints refuse progress and auth before mutation" {
+    helper_create_selection_runtime
+    local invalid
+    for invalid in malformed unknown foreign-home foreign-user empty duplicates unsupported; do
+        helper_write_selection_checkpoint '["agents.codex","acfs.onboard"]'
+        case "$invalid" in
+            malformed) printf '{"module_selection":' > "$ONBOARD_SELECTION_TEST_ACFS/state.json" ;;
+            *)
+                local filter
+                case "$invalid" in
+                    unknown) filter='.module_selection.selected_modules = ["agents.unknown"]' ;;
+                    foreign-home) filter='.target_home = "/home/another-installation"' ;;
+                    foreign-user) filter='.target_user = "another-user"' ;;
+                    empty) filter='.module_selection.selected_modules = []' ;;
+                    duplicates) filter='.module_selection.selected_modules = ["agents.codex","agents.codex"]' ;;
+                    unsupported) filter='.module_selection.schema_version = 2' ;;
+                esac
+                jq "$filter" "$ONBOARD_SELECTION_TEST_ACFS/state.json" > "$ONBOARD_SELECTION_TEST_HOME/$invalid.json"
+                cp "$ONBOARD_SELECTION_TEST_HOME/$invalid.json" "$ONBOARD_SELECTION_TEST_ACFS/state.json"
+                ;;
+        esac
+        cp "$ONBOARD_SELECTION_TEST_ACFS/state.json" "$ONBOARD_SELECTION_TEST_HOME/$invalid.before"
+        helper_run_selection_onboard bash "$ONBOARD_SELECTION_TEST_ACFS/onboard/onboard.sh" status
+        assert_failure
+        [[ ! -e "$ONBOARD_SELECTION_TEST_ACFS/onboard_progress.json" ]]
+        [[ ! -e "$ONBOARD_SELECTION_TEST_ACFS/local_progress.json" ]]
+        cmp -s "$ONBOARD_SELECTION_TEST_HOME/$invalid.before" "$ONBOARD_SELECTION_TEST_ACFS/state.json"
+        helper_run_selection_onboard bash -c '
+            source "$1"
+            get_auth_status_code() { printf "UNEXPECTED_PROVIDER_PROBE\n"; }
+            show_auth_flow </dev/null
+        ' _ "$ONBOARD_SELECTION_TEST_ACFS/onboard/onboard.sh"
+        assert_failure
+        refute_output --partial UNEXPECTED_PROVIDER_PROBE
+    done
+}
+
+@test "onboard: explicit missing and foreign checkpoints never become legacy sessions" {
+    helper_create_selection_runtime
+    helper_write_selection_checkpoint '["agents.codex","acfs.onboard"]'
+    jq '.target_home = "/home/other"' "$ONBOARD_SELECTION_TEST_ACFS/state.json" > "$ONBOARD_SELECTION_TEST_HOME/foreign.json"
+    local checkpoint
+    for checkpoint in "$ONBOARD_SELECTION_TEST_HOME/missing.json" "$ONBOARD_SELECTION_TEST_HOME/foreign.json" relative-state.json; do
+        helper_run_selection_onboard env ACFS_STATE_FILE="$checkpoint" \
+            bash "$ONBOARD_SELECTION_TEST_ACFS/onboard/onboard.sh" reset
+        assert_failure
+        [[ ! -e "$ONBOARD_SELECTION_TEST_ACFS/onboard_progress.json" ]]
+    done
+}
+
+@test "onboard: valid custom checkpoint is read without replacing the installation state" {
+    helper_create_selection_runtime
+    helper_write_selection_checkpoint '["agents.codex","acfs.onboard"]'
+    cp "$ONBOARD_SELECTION_TEST_ACFS/state.json" "$ONBOARD_SELECTION_TEST_HOME/custom.json"
+    helper_write_selection_checkpoint '["agents.claude","acfs.onboard"]'
+    cp "$ONBOARD_SELECTION_TEST_ACFS/state.json" "$ONBOARD_SELECTION_TEST_HOME/state.before"
+
+    helper_run_selection_onboard env ACFS_STATE_FILE="$ONBOARD_SELECTION_TEST_HOME/custom.json" \
+        bash "$ONBOARD_SELECTION_TEST_ACFS/onboard/onboard.sh" credential-status
+    assert_success
+    printf '%s' "$output" | jq -e '[.services[].service] == ["codex"]' >/dev/null
+    cmp -s "$ONBOARD_SELECTION_TEST_HOME/state.before" "$ONBOARD_SELECTION_TEST_ACFS/state.json"
+    [[ ! -e "$ONBOARD_SELECTION_TEST_ACFS/onboard_progress.json" ]]
+}
+
+@test "onboard: scoped catalogue is read as data and never executed" {
+    helper_create_selection_runtime
+    helper_write_selection_checkpoint '["agents.codex","acfs.onboard"]'
+    printf '\nprintf UNEXPECTED_CATALOG_EXECUTION > "%s"\n' "$ONBOARD_SELECTION_TEST_HOME/catalog-executed" \
+        >> "$ONBOARD_SELECTION_TEST_ACFS/scripts/generated/manifest_index.sh"
+
+    helper_run_selection_onboard bash "$ONBOARD_SELECTION_TEST_ACFS/onboard/onboard.sh" status
+    assert_success
+    [[ ! -e "$ONBOARD_SELECTION_TEST_HOME/catalog-executed" ]]
+    [[ -f "$ONBOARD_SELECTION_TEST_ACFS/onboard_progress.json" ]]
+}
+
+@test "onboard: missing or malformed scoped catalogues cannot hide selected failures" {
+    helper_create_selection_runtime
+    helper_write_selection_checkpoint '["agents.codex","acfs.onboard"]'
+    mv "$ONBOARD_SELECTION_TEST_ACFS/scripts/generated/manifest_index.sh" "$ONBOARD_SELECTION_TEST_HOME/catalog.saved"
+    helper_run_selection_onboard bash "$ONBOARD_SELECTION_TEST_ACFS/onboard/onboard.sh" status
+    assert_failure
+    [[ ! -e "$ONBOARD_SELECTION_TEST_ACFS/onboard_progress.json" ]]
+
+    printf '%s\n' 'ACFS_MODULES_IN_ORDER=(' '  "agents.codex"' '  "agents.codex"' ')' \
+        > "$ONBOARD_SELECTION_TEST_ACFS/scripts/generated/manifest_index.sh"
+    helper_run_selection_onboard bash "$ONBOARD_SELECTION_TEST_ACFS/onboard/onboard.sh" status
+    assert_failure
+    [[ ! -e "$ONBOARD_SELECTION_TEST_ACFS/onboard_progress.json" ]]
+}
+
+@test "onboard: state symlinks are rejected without progress or target changes" {
+    helper_create_selection_runtime
+    helper_write_selection_checkpoint '["agents.codex","acfs.onboard"]'
+    mv "$ONBOARD_SELECTION_TEST_ACFS/state.json" "$ONBOARD_SELECTION_TEST_HOME/state-target.json"
+    cp "$ONBOARD_SELECTION_TEST_HOME/state-target.json" "$ONBOARD_SELECTION_TEST_HOME/state.before"
+    ln -s "$ONBOARD_SELECTION_TEST_HOME/state-target.json" "$ONBOARD_SELECTION_TEST_ACFS/state.json"
+
+    helper_run_selection_onboard bash "$ONBOARD_SELECTION_TEST_ACFS/onboard/onboard.sh" status
+    assert_failure
+    cmp -s "$ONBOARD_SELECTION_TEST_HOME/state.before" "$ONBOARD_SELECTION_TEST_HOME/state-target.json"
+    [[ ! -e "$ONBOARD_SELECTION_TEST_ACFS/onboard_progress.json" ]]
+}
+
+@test "onboard: legacy installs retain all auth services with no new install checkpoint" {
+    helper_create_selection_runtime
+    local state_kind
+    for state_kind in absent legacy; do
+        if [[ "$state_kind" == legacy ]]; then
+            printf '%s\n' '{"version":"0.1.0","completed_phases":[1,2]}' > "$ONBOARD_SELECTION_TEST_ACFS/state.json"
+        fi
+        helper_run_selection_onboard bash -c '
+            source "$1"
+            has_gum() { return 1; }
+            clear() { :; }
+            get_auth_status_code() { printf "PROBE:%s\n" "$1" >&2; printf "2\n"; }
+            show_auth_flow </dev/null
+        ' _ "$ONBOARD_SELECTION_TEST_ACFS/onboard/onboard.sh"
+        assert_success
+        local service
+        for service in tailscale claude codex antigravity github vercel supabase cloudflare; do
+            assert_output --partial "PROBE:$service"
+        done
+        [[ ! -e "$ONBOARD_SELECTION_TEST_ACFS/onboard_progress.json" ]]
+        if [[ "$state_kind" == absent ]]; then [[ ! -e "$ONBOARD_SELECTION_TEST_ACFS/state.json" ]]; fi
+    done
+}
+
+@test "onboard: relocated legacy defaults retain their home but scoped and custom checkpoints bind the owner" {
+    helper_create_selection_runtime
+    local relocated_home="$BATS_TEST_TMPDIR/legacy-user"
+    mkdir -p "$relocated_home/.codex" "$relocated_home/.local/bin"
+    printf '#!/bin/bash\nexit 0\n' > "$relocated_home/.local/bin/codex"
+    chmod +x "$relocated_home/.local/bin/codex"
+    printf '%s\n' '{"tokens":{"access_token":"legacy-relocation-fixture"}}' > "$relocated_home/.codex/auth.json"
+    jq -n --arg home "$relocated_home" --arg user "$(id -un)" \
+        '{version:"0.1.0",target_home:$home,target_user:$user}' > "$ONBOARD_SELECTION_TEST_ACFS/state.json"
+    cp "$ONBOARD_SELECTION_TEST_ACFS/state.json" "$ONBOARD_SELECTION_TEST_HOME/relocated.json"
+
+    helper_run_selection_onboard bash -c '
+        source "$1"
+        check_auth_status codex || exit 1
+        [[ "$_ONBOARD_SELECTION_TARGET_HOME" == "$2" ]]
+    ' _ "$ONBOARD_SELECTION_TEST_ACFS/onboard/onboard.sh" "$relocated_home"
+    assert_success
+    helper_run_selection_onboard bash "$ONBOARD_SELECTION_TEST_ACFS/onboard/onboard.sh" credential-status
+    assert_success
+    printf '%s' "$output" | jq -e '(.services | length) == 6 and
+        any(.services[]; .service == "codex" and .state == "file_configured")' >/dev/null
+    cmp -s "$ONBOARD_SELECTION_TEST_ACFS/state.json" "$ONBOARD_SELECTION_TEST_HOME/relocated.json"
+
+    helper_run_selection_onboard env ACFS_STATE_FILE="$ONBOARD_SELECTION_TEST_HOME/relocated.json" \
+        bash "$ONBOARD_SELECTION_TEST_ACFS/onboard/onboard.sh" status
+    assert_failure
+    jq '.module_selection = {schema_version:1,selected_modules:["agents.codex","acfs.onboard"]}' \
+        "$ONBOARD_SELECTION_TEST_HOME/relocated.json" > "$ONBOARD_SELECTION_TEST_ACFS/state.json"
+    helper_run_selection_onboard bash "$ONBOARD_SELECTION_TEST_ACFS/onboard/onboard.sh" status
+    assert_failure
+    [[ ! -e "$ONBOARD_SELECTION_TEST_ACFS/onboard_progress.json" ]]
+    [[ ! -e "$ONBOARD_SELECTION_TEST_ACFS/local_progress.json" ]]
+}
+
+@test "onboard: invalid selection still permits help but preserves the credential CLI flag contract" {
+    helper_create_selection_runtime
+    printf '{"module_selection":' > "$ONBOARD_SELECTION_TEST_ACFS/state.json"
+
+    helper_run_selection_onboard bash "$ONBOARD_SELECTION_TEST_ACFS/onboard/onboard.sh" --help
+    assert_success
+    assert_output --partial 'ACFS Onboarding Tutorial'
+    helper_run_selection_onboard bash "$ONBOARD_SELECTION_TEST_ACFS/onboard/onboard.sh" credential-status --require codex
+    assert_failure
+    [[ "$status" == 2 ]]
+    assert_output --partial 'does not accept setup or requirement flags'
+    [[ ! -e "$ONBOARD_SELECTION_TEST_ACFS/onboard_progress.json" ]]
+}

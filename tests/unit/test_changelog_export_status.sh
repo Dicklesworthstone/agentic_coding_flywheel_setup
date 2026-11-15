@@ -156,6 +156,7 @@ setup_installed_layout_env() {
     cp "$INFO_SH" "$TEST_INSTALLED_ACFS/scripts/lib/info.sh"
     cp "$SUPPORT_SH" "$TEST_INSTALLED_ACFS/scripts/lib/support.sh"
     cp "$CONTINUE_SH" "$TEST_INSTALLED_ACFS/scripts/lib/continue.sh"
+    cp "$REPO_ROOT/scripts/lib/state.sh" "$TEST_INSTALLED_ACFS/scripts/lib/state.sh"
 
     cat > "$TEST_INSTALLED_ACFS/state.json" <<EOF
 {
@@ -11393,7 +11394,7 @@ EOF
     local output=""
     output=$(HOME="$TEST_ROOT_HOME" TARGET_USER="missinguser" TARGET_HOME=""         ACFS_SYSTEM_STATE_FILE="$missing_system_state" PATH="$TEST_FAKE_BIN:/usr/bin:/bin"         bash -lc 'source "'"$ONBOARD_SH"'" help >/dev/null; check_auth_status github && status=0 || status=$?; printf "%s\n" "$status"')
 
-    if [[ "$output" == "2" ]]; then
+    if [[ "$output" == "4" ]]; then
         harness_pass "onboard auth checks do not fall back to current home when explicit target_user is unresolved"
     else
         harness_fail "onboard auth checks do not fall back to current home when explicit target_user is unresolved" "$output"
@@ -12878,6 +12879,7 @@ credential_onboard_setup() {
     cp "$ONBOARD_SH" "$PROTOCOL_HOME/.acfs/onboard/onboard.sh"
     cp "$SERVICES_SETUP_SH" "$PROTOCOL_HOME/.acfs/scripts/services-setup.sh"
     cp "$REPO_ROOT/scripts/lib/logging.sh" "$REPO_ROOT/scripts/lib/gum_ui.sh" "$PROTOCOL_HOME/.acfs/scripts/lib/"
+    cp "$REPO_ROOT/scripts/lib/state.sh" "$PROTOCOL_HOME/.acfs/scripts/lib/state.sh"
 }
 
 credential_onboard_run() {

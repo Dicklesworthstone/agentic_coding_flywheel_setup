@@ -717,6 +717,160 @@ onboard_effective_runtime_home() {
     printf '%s\n' "$runtime_home"
 }
 
+# Read installation scope without importing the installer's mutable globals or
+# executing its generated index. A damaged checkpoint is not an unscoped setup.
+_ONBOARD_SELECTION_READY=false
+_ONBOARD_SELECTION_MODE=invalid
+_ONBOARD_SELECTION_TARGET_HOME=""
+_ONBOARD_SELECTION_TARGET_USER=""
+_ONBOARD_SELECTION_FILE=""
+declare -ga _ONBOARD_SELECTED_MODULES=()
+
+onboard_load_module_selection() {
+    _ONBOARD_SELECTION_READY=false
+    _ONBOARD_SELECTION_MODE=invalid
+    _ONBOARD_SELECTED_MODULES=()
+    local runtime_home="" legacy_runtime_home="" target_user="" passwd_user="" passwd_home=""
+    local state_file="" default_state="" library="" catalog="" root=""
+    local bash_bin="" parsed="" policy=""
+
+    runtime_home="$(onboard_effective_runtime_home 2>/dev/null || true)"
+    legacy_runtime_home="$runtime_home"
+    # An installed ~/.acfs path identifies its owner independently of fields
+    # inside the checkpoint being validated.
+    if [[ "$_ONBOARD_ACFS_HOME" == */.acfs ]]; then
+        runtime_home="${_ONBOARD_ACFS_HOME%/.acfs}"
+    fi
+    [[ "$runtime_home" == /* && "$runtime_home" != / ]] || {
+        printf 'Cannot resolve the onboarding installation owner.\n' >&2
+        return 1
+    }
+    while IFS=: read -r passwd_user _ _ _ _ passwd_home _; do
+        if [[ "$passwd_home" == "$runtime_home" ]]; then
+            target_user="$passwd_user"
+            break
+        fi
+    done < <(onboard_getent_passwd_entry 2>/dev/null || true)
+    if [[ -z "$target_user" ]]; then
+        target_user="${_ONBOARD_EXPLICIT_TARGET_USER_RAW:-}"
+        [[ -n "$target_user" ]] || target_user="$(onboard_resolve_current_user 2>/dev/null || true)"
+    fi
+    onboard_is_valid_username "$target_user" || {
+        printf 'Cannot resolve a valid onboarding target user.\n' >&2
+        return 1
+    }
+    default_state="${_ONBOARD_ACFS_HOME:-$runtime_home/.acfs}/state.json"
+    state_file="${ACFS_STATE_FILE:-$default_state}"
+    [[ "$state_file" == /* && "$state_file" != / ]] || {
+        printf 'ACFS_STATE_FILE must name an absolute checkpoint file.\n' >&2
+        return 1
+    }
+    _ONBOARD_SELECTION_TARGET_HOME="$runtime_home"
+    _ONBOARD_SELECTION_TARGET_USER="$target_user"
+    _ONBOARD_SELECTION_FILE="$state_file"
+    if [[ "$state_file" == "$runtime_home/.acfs/state.json" ]]; then
+        policy=allow-legacy-identity
+        if [[ ! -e "$state_file" && ! -L "$state_file" ]]; then
+            _ONBOARD_SELECTION_MODE=legacy
+            _ONBOARD_SELECTION_READY=true
+            return 0
+        fi
+    fi
+
+    for root in "$_ONBOARD_SCRIPT_DIR/.." "$_ONBOARD_SCRIPT_DIR/../.." "$_ONBOARD_ACFS_HOME"; do
+        if [[ -f "$root/scripts/lib/state.sh" ]]; then
+            library="$root/scripts/lib/state.sh"
+            catalog="$root/scripts/generated/manifest_index.sh"
+            break
+        fi
+    done
+    bash_bin="$(onboard_system_binary_path bash 2>/dev/null || true)"
+    if [[ -z "$library" || -z "$bash_bin" ]]; then
+        printf 'Cannot validate onboarding selection; restore the complete ACFS runtime.\n' >&2
+        return 1
+    fi
+    if ! parsed="$(PATH="$_ONBOARD_PRIVILEGED_PATH" "$bash_bin" --noprofile --norc -p -c '
+        source "$1" || exit 1
+        declare -F state_load_module_selection >/dev/null &&
+            declare -F state_validate_module_selection_catalog_file >/dev/null || exit 1
+        # Legacy installs may keep ACFS outside their recorded target home.
+        # Recognize that contract only after parsing the actual default file;
+        # malformed scope and every custom checkpoint still fail closed.
+        if [[ "$2" == "$7" ]]; then
+            state_load_module_selection "$2" || exit 1
+        fi
+        if [[ "$2" == "$7" && "$ACFS_STATE_SELECTION_MODE" == legacy ]]; then
+            :
+        elif [[ -n "$6" ]]; then
+            state_load_module_selection "$2" "$3" "$4" "$6" || exit 1
+        else
+            state_load_module_selection "$2" "$3" "$4" || exit 1
+        fi
+        state_validate_module_selection_catalog_file "$5" || exit 1
+        printf "%s\n" "$ACFS_STATE_SELECTION_MODE"
+        if [[ "$ACFS_STATE_SELECTION_MODE" == scoped ]]; then
+            printf "%s\n" "${ACFS_STATE_SELECTED_MODULES[@]}"
+        fi
+    ' _ "$library" "$state_file" "$runtime_home" "$target_user" "$catalog" "$policy" "$default_state")"; then
+        printf 'Saved onboarding selection is invalid or belongs to another installation; no progress or authentication changes were made.\n' >&2
+        return 1
+    fi
+    local -a records=()
+    mapfile -t records <<< "$parsed"
+    case "${records[0]:-}" in
+        legacy|scoped) _ONBOARD_SELECTION_MODE="${records[0]}" ;;
+        *) return 1 ;;
+    esac
+    _ONBOARD_SELECTED_MODULES=("${records[@]:1}")
+    if [[ "$_ONBOARD_SELECTION_MODE" == legacy && "$state_file" == "$default_state" ]]; then
+        # Retain the pre-selection resolver for old relocated installations.
+        # Scoped installs always remain bound to the independent owner above.
+        if [[ "$legacy_runtime_home" == /* && "$legacy_runtime_home" != / ]]; then
+            _ONBOARD_SELECTION_TARGET_HOME="$legacy_runtime_home"
+        fi
+        target_user="$(onboard_read_state_string "$state_file" target_user 2>/dev/null || true)"
+        if onboard_is_valid_username "$target_user"; then
+            _ONBOARD_SELECTION_TARGET_USER="$target_user"
+        fi
+    fi
+    _ONBOARD_SELECTION_READY=true
+}
+
+onboard_ensure_module_selection() {
+    # One screen renders one validated snapshot. Direct calls reload, including
+    # after a caller switches checkpoints or repairs the existing checkpoint.
+    if [[ "${_ONBOARD_AUTH_SCOPE_SNAPSHOT:-false}" == true && "$_ONBOARD_SELECTION_READY" == true ]]; then
+        return 0
+    fi
+    onboard_load_module_selection
+}
+
+onboard_service_module() {
+    case "${1:-}" in
+        tailscale) printf '%s\n' network.tailscale ;;
+        github) printf '%s\n' cli.modern ;;
+        claude|codex|antigravity|gemini) printf 'agents.%s\n' "$1" ;;
+        vercel|supabase) printf 'cloud.%s\n' "$1" ;;
+        cloudflare|wrangler) printf '%s\n' cloud.wrangler ;;
+        *) return 1 ;;
+    esac
+}
+
+onboard_service_is_selected() {
+    local wanted="" module=""
+    wanted="$(onboard_service_module "${1:-}")" || return 1
+    case "$_ONBOARD_SELECTION_MODE" in
+        legacy) return 0 ;;
+        scoped)
+            for module in "${_ONBOARD_SELECTED_MODULES[@]}"; do
+                [[ "$module" != "$wanted" ]] || return 0
+            done
+            return 1
+            ;;
+        *) return 2 ;;
+    esac
+}
+
 onboard_preferred_bin_dir() {
     local runtime_home="${1:-}"
     local candidate=""
@@ -2082,13 +2236,16 @@ onboard_run_auth_probe() {
 
 # Check service readiness using the existing credential and provider checks.
 # Returns: 0 = stored credentials or a successful live check,
-#          1 = needs attention, 2 = not installed.
+#          1 = needs attention, 2 = not installed, 3 = outside installation
+#          scope, 4 = invalid installation scope.
 # Stored credentials alone do not prove that a provider accepts them.
 check_auth_status() {
     local service=$1
     local runtime_home=""
     local shell_config_files=()
 
+    onboard_ensure_module_selection || return 4
+    onboard_service_is_selected "$service" || return 3
     runtime_home="$(onboard_effective_runtime_home 2>/dev/null || true)"
     if [[ -n "$runtime_home" ]]; then
         shell_config_files=(
@@ -2262,6 +2419,8 @@ get_auth_status_display() {
         0) echo -e "${GREEN}✓${NC}" ;;
         1) echo -e "${YELLOW}○${NC}" ;;
         2) echo -e "${DIM}—${NC}" ;;
+        3) echo -e "${DIM}—${NC}" ;;
+        *) echo -e "${YELLOW}?${NC}" ;;
     esac
 }
 
@@ -2271,7 +2430,19 @@ get_auth_status_display() {
 onboard_credential_status_json() (
     set +x
     local runtime_home="" collector="" candidate="" bash_bin="" jq_bin="" timeout_bin="" raw="" metadata=""
-    runtime_home="$(onboard_effective_runtime_home 2>/dev/null || true)"
+    local service="" selected_services="[" separator=""
+    if ! onboard_load_module_selection; then
+        printf '%s\n' '{"schema_version":1,"kind":"acfs.credential_status","status":"error","read_only":true,"error":"module_selection_unavailable"}'
+        return 2
+    fi
+    runtime_home="$_ONBOARD_SELECTION_TARGET_HOME"
+    for service in claude codex gemini supabase vercel wrangler; do
+        if onboard_service_is_selected "$service"; then
+            selected_services+="${separator}\"$service\""
+            separator=,
+        fi
+    done
+    selected_services+="]"
     bash_bin="$(onboard_system_binary_path bash 2>/dev/null || true)"
     jq_bin="$(onboard_system_binary_path jq 2>/dev/null || true)"
     timeout_bin="$(onboard_system_binary_path timeout 2>/dev/null || true)"
@@ -2284,23 +2455,30 @@ onboard_credential_status_json() (
     if [[ -n "$runtime_home" && -n "$collector" && -n "$bash_bin" && -n "$jq_bin" && -n "$timeout_bin" ]] &&
         raw="$("$timeout_bin" -k 1 5 "$bash_bin" -c '
             set +x
+            TARGET_HOME="$2"
+            TARGET_USER="$3"
+            ACFS_HOME="$4"
+            ACFS_STATE_FILE="$5"
             source "$1" >/dev/null || exit 2
             TARGET_HOME="$2"
             SERVICES_SETUP_REQUIRED=()
             services_setup_credential_status_json
-        ' _ "$collector" "$runtime_home" 2>/dev/null)" &&
-        metadata="$(printf '%s' "$raw" | "$jq_bin" -ces '
+        ' _ "$collector" "$runtime_home" "$_ONBOARD_SELECTION_TARGET_USER" "$_ONBOARD_ACFS_HOME" "$_ONBOARD_SELECTION_FILE" 2>/dev/null)" &&
+        metadata="$(printf '%s' "$raw" | "$jq_bin" -ces --argjson selected "$selected_services" '
             def member($values): . as $value | $values | index($value) != null;
             select(length == 1) | .[0]
             | select(.schema_version == 1 and .kind == "acfs.credential_status" and
                 .status == "pass" and .read_only == true and .summary.required_unmet == 0 and
                 .safety.raw_secret_values_printed == false and .safety.files_mutated == false and
                 .safety.provider_validation_performed == false and (.services | type == "array") and
-                ([.services[].service] | sort) == ["claude","codex","gemini","supabase","vercel","wrangler"] and
-                all(.services[]; .requirement == "optional" and .authentication == "unverified" and
+                ([.services[].service] | length) == ([.services[].service] | unique | length) and
+                all(.services[]; (.service | member(["claude","codex","gemini","supabase","vercel","wrangler"])) and
+                    .requirement == "optional" and .authentication == "unverified" and
                     (.state | member(["missing","placeholder","shell_configured","file_configured","expired","refresh_required","vault_backed","unknown"])) and
                     (.source | member(["none","environment","file","vault"])) and
                     (.remediation | member(["replace_or_unset_placeholder","inspect_local_config","configure_when_needed","validate_before_use","refresh_or_reauthenticate","resolve_vault_reference"]))))
+            | .services |= map(select(.service as $service | $selected | index($service) != null))
+            | select(([.services[].service] | sort) == ($selected | sort))
             | {schema_version:1,kind:"acfs.credential_status",status:"pass",read_only:true,
                 services:[.services[] | {service,state,source,requirement,authentication,remediation}],
                 summary:{required_unmet:0},safety:{raw_secret_values_printed:false,files_mutated:false,provider_validation_performed:false}}
@@ -2340,6 +2518,15 @@ show_credential_status() {
 # Show authentication flow
 show_auth_flow() {
     while true; do
+        onboard_load_module_selection || return 1
+        local _ONBOARD_AUTH_SCOPE_SNAPSHOT=true
+        local -a auth_services=()
+        local service=""
+        for service in "${AUTH_SERVICES[@]}"; do
+            if onboard_service_is_selected "$service"; then
+                auth_services+=("$service")
+            fi
+        done
         clear 2>/dev/null || true
 
         if has_gum; then
@@ -2368,7 +2555,7 @@ show_auth_flow() {
         local -A auth_statuses=()
         show_credential_status
 
-        for service in "${AUTH_SERVICES[@]}"; do
+        for service in "${auth_services[@]}"; do
             local name="${AUTH_SERVICE_NAMES[$service]}"
             local desc="${AUTH_SERVICE_DESCRIPTIONS[$service]}"
             local status
@@ -2406,7 +2593,7 @@ show_auth_flow() {
         # Show menu options
         if has_gum; then
             local -a items=()
-            for service in "${AUTH_SERVICES[@]}"; do
+            for service in "${auth_services[@]}"; do
                 local status="${auth_statuses[$service]}"
                 if [[ $status -eq 1 ]]; then
                     items+=("🔑 Authenticate ${AUTH_SERVICE_NAMES[$service]}")
@@ -2431,7 +2618,7 @@ show_auth_flow() {
                 *"[r]"*) continue ;;
                 *"Authenticate"*)
                     # Extract service name from choice
-                    for service in "${AUTH_SERVICES[@]}"; do
+                    for service in "${auth_services[@]}"; do
                         if [[ "$choice" == *"${AUTH_SERVICE_NAMES[$service]}"* ]]; then
                             show_auth_service "$service"
                             # Loop continues to refresh
@@ -2448,7 +2635,7 @@ show_auth_flow() {
             echo ""
 
             local -a auth_menu_services=()
-            for service in "${AUTH_SERVICES[@]}"; do
+            for service in "${auth_services[@]}"; do
                 local status="${auth_statuses[$service]}"
                 if [[ $status -eq 1 ]]; then
                     auth_menu_services+=("$service")
@@ -2484,6 +2671,11 @@ show_auth_flow() {
 # Show auth instructions for a specific service
 show_auth_service() {
     local service=$1
+    onboard_load_module_selection || return 1
+    if ! onboard_service_is_selected "$service"; then
+        printf 'This service is not selected for this installation.\n' >&2
+        return 1
+    fi
     local name="${AUTH_SERVICE_NAMES[$service]}"
     local cmd="${AUTH_SERVICE_COMMANDS[$service]}"
 
@@ -3346,6 +3538,14 @@ onboard_main() {
     local cheatsheet_script=""
     local candidate=""
 
+    # Help/version remain available for recovery. Credential introspection has
+    # its own structured error response; tutorial actions validate before they
+    # can initialize, reset, or advance either progress file.
+    case "$arg" in
+        help|--help|-h|version|--version|-v|credential-status|--credential-status) ;;
+        *) onboard_load_module_selection || return 1 ;;
+    esac
+
     if [[ "$arg" =~ ^[0-9]+$ ]]; then
         idx="$(get_lesson_index_by_number "$((10#$arg))" || true)"
         if [[ -n "$idx" ]]; then
@@ -3445,6 +3645,7 @@ fi)
 Environment:
   ACFS_LESSONS_DIR   Path to lesson files (default: $LESSONS_DIR)
   ACFS_PROGRESS_FILE Path to progress file (default: $PROGRESS_FILE)
+  ACFS_STATE_FILE    Optional checkpoint; must belong to this installation
   ACFS_LOCAL_PROGRESS=off disables local milestone recording
   ACFS_LOCAL_PROGRESS_FILE overrides the milestone file path
 EOF
