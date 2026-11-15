@@ -741,6 +741,2986 @@ state_validate_module_selection_catalog() {
     done
 }
 
+# Read the generated catalogue as data. Post-install tools need to validate
+# saved intent before running any tool or sourcing unrelated generated code.
+state_validate_module_selection_catalog_file() {
+    local catalog_file="${1:-}" line="" module=""
+    local inside=false found=false complete=false
+    local entry_pattern='^  "([a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)+)"
+# read/validate/write cycle. Narrow --only repairs add intent, never erase it.
+state_record_module_selection() {
+    local state_file="" merged="" previous="" status=0
+    local install_mode="${MODE:-}" update_mode=false
+    local -a requested_modules=()
+    state_module_selection_json "$@" >/dev/null || return 1
+    case "$install_mode" in
+        ""|safe|vibe) ;;
+        *)
+            printf '%s\n' 'Invalid installation mode; refusing to update the checkpoint.' >&2
+            return 1
+            ;;
+    esac
+    state_file=$(state_get_file) || return 1
+    [[ -f "$state_file" ]] || return 1
+    _state_acquire_lock || return 1
+    if ! state_load_module_selection "$state_file"; then
+        _state_release_lock
+        return 1
+    fi
+    # MODE is the accepted policy for this invocation. Preserve saved policy
+    # for library callers that only update scope and do not provide a mode.
+    if [[ -n "$install_mode" && "$install_mode" != "$ACFS_STATE_INSTALL_MODE" ]]; then
+        update_mode=true
+    fi
+    if [[ "$ACFS_STATE_SELECTION_MODE" == legacy ]]; then
+        if [[ "$update_mode" == true ]]; then
+            state_update_with_args '.mode = $mode' --arg mode "$install_mode" || status=1
+            if [[ "$status" -eq 0 ]]; then
+                state_load_module_selection "$state_file" || status=1
+            fi
+        fi
+        _state_release_lock
+        return "$status"
+    fi
+    mapfile -t requested_modules < <(state_requested_modules_for_plan "$@")
+    previous=$(state_module_selection_json --requested "${ACFS_STATE_REQUESTED_MODULES[@]}" -- \
+        "${ACFS_STATE_SELECTED_MODULES[@]}") || status=1
+    merged=$(state_module_selection_json --requested "${ACFS_STATE_REQUESTED_MODULES[@]}" \
+        "${requested_modules[@]}" -- "${ACFS_STATE_SELECTED_MODULES[@]}" "$@") || status=1
+    if [[ "$status" -eq 0 && ( "$merged" != "$previous" || "$update_mode" == true ) ]]; then
+        state_update_with_args '
+            .module_selection.selected_modules = $selection.selected_modules |
+            .module_selection.requested_modules = $selection.requested_modules |
+            if $mode == "" then . else .mode = $mode end' \
+            --argjson selection "$merged" --arg mode "$install_mode" || status=1
+        if [[ "$status" -eq 0 ]]; then
+            state_load_module_selection "$state_file" || status=1
+        fi
+    fi
+    _state_release_lock
+    return "$status"
+}
+
+# Initialize a new state file with default values
+# Usage: state_init
+# Returns: 0 on success, 1 on failure
+state_init() {
+    local state_file
+    state_file="$(state_get_file 2>/dev/null || true)"
+    if [[ -z "$state_file" ]]; then
+        declare -f log_error &>/dev/null && log_error "state_init: unable to resolve state file path"
+        return 1
+    fi
+
+    local state_dir
+    state_dir="$(dirname "$state_file")"
+    local resolved_target_home=""
+    resolved_target_home="$(state_resolve_target_home 2>/dev/null || true)"
+    if [[ -z "$resolved_target_home" ]]; then
+        declare -f log_error &>/dev/null && log_error "state_init: unable to resolve target home"
+        return 1
+    fi
+
+    # Ensure directory exists
+    if [[ ! -d "$state_dir" ]]; then
+        # Try without sudo first (works for user directories like ~/.acfs)
+        # Fall back to sudo for system directories like /var/lib/acfs
+        local mkdir_bin=""
+        mkdir_bin="$(state_system_binary_path mkdir 2>/dev/null || true)"
+        [[ -n "$mkdir_bin" ]] || return 1
+        if ! "$mkdir_bin" -p "$state_dir" 2>/dev/null; then
+            local sudo_bin=""
+            sudo_bin="$(state_system_binary_path sudo 2>/dev/null || true)"
+            if [[ $EUID -ne 0 && -n "$sudo_bin" ]]; then
+                "$sudo_bin" -n "$mkdir_bin" -p "$state_dir" || return 1
+                # Fix ownership so current user can write to it
+                local chown_bin=""
+                local id_bin=""
+                chown_bin="$(state_system_binary_path chown 2>/dev/null || true)"
+                id_bin="$(state_system_binary_path id 2>/dev/null || true)"
+                if [[ -n "$chown_bin" && -n "$id_bin" ]]; then
+                    "$sudo_bin" -n "$chown_bin" "$("$id_bin" -u):$("$id_bin" -g)" "$state_dir" 2>/dev/null || true
+                fi
+            else
+                return 1
+            fi
+        fi
+
+        # If running as root but targeting a non-root user, ensure the directory
+        # is owned by the target user so they can access the state file later.
+        # This is critical for `acfs doctor` to work after a failed install.
+        if [[ $EUID -eq 0 ]] && [[ -n "${TARGET_USER:-}" ]] && [[ "$TARGET_USER" != "root" ]]; then
+            local target_home=""
+            target_home="$(state_resolve_target_home 2>/dev/null || true)"
+            if [[ -n "$target_home" ]] && [[ "$target_home" != "/" ]] && [[ "$target_home" == /* ]] && [[ "$state_dir" == "$target_home/"* ]]; then
+                local target_group=""
+                local id_bin=""
+                id_bin="$(state_system_binary_path id 2>/dev/null || true)"
+                if [[ -n "$id_bin" ]]; then
+                    target_group="$("$id_bin" -gn "$TARGET_USER" 2>/dev/null || true)"
+                fi
+                local chown_bin=""
+                chown_bin="$(state_system_binary_path chown 2>/dev/null || true)"
+                if [[ -n "$chown_bin" ]]; then
+                    if [[ -n "$target_group" ]]; then
+                        "$chown_bin" "$TARGET_USER:$target_group" "$state_dir" 2>/dev/null \
+                            || "$chown_bin" "$TARGET_USER:$TARGET_USER" "$state_dir" 2>/dev/null \
+                            || true
+                    else
+                        "$chown_bin" "$TARGET_USER" "$state_dir" 2>/dev/null || true
+                    fi
+                fi
+            fi
+        fi
+    fi
+
+    local now
+    now="$(date -Iseconds)"
+
+    local state_version="${ACFS_VERSION:-unknown}"
+    local state_target_user="${TARGET_USER:-}"
+    if [[ -z "$state_target_user" ]]; then
+        state_target_user="$(state_resolve_current_user 2>/dev/null || true)"
+    fi
+    state_target_user="${state_target_user:-unknown}"
+
+    local module_selection="null"
+    local -a previous_modules=() previous_requests=() current_requests=()
+    local preserve_legacy_selection=false
+    if [[ -e "$state_file" || -L "$state_file" ]]; then
+        state_load_module_selection "$state_file" || return 1
+        if [[ "$ACFS_STATE_SELECTION_MODE" == scoped ]]; then
+            previous_modules=("${ACFS_STATE_SELECTED_MODULES[@]}")
+            previous_requests=("${ACFS_STATE_REQUESTED_MODULES[@]}")
+        else
+            preserve_legacy_selection=true
+        fi
+    elif [[ "${_ACFS_STATE_REINSTALL_SELECTION_FILE:-}" == "$state_file" ]]; then
+        case "${_ACFS_STATE_REINSTALL_SELECTION_MODE:-}" in
+            scoped)
+                previous_modules=("${_ACFS_STATE_REINSTALL_MODULES[@]}")
+                previous_requests=("${_ACFS_STATE_REINSTALL_REQUESTED_MODULES[@]}")
+                ;;
+            legacy) preserve_legacy_selection=true ;;
+        esac
+    fi
+    if [[ "$preserve_legacy_selection" != true ]]; then
+        if [[ "${ACFS_EFFECTIVE_PLAN+x}" == x && ${#ACFS_EFFECTIVE_PLAN[@]} -gt 0 ]]; then
+            mapfile -t current_requests < <(state_requested_modules_for_plan "${ACFS_EFFECTIVE_PLAN[@]}")
+            module_selection=$(state_module_selection_json --requested "${previous_requests[@]}" \
+                "${current_requests[@]}" -- "${previous_modules[@]}" "${ACFS_EFFECTIVE_PLAN[@]}") || return 1
+        elif [[ ${#previous_modules[@]} -gt 0 ]]; then
+            module_selection=$(state_module_selection_json --requested "${previous_requests[@]}" -- \
+                "${previous_modules[@]}") || return 1
+        fi
+    fi
+
+    # Normalize boolean values for JSON
+    local skip_pg="false"; [[ "${SKIP_POSTGRES:-false}" == "true" ]] && skip_pg="true"
+    local skip_v="false"; [[ "${SKIP_VAULT:-false}" == "true" ]] && skip_v="true"
+    local skip_c="false"; [[ "${SKIP_CLOUD:-false}" == "true" ]] && skip_c="true"
+
+    local initial_state
+    if command -v jq &>/dev/null; then
+        initial_state=$(jq -n \
+            --argjson schema_version "$ACFS_STATE_SCHEMA_VERSION" \
+            --arg ver "$state_version" \
+            --arg user "$state_target_user" \
+            --arg home "$resolved_target_home" \
+            --arg bin_dir "${ACFS_BIN_DIR:-$resolved_target_home/.local/bin}" \
+            --arg ts "$now" \
+            --arg mode "${MODE:-${ACFS_MODE:-vibe}}" \
+            --argjson skip_pg "$skip_pg" \
+            --argjson skip_v "$skip_v" \
+            --argjson skip_c "$skip_c" \
+            --argjson module_selection "$module_selection" \
+            '{
+                schema_version: $schema_version,
+                version: $ver,
+                source_ledger_sha256: null,
+                target_user: $user,
+                target_home: $home,
+                bin_dir: $bin_dir,
+                started_at: $ts,
+                last_updated: $ts,
+                mode: $mode,
+                completed_phases: [],
+                partial_phases: [],
+                phase_attempts: {},
+                phase_steps: {},
+                failed_phase: null,
+                failed_step: null,
+                skip_postgres: $skip_pg,
+                skip_vault: $skip_v,
+                skip_cloud: $skip_c,
+                ubuntu_upgrade: {
+                    enabled: false,
+                    current_stage: "none",
+                    upgrade_path: [],
+                    completed_upgrades: []
+                }
+            } + (if $module_selection == null then {} else {module_selection: $module_selection} end)')
+    else
+        # Fallback to heredoc if jq is not yet installed
+        initial_state=$(cat <<EOF
+{
+  "schema_version": $ACFS_STATE_SCHEMA_VERSION,
+  "version": "$state_version",
+  "source_ledger_sha256": null,
+  $(if [[ "$module_selection" != null ]]; then printf '"module_selection": %s,' "$module_selection"; fi)
+  "target_user": "$state_target_user",
+  "target_home": "$resolved_target_home",
+  "bin_dir": "${ACFS_BIN_DIR:-$resolved_target_home/.local/bin}",
+  "started_at": "$now",
+  "last_updated": "$now",
+  "mode": "${MODE:-${ACFS_MODE:-vibe}}",
+  "completed_phases": [],
+  "partial_phases": [],
+  "phase_attempts": {},
+  "phase_steps": {},
+  "failed_phase": null,
+  "failed_step": null,
+  "skip_postgres": $skip_pg,
+  "skip_vault": $skip_v,
+  "skip_cloud": $skip_c,
+  "ubuntu_upgrade": {
+    "enabled": false,
+    "current_stage": "none",
+    "upgrade_path": [],
+    "completed_upgrades": []
+  }
+}
+EOF
+)
+    fi
+
+    if ! state_write_atomic "$state_file" "$initial_state"; then
+        return 1
+    fi
+
+    _ACFS_STATE_REINSTALL_SELECTION_MODE=""
+    _ACFS_STATE_REINSTALL_SELECTION_FILE=""
+    _ACFS_STATE_REINSTALL_MODULES=()
+    _ACFS_STATE_REINSTALL_REQUESTED_MODULES=()
+    state_sync_path_if_enabled "$state_dir"
+
+    return 0
+}
+
+# Write state file atomically using temp file + rename
+#
+# This implements the atomic write pattern to prevent corruption:
+#   1. Write to a temp file in the same directory
+#   2. Rename temp file to target (atomic on POSIX filesystems)
+#
+# If the system crashes or SSH disconnects mid-write, the state file
+# remains valid because the rename either completes fully or not at all.
+# Forced durability sync is intentionally opt-in: external sync/fsync can block
+# indefinitely on container overlays or distressed disks, while a stale checkpoint
+# is safer than a hung installer.
+#
+# Usage: state_write_atomic <file_path> <content>
+#
+# Returns:
+#   0 - Success
+#   1 - Disk full or write error
+#   2 - Permission denied
+#   3 - Invalid arguments
+#
+# Related: agentic_coding_flywheel_setup-aa1
+state_write_atomic() {
+    local file_path="$1"
+    local content="$2"
+    local temp_file
+    local target_dir
+
+    # Validate arguments
+    if [[ -z "$file_path" ]]; then
+        declare -f log_error &>/dev/null && log_error "state_write_atomic: file path required"
+        return 3
+    fi
+    if [[ -z "$content" ]]; then
+        declare -f log_error &>/dev/null && log_error "state_write_atomic: content required"
+        return 3
+    fi
+
+    target_dir="$(dirname "$file_path")"
+
+    # Ensure target directory exists
+    if [[ ! -d "$target_dir" ]]; then
+        if ! mkdir -p "$target_dir" 2>/dev/null; then
+            declare -f log_error &>/dev/null && log_error "state_write_atomic: cannot create directory $target_dir"
+            return 2
+        fi
+
+        # If running as root but targeting a non-root user, ensure the directory
+        # is owned by the target user so they can access the state file later.
+        if [[ $EUID -eq 0 ]] && [[ -n "${TARGET_USER:-}" ]] && [[ "$TARGET_USER" != "root" ]]; then
+            local target_home=""
+            target_home="$(state_resolve_target_home 2>/dev/null || true)"
+            if [[ -n "$target_home" ]] && [[ "$target_home" != "/" ]] && [[ "$target_home" == /* ]] && [[ "$target_dir" == "$target_home/"* ]]; then
+                local dir_target_group=""
+                if command -v id &>/dev/null; then
+                    dir_target_group="$(id -gn "$TARGET_USER" 2>/dev/null || true)"
+                fi
+                if [[ -n "$dir_target_group" ]]; then
+                    chown "$TARGET_USER:$dir_target_group" "$target_dir" 2>/dev/null \
+                        || chown "$TARGET_USER:$TARGET_USER" "$target_dir" 2>/dev/null \
+                        || true
+                else
+                    chown "$TARGET_USER" "$target_dir" 2>/dev/null || true
+                fi
+            fi
+        fi
+    fi
+
+    # Check disk space before attempting write (require at least 1MB free)
+    local available_kb
+    # Use -P for POSIX portability (prevents line wrapping on long device names)
+    # Use -k for 1K blocks
+    available_kb=$(df -kP "$target_dir" 2>/dev/null | awk 'NR==2 {print $4}')
+    if [[ -n "$available_kb" ]] && [[ "$available_kb" -lt 1024 ]]; then
+        declare -f log_error &>/dev/null && log_error "state_write_atomic: insufficient disk space (${available_kb}KB available, 1024KB minimum)"
+        return 1
+    fi
+
+    # Create temp file in same directory (ensures same filesystem for atomic rename).
+    # SECURITY: Never fall back to predictable temp paths (symlink/clobber risk under sudo/root).
+    temp_file="$(mktemp "${target_dir}/.state.XXXXXX.tmp" 2>/dev/null)" || {
+        if [[ ! -w "$target_dir" ]]; then
+            declare -f log_error &>/dev/null && log_error "state_write_atomic: permission denied creating temp file in $target_dir"
+            return 2
+        fi
+        declare -f log_error &>/dev/null && log_error "state_write_atomic: failed to create temp file in $target_dir"
+        return 1
+    }
+
+    # Write content to temp file
+    # Using printf for more reliable output than echo
+    printf '%s\n' "$content" > "$temp_file" 2>/dev/null
+    local write_err=$?
+    if [[ $write_err -ne 0 ]]; then
+        rm -f "$temp_file" 2>/dev/null || true
+
+        if [[ ! -w "$target_dir" ]]; then
+            declare -f log_error &>/dev/null && log_error "state_write_atomic: permission denied writing temp file in $target_dir"
+            return 2
+        fi
+
+        declare -f log_error &>/dev/null && log_error "state_write_atomic: failed to write temp file (error $write_err)"
+        return 1
+    fi
+
+    state_sync_path_if_enabled "$temp_file"
+
+    # Set appropriate permissions before moving (state may include failure context; keep it owner-only).
+    chmod 600 "$temp_file" 2>/dev/null || true
+
+    # If the installer is running as root but targeting a non-root user,
+    # ensure the file is owned by that user BEFORE the atomic move.
+    # This prevents a race window where the file is owned by root/600 and unreadable.
+    #
+    # Only do this for state files under TARGET_HOME (per-user state) and
+    # never for system state under /var/lib/acfs.
+    if [[ $EUID -eq 0 ]] && [[ -n "${TARGET_USER:-}" ]] && [[ "$TARGET_USER" != "root" ]]; then
+        local target_home=""
+        target_home="$(state_resolve_target_home 2>/dev/null || true)"
+        if [[ -n "$target_home" ]] && [[ "$target_home" != "/" ]] && [[ "$target_home" == /* ]] && [[ "$temp_file" == "$target_home/"* ]]; then
+            local target_group=""
+            if command -v id &>/dev/null; then
+                target_group="$(id -gn "$TARGET_USER" 2>/dev/null || true)"
+            fi
+
+            if [[ -n "$target_group" ]]; then
+                chown "$TARGET_USER:$target_group" "$temp_file" 2>/dev/null \
+                    || chown "$TARGET_USER:$TARGET_USER" "$temp_file" 2>/dev/null \
+                    || true
+            else
+                chown "$TARGET_USER" "$temp_file" 2>/dev/null || true
+            fi
+        fi
+    fi
+
+    # Atomic rename: on POSIX filesystems, rename() is guaranteed atomic
+    # when source and target are on the same filesystem
+    mv -f "$temp_file" "$file_path" 2>/dev/null
+    local mv_err=$?
+    if [[ $mv_err -ne 0 ]]; then
+        rm -f "$temp_file" 2>/dev/null || true
+
+        # Check for permission issues
+        if [[ ! -w "$target_dir" ]] || [[ -f "$file_path" && ! -w "$file_path" ]]; then
+            declare -f log_error &>/dev/null && log_error "state_write_atomic: permission denied on $file_path"
+            return 2
+        fi
+
+        declare -f log_error &>/dev/null && log_error "state_write_atomic: atomic rename failed (error $mv_err)"
+        return 1
+    fi
+
+    state_sync_path_if_enabled "$target_dir"
+
+    return 0
+}
+
+state_durable_sync_enabled() {
+    case "${ACFS_STATE_DURABLE_SYNC:-false}" in
+        true|TRUE|1|yes|YES)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+state_sync_path_if_enabled() {
+    local path="${1:-}"
+    [[ -n "$path" ]] || return 0
+    state_durable_sync_enabled || return 0
+
+    command -v python3 &>/dev/null || return 0
+    python3 - "$path" <<'PY' 2>/dev/null || true
+import os
+import sys
+
+path = sys.argv[1]
+flags = os.O_RDONLY
+if os.path.isdir(path) and hasattr(os, "O_DIRECTORY"):
+    flags |= os.O_DIRECTORY
+
+try:
+    fd = os.open(path, flags)
+except OSError:
+    sys.exit(0)
+
+try:
+    os.fsync(fd)
+finally:
+    os.close(fd)
+PY
+}
+
+# ============================================================
+# Locking
+# ============================================================
+
+# Acquire a lock for the state file using flock (FD 200).
+# This replaces the former mkdir-based lock which had no PID tracking
+# and could leave stale lock directories after crashes.
+# The descriptor and nesting depth belong to the Bash process that acquired it.
+#
+# Usage: _state_acquire_lock
+# Returns: 0 on success, 1 on timeout/failure
+_state_acquire_lock() {
+    # A fork inherits both the descriptor and the bookkeeping, but is not a
+    # nested caller. Close only its copy: flock -u would unlock the parent's
+    # shared open-file description. BASHPID changes in subshells; $$ does not.
+    if [[ "${_ACFS_STATE_LOCK_OWNER_PID:-}" != "$BASHPID" ]]; then
+        _state_close_lock_fd
+    fi
+
+    local state_file
+    state_file="$(state_get_file)" || return 1
+    local lock_file="${state_file}.lock"
+
+    # If already locked by this process, track nested callers so an inner
+    # state_save cannot release the outer caller's lock early.
+    if [[ "${_ACFS_STATE_LOCKED:-}" == "true" ]]; then
+        [[ "${_ACFS_STATE_LOCK_FILE:-}" == "$lock_file" ]] || return 1
+        _ACFS_STATE_LOCK_DEPTH=$(( ${_ACFS_STATE_LOCK_DEPTH:-1} + 1 ))
+        return 0
+    fi
+
+    # Ensure parent directory exists
+    if ! mkdir -p "$(dirname "$state_file")" 2>/dev/null; then
+        # If we can't create the directory, warn but don't fail
+        # State operations will fail later with clearer errors
+        return 1
+    fi
+
+    # Every outer acquisition starts with a fresh open-file description.
+    _state_close_lock_fd
+
+    # Open lock file on FD 200.
+    # Using >> to avoid truncating while opening for locking
+    # Fallback FD is 195, NOT 199: install.sh holds its install lock on FD
+    # 199 (fallback 198) for its whole run, and ubuntu_upgrade.sh uses
+    # 197/196. Reopening 199 here would silently drop the install lock.
+    if [[ -z "${ACFS_LOCK_FD:-}" ]]; then
+        if (exec 200>>"$lock_file") 2>/dev/null; then
+            exec 200>>"$lock_file"
+            ACFS_LOCK_FD=200
+        elif (exec 195>>"$lock_file") 2>/dev/null; then
+            exec 195>>"$lock_file"
+            ACFS_LOCK_FD=195
+        else
+            # Lock acquisition not possible, return failure
+            return 1
+        fi
+    fi
+
+    [[ -n "${ACFS_LOCK_FD:-}" ]] || return 1
+    _ACFS_STATE_LOCK_OWNER_PID="$BASHPID"
+
+    local lock_timeout="${ACFS_STATE_LOCK_TIMEOUT:-30}"
+    if [[ ! "$lock_timeout" =~ ^[0-9]+$ ]] || [[ "$lock_timeout" -lt 1 ]]; then
+        lock_timeout=30
+    fi
+
+    # State writes can briefly queue behind durable atomic writes. Wait long
+    # enough to preserve resume metadata instead of dropping contended updates.
+    if ! flock -w "$lock_timeout" "${ACFS_LOCK_FD}" 2>/dev/null; then
+        _state_close_lock_fd
+        return 1
+    fi
+
+    _ACFS_STATE_LOCKED=true
+    _ACFS_STATE_LOCK_DEPTH=1
+    _ACFS_STATE_LOCK_FILE="$lock_file"
+    return 0
+}
+
+_state_close_lock_fd() {
+    case "${ACFS_LOCK_FD:-}" in
+        195)
+            { exec 195>&-; } 2>/dev/null || true
+            ;;
+        200)
+            { exec 200>&-; } 2>/dev/null || true
+            ;;
+    esac
+    unset ACFS_LOCK_FD
+    _ACFS_STATE_LOCK_FILE=""
+    _ACFS_STATE_LOCK_OWNER_PID=""
+    _ACFS_STATE_LOCKED=false
+    _ACFS_STATE_LOCK_DEPTH=0
+}
+
+# Release the lock
+# Usage: _state_release_lock
+_state_release_lock() {
+    # A child may discard its inherited copy, but only the acquiring process
+    # may unlock the shared open-file description or consume nested depth.
+    if [[ "${_ACFS_STATE_LOCK_OWNER_PID:-}" != "$BASHPID" ||
+        "${_ACFS_STATE_LOCKED:-}" != true ]]; then
+        _state_close_lock_fd
+        return 0
+    fi
+
+    local lock_depth="${_ACFS_STATE_LOCK_DEPTH:-0}"
+    if [[ "$lock_depth" -gt 1 ]]; then
+        _ACFS_STATE_LOCK_DEPTH=$(( lock_depth - 1 ))
+        return 0
+    fi
+
+    case "${ACFS_LOCK_FD:-}" in
+        195|200) flock -u "$ACFS_LOCK_FD" 2>/dev/null || true ;;
+    esac
+    _state_close_lock_fd
+}
+
+# Mark state as interrupted by a signal (SIGTERM, SIGINT, SIGHUP).
+# Preserve the active phase and step as unfinished work before clearing the
+# live cursor. A signal must never leave an older completion flag authoritative.
+#
+# Usage: state_mark_interrupted
+# Returns: 0 on success, 1 if state file does not exist
+state_mark_interrupted() {
+    local state_file
+    state_file="$(state_get_file)"
+
+    [[ -f "$state_file" ]] || return 1
+
+    # Best-effort: do not let jq absence block signal handling
+    command -v jq &>/dev/null || return 0
+
+    _state_update_with_jq '
+        (.current_phase // "") as $phase |
+        (.current_step // "") as $step |
+        if $phase != "" then
+            .completed_phases = ((.completed_phases // []) | map(select(. != $phase))) |
+            .partial_phases = ((.partial_phases // []) + [$phase] | unique) |
+            if $step != "" and .phase_steps[$phase][$step].status == "running" then
+                .phase_steps[$phase][$step].status = "failed" |
+                .phase_steps[$phase][$step].error = "Installation interrupted" |
+                .phase_steps[$phase][$step].updated_at = (now | todate) |
+                if .phase_steps[$phase][$step].required != false then
+                    .failed_phase = $phase |
+                    .failed_step = $step |
+                    .failed_error = "Installation interrupted"
+                else . end
+            else . end
+        else . end |
+        .current_phase = null |
+        .current_step  = null |
+        .interrupted   = true |
+        .last_updated  = (now | todate)
+    '
+}
+
+# Load existing state file
+# Usage: state_load
+# Outputs: JSON content to stdout
+# Returns: 0 on success, 1 if file doesn't exist or is invalid
+state_load() {
+    local state_file
+    state_file="$(state_get_file)"
+
+    if [[ ! -f "$state_file" ]]; then
+        return 1
+    fi
+
+    # Read and validate JSON
+    local content
+    if ! content=$(cat "$state_file" 2>/dev/null); then
+        return 1
+    fi
+
+    # Basic JSON validation
+    if command -v jq &>/dev/null; then
+        # Early #474 releases stored partial_phases as an object with failure
+        # arrays. Import those records before any query or mutation; merely
+        # retrying must not discard their required failures.
+        if ! content=$(printf '%s' "$content" | jq '
+            if (.partial_phases | type) == "object" then
+                .partial_phases as $legacy |
+                reduce ($legacy | to_entries[]) as $phase (.;
+                    reduce ($phase.value.failures // [])[] as $failure (.;
+                        ($failure.step // "Execution failed") as $step |
+                        if .phase_steps[$phase.key][$step] == null then
+                            .phase_steps[$phase.key][$step] = {
+                                status: "failed", required: true,
+                                attempt: (.phase_attempts[$phase.key] // 0),
+                                error: ($failure.error // "Previous phase failure")
+                            }
+                        else . end
+                    )
+                ) |
+                .partial_phases = ($legacy | keys)
+            else . end
+        ' 2>/dev/null); then
+            return 1
+        fi
+    else
+        # Trim leading/trailing whitespace and ensure it looks like JSON object
+        local trimmed
+        trimmed="$(printf '%s' "$content" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+        if [[ -z "$trimmed" ]] || [[ "${trimmed:0:1}" != "{" ]] || [[ "${trimmed: -1}" != "}" ]]; then
+            return 1
+        fi
+    fi
+
+    echo "$content"
+}
+
+# Get a value from state using jq
+# Usage: state_get <key>
+# Example: state_get ".current_phase"
+# Returns: 0 and prints value, or 1 if not found
+state_get() {
+    local key="$1"
+    local state
+
+    if ! state=$(state_load); then
+        return 1
+    fi
+
+    # Use jq if available, fallback to grep-based extraction
+    if command -v jq &>/dev/null; then
+        echo "$state" | jq -r "$key // empty"
+    else
+        # Basic fallback for simple keys (no nested paths)
+        # This is a simplified parser - prefer having jq installed
+        # Uses sed instead of grep -oP for POSIX compatibility (macOS, BSD)
+        # The state file is jq-pretty-printed (arrays span lines), so flatten
+        # before matching. Array values are returned as one-line JSON with the
+        # element quotes intact so callers can test membership against the
+        # exact quoted element; scalar values are returned unquoted.
+        local simple_key="${key#.}"
+        local flat array_value
+        flat="$(printf '%s' "$state" | tr '\n\t' '  ')"
+        array_value="$(printf '%s' "$flat" | sed -n "s/.*\"${simple_key}\"[[:space:]]*:[[:space:]]*\(\[[^]]*\]\).*/\1/p")"
+        if [[ -n "$array_value" ]]; then
+            printf '%s\n' "$array_value"
+        else
+            printf '%s' "$flat" | sed -n "s/.*\"${simple_key}\"[[:space:]]*:[[:space:]]*\([^,}]*\).*/\1/p" | tr -d '"' | head -1
+        fi
+    fi
+}
+
+# ============================================================
+# Convenience Functions for install.sh Integration
+# ============================================================
+# NOTE: Keep a single canonical copy of these helpers in this file.
+# Duplicate function definitions later in the file will override earlier ones.
+
+# Initialize state for a new or resumed installation
+# Usage: init_installation_state
+# Returns: 0 on success, 1 if state is corrupted/incompatible
+init_installation_state() {
+    local state_file
+    state_file="$(state_get_file)"
+
+    # Check for existing state
+    if [[ -f "$state_file" ]]; then
+        state_check_version
+        local check_result=$?
+
+        case $check_result in
+            0)
+                # State is current version, load it
+                return 0
+                ;;
+            2)
+                # Legacy v1 state - needs migration decision
+                return 2
+                ;;
+            *)
+                # Corrupted or unknown - needs fresh start
+                return 1
+                ;;
+        esac
+    fi
+
+    # No state file - initialize fresh
+    state_init
+}
+
+# Check if we're resuming a previous installation
+# Usage: is_resume_installation
+# Returns: 0 if resuming, 1 if fresh install
+is_resume_installation() {
+    local state_file
+    state_file="$(state_get_file)"
+
+    if [[ ! -f "$state_file" ]]; then
+        return 1
+    fi
+
+    # Check if any phases are completed
+    if command -v jq &>/dev/null; then
+        local state
+        if state=$(state_load 2>/dev/null); then
+            local completed_count
+            completed_count=$(echo "$state" | jq -r '.completed_phases | length')
+            [[ "$completed_count" -gt 0 ]]
+            return $?
+        fi
+    fi
+
+    return 1
+}
+
+# Get the total number of phases
+get_total_phases() {
+    echo "${#ACFS_PHASE_IDS[@]}"
+}
+
+# Get the count of completed phases
+get_completed_phase_count() {
+    if ! command -v jq &>/dev/null; then
+        echo "0"
+        return
+    fi
+
+    local state
+    if state=$(state_load 2>/dev/null); then
+        echo "$state" | jq -r '.completed_phases | length'
+    else
+        echo "0"
+    fi
+}
+
+# Get the next phase that needs to run
+# Usage: get_next_pending_phase
+# Outputs: Phase ID or empty if all complete
+get_next_pending_phase() {
+    for phase_id in "${ACFS_PHASE_IDS[@]}"; do
+        if ! state_should_skip_phase "$phase_id"; then
+            echo "$phase_id"
+            return 0
+        fi
+    done
+    echo ""
+}
+
+# ============================================================
+# Resume Confirmation (bead 4xi)
+# ============================================================
+# When ACFS detects a previous incomplete installation, this function
+# determines whether to resume, start fresh, or abort.
+#
+# Design Decision: Silent Resume by Default
+# ------------------------------------------
+# Users who run ./install.sh on a partially-installed system generally
+# WANT to resume. Forcing an interactive prompt every time creates friction,
+# especially for agentic workflows that run non-interactively.
+#
+# Behavior:
+#   - Default (no flags, no TTY): Silent resume with status message
+#   - --resume flag: Explicit resume intent, no prompt
+#   - --force-reinstall flag: Fresh install, wipe state
+#   - --interactive flag + TTY: Show prompt for user choice
+#
+# CLI Flags (set these before calling confirm_resume):
+#   ACFS_FORCE_RESUME=true      - Force resume without prompts
+#   ACFS_FORCE_REINSTALL=true   - Force fresh install
+#   ACFS_INTERACTIVE=true       - Enable interactive prompts
+# ============================================================
+
+# Confirm whether to resume a previous installation
+#
+# Usage: confirm_resume
+#
+# Returns:
+#   0 - Resume (continue from last completed phase)
+#   1 - Fresh install (wipe state and start over)
+#   2 - User chose to abort (exit installation successfully)
+#   3 - State preparation failed (stop installation with an error)
+#
+# Side effects:
+#   - May move state file to a timestamped backup if fresh install chosen
+#   - Prints status messages to stderr
+#
+# Related: agentic_coding_flywheel_setup-4xi
+confirm_resume() {
+    local state_file
+    if ! state_file="$(state_get_file)"; then
+        _confirm_resume_log_warn "Cannot resolve the installation checkpoint. Refusing to resume."
+        return 3
+    fi
+    # Recovery may already have moved this same checkpoint aside. Keep its
+    # captured scope until state_init writes the replacement; never reuse a
+    # different target's captured selection.
+    if [[ "${_ACFS_STATE_REINSTALL_SELECTION_FILE:-}" != "$state_file" ]]; then
+        _ACFS_STATE_REINSTALL_SELECTION_MODE=""
+        _ACFS_STATE_REINSTALL_SELECTION_FILE=""
+        _ACFS_STATE_REINSTALL_MODULES=()
+        _ACFS_STATE_REINSTALL_REQUESTED_MODULES=()
+    fi
+    if ! state_load_module_selection "$state_file"; then
+        _confirm_resume_log_warn "Cannot read the saved module selection. Refusing to reset or resume."
+        return 3
+    fi
+
+    # If no state file, nothing to resume - proceed with fresh install
+    if [[ ! -f "$state_file" ]]; then
+        return 1
+    fi
+
+    # --force-reinstall and the interactive fresh option reset progress, not
+    # the tools already entrusted to ACFS. Capture intent before any path can
+    # back up the checkpoint, including recovery of its outer state fields.
+    _ACFS_STATE_REINSTALL_SELECTION_MODE="$ACFS_STATE_SELECTION_MODE"
+    _ACFS_STATE_REINSTALL_SELECTION_FILE="$state_file"
+    _ACFS_STATE_REINSTALL_MODULES=("${ACFS_STATE_SELECTED_MODULES[@]}")
+    _ACFS_STATE_REINSTALL_REQUESTED_MODULES=("${ACFS_STATE_REQUESTED_MODULES[@]}")
+
+    # Load state to extract resume info
+    local state
+    if ! state=$(state_load 2>/dev/null); then
+        # State file exists but can't be loaded (corrupted?)
+        _confirm_resume_log_warn "State file exists but is unreadable. Starting fresh."
+        if ! state_backup_and_remove; then
+            _confirm_resume_log_warn "Failed to move unreadable state file out of the way. Aborting."
+            return 3
+        fi
+        return 1
+    fi
+
+    # Extract all resume info in a single jq call (5→1 subprocess spawns)
+    # Note: Uses ASCII Unit Separator (0x1f) as delimiter since bash strips null bytes
+    local completed_count=0 last_phase="" started_at="" failed_phase="" mode=""
+    if command -v jq &>/dev/null; then
+        local extracted
+        if ! extracted=$(echo "$state" | jq -r '
+            [
+                (.completed_phases | length | tostring),
+                (.completed_phases[-1] // "unknown"),
+                (.started_at // "unknown"),
+                (.failed_phase // ""),
+                (.mode // "unknown")
+            ] | join("\u001f")
+        '); then
+            _confirm_resume_log_warn "Cannot read the installation checkpoint. Refusing to resume."
+            return 3
+        fi
+        IFS=$'\x1f' read -r completed_count last_phase started_at failed_phase mode <<< "$extracted"
+    fi
+
+    # Handle explicit CLI flags first (these override everything)
+    if [[ "${ACFS_FORCE_REINSTALL:-}" == "true" ]]; then
+        _confirm_resume_log_info "Force reinstall requested. Wiping state..."
+        if ! state_backup_and_remove; then
+            _confirm_resume_log_warn "Failed to move state file out of the way. Aborting."
+            return 3
+        fi
+        return 1
+    fi
+
+    local force_resume_requested=false
+    if [[ "${ACFS_FORCE_RESUME:-}" == "true" ]]; then
+        force_resume_requested=true
+    fi
+
+    # If nothing completed and no failed phase recorded, there is no meaningful resume point.
+    if [[ "$force_resume_requested" != "true" ]] && [[ "$completed_count" -eq 0 ]] && [[ -z "$failed_phase" || "$failed_phase" == "null" ]]; then
+        return 1
+    fi
+
+    local last_phase_name="${ACFS_PHASE_NAMES[$last_phase]:-$last_phase}"
+    if [[ "$completed_count" -eq 0 && -n "$failed_phase" && "$failed_phase" != "null" ]]; then
+        last_phase_name="${ACFS_PHASE_NAMES[$failed_phase]:-$failed_phase}"
+    fi
+    local total_phases="${#ACFS_PHASE_IDS[@]}"
+
+    local resume_version=""
+    local state_version=""
+    local refresh_source=false
+    local state_source=""
+    if command -v jq &>/dev/null; then
+        if ! state_version=$(echo "$state" | jq -r '.version // "unknown"'); then
+            _confirm_resume_log_warn "Cannot read the checkpoint version. Refusing to resume."
+            return 3
+        fi
+    fi
+    if [[ -n "$_ACFS_STATE_SOURCE_LEDGER_SHA256" ]]; then
+        if ! state_source=$(printf '%s' "$state" | jq -r '
+            .source_ledger_sha256 |
+            if . == null then ""
+            elif type == "string" and test("^[0-9a-f]{64}$") then .
+            else error("invalid installer source identity") end
+        '); then
+            _confirm_resume_log_warn "Cannot read the checkpoint source identity. Refusing to resume."
+            return 3
+        fi
+        if [[ "$state_source" != "$_ACFS_STATE_SOURCE_LEDGER_SHA256" ]]; then
+            refresh_source=true
+            if [[ -n "$state_source" ]]; then
+                _confirm_resume_log_info "Verified installer source changed since finalization."
+            else
+                _confirm_resume_log_info "Previous finalization has no verified source identity."
+            fi
+        fi
+    fi
+    if [[ -n "${ACFS_VERSION:-}" && -n "$state_version" && "$state_version" != "unknown" ]]; then
+        if [[ "$ACFS_VERSION" != "$state_version" ]] && command -v jq &>/dev/null; then
+            _confirm_resume_log_warn "Version mismatch: state=$state_version, running=$ACFS_VERSION"
+            resume_version="$ACFS_VERSION"
+        fi
+    fi
+    if [[ -n "$resume_version" || "$refresh_source" == "true" ]]; then
+        _confirm_resume_log_info "Finalize will be re-run on resume to deploy updated scripts"
+        # This snapshot is only for the prompt. Commit invalidation against
+        # freshly locked state after the user chooses to resume. Source
+        # identity changes only when finalization actually succeeds.
+        if ! state=$(printf '%s' "$state" | jq --arg ver "$resume_version" '
+            .completed_phases = (.completed_phases | map(select(. != "finalize"))) |
+            if $ver != "" then .version = $ver else . end
+        '); then
+            _confirm_resume_log_warn "Cannot prepare the checkpoint source/version update. Refusing to resume."
+            return 3
+        fi
+
+        if ! extracted=$(echo "$state" | jq -r '
+            [
+                (.completed_phases | length | tostring),
+                (.completed_phases[-1] // "unknown"),
+                (.started_at // "unknown"),
+                (.failed_phase // ""),
+                (.mode // "unknown")
+            ] | join("\u001f")
+        '); then
+            _confirm_resume_log_warn "Cannot read the updated checkpoint. Refusing to resume."
+            return 3
+        fi
+        IFS=$'\x1f' read -r completed_count last_phase started_at failed_phase mode <<< "$extracted"
+
+        last_phase_name="${ACFS_PHASE_NAMES[$last_phase]:-$last_phase}"
+        if [[ "$completed_count" -eq 0 && -n "$failed_phase" && "$failed_phase" != "null" ]]; then
+            last_phase_name="${ACFS_PHASE_NAMES[$failed_phase]:-$failed_phase}"
+        fi
+    fi
+
+    if [[ "$force_resume_requested" == "true" ]]; then
+        local forced_resume_phase="$last_phase_name"
+        if [[ -z "$forced_resume_phase" || "$forced_resume_phase" == "unknown" ]]; then
+            forced_resume_phase="the beginning"
+        fi
+        _confirm_resume_commit_identity "$resume_version" "$refresh_source" || return 3
+        _confirm_resume_log_info "Force resume requested."
+        _confirm_resume_log_info "Resuming installation from: $forced_resume_phase"
+        _confirm_resume_log_info "Progress: $completed_count/$total_phases phases completed"
+        return 0
+    fi
+
+    # Default behavior: silent resume with status
+    # Show clear status so user knows what's happening
+    echo "" >&2
+    _confirm_resume_log_info "Previous installation detected"
+    _confirm_resume_log_info "  Started: $started_at"
+    _confirm_resume_log_info "  Mode: $mode"
+    _confirm_resume_log_info "  Progress: $completed_count/$total_phases phases"
+    _confirm_resume_log_info "  Last completed: $last_phase_name"
+
+    if [[ -n "$failed_phase" && "$failed_phase" != "null" ]]; then
+        local failed_name="${ACFS_PHASE_NAMES[$failed_phase]:-$failed_phase}"
+        _confirm_resume_log_warn "  Previous failure at: $failed_name"
+    fi
+
+    # Only prompt if --interactive was requested and we have a controlling TTY.
+    if [[ "${ACFS_INTERACTIVE:-}" == "true" ]] && (exec 3<>/dev/tty) 2>/dev/null; then
+        echo "" >&2
+        echo "Options:" >&2
+        echo "  [R] Resume from $last_phase_name (default)" >&2
+        echo "  [F] Fresh install (wipe state)" >&2
+        echo "  [A] Abort" >&2
+        echo "" >&2
+
+        local choice
+        if [[ "${HAS_GUM:-false}" == "true" ]] && command -v gum &>/dev/null; then
+            # Use gum for nicer selection (render UI to the controlling TTY; capture selection on stdout).
+            choice=$(gum choose "Resume" "Fresh install" "Abort" < /dev/tty 2> /dev/tty) || choice="Resume"
+            case "$choice" in
+                "Fresh install")
+                    _confirm_resume_log_info "Starting fresh install..."
+                    if ! state_backup_and_remove; then
+                        _confirm_resume_log_warn "Failed to move state file out of the way. Aborting."
+                        return 3
+                    fi
+                    return 1
+                    ;;
+                "Abort")
+                    _confirm_resume_log_info "Installation aborted."
+                    return 2
+                    ;;
+                *)
+                    _confirm_resume_commit_identity "$resume_version" "$refresh_source" || return 3
+                    _confirm_resume_log_info "Resuming installation..."
+                    return 0
+                    ;;
+            esac
+        else
+            # Fallback to read prompt
+            if [[ -t 0 ]]; then
+                read -r -p "Choice [R/f/a]: " choice < /dev/tty
+            else
+                read -r -p "Choice [R/f/a]: " choice < /dev/tty
+            fi
+            case "${choice,,}" in
+                f|fresh)
+                    _confirm_resume_log_info "Starting fresh install..."
+                    if ! state_backup_and_remove; then
+                        _confirm_resume_log_warn "Failed to move state file out of the way. Aborting."
+                        return 3
+                    fi
+                    return 1
+                    ;;
+                a|abort)
+                    _confirm_resume_log_info "Installation aborted."
+                    return 2
+                    ;;
+                *)
+                    _confirm_resume_commit_identity "$resume_version" "$refresh_source" || return 3
+                    _confirm_resume_log_info "Resuming installation..."
+                    return 0
+                    ;;
+            esac
+        fi
+    fi
+
+    # Non-interactive: silent resume (default behavior)
+    echo "" >&2
+    _confirm_resume_commit_identity "$resume_version" "$refresh_source" || return 3
+    _confirm_resume_log_info "Resuming installation (use --force-reinstall for fresh start)"
+    echo "" >&2
+    return 0
+}
+
+# Persist the required source/version transition before accepting a resume. Updating
+# the live document under the state lock preserves progress/failure records
+# written while an interactive prompt was open. A failed write must not leave
+# the caller using an old completed-finalize flag as evidence of current assets.
+_confirm_resume_commit_identity() {
+    local version="${1:-}"
+    local refresh_source="${2:-false}"
+    [[ -n "$version" || "$refresh_source" == "true" ]] || return 0
+
+    if ! state_update_with_args '
+        .completed_phases = (.completed_phases | map(select(. != "finalize"))) |
+        if $ver != "" then .version = $ver else . end
+    ' --arg ver "$version"; then
+        _confirm_resume_log_warn "Cannot save the updated installation checkpoint. Refusing to resume."
+        return 3
+    fi
+    return 0
+}
+
+# Helper: Log info message for confirm_resume
+_confirm_resume_log_info() {
+    local msg="$1"
+    if [[ "${HAS_GUM:-false}" == "true" ]] && command -v gum &>/dev/null; then
+        gum style --foreground "#89b4fa" "$msg" >&2
+    else
+        echo -e "${_STATE_BLUE}$msg${_STATE_NC}" >&2
+    fi
+}
+
+# Helper: Log warning message for confirm_resume
+_confirm_resume_log_warn() {
+    local msg="$1"
+    if [[ "${HAS_GUM:-false}" == "true" ]] && command -v gum &>/dev/null; then
+        gum style --foreground "#f9e2af" "$msg" >&2
+    else
+        echo -e "${_STATE_YELLOW}$msg${_STATE_NC}" >&2
+    fi
+}
+
+# Parse CLI flags and set resume/reinstall globals
+# Usage: parse_resume_flags "$@"
+# Sets: ACFS_FORCE_RESUME, ACFS_FORCE_REINSTALL, ACFS_INTERACTIVE
+#
+# Flags recognized:
+#   --resume           Force resume without prompts
+#   --force-reinstall  Force fresh install, wipe state
+#   --interactive      Enable interactive prompts
+parse_resume_flags() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --resume)
+                export ACFS_FORCE_RESUME=true
+                ;;
+            --force-reinstall)
+                export ACFS_FORCE_REINSTALL=true
+                ;;
+            --interactive)
+                export ACFS_INTERACTIVE=true
+                ;;
+        esac
+        shift
+    done
+}
+
+# ============================================================
+# Ubuntu Upgrade State Tracking
+# ============================================================
+# These functions track multi-reboot Ubuntu upgrade progress.
+# The upgrade state is stored in a separate section of state.json
+# to keep it isolated from installation phase state.
+#
+# Schema v3 adds the ubuntu_upgrade section:
+# {
+#   "ubuntu_upgrade": {
+#     "enabled": true,
+#     "started_at": "2025-01-15T10:00:00Z",
+#     "original_version": "22.04",
+#     "target_version": "26.04",
+#     "upgrade_path": ["24.04", "26.04"],
+#     "current_stage": "upgrading",
+#     "completed_upgrades": [
+#       {"from": "22.04", "to": "24.04", "completed_at": "..."}
+#     ],
+#     "current_upgrade": {"from": "24.04", "to": "26.04", "started_at": "..."},
+#     "needs_reboot": false,
+#     "resume_after_reboot": true,
+#     "last_error": null
+#   }
+# }
+#
+# Related beads: agentic_coding_flywheel_setup-2yd
+# ============================================================
+
+# Initialize upgrade state when starting an upgrade sequence
+# Usage: state_upgrade_init <original_version> <target_version> <upgrade_path_json>
+# Example: state_upgrade_init "22.04" "26.04" '["24.04", "26.04"]'
+state_upgrade_init() {
+    local original_version="$1"
+    local target_version="$2"
+    local upgrade_path="$3"  # JSON array string
+
+    if ! command -v jq &>/dev/null; then
+        echo "Error: jq is required for state_upgrade_init" >&2
+        return 1
+    fi
+
+    local now
+    now="$(date -Iseconds)"
+
+    _state_update_with_jq \
+        '
+        .ubuntu_upgrade = {
+            "enabled": true,
+            "started_at": $now,
+            "original_version": $orig,
+            "target_version": $target,
+            "upgrade_path": $path,
+            "current_stage": "initializing",
+            "completed_upgrades": [],
+            "current_upgrade": null,
+            "needs_reboot": false,
+            "resume_after_reboot": false,
+            "last_error": null
+        }
+        ' \
+        --arg now "$now" \
+        --arg orig "$original_version" \
+        --arg target "$target_version" \
+        --argjson path "$upgrade_path"
+}
+
+# Mark current upgrade step as starting
+# Usage: state_upgrade_start <from_version> <to_version>
+state_upgrade_start() {
+    local from_version="$1"
+    local to_version="$2"
+
+    if ! command -v jq &>/dev/null; then
+        return 1
+    fi
+
+    local now
+    now="$(date -Iseconds)"
+
+    _state_update_with_jq \
+        '
+        .ubuntu_upgrade.current_stage = "upgrading" |
+        .ubuntu_upgrade.current_upgrade = {
+            "from": $from,
+            "to": $to,
+            "started_at": $now
+        }
+        ' \
+        --arg now "$now" \
+        --arg from "$from_version" \
+        --arg to "$to_version"
+}
+
+# Mark current upgrade step as completed
+# Usage: state_upgrade_complete <to_version>
+state_upgrade_complete() {
+    local to_version="$1"
+
+    if ! command -v jq &>/dev/null; then
+        return 1
+    fi
+
+    local now
+    now="$(date -Iseconds)"
+
+    _state_update_with_jq \
+        '
+        (.ubuntu_upgrade.current_upgrade.from // "") as $from |
+        .ubuntu_upgrade.completed_upgrades = ((.ubuntu_upgrade.completed_upgrades // []) + [{
+            "from": $from,
+            "to": $to,
+            "completed_at": $now
+        }]) |
+        .ubuntu_upgrade.current_upgrade = null |
+        .ubuntu_upgrade.current_stage = "step_complete"
+        ' \
+        --arg now "$now" \
+        --arg to "$to_version"
+}
+
+# Mark that system needs reboot before continuing
+# Usage: state_upgrade_needs_reboot
+state_upgrade_needs_reboot() {
+    if ! command -v jq &>/dev/null; then
+        return 1
+    fi
+
+    state_update "
+        .ubuntu_upgrade.needs_reboot = true |
+        .ubuntu_upgrade.resume_after_reboot = true |
+        .ubuntu_upgrade.current_stage = \"awaiting_reboot\"
+    "
+}
+
+# Clear reboot flags after successful resume
+# Usage: state_upgrade_resumed
+state_upgrade_resumed() {
+    if ! command -v jq &>/dev/null; then
+        return 1
+    fi
+
+    state_update "
+        .ubuntu_upgrade.needs_reboot = false |
+        .ubuntu_upgrade.resume_after_reboot = false |
+        .ubuntu_upgrade.current_stage = \"resumed\"
+    "
+}
+
+# Check if upgrade sequence is complete
+# Usage: state_upgrade_is_complete
+# Returns: 0 if complete, 1 if not complete or not upgrading
+state_upgrade_is_complete() {
+    if ! command -v jq &>/dev/null; then
+        return 1
+    fi
+
+    local state
+    state=$(state_load) || return 1
+
+    # Check if ubuntu_upgrade section exists and is enabled
+    local enabled
+    enabled=$(echo "$state" | jq -r '.ubuntu_upgrade.enabled // false')
+    if [[ "$enabled" != "true" ]]; then
+        return 1  # Not in upgrade mode
+    fi
+
+    # Check if current stage is completed
+    local stage
+    stage=$(echo "$state" | jq -r '.ubuntu_upgrade.current_stage // ""')
+    if [[ "$stage" == "completed" ]]; then
+        return 0
+    fi
+
+    # Check if all upgrades in path are completed
+    local path_count completed_count
+    path_count=$(echo "$state" | jq -r '.ubuntu_upgrade.upgrade_path | length')
+    completed_count=$(echo "$state" | jq -r '.ubuntu_upgrade.completed_upgrades | length')
+
+    if [[ "$completed_count" -ge "$path_count" ]]; then
+        return 0
+    fi
+
+    return 1
+}
+
+# Get current upgrade stage
+# Usage: state_upgrade_get_stage
+# Outputs: not_started | initializing | upgrading | awaiting_reboot | resumed | step_complete | completed | error
+state_upgrade_get_stage() {
+    if ! command -v jq &>/dev/null; then
+        echo "not_started"
+        return 0
+    fi
+
+    local state
+    if ! state=$(state_load 2>/dev/null); then
+        echo "not_started"
+        return 0
+    fi
+
+    local enabled
+    enabled=$(echo "$state" | jq -r '.ubuntu_upgrade.enabled // false')
+    if [[ "$enabled" != "true" ]]; then
+        echo "not_started"
+        return 0
+    fi
+
+    local stage
+    stage=$(echo "$state" | jq -r '.ubuntu_upgrade.current_stage // "not_started"')
+    echo "$stage"
+}
+
+# Record an error during upgrade
+# Usage: state_upgrade_set_error <error_message>
+state_upgrade_set_error() {
+    local error_msg="$1"
+
+    if ! command -v jq &>/dev/null; then
+        return 1
+    fi
+
+    _state_update_with_jq \
+        '
+        .ubuntu_upgrade.last_error = $err |
+        .ubuntu_upgrade.current_stage = "error"
+        ' \
+        --arg err "$error_msg"
+}
+
+# Mark upgrade sequence as fully completed
+# Usage: state_upgrade_mark_complete
+state_upgrade_mark_complete() {
+    if ! command -v jq &>/dev/null; then
+        return 1
+    fi
+
+    local now
+    now="$(date -Iseconds)"
+
+    _state_update_with_jq \
+        '
+        .ubuntu_upgrade.current_stage = "completed" |
+        .ubuntu_upgrade.completed_at = $now |
+        .ubuntu_upgrade.needs_reboot = false |
+        .ubuntu_upgrade.resume_after_reboot = false |
+        .ubuntu_upgrade.current_upgrade = null
+        ' \
+        --arg now "$now"
+}
+
+# Clean up upgrade state after completion
+# Usage: state_upgrade_cleanup
+# This removes the ubuntu_upgrade section entirely
+state_upgrade_cleanup() {
+    if ! command -v jq &>/dev/null; then
+        return 1
+    fi
+
+    state_update "del(.ubuntu_upgrade)"
+}
+
+# Check if we're in the middle of an upgrade
+# Usage: state_upgrade_in_progress
+# Returns: 0 if upgrade is in progress, 1 if not
+state_upgrade_in_progress() {
+    local stage
+    stage=$(state_upgrade_get_stage)
+
+    case "$stage" in
+        initializing|upgrading|awaiting_reboot|resumed|step_complete)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+# Get the next version to upgrade to
+# Usage: state_upgrade_get_next_version
+# Outputs: next version string or empty if no more upgrades
+state_upgrade_get_next_version() {
+    if ! command -v jq &>/dev/null; then
+        return 1
+    fi
+
+    local state
+    state=$(state_load) || return 1
+
+    local completed_count
+    completed_count=$(echo "$state" | jq -r '.ubuntu_upgrade.completed_upgrades | length')
+
+    # Get the next item in upgrade_path based on completed count
+    echo "$state" | jq -r ".ubuntu_upgrade.upgrade_path[$completed_count] // empty"
+}
+
+# Get upgrade progress summary
+# Usage: state_upgrade_get_progress
+# Outputs: JSON object with progress info
+state_upgrade_get_progress() {
+    if ! command -v jq &>/dev/null; then
+        echo '{"error": "jq required"}'
+        return 1
+    fi
+
+    local state
+    if ! state=$(state_load 2>/dev/null); then
+        echo '{"error": "no state"}'
+        return 1
+    fi
+
+    echo "$state" | jq '
+        {
+            enabled: (.ubuntu_upgrade.enabled // false),
+            stage: (.ubuntu_upgrade.current_stage // "not_started"),
+            original: (.ubuntu_upgrade.original_version // null),
+            target: (.ubuntu_upgrade.target_version // null),
+            completed_count: ((.ubuntu_upgrade.completed_upgrades // []) | length),
+            total_count: ((.ubuntu_upgrade.upgrade_path // []) | length),
+            needs_reboot: (.ubuntu_upgrade.needs_reboot // false),
+            last_error: (.ubuntu_upgrade.last_error // null)
+        }
+    '
+}
+
+# Print upgrade status for user display
+# Usage: state_upgrade_print_status
+# Optimized: Single jq call extracts all fields (was 11 subprocess spawns, now 1)
+state_upgrade_print_status() {
+    if ! command -v jq &>/dev/null; then
+        echo "Upgrade status unavailable (jq required)"
+        return 1
+    fi
+
+    local state
+    if ! state=$(state_load 2>/dev/null); then
+        echo "No upgrade in progress"
+        return 0
+    fi
+
+    # Extract all fields in a single jq call (11→1 subprocess spawns)
+    # Note: Uses ASCII Unit Separator (0x1f) as delimiter since bash strips null bytes
+    # Uses ASCII Record Separator (0x1e) for internal list items to prevent breaking read.
+    local extracted
+    extracted=$(echo "$state" | jq -r '
+        .ubuntu_upgrade as $u |
+        [
+            ($u.enabled // false | tostring),
+            ($u.original_version // ""),
+            ($u.target_version // ""),
+            ($u.current_stage // ""),
+            ($u.completed_upgrades | length | tostring),
+            ($u.upgrade_path | length | tostring),
+            ($u.completed_upgrades // [] | map("  ✓ \(.from) → \(.to)") | join("\u001e")),
+            ($u.current_upgrade.from // ""),
+            ($u.current_upgrade.to // ""),
+            ($u.last_error // "")
+        ] | join("\u001f")
+    ')
+
+    # Parse unit-separator-delimited fields
+    local enabled original target stage completed_count total_count completed_list current_from current_to error
+    IFS=$'\x1f' read -r enabled original target stage completed_count total_count completed_list current_from current_to error <<< "$extracted"
+
+    # Restore newlines in the completed list
+    completed_list="${completed_list//[$'\x1e']/$'\n'}"
+
+    if [[ "$enabled" != "true" ]]; then
+        echo "No upgrade in progress"
+        return 0
+    fi
+
+    echo "=== Ubuntu Upgrade Status ==="
+    echo "Original: $original → Target: $target"
+    echo "Progress: $completed_count/$total_count upgrades completed"
+    echo "Stage: $stage"
+
+    # Show completed upgrades
+    if [[ "$completed_count" -gt 0 ]] && [[ -n "$completed_list" ]]; then
+        echo ""
+        echo "Completed upgrades:"
+        echo "$completed_list"
+    fi
+
+    # Show current upgrade if any
+    if [[ -n "$current_from" ]]; then
+        echo ""
+        echo "Current upgrade: $current_from → $current_to"
+    fi
+
+    # Show error if any
+    if [[ -n "$error" ]]; then
+        echo ""
+        echo "Last error: $error"
+    fi
+}
+# Save/update the state file
+# Usage: state_save <json_content>
+# Returns: 0 on success, 1 on failure
+state_save() {
+    local content="$1"
+    local state_file
+    state_file="$(state_get_file)"
+
+    if ! _state_acquire_lock; then
+        declare -f log_error &>/dev/null && log_error "state_save: failed to acquire lock"
+        return 1
+    fi
+
+    local status=0
+    if ! state_write_atomic "$state_file" "$content"; then
+        declare -f log_error &>/dev/null && log_error "state_save: state_write_atomic failed"
+        status=1
+    fi
+
+    _state_release_lock
+    return $status
+}
+
+# Apply a jq mutation while holding the state lock across the full
+# read-modify-write cycle. Callers may pass jq arguments after the filter.
+_state_update_with_jq() {
+    local jq_expr="$1"
+    shift
+
+    if ! command -v jq &>/dev/null; then
+        echo "Error: jq is required for state_update" >&2
+        return 1
+    fi
+
+    if ! _state_acquire_lock; then
+        return 1
+    fi
+
+    local state_file
+    state_file="$(state_get_file)" || {
+        _state_release_lock
+        return 1
+    }
+
+    local state
+    if ! state=$(state_load); then
+        _state_release_lock
+        return 1
+    fi
+
+    local new_state
+    if ! new_state=$(printf '%s' "$state" | jq "$@" "$jq_expr"); then
+        _state_release_lock
+        return 1
+    fi
+
+    local status=0
+    if ! state_write_atomic "$state_file" "$new_state"; then
+        declare -f log_error &>/dev/null && log_error "state_update: state_write_atomic failed"
+        status=1
+    fi
+
+    _state_release_lock
+    return $status
+}
+
+# Update specific fields in state
+# Usage: state_update <jq_expression>
+# Example: state_update '.current_phase = "cli_tools"'
+# Returns: 0 on success, 1 on failure
+state_update() {
+    local jq_expr="$1"
+
+    _state_update_with_jq "$jq_expr"
+}
+
+# Update state with a jq expression plus jq arguments.
+# Usage: state_update_with_args <jq_expression> --arg key value [jq flags...]
+state_update_with_args() {
+    local jq_expr="$1"
+    shift
+
+    _state_update_with_jq "$jq_expr" "$@"
+}
+
+# Persist the current resume hint while preserving the normal atomic write and
+# ownership semantics used for the main state file.
+# Usage: state_set_resume_hint <resume_hint>
+# Returns: 0 on success, 1 on failure
+state_set_resume_hint() {
+    local resume_hint="${1-}"
+
+    if ! command -v jq &>/dev/null; then
+        return 1
+    fi
+
+    if ! _state_acquire_lock; then
+        return 1
+    fi
+
+    local state
+    if ! state=$(state_load); then
+        _state_release_lock
+        return 1
+    fi
+
+    local new_state
+    if ! new_state=$(echo "$state" | jq --arg hint "$resume_hint" '
+        .resume_hint = (if $hint == "" then null else $hint end)
+    '); then
+        _state_release_lock
+        return 1
+    fi
+
+    local save_result=0
+    state_save "$new_state" || save_result=$?
+    _state_release_lock
+    return $save_result
+}
+
+# ============================================================
+# Phase Lifecycle Functions
+# ============================================================
+
+# Mark a phase as starting
+# Usage: state_phase_start <phase_id> [step_description]
+state_phase_start() {
+    local phase_id="$1"
+    local step="${2:-}"
+    _ACFS_PHASE_STATE_WRITE_FAILED=false
+    local start_time
+    start_time=$(date +%s)
+    [[ -n "$phase_id" ]] || return 1
+
+    _state_update_with_jq '
+        # Import pre-step-tracking failures before a retry. Merely starting
+        # another attempt does not demonstrate that the failed work recovered.
+        (.phase_attempts[$phase] // 0) as $attempt |
+        (.failed_step // "Execution failed") as $failed_step |
+        if (.failed_phase // "") == $phase and .phase_steps[$phase][$failed_step] == null then
+            .phase_steps[$phase][$failed_step] = {
+                status: "failed", required: true, attempt: $attempt,
+                error: (.failed_error // "Previous phase failure")
+            }
+        else . end |
+        .phase_attempts[$phase] = ($attempt + 1) |
+        .completed_phases = ((.completed_phases // []) | map(select(. != $phase))) |
+        .partial_phases = ((.partial_phases // []) + [$phase] | unique) |
+        .current_phase = $phase |
+        .current_step = (if $step == "" then null else $step end) |
+        .phase_start_time = $start |
+        .interrupted = false
+    ' --arg phase "$phase_id" --arg step "$step" --argjson start "$start_time"
+}
+
+# Record a named step without discarding other failures in the same phase.
+# Optional wrappers pass required=false, including through nested try_step calls.
+# Usage: state_step_result <phase> <step> <running|success|failed> [required] [error]
+state_step_result() {
+    local phase_id="${1:-}"
+    local step="${2:-}"
+    local status="${3:-}"
+    local required="${4:-true}"
+    local error="${5:-}"
+    [[ -n "$phase_id" && -n "$step" ]] || return 1
+    case "$status" in running|success|failed) ;; *) return 1 ;; esac
+    case "$required" in true|false) ;; *) return 1 ;; esac
+
+    local write_result=0
+    _state_update_with_jq '
+        .phase_steps[$phase][$step] = {
+            status: $status, required: $required,
+            attempt: (.phase_attempts[$phase] // 0),
+            error: (if $error == "" then null else $error end),
+            updated_at: (now | todate)
+        } |
+        if $status == "running" then
+            .current_phase = $phase | .current_step = $step
+        elif (.current_phase // "") == $phase and (.current_step // "") == $step then
+            .current_step = null
+        else . end |
+        if $required and $status != "success" then
+            .completed_phases = ((.completed_phases // []) | map(select(. != $phase))) |
+            .partial_phases = ((.partial_phases // []) + [$phase] | unique)
+        else . end |
+        if $required and $status == "failed" then
+            .failed_phase = $phase | .failed_step = $step | .failed_error = $error
+        elif (.failed_phase // "") == $phase and (.failed_step // "") == $step and
+             ($status == "success" or $required == false) then
+            # Recovering one step must not hide another step failure.
+            [(.phase_steps // {} | to_entries[]) as $p |
+                ($p.value | to_entries[]) |
+                select(.value.required != false and .value.status == "failed") |
+                {phase: $p.key, step: .key, error: .value.error}][0] as $remaining |
+            .failed_phase = ($remaining.phase // null) |
+            .failed_step = ($remaining.step // null) |
+            .failed_error = ($remaining.error // null)
+        else . end
+    ' --arg phase "$phase_id" --arg step "$step" --arg status "$status" \
+        --argjson required "$required" --arg error "$error" || write_result=$?
+    if [[ "$required" == "true" && "$write_result" -ne 0 ]]; then
+        # The caller may continue best-effort work. A later successful write
+        # must not hide the required result we could not persist this attempt.
+        _ACFS_PHASE_STATE_WRITE_FAILED=true
+    fi
+    return "$write_result"
+}
+
+# Reclassify only a step whose caller has established manifest optionality.
+# Retain the error for diagnostics and leave unrelated mandatory failures intact.
+state_step_optional() {
+    local phase_id="${1:-}" step="${2:-}"
+    [[ -n "$phase_id" && -n "$step" ]] || return 1
+    _state_update_with_jq '
+        if .phase_steps[$phase][$step] != null then
+            .phase_steps[$phase][$step].required = false
+        elif (.failed_phase // "") == $phase and (.failed_step // "") == $step then
+            .phase_steps[$phase][$step] = {
+                status: "failed", required: false,
+                attempt: (.phase_attempts[$phase] // 0), error: .failed_error
+            }
+        else . end |
+        if (.failed_phase // "") == $phase and (.failed_step // "") == $step then
+            [(.phase_steps // {} | to_entries[]) as $p |
+                ($p.value | to_entries[]) |
+                select(.value.required != false and .value.status == "failed") |
+                {phase: $p.key, step: .key, error: .value.error}][0] as $remaining |
+            .failed_phase = ($remaining.phase // null) |
+            .failed_step = ($remaining.step // null) |
+            .failed_error = ($remaining.error // null)
+        else . end
+    ' --arg phase "$phase_id" --arg step "$step"
+}
+
+# Return true only when all required work succeeded. `current` restricts the
+# check to this attempt; old failures can only be reconciled after live checks.
+# Usage: state_phase_is_clean <phase> [all|current]
+state_phase_is_clean() {
+    local phase_id="$1"
+    local scope="${2:-all}"
+    local state
+    [[ "${_ACFS_PHASE_STATE_WRITE_FAILED:-false}" != "true" ]] || return 1
+    command -v jq &>/dev/null || return 1
+    state=$(state_load) || return 1
+    printf '%s' "$state" | jq -e --arg phase "$phase_id" --arg scope "$scope" '
+        (.phase_attempts[$phase] // 0) as $attempt |
+        [.phase_steps[$phase] // {} | .[] |
+            select(.required != false and (.status == "failed" or .status == "running")) |
+            select($scope == "all" or (.attempt // 0) == $attempt)] | length == 0
+    ' >/dev/null 2>&1 || return 1
+    if [[ "$scope" == "all" ]]; then
+        printf '%s' "$state" | jq -e --arg phase "$phase_id" \
+            '(.failed_phase // "") != $phase' >/dev/null 2>&1
+    fi
+}
+
+# Live verification may resolve old failures, including an installation repaired
+# manually or by an alternate dependency path. Never forgive a required failure
+# from the current attempt. `all` is reserved for verification before execution.
+# Usage: state_phase_reconcile <phase> [previous|all]
+state_phase_reconcile() {
+    local phase_id="$1"
+    local scope="${2:-previous}"
+    case "$scope" in previous|all) ;; *) return 1 ;; esac
+    if [[ "$scope" == "previous" ]] && ! state_phase_is_clean "$phase_id" current; then
+        return 1
+    fi
+
+    _state_update_with_jq '
+        (.phase_attempts[$phase] // 0) as $attempt |
+        .phase_steps[$phase] = ((.phase_steps[$phase] // {}) | with_entries(
+            if .value.required != false and
+               (.value.status == "failed" or .value.status == "running") and
+               ($scope == "all" or (.value.attempt // 0) < $attempt) then
+                .value.status = "verified" |
+                .value.verified_at = (now | todate)
+            else . end
+        )) |
+        if (.failed_phase // "") == $phase then
+            [(.phase_steps // {} | to_entries[]) as $p |
+                ($p.value | to_entries[]) |
+                select(.value.required != false and .value.status == "failed") |
+                {phase: $p.key, step: .key, error: .value.error}][0] as $remaining |
+            .failed_phase = ($remaining.phase // null) |
+            .failed_step = ($remaining.step // null) |
+            .failed_error = ($remaining.error // null)
+        else . end
+    ' --arg phase "$phase_id" --arg scope "$scope"
+}
+
+# Return true when any required result remains unresolved, including legacy
+# failed_* records. Incomplete phases are also unsafe, except base_deps which
+# is tracked outside the checkpointed phase runner and always re-executes.
+state_has_required_failures() {
+    local state
+    local result=0
+    command -v jq &>/dev/null || return 0
+    state=$(state_load) || return 0
+    printf '%s' "$state" | jq -e '
+        (.failed_phase // "") != "" or
+        ([.partial_phases // [] | .[] | select(. != "base_deps")] | length > 0) or
+        ([.phase_steps // {} | .[] | .[] |
+            select(.required != false and (.status == "failed" or .status == "running"))] | length > 0)
+    ' >/dev/null 2>&1 || result=$?
+    # jq returns 1 for a valid false result; malformed tracking data or a read
+    # failure must not be interpreted as a clean installation.
+    [[ "$result" -ne 1 ]]
+}
+
+# Update the current step within a phase
+# Usage: state_step_update <step_description>
+state_step_update() {
+    local step="$1"
+
+    if ! command -v jq &>/dev/null; then
+        return 1
+    fi
+
+    if ! _state_acquire_lock; then
+        return 1
+    fi
+
+    # Use jq's --arg for proper JSON escaping
+    local state
+    if ! state=$(state_load); then
+        _state_release_lock
+        return 1
+    fi
+
+    local new_state
+    if ! new_state=$(echo "$state" | jq --arg step "$step" '.current_step = $step'); then
+        _state_release_lock
+        return 1
+    fi
+
+    local save_result=0
+    state_save "$new_state" || save_result=$?
+    _state_release_lock
+    return $save_result
+}
+
+# Mark a phase as completed
+# Usage: state_phase_complete <phase_id>
+state_phase_complete() {
+    local phase_id="$1"
+
+    if ! command -v jq &>/dev/null; then
+        return 1
+    fi
+
+    if ! _state_acquire_lock; then
+        return 1
+    fi
+
+    local state
+    if ! state=$(state_load); then
+        _state_release_lock
+        return 1
+    fi
+
+    # A phase function may tolerate an error and return zero. Its required step
+    # results, including failures inherited from an earlier attempt, still have
+    # to be resolved before a completion checkpoint can be written.
+    if ! state_phase_is_clean "$phase_id"; then
+        state_update_with_args '
+            .completed_phases = ((.completed_phases // []) | map(select(. != $phase))) |
+            .partial_phases = ((.partial_phases // []) + [$phase] | unique)
+        ' --arg phase "$phase_id" || true
+        _state_release_lock
+        return 1
+    fi
+
+    # Calculate duration if start time was recorded
+    local start_time duration
+    start_time=$(echo "$state" | jq -r '.phase_start_time // empty')
+    # Validate start_time is a valid integer before arithmetic to handle corrupted state
+    if [[ -n "$start_time" && "$start_time" =~ ^[0-9]+$ ]]; then
+        duration=$(($(date +%s) - start_time))
+        # Protect against negative duration (clock skew or corrupted timestamp)
+        if [[ "$duration" -lt 0 ]]; then
+            duration=0
+        fi
+    else
+        duration=0
+    fi
+
+    # Add phase to completed list, record duration, clear current
+    local new_state
+    if ! new_state=$(echo "$state" | jq --arg phase "$phase_id" --argjson dur "$duration" \
+        --arg source "$_ACFS_STATE_SOURCE_LEDGER_SHA256" '
+        # Preserve insertion order for resume UX while preventing duplicates.
+        # NOTE: `unique` sorts arrays, which breaks "last completed phase" reporting.
+        .completed_phases = (
+          (.completed_phases // []) as $phases |
+          if ($phases | index($phase)) == null then $phases + [$phase] else $phases end
+        ) |
+        .partial_phases = ((.partial_phases // []) | map(select(. != $phase))) |
+        .phase_durations[$phase] = $dur |
+        # Publish the source identity with the completed deployment, never
+        # before it. Interrupted or narrowly targeted installs cannot claim
+        # that the current runtime assets were successfully deployed.
+        if $phase == "finalize" and $source != "" then .source_ledger_sha256 = $source else . end |
+        .current_phase = null |
+        .current_step = null |
+        del(.phase_start_time)
+    '); then
+        _state_release_lock
+        return 1
+    fi
+
+    local save_result=0
+    state_save "$new_state" || save_result=$?
+    _state_release_lock
+    return $save_result
+}
+
+# Mark a phase as failed
+# Usage: state_phase_fail <phase_id> <step> <error_message>
+state_phase_fail() {
+    local phase_id="$1"
+    local step="$2"
+    local error="$3"
+
+    if ! command -v jq &>/dev/null; then
+        return 1
+    fi
+
+    if ! _state_acquire_lock; then
+        return 1
+    fi
+
+    # Use jq's --arg for proper JSON escaping (handles quotes, backslashes, newlines)
+    local state
+    if ! state=$(state_load); then
+        _state_release_lock
+        return 1
+    fi
+
+    local new_state
+    if ! new_state=$(echo "$state" | jq \
+        --arg phase "$phase_id" \
+        --arg step "$step" \
+        --arg err "$error" '
+        . as $state |
+        ($step == "Execution failed" and ($state.failed_phase // "") == $phase and ($state.failed_step // "") != "") as $preserve_detailed_failure |
+        .failed_phase = $phase |
+        .failed_step = (if $preserve_detailed_failure then $state.failed_step else $step end) |
+        .failed_error = (if $preserve_detailed_failure then ($state.failed_error // $err) else $err end) |
+        .phase_steps[$phase][.failed_step] = {
+            status: "failed", required: true,
+            attempt: (.phase_attempts[$phase] // 0),
+            error: .failed_error, updated_at: (now | todate)
+        } |
+        .completed_phases = ((.completed_phases // []) | map(select(. != $phase))) |
+        .partial_phases = ((.partial_phases // []) + [$phase] | unique) |
+        .current_phase = null |
+        .current_step = null
+    '); then
+        _state_release_lock
+        return 1
+    fi
+
+    local save_result=0
+    state_save "$new_state" || save_result=$?
+    _state_release_lock
+    return $save_result
+}
+
+# Mark a phase as skipped
+# Usage: state_phase_skip <phase_id>
+state_phase_skip() {
+    local phase_id="$1"
+
+    # Best-effort: never abort the installer if we can't persist skip metadata.
+    command -v jq &>/dev/null || return 0
+
+    if ! _state_acquire_lock; then
+        return 0
+    fi
+
+    local state
+    state=$(state_load 2>/dev/null) || { _state_release_lock; return 0; }
+
+    local new_state
+    new_state=$(echo "$state" | jq --arg phase "$phase_id" '
+        # Preserve insertion order while preventing duplicates.
+        .skipped_phases = (
+          (.skipped_phases // []) as $phases |
+          if ($phases | index($phase)) == null then $phases + [$phase] else $phases end
+        )
+    ' 2>/dev/null) || { _state_release_lock; return 0; }
+
+    state_save "$new_state" 2>/dev/null || true
+    _state_release_lock
+    return 0
+}
+
+# Mark a tool as skipped
+# Usage: state_tool_skip <tool_name>
+state_tool_skip() {
+    local tool="$1"
+
+    # Best-effort: never abort the installer if we can't persist skip metadata.
+    command -v jq &>/dev/null || return 0
+
+    if ! _state_acquire_lock; then
+        return 0
+    fi
+
+    local state
+    state=$(state_load 2>/dev/null) || { _state_release_lock; return 0; }
+
+    local new_state
+    new_state=$(echo "$state" | jq --arg tool "$tool" '
+        # Preserve insertion order while preventing duplicates.
+        .skipped_tools = (
+          (.skipped_tools // []) as $tools |
+          if ($tools | index($tool)) == null then $tools + [$tool] else $tools end
+        )
+    ' 2>/dev/null) || { _state_release_lock; return 0; }
+
+    state_save "$new_state" 2>/dev/null || true
+    _state_release_lock
+    return 0
+}
+
+# ============================================================
+# Query Functions
+# ============================================================
+
+# Check if a phase has been completed
+# Usage: state_is_phase_completed <phase_id>
+# Returns: 0 if completed, 1 if not
+state_is_phase_completed() {
+    local phase_id="$1"
+    local completed
+
+    if ! completed=$(state_get ".completed_phases"); then
+        return 1
+    fi
+
+    # Check if phase_id is in the completed list
+    if command -v jq &>/dev/null; then
+        local state
+        state=$(state_load) || return 1
+        echo "$state" | jq -e --arg phase "$phase_id" '
+            ((.completed_phases // []) | index($phase) != null) and
+            ((.partial_phases // []) | index($phase) == null) and
+            (.failed_phase // "") != $phase and
+            ([.phase_steps[$phase] // {} | .[] |
+                select(.required != false and (.status == "failed" or .status == "running"))] | length == 0)
+        ' &>/dev/null
+    else
+        # Fallback: Check for exact match with JSON quote boundaries to avoid
+        # false positives (e.g., "base" matching "database"). The completed
+        # value is a JSON array string like '["user_setup", "filesystem"]'.
+        [[ "$completed" == *"\"$phase_id\""* ]]
+    fi
+}
+
+# Check if a phase should be skipped
+# Usage: state_should_skip_phase <phase_id>
+# Returns: 0 if should skip, 1 if should run
+state_manifest_phase_to_id() {
+    case "${1:-}" in
+        1|2) printf '%s\n' "user_setup" ;;
+        3) printf '%s\n' "filesystem" ;;
+        4) printf '%s\n' "shell_setup" ;;
+        5) printf '%s\n' "cli_tools" ;;
+        6) printf '%s\n' "languages" ;;
+        7) printf '%s\n' "agents" ;;
+        8) printf '%s\n' "cloud_db" ;;
+        9) printf '%s\n' "stack" ;;
+        10) printf '%s\n' "finalize" ;;
+        *) return 1 ;;
+    esac
+}
+
+state_selection_includes_phase() {
+    local phase_id="$1"
+    local module=""
+    local module_phase_num=""
+    local module_phase_name=""
+    local target_phase=""
+    local target_phase_name=""
+
+    if [[ "${ACFS_EFFECTIVE_PLAN+x}" == "x" ]]; then
+        if [[ ${#ACFS_EFFECTIVE_PLAN[@]} -gt 0 ]]; then
+            for module in "${ACFS_EFFECTIVE_PLAN[@]}"; do
+                module_phase_num="${ACFS_MODULE_PHASE[$module]:-}"
+                module_phase_name="$(state_manifest_phase_to_id "$module_phase_num" 2>/dev/null || true)"
+                if [[ "$module_phase_name" == "$phase_id" ]]; then
+                    return 0
+                fi
+            done
+            return 1
+        fi
+    fi
+
+    if [[ "${ONLY_MODULES+x}" == "x" ]] && [[ ${#ONLY_MODULES[@]} -gt 0 ]]; then
+        for module in "${ONLY_MODULES[@]}"; do
+            module_phase_num="${ACFS_MODULE_PHASE[$module]:-}"
+            module_phase_name="$(state_manifest_phase_to_id "$module_phase_num" 2>/dev/null || true)"
+            if [[ "$module_phase_name" == "$phase_id" ]]; then
+                return 0
+            fi
+        done
+    fi
+
+    if [[ "${ONLY_PHASES+x}" == "x" ]] && [[ ${#ONLY_PHASES[@]} -gt 0 ]]; then
+        for target_phase in "${ONLY_PHASES[@]}"; do
+            target_phase_name="$(state_manifest_phase_to_id "$target_phase" 2>/dev/null || true)"
+            if [[ "$target_phase_name" == "$phase_id" ]]; then
+                return 0
+            fi
+        done
+    fi
+
+    return 1
+}
+
+state_has_module_selection() {
+    if [[ "${ONLY_MODULES+x}" == "x" ]] && [[ ${#ONLY_MODULES[@]} -gt 0 ]]; then
+        return 0
+    fi
+    if [[ "${ONLY_PHASES+x}" == "x" ]] && [[ ${#ONLY_PHASES[@]} -gt 0 ]]; then
+        return 0
+    fi
+    return 1
+}
+
+state_should_skip_phase() {
+    local phase_id="$1"
+
+    # Targeted recovery must not execute an unrelated completed phase merely
+    # because its components are unavailable on this machine.
+    if { state_has_module_selection || [[ "${ACFS_SAVED_SELECTION_ACTIVE:-false}" == true ]]; } \
+        && ! state_selection_includes_phase "$phase_id"; then
+        return 0
+    fi
+
+    # Explicit skips remain authoritative even when an old completed flag no
+    # longer validates. A skipped phase must not perform installation work.
+    if command -v jq &>/dev/null; then
+        local state
+        state=$(state_load) || return 1
+        if echo "$state" | jq -e --arg phase "$phase_id" '(.skipped_phases // []) | index($phase) != null' &>/dev/null; then
+            return 0
+        fi
+    fi
+
+    # Skip if already completed
+    if state_is_phase_completed "$phase_id"; then
+        # Bug #213: When --only selects a module whose parent phase is already
+        # completed, the phase must re-run so the module installer can execute.
+        # Check whether any requested module belongs to this phase.
+        if state_has_module_selection && state_selection_includes_phase "$phase_id"; then
+            return 1
+        fi
+
+        # Completion flags written by older installers are not evidence that
+        # the components are present. Only live verification authorizes a skip.
+        if type -t acfs_verify_phase &>/dev/null && acfs_verify_phase "$phase_id" resume; then
+            return 0
+        fi
+        return 1
+    fi
+
+    return 1
+}
+
+# Get list of phases that still need to run
+# Usage: state_get_pending_phases
+# Outputs: One phase ID per line
+state_get_pending_phases() {
+    for phase_id in "${ACFS_PHASE_IDS[@]}"; do
+        if ! state_should_skip_phase "$phase_id"; then
+            echo "$phase_id"
+        fi
+    done
+}
+
+# Get the phase where installation failed (if any)
+# Usage: state_get_failed_phase
+# Outputs: Phase ID or empty
+state_get_failed_phase() {
+    state_get ".failed_phase"
+}
+
+# ============================================================
+# State Validation
+# ============================================================
+# Validates state files to handle corruption and incompatibility.
+# Related beads: agentic_coding_flywheel_setup-d09
+
+# Validate state file structure and content
+# Usage: state_validate
+# Returns:
+#   0 - Valid state file
+#   1 - File doesn't exist (fresh install)
+#   2 - Corrupted JSON (cannot parse)
+#   3 - Missing required fields
+#   4 - Unknown/future schema version
+#   5 - Legacy v1 schema (needs migration decision)
+state_validate() {
+    local state_file
+    state_file="$(state_get_file)"
+
+    # Case 1: No state file exists - fresh install
+    if [[ ! -f "$state_file" ]]; then
+        return 1
+    fi
+
+    # Case 2: Check if file is empty or unreadable
+    if [[ ! -s "$state_file" ]] || [[ ! -r "$state_file" ]]; then
+        echo "State file is empty or unreadable: $state_file" >&2
+        return 2
+    fi
+
+    # Case 3: Check JSON syntax
+    local content
+    if ! content=$(cat "$state_file" 2>/dev/null); then
+        echo "Cannot read state file: $state_file" >&2
+        return 2
+    fi
+
+    # Basic JSON validation - check for proper structure
+    # (not just matching braces, but actual JSON parse if jq available)
+    if command -v jq &>/dev/null; then
+        if ! echo "$content" | jq empty 2>/dev/null; then
+            echo "Corrupted JSON in state file: $state_file" >&2
+            return 2
+        fi
+
+        # Missing schema_version is the legacy-v1 discriminator. If the field is
+        # present, prove it is a small integer before it reaches Bash arithmetic.
+        if ! echo "$content" | jq -e 'has("schema_version")' >/dev/null 2>&1; then
+            echo "Legacy v1 state file detected" >&2
+            return 5
+        fi
+        if ! echo "$content" | jq -e '
+            .schema_version
+            | type == "number" and . == floor and . >= 1 and . <= 2147483647
+        ' >/dev/null 2>&1; then
+            echo "State file has invalid schema_version (expected a bounded integer)" >&2
+            return 3
+        fi
+
+        local version
+        version=$(echo "$content" | jq -r '.schema_version')
+        if [[ ! "$version" =~ ^[0-9]+$ ]]; then
+            echo "State file has invalid schema_version (expected canonical decimal digits)" >&2
+            return 3
+        fi
+
+        # Case 5: Legacy v1
+        if [[ "$version" == "1" ]]; then
+            echo "Legacy v1 state file detected" >&2
+            return 5
+        fi
+
+        # Case 4: Future schema version
+        if [[ "$version" -gt "$ACFS_STATE_SCHEMA_VERSION" ]]; then
+            echo "State file has newer schema (v$version) than supported (v$ACFS_STATE_SCHEMA_VERSION)" >&2
+            return 4
+        fi
+
+        # v2 is acceptable (will be auto-upgraded to v3 on next write)
+        # v3 is current
+
+        # Case 3: Check required fields for v2
+        local has_version has_mode has_completed
+        has_version=$(echo "$content" | jq -r 'has("version")')
+        has_mode=$(echo "$content" | jq -r 'has("mode")')
+        has_completed=$(echo "$content" | jq -r 'has("completed_phases")')
+
+        if [[ "$has_version" != "true" ]] || [[ "$has_mode" != "true" ]] || [[ "$has_completed" != "true" ]]; then
+            echo "State file missing required fields (version, mode, completed_phases)" >&2
+            return 3
+        fi
+
+        # Validate completed_phases is an array
+        local is_array
+        is_array=$(echo "$content" | jq -r '.completed_phases | type == "array"')
+        if [[ "$is_array" != "true" ]]; then
+            echo "State file has invalid completed_phases (not an array)" >&2
+            return 3
+        fi
+
+    else
+        echo "Cannot validate state safely without jq: $state_file" >&2
+        return 2
+    fi
+
+    return 0
+}
+
+# Handle invalid state file with user interaction
+# Usage: state_handle_invalid <validation_code>
+# Returns: 0 if handled (fresh start), 1 if should abort
+state_handle_invalid() {
+    local code="$1"
+    local state_file
+    state_file="$(state_get_file)"
+
+    case "$code" in
+        1)
+            # No state file - nothing to handle
+            return 0
+            ;;
+        2)
+            # Corrupted JSON
+            echo ""
+            echo "WARNING: The installation state file is corrupted."
+            echo "File: $state_file"
+            echo ""
+            echo "Options:"
+            echo "  1. Start fresh (backup and remove corrupted file)"
+            echo "  2. Abort and investigate"
+            echo ""
+
+            # In non-interactive mode (YES_MODE), default to fresh start
+            if [[ "${YES_MODE:-false}" == "true" ]]; then
+                echo "Non-interactive mode: starting fresh install"
+                if ! state_backup_and_remove; then
+                    echo "ERROR: Failed to move corrupted state file out of the way; aborting." >&2
+                    return 1
+                fi
+                return 0
+            fi
+
+            local response=""
+            if [[ -t 0 ]]; then
+                read -r -p "Start fresh? [Y/n] " response < /dev/tty
+            elif [[ -r /dev/tty ]]; then
+                read -r -p "Start fresh? [Y/n] " response < /dev/tty
+            else
+                echo "ERROR: --yes is required when no TTY is available" >&2
+                return 1
+            fi
+            if [[ "$response" =~ ^[Nn] ]]; then
+                return 1
+            fi
+            if ! state_backup_and_remove; then
+                echo "ERROR: Failed to move corrupted state file out of the way; aborting." >&2
+                return 1
+            fi
+            return 0
+            ;;
+        3)
+            # Missing required fields
+            echo ""
+            echo "WARNING: State file is missing required fields."
+            echo "File: $state_file"
+            echo ""
+            echo "This may be from a very old or manually edited install."
+            echo ""
+
+            if [[ "${YES_MODE:-false}" == "true" ]]; then
+                echo "Non-interactive mode: starting fresh install"
+                if ! state_backup_and_remove; then
+                    echo "ERROR: Failed to move invalid state file out of the way; aborting." >&2
+                    return 1
+                fi
+                return 0
+            fi
+
+            local response=""
+            if [[ -t 0 ]]; then
+                read -r -p "Start fresh install? [Y/n] " response < /dev/tty
+            elif [[ -r /dev/tty ]]; then
+                read -r -p "Start fresh install? [Y/n] " response < /dev/tty
+            else
+                echo "ERROR: --yes is required when no TTY is available" >&2
+                return 1
+            fi
+            if [[ "$response" =~ ^[Nn] ]]; then
+                return 1
+            fi
+            if ! state_backup_and_remove; then
+                echo "ERROR: Failed to move invalid state file out of the way; aborting." >&2
+                return 1
+            fi
+            return 0
+            ;;
+        4)
+            # Future schema version
+            echo ""
+            echo "WARNING: State file uses a newer schema version."
+            echo "File: $state_file"
+            echo ""
+            echo "This ACFS version may be older than the one that created this state."
+            echo "Consider upgrading ACFS or starting fresh."
+            echo ""
+
+            if [[ "${YES_MODE:-false}" == "true" ]]; then
+                echo "Non-interactive mode: starting fresh install"
+                if ! state_backup_and_remove; then
+                    echo "ERROR: Failed to move incompatible state file out of the way; aborting." >&2
+                    return 1
+                fi
+                return 0
+            fi
+
+            local response=""
+            if [[ -t 0 ]]; then
+                read -r -p "Start fresh install? [Y/n] " response < /dev/tty
+            elif [[ -r /dev/tty ]]; then
+                read -r -p "Start fresh install? [Y/n] " response < /dev/tty
+            else
+                echo "ERROR: --yes is required when no TTY is available" >&2
+                return 1
+            fi
+            if [[ "$response" =~ ^[Nn] ]]; then
+                return 1
+            fi
+            if ! state_backup_and_remove; then
+                echo "ERROR: Failed to move incompatible state file out of the way; aborting." >&2
+                return 1
+            fi
+            return 0
+            ;;
+        5)
+            # Legacy v1 schema
+            echo ""
+            echo "Found state file from previous ACFS version (v1 schema)."
+            echo "File: $state_file"
+            echo ""
+
+            if command -v jq &>/dev/null; then
+                echo "Options:"
+                echo "  1. Migrate state to v2 (preserve progress)"
+                echo "  2. Start fresh (discard previous progress)"
+                echo ""
+
+                if [[ "${YES_MODE:-false}" == "true" ]]; then
+                    echo "Non-interactive mode: migrating to v2"
+                    state_migrate_v1_to_v2
+                    return 0
+                fi
+
+                local response=""
+                if [[ -t 0 ]]; then
+                    read -r -p "Migrate existing state? [Y/n] " response
+                elif [[ -r /dev/tty ]]; then
+                    read -r -p "Migrate existing state? [Y/n] " response < /dev/tty
+                else
+                    echo "ERROR: --yes is required when no TTY is available" >&2
+                    return 1
+                fi
+                if [[ "$response" =~ ^[Nn] ]]; then
+                    if ! state_backup_and_remove; then
+                        echo "ERROR: Failed to move legacy state file out of the way; aborting." >&2
+                        return 1
+                    fi
+                else
+                    state_migrate_v1_to_v2
+                fi
+            else
+                echo "Error: jq is required for state migration" >&2
+                return 1
+            fi
+            return 0
+            ;;
+        *)
+            # Unknown code
+            echo "Unknown validation result: $code" >&2
+            return 1
+            ;;
+    esac
+}
+
+# Backup and quarantine corrupted state file (move aside)
+# Usage: state_backup_and_remove
+state_backup_and_remove() {
+    local state_file
+    state_file="$(state_get_file 2>/dev/null || true)"
+    if [[ -z "$state_file" ]]; then
+        declare -f log_error &>/dev/null && log_error "state_backup_and_remove: unable to resolve state file path"
+        return 1
+    fi
+
+    if [[ -f "$state_file" ]]; then
+        local expected_user_state=""
+        if [[ -n "${ACFS_HOME:-}" ]]; then
+            expected_user_state="${ACFS_HOME}/state.json"
+        else
+            local expected_target_home=""
+            expected_target_home="$(state_resolve_target_home 2>/dev/null || true)"
+            if [[ -z "$expected_target_home" ]]; then
+                declare -f log_error &>/dev/null && log_error "state_backup_and_remove: unable to resolve target home"
+                return 1
+            fi
+            expected_user_state="${expected_target_home}/.acfs/state.json"
+        fi
+        local expected_system_state="/var/lib/acfs/state.json"
+
+        case "$state_file" in
+            "$expected_user_state"|"$expected_system_state") ;;
+            *)
+                if declare -f log_error &>/dev/null; then
+                    log_error "Refusing to move unexpected state file path: $state_file"
+                else
+                    echo "Refusing to move unexpected state file path: $state_file" >&2
+                fi
+                echo "Expected: $expected_user_state or $expected_system_state" >&2
+                return 1
+                ;;
+        esac
+
+        local backup_file
+        backup_file="${state_file}.backup.$(date +%Y%m%d_%H%M%S)"
+
+        if mv "$state_file" "$backup_file" 2>/dev/null; then
+            if declare -f log_warn &>/dev/null; then
+                log_warn "Moved state file aside: $backup_file"
+            else
+                echo "Moved state file aside: $backup_file" >&2
+            fi
+        else
+            if declare -f log_error &>/dev/null; then
+                log_error "Failed to move state file to backup: $backup_file"
+            else
+                echo "Failed to move state file to backup: $backup_file" >&2
+            fi
+            return 1
+        fi
+    fi
+
+    return 0
+}
+
+# Convenience function to validate and handle state
+# Usage: state_ensure_valid
+# Returns: 0 if state is valid or fresh, 1 if should abort
+state_ensure_valid() {
+    local state_file="" code=0 had_state=false
+    state_file=$(state_get_file) || return 1
+    [[ ! -e "$state_file" && ! -L "$state_file" ]] || had_state=true
+    # Automatic checkpoint recovery must not erase an explicit invalid scope
+    # and then mistake the missing replacement for a legacy installation.
+    state_load_module_selection "$state_file" || return 1
+    if declare -p ACFS_MODULES_IN_ORDER >/dev/null 2>&1; then
+        state_validate_module_selection_catalog "${ACFS_MODULES_IN_ORDER[@]}" || return 1
+    fi
+    local selection_mode="$ACFS_STATE_SELECTION_MODE"
+    local -a selected_modules=("${ACFS_STATE_SELECTED_MODULES[@]}")
+    local -a requested_modules=("${ACFS_STATE_REQUESTED_MODULES[@]}")
+    state_validate || code=$?
+
+    if [[ $code -eq 0 ]]; then
+        return 0  # Valid state
+    fi
+
+    state_handle_invalid "$code" || return 1
+    if [[ "$had_state" == true && ! -e "$state_file" && ! -L "$state_file" ]]; then
+        # A valid scope can accompany recoverable progress/schema damage.
+        # Preserve both scoped intent and legacy full-install semantics.
+        _ACFS_STATE_REINSTALL_SELECTION_MODE="$selection_mode"
+        _ACFS_STATE_REINSTALL_SELECTION_FILE="$state_file"
+        _ACFS_STATE_REINSTALL_MODULES=("${selected_modules[@]}")
+        _ACFS_STATE_REINSTALL_REQUESTED_MODULES=("${requested_modules[@]}")
+    fi
+}
+
+# ============================================================
+# Backwards Compatibility
+# ============================================================
+
+# Check schema version and migrate if needed
+# Usage: state_check_version
+# Returns: 0 if current or migrated, 1 if incompatible
+state_check_version() {
+    local state_file
+    state_file="$(state_get_file)"
+
+    if [[ ! -f "$state_file" ]]; then
+        return 0  # No state file, fresh install
+    fi
+
+    local state
+    if ! state=$(state_load); then
+        return 1
+    fi
+
+    local version
+    if command -v jq &>/dev/null; then
+        version=$(echo "$state" | jq -r '.schema_version // 1')
+    else
+        # Fallback: if no schema_version field, assume v1
+        # Uses sed for POSIX compatibility (macOS/BSD don't have grep -oP)
+        if grep -q '"schema_version"' "$state_file"; then
+            version=$(sed -n 's/.*"schema_version"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p' "$state_file" | head -1)
+        else
+            version=1
+        fi
+    fi
+
+    case "$version" in
+        1)
+            # Legacy v1 schema - offer fresh start or migration
+            echo "Detected legacy state.json (v1). A fresh install is recommended." >&2
+            return 2  # Special return code for "needs migration decision"
+            ;;
+        2|3)
+            return 0  # Current versions (v2 is compatible with v3)
+            ;;
+        *)
+            echo "Unknown state.json schema version: $version" >&2
+            return 1
+            ;;
+    esac
+}
+
+# Migrate v1 state to v2 (best effort)
+# Usage: state_migrate_v1_to_v2
+# Returns: 0 on success
+state_migrate_v1_to_v2() {
+    local state
+    if ! state=$(state_load); then
+        return 1
+    fi
+
+    if command -v jq &>/dev/null; then
+        # Convert numeric array to string array
+        local new_state
+        if ! new_state=$(echo "$state" | jq '
+            .schema_version = 2 |
+            .completed_phases = (
+                .completed_phases // [] |
+                map(
+                    if . == 1 then "user_setup"
+                    elif . == 2 then "filesystem"
+                    elif . == 3 then "shell_setup"
+                    elif . == 4 then "cli_tools"
+                    elif . == 5 then "languages"
+                    elif . == 6 then "agents"
+                    elif . == 7 then "cloud_db"
+                    elif . == 8 then "stack"
+                    elif . == 9 then "finalize"
+                    else .
+                    end
+                )
+            ) |
+            .current_phase = null |
+            .current_step = null |
+            .failed_phase = null |
+            .failed_step = null |
+            .failed_error = null |
+            .skipped_tools = [] |
+            .skipped_phases = [] |
+            .phase_durations = {}
+        '); then
+            return 1
+        fi
+
+        state_save "$new_state"
+    else
+        echo "Error: jq is required for state migration" >&2
+        return 1
+    fi
+}
+
+# ============================================================
+# Display Functions
+# ============================================================
+
+# Print state summary for resume prompt
+# Usage: state_print_summary
+state_print_summary() {
+    local state
+    if ! state=$(state_load); then
+        echo "No installation state found."
+        return 1
+    fi
+
+    if ! command -v jq &>/dev/null; then
+        echo "State file exists but jq is needed for detailed summary."
+        return 0
+    fi
+
+    local version mode started completed current failed
+    version=$(echo "$state" | jq -r '.version // "unknown"')
+    mode=$(echo "$state" | jq -r '.mode // "unknown"')
+    started=$(echo "$state" | jq -r '.started_at // "unknown"')
+    completed=$(echo "$state" | jq -r '.completed_phases | length')
+    current=$(echo "$state" | jq -r '.current_phase // "none"')
+    failed=$(echo "$state" | jq -r '.failed_phase // "none"')
+
+    echo "=== ACFS Installation State ==="
+    echo "Version: $version (mode: $mode)"
+    echo "Started: $started"
+    echo "Completed phases: $completed/${#ACFS_PHASE_IDS[@]}"
+
+    if [[ "$failed" != "none" && "$failed" != "null" ]]; then
+        local failed_step failed_error
+        failed_step=$(echo "$state" | jq -r '.failed_step // "unknown"')
+        failed_error=$(echo "$state" | jq -r '.failed_error // "unknown"')
+        echo "FAILED at: $failed ($failed_step)"
+        echo "Error: $failed_error"
+    elif [[ "$current" != "none" && "$current" != "null" ]]; then
+        echo "In progress: $current"
+    fi
+
+    echo ""
+    echo "Completed:"
+    echo "$state" | jq -r '.completed_phases[]' 2>/dev/null | while read -r phase; do
+        local name="${ACFS_PHASE_NAMES[$phase]:-$phase}"
+        local dur
+        dur=$(echo "$state" | jq -r --arg p "$phase" '.phase_durations[$p] // 0')
+        if [[ "$dur" -gt 0 ]]; then
+            echo "  [x] $name (${dur}s)"
+        else
+            echo "  [x] $name"
+        fi
+    done
+
+    echo ""
+    echo "Pending:"
+    for phase in "${ACFS_PHASE_IDS[@]}"; do
+        if ! state_is_phase_completed "$phase"; then
+            local name="${ACFS_PHASE_NAMES[$phase]:-$phase}"
+            echo "  [ ] $name"
+        fi
+    done
+}
+
+# ============================================================
+# Phase Execution Wrapper
+# ============================================================
+# This is the main entry point for executing installation phases.
+# It handles skip logic, state tracking, timing, and error capture.
+#
+# Related beads:
+#   - agentic_coding_flywheel_setup-yaj: Implement run_phase() wrapper
+
+# Run a phase with state tracking and skip logic
+# Usage: run_phase <phase_id> <display_name> <function_name> [args...]
+# Example: run_phase "cli_tools" "5/10 CLI Tools" install_cli_tools
+# Returns: 0 on success, 1 on failure
+run_phase() {
+    local phase_id="$1"
+    local display_name="$2"
+    local phase_func="$3"
+    shift 3 || true
+
+    # Validate phase_id is known
+    local valid_phase=false
+    for p in "${ACFS_PHASE_IDS[@]}"; do
+        if [[ "$p" == "$phase_id" ]]; then
+            valid_phase=true
+            break
+        fi
+    done
+
+    if [[ "$valid_phase" != "true" ]]; then
+        echo "Warning: Unknown phase ID '$phase_id' - proceeding anyway" >&2
+    fi
+
+    # Get human-readable name for logging
+    local human_name="${ACFS_PHASE_NAMES[$phase_id]:-$phase_id}"
+
+    # Check if phase should be skipped (already completed or user-skipped)
+    if state_should_skip_phase "$phase_id"; then
+        if state_is_phase_completed "$phase_id"; then
+            _run_phase_log_skip "$display_name" "already completed"
+        else
+            _run_phase_log_skip "$display_name" "user skipped"
+        fi
+        return 0
+    fi
+
+    # Keep context in this shell, and prevent an installer's set_phase call from
+    # opening a second attempt inside the same run_phase invocation.
+    local _ACFS_RUNNING_PHASE="$phase_id"
+    local _ACFS_PHASE_STATE_WRITE_FAILED=false
+    CURRENT_PHASE="$phase_id"
+    CURRENT_PHASE_NAME="$human_name"
+    CURRENT_STEP=""
+
+    # Failure to persist a start must not let execution leave an old completed
+    # checkpoint behind (for example, when the filesystem has filled up).
+    if ! state_phase_start "$phase_id" "Starting $human_name"; then
+        _run_phase_log_failure "$display_name" 1
+        return 1
+    fi
+    local module_failures_before="${ACFS_MODULE_FAILURES[*]:-}"
+    local_progress_record_installer_phase "$phase_id" "started" 2>/dev/null || true
+
+    # Execute the phase function
+    _run_phase_log_start "$display_name"
+    local start_time
+    start_time=$(date +%s)
+
+    # Execute and capture exit code correctly
+    # (can't use "if ! cmd; then exit_code=$?" because $? would be 0 from the negation)
+    local exit_code=0
+    "$phase_func" "$@" || exit_code=$?
+
+    local end_time
+    end_time=$(date +%s)
+    local duration=$((end_time - start_time))
+
+    if [[ "${ACFS_MODULE_FAILURES[*]:-}" != "$module_failures_before" ]]; then
+        exit_code=1
+    fi
+
+    if [[ $exit_code -eq 0 ]] && ! state_phase_is_clean "$phase_id" current; then
+        exit_code=1
+    fi
+
+    if [[ $exit_code -eq 0 ]] && type -t acfs_verify_phase &>/dev/null; then
+        if acfs_verify_phase "$phase_id" complete; then
+            # Installed-state checks may resolve a previous run's failures.
+            # Current required failures were rejected above and are never
+            # forgiven by verification of some other working component.
+            state_phase_reconcile "$phase_id" || exit_code=1
+        else
+            state_phase_fail "$phase_id" "Verification failed" "Required installed-state checks failed" || true
+            exit_code=1
+        fi
+    fi
+
+    if [[ $exit_code -eq 0 ]] && state_phase_complete "$phase_id"; then
+        local_progress_record_installer_phase "$phase_id" "completed" 2>/dev/null || true
+        _run_phase_log_success "$display_name" "$duration"
+        return 0
+    else
+        [[ $exit_code -ne 0 ]] || exit_code=1
+        # Failure - record failure state
+        local error_msg="Phase '$human_name' failed with exit code $exit_code"
+        state_phase_fail "$phase_id" "Execution failed" "$error_msg"
+        local_progress_record_installer_phase "$phase_id" "failed" 2>/dev/null || true
+        _run_phase_log_failure "$display_name" "$exit_code"
+        return 1
+    fi
+}
+
+# Helper: Log phase skip (gray, muted)
+_run_phase_log_skip() {
+    local display_name="$1"
+    local reason="$2"
+
+    if [[ "${HAS_GUM:-false}" == "true" ]] && command -v gum &>/dev/null; then
+        gum style --foreground "#6c7086" "[$display_name] Skipped ($reason)" >&2
+    else
+        echo -e "${_STATE_GRAY}[$display_name] Skipped ($reason)${_STATE_NC}" >&2
+    fi
+}
+
+# Helper: Log phase start (blue)
+_run_phase_log_start() {
+    local display_name="$1"
+
+    if [[ "${HAS_GUM:-false}" == "true" ]] && command -v gum &>/dev/null; then
+        gum style --foreground "#89b4fa" --bold "[$display_name] Starting..." >&2
+    else
+        echo -e "${_STATE_BLUE}[$display_name] Starting...${_STATE_NC}" >&2
+    fi
+}
+
+# Helper: Log phase success (green)
+_run_phase_log_success() {
+    local display_name="$1"
+    local duration="$2"
+
+    local msg="[$display_name] Complete"
+    if [[ "$duration" -gt 0 ]]; then
+        msg="$msg (${duration}s)"
+    fi
+
+    if [[ "${HAS_GUM:-false}" == "true" ]] && command -v gum &>/dev/null; then
+        gum style --foreground "#a6e3a1" --bold "$msg" >&2
+    else
+        echo -e "${_STATE_GREEN}$msg${_STATE_NC}" >&2
+    fi
+}
+
+# Helper: Log phase failure (red)
+_run_phase_log_failure() {
+    local display_name="$1"
+    local exit_code="$2"
+
+    if [[ "${HAS_GUM:-false}" == "true" ]] && command -v gum &>/dev/null; then
+        gum style --foreground "#f38ba8" --bold "[$display_name] FAILED (exit code: $exit_code)" >&2
+    else
+        echo -e "${_STATE_RED}[$display_name] FAILED (exit code: $exit_code)${_STATE_NC}" >&2
+    fi
+}
+
+    local -a modules=()
+    local -A seen=()
+    [[ "${ACFS_STATE_SELECTION_MODE:-invalid}" != legacy ]] || return 0
+    if [[ "${ACFS_STATE_SELECTION_MODE:-invalid}" != scoped ||
+          ! -f "$catalog_file" || -L "$catalog_file" || ! -r "$catalog_file" ]]; then
+        printf '%s\n' 'Cannot safely read the ACFS module catalogue.' >&2
+        return 1
+    fi
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ "$line" == 'ACFS_MODULES_IN_ORDER=(' ]]; then
+            [[ "$found" == false ]] || break
+            found=true
+            inside=true
+        elif [[ "$inside" == true && "$line" == ')' ]]; then
+            inside=false
+            complete=true
+        elif [[ "$inside" == true ]]; then
+            [[ "$line" =~ $entry_pattern ]] || break
+            module="${BASH_REMATCH[1]}"
+            [[ -z "${seen[$module]+present}" ]] || break
+            seen["$module"]=1
+            modules+=("$module")
+        fi
+        line=""
+    done < "$catalog_file"
+    if [[ -n "$line" || "$found" != true || "$complete" != true || "$inside" == true ]]; then
+        printf '%s\n' 'The ACFS module catalogue is incomplete or malformed.' >&2
+        return 1
+    fi
+    state_validate_module_selection_catalog "${modules[@]}"
+}
+
 # Merge an approved plan while holding the existing state lock across the
 # read/validate/write cycle. Narrow --only repairs add intent, never erase it.
 state_record_module_selection() {
