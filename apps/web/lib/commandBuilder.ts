@@ -122,7 +122,7 @@ export interface HandoffRunbook {
     bundleCommand: string;
     bundlePathPattern: string;
     reviewArtifacts: string[];
-  };
+  } | null;
 }
 
 export const TEAM_PROFILE_SCHEMA = "acfs.team-profile.v1";
@@ -350,32 +350,32 @@ function teamProfileSlot(id: string): TeamProfileServiceAccount["secretSlot"] {
   return `${TEAM_PROFILE_SLOT_SCHEME}://acfs/team/${id}` as TeamProfileServiceAccount["secretSlot"];
 }
 
-const TEAM_PROFILE_SERVICE_ACCOUNTS: TeamProfileServiceAccount[] = [
-  {
+const TEAM_PROFILE_SERVICE_ACCOUNTS: Readonly<Record<string, TeamProfileServiceAccount>> = {
+  "cli.modern": {
     id: "github",
     required: true,
     authMethod: "browser_login",
     secretSlot: teamProfileSlot("github-auth"),
   },
-  {
+  "cloud.wrangler": {
     id: "cloudflare",
     required: false,
     authMethod: "api_token",
     secretSlot: teamProfileSlot("cloudflare-auth"),
   },
-  {
+  "cloud.supabase": {
     id: "supabase",
     required: false,
     authMethod: "cli_login",
     secretSlot: teamProfileSlot("supabase-auth"),
   },
-  {
+  "cloud.vercel": {
     id: "vercel",
     required: false,
     authMethod: "cli_login",
     secretSlot: teamProfileSlot("vercel-auth"),
   },
-];
+};
 
 const TEAM_PROFILE_REQUIRED_PATHS = [
   "schema",
@@ -1104,7 +1104,9 @@ export function buildTeamProfile(inputs: TeamProfileInputs): TeamProfile {
       requiredLessons: ["terminal-navigation", "agent-workflow"],
       optionalLessons: ["cloud-provider-setup"],
     },
-    serviceAccounts: [...TEAM_PROFILE_SERVICE_ACCOUNTS],
+    serviceAccounts: Object.entries(TEAM_PROFILE_SERVICE_ACCOUNTS)
+      .filter(([moduleId]) => modulePlan.included.includes(moduleId))
+      .map(([, account]) => ({ ...account })),
     redaction: {
       allowSecretValues: false,
       secretSlotsRequired: true,
@@ -1125,12 +1127,13 @@ export function formatTeamProfileReviewMarkdown(profile: TeamProfile): string {
     architecture: profile.providerDefaults.architecture,
   });
   const installCommand = review.installerCommand.command;
-  const secretSlots = profile.serviceAccounts
-    .map(
-      (account) =>
-        `- ${account.id}: ${account.required ? "required" : "optional"} ${account.secretSlot}`,
-    )
-    .join("\n");
+  const secretSlots =
+    profile.serviceAccounts
+      .map(
+        (account) =>
+          `- ${account.id}: ${account.required ? "required" : "optional"} ${account.secretSlot}`,
+      )
+      .join("\n") || "- none";
   const dependencyClosure =
     profile.install.modulePlan.dependencyClosure.length > 0
       ? profile.install.modulePlan.dependencyClosure.map((moduleId) => `- ${moduleId}`).join("\n")
@@ -2322,8 +2325,12 @@ export function buildHandoffRunbook(inputs: CommandBuilderInputs): HandoffRunboo
   const rootLoginCommand = `ssh root@${redactedHost}`;
   const postInstallLoginCommand = `ssh -i ${SSH_KEY_PATH_UNIX} ${targetUsername}@${redactedHost}`;
   const postInstallLoginCommandWindows = `ssh -i ${SSH_KEY_PATH_WINDOWS_POWERSHELL} ${targetUsername}@${redactedHost}`;
-  const userKeyRepairCommand = buildUserKeyRepairCommand(targetUsername, redactedHost);
-  const rootKeyRepairCommand = buildRootKeyRepairCommand(targetUsername, redactedHost);
+  const keyRepairCommands = buildKeyRepairCommands(targetUsername, redactedHost);
+  const isWindows = inputs.os === "windows";
+  const selectedModules = new Set(
+    resolveModuleSelection(inputs.moduleSelection).included.map((entry) => entry.id),
+  );
+  const hasSupport = selectedModules.has("acfs.doctor");
 
   return {
     schema: HANDOFF_RUNBOOK_SCHEMA,
@@ -2351,7 +2358,9 @@ export function buildHandoffRunbook(inputs: CommandBuilderInputs): HandoffRunboo
       value: redactedHost,
       assumptions: [
         "Run the installer from a root SSH session on the VPS unless an existing installer log explicitly tells you to resume as the target user.",
-        "ACFS creates or updates the target Linux user during installation.",
+        selectedModules.has("users.ubuntu")
+          ? "ACFS creates or updates the target Linux user during installation."
+          : "This selection does not create or update the target Linux user. Confirm that the configured user already exists and can connect before using the user SSH commands.",
         "The host address is intentionally redacted from this artifact; keep it in your password manager or VPS provider console.",
       ],
     },
@@ -2372,13 +2381,13 @@ export function buildHandoffRunbook(inputs: CommandBuilderInputs): HandoffRunboo
       {
         id: "repair-user-ssh-key",
         label: "Copy the ACFS public key into the configured user",
-        command: userKeyRepairCommand,
+        command: isWindows ? keyRepairCommands.user.windowsCommand : keyRepairCommands.user.command,
         runLocation: "local",
       },
       {
         id: "repair-user-ssh-key-through-root",
         label: "Copy the ACFS public key through the root fallback",
-        command: rootKeyRepairCommand,
+        command: isWindows ? keyRepairCommands.root.windowsCommand : keyRepairCommands.root.command,
         runLocation: "local",
       },
       {
@@ -2396,27 +2405,33 @@ export function buildHandoffRunbook(inputs: CommandBuilderInputs): HandoffRunboo
       {
         id: "reconnect-user",
         label: "Reconnect as the configured user after install",
-        command: postInstallLoginCommand,
+        command: isWindows ? postInstallLoginCommandWindows : postInstallLoginCommand,
         runLocation: "local",
       },
-      {
-        id: "doctor",
-        label: "Run the ACFS health check",
-        command: "acfs doctor",
-        runLocation: "vps",
-      },
-      {
-        id: "support-bundle",
-        label: "Create a redacted support bundle",
-        command: "acfs support-bundle",
-        runLocation: "vps",
-      },
+      ...(hasSupport
+        ? [
+            {
+              id: "doctor",
+              label: "Run the ACFS health check",
+              command: "acfs doctor",
+              runLocation: "vps" as const,
+            },
+            {
+              id: "support-bundle",
+              label: "Create a redacted support bundle",
+              command: "acfs support-bundle",
+              runLocation: "vps" as const,
+            },
+          ]
+        : []),
     ],
-    support: {
-      bundleCommand: "acfs support-bundle",
-      bundlePathPattern: "~/.acfs/support/<timestamp>/",
-      reviewArtifacts: ["support-report.md", "manifest.json"],
-    },
+    support: hasSupport
+      ? {
+          bundleCommand: "acfs support-bundle",
+          bundlePathPattern: "~/.acfs/support/<timestamp>/",
+          reviewArtifacts: ["support-report.md", "manifest.json"],
+        }
+      : null,
   };
 }
 
@@ -2432,7 +2447,9 @@ export function formatHandoffRunbookMarkdown(runbook: HandoffRunbook): string {
         "",
         `Run on: ${command.runLocation === "vps" ? "VPS" : "local computer"}`,
         "",
-        "```bash",
+        command.runLocation === "local" && runbook.wizardSelections.localOS === "windows"
+          ? "```powershell"
+          : "```bash",
         command.command,
         "```",
       ].join("\n"),
@@ -2477,9 +2494,15 @@ export function formatHandoffRunbookMarkdown(runbook: HandoffRunbook): string {
     "",
     "## Support Bundle",
     "",
-    `- Command: \`${runbook.support.bundleCommand}\``,
-    `- Output pattern: \`${runbook.support.bundlePathPattern}\``,
-    `- Review before sharing: ${runbook.support.reviewArtifacts.join(", ")}`,
+    ...(runbook.support
+      ? [
+          `- Command: \`${runbook.support.bundleCommand}\``,
+          `- Output pattern: \`${runbook.support.bundlePathPattern}\``,
+          `- Review before sharing: ${runbook.support.reviewArtifacts.join(", ")}`,
+        ]
+      : [
+          "Doctor and support bundles are not included in this module selection. Keep the installer output and use the exact retry command above if you need to resume.",
+        ]),
     "",
     "## Privacy",
     "",

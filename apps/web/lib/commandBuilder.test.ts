@@ -26,6 +26,7 @@ import {
   serializeTeamProfileImportDiffJson,
   serializeTeamProfileJson,
 } from "./commandBuilder";
+import { getGuidedModuleSelection, type ModuleSelectionInput } from "./moduleSelection";
 
 describe("formatSshTarget", () => {
   test("formats valid IPv4 and IPv6 SSH targets", () => {
@@ -717,8 +718,8 @@ describe("buildHandoffRunbook", () => {
       expect(runbook.targetHost.value).not.toBe(scenario.rawHost);
       expect(runbook.wizardSelections.sourceRef).toBe(scenario.expectedSourceRef);
       expect(runbook.install.command).toContain(`/${scenario.expectedSourceRef}/install.sh`);
-      expect(runbook.support.bundleCommand).toBe("acfs support-bundle");
-      expect(runbook.support.reviewArtifacts).toEqual(["support-report.md", "manifest.json"]);
+      expect(runbook.support?.bundleCommand).toBe("acfs support-bundle");
+      expect(runbook.support?.reviewArtifacts).toEqual(["support-report.md", "manifest.json"]);
       expect(runbook.recoveryCommands.map((command) => command.command)).toContain(
         "acfs support-bundle",
       );
@@ -959,7 +960,12 @@ describe("buildTeamProfileImportDiff", () => {
     );
     expect(diff.installerCommand.command).toContain('--ref "v1.2.3"');
     expect(diff.installerCommand.command).toContain('--profile "cloud-only"');
-    expect(diff.secretSlots.required).toEqual(["secret://acfs/team/github-auth"]);
+    expect(diff.secretSlots.required).toEqual([]);
+    expect(diff.secretSlots.optional).toEqual([
+      "secret://acfs/team/cloudflare-auth",
+      "secret://acfs/team/supabase-auth",
+      "secret://acfs/team/vercel-auth",
+    ]);
     expect(json).toContain('"dryRun": true');
     expect(markdown).toContain("Status: ready");
     expect(markdown).toContain("## Installer Command");
@@ -2008,5 +2014,190 @@ describe("selected post-install commands", () => {
       expect(commands.some((entry) => entry.command === absent)).toBe(false);
       expect(commands.find((entry) => entry.id === "installer")?.command).toContain(`--only "${moduleId}"`);
     }
+  });
+});
+
+describe("selection-aware handoff exports", () => {
+  const inputs = {
+    ip: "203.0.113.42",
+    os: "mac",
+    username: "dev-user",
+    mode: "safe",
+    ref: "v1.2.3",
+    generatedAt: "2026-05-08T00:00:00Z",
+  } as const;
+
+  test("exports support recovery only when the selected installation provides it", () => {
+    const scenarios: Array<{ selection: ModuleSelectionInput; hasSupport: boolean }> = [
+      { selection: {}, hasSupport: true },
+      { selection: { onlyModules: ["lang.go"] }, hasSupport: false },
+      { selection: { profile: "cloud-only" }, hasSupport: false },
+      { selection: { skipModules: ["acfs.doctor"] }, hasSupport: false },
+      { selection: { onlyModules: ["acfs.doctor"] }, hasSupport: true },
+      { selection: getGuidedModuleSelection("cloud-only", true), hasSupport: true },
+    ];
+
+    for (const { selection, hasSupport } of scenarios) {
+      const runbook = buildHandoffRunbook({ ...inputs, moduleSelection: selection });
+      const json = serializeHandoffRunbookJson(runbook);
+      const markdown = formatHandoffRunbookMarkdown(runbook);
+      const commands = runbook.recoveryCommands.map((command) => command.command);
+      expect(runbook.install.command).toBe(
+        buildInstallCommand(inputs.mode, inputs.ref, inputs.username, selection),
+      );
+      expect(runbook.recoveryCommands.find((command) => command.id === "rerun-installer")?.command)
+        .toBe(runbook.install.command);
+      expect(commands.includes("acfs doctor")).toBe(hasSupport);
+      expect(commands.includes("acfs support-bundle")).toBe(hasSupport);
+      expect(runbook.support !== null).toBe(hasSupport);
+      expect(JSON.parse(json).support).toEqual(runbook.support);
+      expect(markdown.includes("`acfs support-bundle`")).toBe(hasSupport);
+      if (!hasSupport) {
+        expect(markdown).toContain("Doctor and support bundles are not included");
+      }
+      expect(json).not.toContain(inputs.ip);
+      expect(markdown).not.toContain(inputs.ip);
+    }
+  });
+
+  test("does not promise account creation when expert selection excludes the user module", () => {
+    const runbook = buildHandoffRunbook({
+      ...inputs,
+      moduleSelection: { onlyModules: ["lang.go"], noDeps: true },
+    });
+    expect(runbook.targetHost.assumptions.join("\n")).toContain(
+      "Confirm that the configured user already exists and can connect",
+    );
+    expect(runbook.targetHost.assumptions).not.toContain(
+      "ACFS creates or updates the target Linux user during installation.",
+    );
+    const withDependencies = buildHandoffRunbook({
+      ...inputs,
+      moduleSelection: { onlyModules: ["lang.go"] },
+    });
+    expect(withDependencies.targetHost.assumptions).toContain(
+      "ACFS creates or updates the target Linux user during installation.",
+    );
+  });
+
+  test("uses the selected local shell for key repair and reconnect commands", () => {
+    for (const os of ["mac", "linux", "windows"] as const) {
+      for (const ip of ["203.0.113.42", "2001:db8::42"]) {
+        const runbook = buildHandoffRunbook({ ...inputs, os, ip });
+        const host = ip.includes(":") ? "YOUR_VPS_IPV6" : "YOUR_VPS_IPV4";
+        const repair = buildKeyRepairCommands(inputs.username, host);
+        const command = (id: string) =>
+          runbook.recoveryCommands.find((entry) => entry.id === id)?.command;
+        expect(command("repair-user-ssh-key")).toBe(
+          os === "windows" ? repair.user.windowsCommand : repair.user.command,
+        );
+        expect(command("repair-user-ssh-key-through-root")).toBe(
+          os === "windows" ? repair.root.windowsCommand : repair.root.command,
+        );
+        expect(command("reconnect-user")).toBe(
+          os === "windows"
+            ? `ssh -i $HOME\\.ssh\\acfs_ed25519 ${inputs.username}@${host}`
+            : `ssh -i ~/.ssh/acfs_ed25519 ${inputs.username}@${host}`,
+        );
+        const markdown = formatHandoffRunbookMarkdown(runbook);
+        expect(markdown.includes("```powershell")).toBe(os === "windows");
+        expect(markdown).toContain(`Run on: VPS\n\n\`\`\`bash\n${runbook.install.command}`);
+        expect(markdown).not.toContain(ip);
+      }
+    }
+  });
+
+  test("exports fresh service-account slots only for selected providing modules", () => {
+    const scenarios: Array<{ selection: ModuleSelectionInput; ids: string[] }> = [
+      { selection: {}, ids: ["github"] },
+      { selection: { onlyModules: ["lang.go"] }, ids: [] },
+      { selection: { onlyModules: ["cli.modern"] }, ids: ["github"] },
+      { selection: { onlyModules: ["cloud.wrangler"] }, ids: ["cloudflare"] },
+      { selection: { onlyModules: ["cloud.supabase"] }, ids: ["supabase"] },
+      { selection: { onlyModules: ["cloud.vercel"] }, ids: ["vercel"] },
+      { selection: { profile: "cloud-only" }, ids: ["cloudflare", "supabase", "vercel"] },
+      {
+        selection: { onlyPhases: ["8"], skipModules: ["cloud.supabase"] },
+        ids: ["cloudflare", "vercel"],
+      },
+      {
+        selection: getGuidedModuleSelection("cloud-only", true),
+        ids: ["cloudflare", "supabase", "vercel"],
+      },
+    ];
+    for (const { selection, ids } of scenarios) {
+      const profile = buildTeamProfile({ ...inputs, moduleSelection: selection });
+      expect(profile.serviceAccounts.map((account) => account.id)).toEqual(ids);
+      const serialized = serializeTeamProfileJson(profile);
+      const importedProfile = JSON.parse(serialized);
+      const imported = buildTeamProfileImportDiff(importedProfile);
+      expect(imported.ok).toBe(true);
+      expect(imported.secretSlots).toEqual({
+        required: profile.serviceAccounts
+          .filter((account) => account.required)
+          .map((account) => account.secretSlot)
+          .sort(),
+        optional: profile.serviceAccounts
+          .filter((account) => !account.required)
+          .map((account) => account.secretSlot)
+          .sort(),
+      });
+      expect(serializeTeamProfileJson(importedProfile)).toBe(serialized);
+      if (ids.length === 0) {
+        expect(formatTeamProfileReviewMarkdown(profile)).toContain("## Secret Slots\n\n- none");
+      }
+    }
+  });
+
+  test("editing one exported account cannot change another or any later export", () => {
+    const first = buildTeamProfile(inputs);
+    const second = buildTeamProfile(inputs);
+    const account = first.serviceAccounts[0];
+    const original = { ...account };
+    expect(account).not.toBe(second.serviceAccounts[0]);
+    try {
+      account.id = "custom";
+      account.required = false;
+      account.secretSlot = "secret://acfs/team/custom-auth";
+      expect(second.serviceAccounts[0]).toEqual(original);
+      expect(buildTeamProfile(inputs).serviceAccounts[0]).toEqual(original);
+    } finally {
+      Object.assign(account, original);
+    }
+  });
+
+  test("preserves authored imported account requirements independently of module defaults", () => {
+    const profile = buildTeamProfile({ ...inputs, moduleSelection: { onlyModules: ["lang.go"] } });
+    profile.serviceAccounts = [
+      {
+        id: "github",
+        required: true,
+        authMethod: "browser_login",
+        secretSlot: "secret://acfs/team/github-auth",
+      },
+      {
+        id: "private-registry",
+        required: true,
+        authMethod: "api_token",
+        secretSlot: "secret://acfs/team/registry-auth",
+      },
+      {
+        id: "custom-cloud",
+        required: false,
+        authMethod: "cli_login",
+        secretSlot: "secret://acfs/team/custom-cloud-auth",
+      },
+    ];
+    const serialized = serializeTeamProfileJson(profile);
+    const importedProfile = JSON.parse(serialized);
+    const imported = buildTeamProfileImportDiff(importedProfile);
+    expect(imported.ok).toBe(true);
+    expect(importedProfile.serviceAccounts).toEqual(profile.serviceAccounts);
+    expect(imported.secretSlots.required).toEqual([
+      "secret://acfs/team/github-auth",
+      "secret://acfs/team/registry-auth",
+    ]);
+    expect(imported.secretSlots.optional).toEqual(["secret://acfs/team/custom-cloud-auth"]);
+    expect(serializeTeamProfileJson(importedProfile)).toBe(serialized);
   });
 });
