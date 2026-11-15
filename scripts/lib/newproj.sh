@@ -15,7 +15,9 @@ newproj_reviewed_main() {
     fi
     # Python reads its program from stdin; preserve the caller's terminal for
     # the explicit guided workflow instead of accepting a pipe as consent.
-    python3 -I - "$@" 3<&0 <<'ACFS_BOOTSTRAP_PY'
+    # Replace this direct CLI process so PID-targeted termination reaches the
+    # supervisor that owns the checkpoint and any detached tool process group.
+    exec python3 -I - "$@" 3<&0 <<'ACFS_BOOTSTRAP_PY'
 import argparse
 import hashlib
 import json
@@ -23,6 +25,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import signal
 import stat
 import subprocess
 import sys
@@ -31,6 +34,25 @@ SCHEMA = "acfs.project-bootstrap.v1"
 FEATURES = ("git", "beads", "readme", "gitignore", "agents", "starter", "ci", "prompt", "agent-mail")
 PRESET = ("git", "readme", "gitignore", "agents", "starter", "ci", "prompt")
 DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+CANCELLATION_SIGNALS = (signal.SIGHUP, signal.SIGINT, signal.SIGTERM)
+pending_signal = None
+starting_tool = False
+
+
+class BootstrapCancelled(KeyboardInterrupt):
+    def __init__(self, signum):
+        self.signum = signum
+
+
+def cancel_bootstrap(signum, frame):
+    global pending_signal
+    pending_signal = signum
+    # A repeated signal must not interrupt child-group termination or the
+    # durable failure checkpoint. The command exits after this cleanup.
+    for cancellation_signal in CANCELLATION_SIGNALS:
+        signal.signal(cancellation_signal, signal.SIG_IGN)
+    if not starting_tool:
+        raise BootstrapCancelled(signum)
 
 
 def canonical(value):
@@ -622,19 +644,31 @@ def save_state(state_dir, state):
 
 
 def capture_tool(executable, arguments, env, *, data=None, cwd=None, check=True):
-    import signal
+    global starting_tool
     # All argv are fixed by regenerated templates, never evaluated as shell.
-    process = subprocess.Popen([executable, *arguments], env=env, cwd=cwd,
-                               stdin=subprocess.PIPE if data is not None else subprocess.DEVNULL,
-                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True)
+    process = None
     try:
+        # Defer a cancellation only until Popen gives us the child's identity;
+        # otherwise a signal in the spawn window can orphan a mutating tool.
+        starting_tool = True
+        try:
+            process = subprocess.Popen([executable, *arguments], env=env, cwd=cwd,
+                                       stdin=subprocess.PIPE if data is not None else subprocess.DEVNULL,
+                                       stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True)
+        finally:
+            starting_tool = False
+        if pending_signal is not None:
+            raise BootstrapCancelled(pending_signal)
         output, _ = process.communicate(input=data, timeout=30)
     except BaseException:
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        process.wait()
+        if process is not None:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.wait()
+        if pending_signal is not None:
+            raise BootstrapCancelled(pending_signal) from None
         raise
     if check and process.returncode:
         raise ValueError(f"{Path(executable).name} failed (exit {process.returncode}); partial project retained")
@@ -1358,11 +1392,13 @@ def main():
     print(json.dumps(result, indent=2, ensure_ascii=True))
 
 
+for cancellation_signal in CANCELLATION_SIGNALS:
+    signal.signal(cancellation_signal, cancel_bootstrap)
 try:
     main()
-except (GuidedCancelled, KeyboardInterrupt):
+except (GuidedCancelled, KeyboardInterrupt) as error:
     print(json.dumps({"status": "cancelled", "note": "No additional operations will run; retain any saved plan for recovery."}), file=sys.stderr)
-    sys.exit(130)
+    sys.exit(128 + error.signum if isinstance(error, BootstrapCancelled) else 130)
 except (OSError, ValueError, TypeError, subprocess.SubprocessError) as error:
     print(json.dumps({"status": "failed", "error": str(error)}), file=sys.stderr)
     sys.exit(1)

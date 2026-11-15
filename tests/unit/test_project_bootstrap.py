@@ -4,8 +4,10 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -301,6 +303,120 @@ else:
         script.chmod(0o755)
         self.env.update({"PATH": str(bin_dir) + os.pathsep + self.env["PATH"], "BOOTSTRAP_TEST_LOG": str(self.base / "tool.log"), "BOOTSTRAP_TEST_FAILURE": failure})
         return self.base / "tool.log"
+
+    def assert_tool_cancellation(self, signum, *, whole_group=False):
+        """Interrupt the real CLI while a detached tool and its child can write."""
+        log = self.br_fixture()
+        original_path = self.env["PATH"]
+        real_git = shutil.which("git", path=original_path)
+        tools = self.base / "interrupt-tools"
+        tools.mkdir()
+        script = tools / "git"
+        script.write_text("#!" + shutil.which("python3") + "\n" + '''import json, os, pathlib, signal, subprocess, sys, time
+base = pathlib.Path(os.environ["BOOTSTRAP_INTERRUPT_FIXTURE"])
+for signum in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
+    signal.signal(signum, signal.SIG_IGN)
+def wait_for(path):
+    deadline = time.monotonic() + 10
+    while not path.exists():
+        if time.monotonic() >= deadline:
+            sys.exit(97)
+        time.sleep(0.01)
+if sys.argv[1:] == ["--fixture-child"]:
+    (base / "child-ready").touch()
+    wait_for(base / "release")
+    (base / "late-child-write").write_text("descendant survived cancellation")
+    sys.exit(0)
+child = subprocess.Popen([sys.executable, __file__, "--fixture-child"])
+wait_for(base / "child-ready")
+(base / "identities.json").write_text(json.dumps({"parent": os.getpid(), "child": child.pid, "group": os.getpgrp()}))
+(base / "ready").touch()
+wait_for(base / "release")
+child.wait()
+(base / "late-tool-write").write_text("tool survived cancellation")
+os.execv(os.environ["BOOTSTRAP_REAL_GIT"], [os.environ["BOOTSTRAP_REAL_GIT"], *sys.argv[1:]])
+''')
+        script.chmod(0o755)
+        self.env.update({"PATH": str(tools) + os.pathsep + original_path,
+                         "BOOTSTRAP_INTERRUPT_FIXTURE": str(tools), "BOOTSTRAP_REAL_GIT": real_git})
+        plan = self.plan("--with", "git,beads,readme")
+        path = self.save(plan)
+        process = subprocess.Popen([BASH, str(SCRIPT), "--apply", str(path), "--yes"],
+                                   env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   text=True, start_new_session=True)
+        identities = None
+        try:
+            deadline = time.monotonic() + 5
+            while not (tools / "ready").exists() and time.monotonic() < deadline:
+                self.assertIsNone(process.poll(), "bootstrap exited before the tool started")
+                time.sleep(0.01)
+            self.assertTrue((tools / "ready").exists(), "detached tool did not start")
+            identities = json.loads((tools / "identities.json").read_text())
+            self.assertNotEqual(identities["group"], process.pid)
+            files = {entry["path"]: ((self.target / entry["path"]).read_bytes(),
+                                    (self.target / entry["path"]).stat().st_ino) for entry in plan["files"]}
+            if whole_group:
+                os.killpg(process.pid, signum)
+            else:
+                process.send_signal(signum)
+            process.wait(timeout=5)
+            # Any surviving child is now free to mutate the project. Waiting
+            # for its exit avoids a timing-based assertion about missing files.
+            (tools / "release").touch()
+            output, errors = process.communicate(timeout=5)
+
+            def running(pid):
+                result = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)],
+                                        capture_output=True, text=True, timeout=2)
+                status = result.stdout.strip()
+                return bool(status) and not status.startswith("Z")
+
+            deadline = time.monotonic() + 3
+            while any(running(identities[key]) for key in ("parent", "child")) and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertFalse(any(running(identities[key]) for key in ("parent", "child")),
+                             "owned tool processes survived cancellation")
+            self.assertEqual(process.returncode, 128 + signum, output + errors)
+            self.assertIn('"status": "cancelled"', errors)
+            self.assertIn("--resume", errors)
+            self.assertFalse((tools / "late-child-write").exists())
+            self.assertFalse((tools / "late-tool-write").exists())
+            self.assertFalse((self.target / ".git").exists())
+            self.assertFalse(log.exists(), "cancellation must prevent the later Beads command")
+            state = json.loads((self.target / plan["state_file"]).read_text())
+            self.assertEqual(state["status"], "failed")
+            self.assertEqual(state["completed_commands"], [])
+            self.assertEqual(state["completed_files"], [entry["path"] for entry in plan["files"]])
+
+            self.env["PATH"] = original_path
+            resumed = json.loads(self.run_cli("--apply", path, "--yes", "--resume").stdout)
+            self.assertEqual(resumed["completed_commands"], ["git-init", "beads-init"])
+            self.assertEqual(files, {name: ((self.target / name).read_bytes(), (self.target / name).stat().st_ino)
+                                     for name in files})
+            self.assertEqual(json.loads((self.target / plan["state_file"]).read_text())["status"], "complete")
+        finally:
+            # Also release a fixture whose readiness was delayed beyond the
+            # test deadline; a failed assertion must not leave it waiting.
+            (tools / "release").touch()
+            if identities is None and (tools / "ready").exists():
+                identities = json.loads((tools / "identities.json").read_text())
+            if process.poll() is None:
+                os.killpg(process.pid, signal.SIGKILL)
+            if identities is not None:
+                try:
+                    os.killpg(identities["group"], signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            process.communicate(timeout=5)
+
+    def test_hangup_quiesces_detached_tool_group_and_preserves_resumable_state(self):
+        self.assert_tool_cancellation(signal.SIGHUP, whole_group=True)
+
+    def test_pid_termination_quiesces_term_resistant_descendants_before_resume(self):
+        self.assert_tool_cancellation(signal.SIGTERM)
+
+    def test_pid_interrupt_cancels_without_running_later_bootstrap_commands(self):
+        self.assert_tool_cancellation(signal.SIGINT)
 
     def test_beads_is_opt_in_and_all_tool_effects_are_reviewable(self):
         log = self.br_fixture()
