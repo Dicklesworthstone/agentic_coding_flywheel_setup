@@ -11658,6 +11658,299 @@ EOF
     refute_output --partial "PASS:"
 }
 
+smoke_scope_fixture() {
+    local mode="$1"
+    shift
+    local smoke="$PROJECT_ROOT/scripts/lib/smoke_test.sh"
+    ACFS_BLUE=1 source "$smoke"
+    _SMOKE_TARGET_USER="$(id -un)"
+    _SMOKE_TARGET_HOME="$HOME"
+    export ACFS_STATE_FILE="$HOME/.acfs/state.json"
+    mkdir -p "$HOME/.acfs" "$HOME/.local/bin"
+    jq -n --arg mode "$mode" --arg user "$_SMOKE_TARGET_USER" --arg home "$HOME" \
+        --args '{mode:$mode,target_user:$user,target_home:$home,
+                 module_selection:{schema_version:1,selected_modules:$ARGS.positional}}' \
+        "$@" > "$ACFS_STATE_FILE"
+    _smoke_binary_exists() {
+        printf 'PROBE:%s\n' "$1"
+        [[ -x "$_SMOKE_TARGET_HOME/.local/bin/$1" ]]
+    }
+}
+
+smoke_unselected_probe_sentinels() {
+    _check_user() { printf 'UNEXPECTED:user\n'; }
+    _check_shell() { printf 'UNEXPECTED:shell\n'; }
+    _check_sudo() { printf 'UNEXPECTED:sudo\n'; }
+    _check_workspace() { printf 'UNEXPECTED:workspace\n'; }
+    _check_ntm() { printf 'UNEXPECTED:ntm\n'; }
+    _check_onboard() { printf 'UNEXPECTED:onboard\n'; }
+    _check_agent_mail() { printf 'UNEXPECTED:agent-mail\n'; }
+    _check_postgres() { printf 'UNEXPECTED:postgres\n'; }
+}
+
+@test "smoke_test.sh: scoped Codex checks omit unrelated probes and preserve caller PATH" {
+    smoke_scope_fixture safe agents.codex
+    smoke_unselected_probe_sentinels
+    printf '#!/usr/bin/env bash\nexit 0\n' > "$HOME/.local/bin/codex"
+    chmod +x "$HOME/.local/bin/codex"
+    smoke_run_with_path_check() {
+        local original_path="$PATH" result=0
+        run_smoke_test || result=$?
+        [[ "$PATH" == "$original_path" ]] || return 99
+        return "$result"
+    }
+
+    run smoke_run_with_path_check
+    assert_success
+    assert_output --partial "Agents: codex"
+    assert_output --partial "Languages: not selected"
+    assert_output --partial "1/1 critical passed"
+    refute_output --partial "UNEXPECTED:"
+    refute_output --partial "PROBE:claude"
+    refute_output --partial "PROBE:agy"
+    refute_output --partial "PROBE:bun"
+    refute_output --partial "PROBE:slb"
+    refute_output --partial "Run 'onboard'"
+}
+
+@test "smoke_test.sh: a missing selected agent cannot be masked by an unrelated installed agent" {
+    smoke_scope_fixture safe agents.codex
+    smoke_unselected_probe_sentinels
+    printf '#!/usr/bin/env bash\nexit 0\n' > "$HOME/.local/bin/claude"
+    chmod +x "$HOME/.local/bin/claude"
+
+    run run_smoke_test
+    assert_failure
+    assert_output --partial "Agents: missing codex"
+    assert_output --partial "0/1 critical passed, 1 failed"
+    refute_output --partial "PROBE:claude"
+    refute_output --partial "Installation successful"
+    refute_output --partial "UNEXPECTED:"
+}
+
+@test "smoke_test.sh: a missing selected NTM fails with a targeted installer repair" {
+    smoke_scope_fixture safe stack.ntm
+    _smoke_binary_path() { return 1; }
+
+    run run_smoke_test
+    assert_failure
+    assert_output --partial "NTM: not found"
+    assert_output --partial "--force-reinstall --only stack.ntm"
+    assert_output --partial "0/1 critical passed, 1 failed"
+    refute_output --partial "PROBE:"
+    refute_output --partial "Selected smoke checks passed"
+}
+
+@test "smoke_test.sh: every selected coding agent is checked including Antigravity launcher companions" {
+    local module command commands
+    for module in agents.claude agents.codex agents.gemini agents.antigravity agents.opencode agents.omp agents.grok stack.pi_agent_rust; do
+        case "$module" in
+            agents.antigravity) commands="agy agy-locked agy-real" ;;
+            stack.pi_agent_rust) commands=pi ;;
+            *) commands="${module#agents.}" ;;
+        esac
+        smoke_scope_fixture safe "$module"
+        for command in $commands; do
+            printf '#!/usr/bin/env bash\nexit 0\n' > "$HOME/.local/bin/$command"
+            chmod +x "$HOME/.local/bin/$command"
+        done
+        _smoke_load_module_selection
+        run _check_agents
+        assert_success
+        for command in $commands; do
+            assert_output --partial "PROBE:$command"
+        done
+
+        # Keep the file and remove only its executable permission to exercise
+        # absence without deleting either the fixture or any prior evidence.
+        chmod -x "$HOME/.local/bin/${commands##* }"
+        run _check_agents
+        assert_failure
+        assert_output --partial "Agents: missing ${commands##* }"
+    done
+}
+
+@test "smoke_test.sh: invalid or mismatched saved intent fails before every diagnostic probe" {
+    smoke_scope_fixture safe agents.codex
+    smoke_unselected_probe_sentinels
+    local payload checkpoint index=0
+    for payload in \
+        '{"module_selection":null}' \
+        '{"module_selection":{"schema_version":1,"selected_modules":[]}}' \
+        '{"module_selection":{"schema_version":1,"selected_modules":["agents.unknown"]}}' \
+        '{"module_selection":{"schema_version":1,"selected_modules":["agents.codex","agents.codex"]}}' \
+        '{"mode":"unsafe"}' \
+        '{"target_home":"/different-home","target_user":"somebody-else"}' \
+        '{broken'; do
+        index=$((index + 1))
+        checkpoint="$HOME/invalid-$index.json"
+        if [[ "$payload" != '{broken' ]]; then
+            # Keep identity valid while testing malformed scope, so a rejected
+            # checkpoint proves its selection was parsed, not just its owner.
+            payload="$(jq -cn --arg home "$HOME" --arg user "$_SMOKE_TARGET_USER" \
+                --argjson overrides "$payload" \
+                '{mode:"safe",target_home:$home,target_user:$user,
+                  module_selection:{schema_version:1,selected_modules:["agents.codex"]}} * $overrides')"
+        fi
+        printf '%s\n' "$payload" > "$checkpoint"
+        ACFS_STATE_FILE="$checkpoint"
+        run run_smoke_test
+        assert_failure
+        assert_output --partial "Saved installation selection"
+        refute_output --partial "PROBE:"
+        refute_output --partial "UNEXPECTED:"
+        [[ "$(cat "$checkpoint")" == "$payload" ]]
+    done
+    ACFS_STATE_FILE="$HOME/missing-checkpoint.json"
+    run run_smoke_test
+    assert_failure
+    assert_output --partial "Saved installation selection"
+    refute_output --partial "PROBE:"
+    refute_output --partial "UNEXPECTED:"
+
+    ln -s "$HOME/.acfs/state.json" "$HOME/linked-checkpoint.json"
+    ACFS_STATE_FILE="$HOME/linked-checkpoint.json"
+    run run_smoke_test
+    assert_failure
+    assert_output --partial "Saved installation selection"
+    refute_output --partial "PROBE:"
+    refute_output --partial "UNEXPECTED:"
+}
+
+@test "smoke_test.sh: scoped checks require the adjacent catalog and never execute its shell contents" {
+    smoke_scope_fixture safe agents.codex
+    local runtime="$HOME/smoke-runtime"
+    mkdir -p "$runtime/lib" "$runtime/generated"
+    cp "$PROJECT_ROOT/scripts/lib/smoke_test.sh" "$PROJECT_ROOT/scripts/lib/state.sh" "$runtime/lib/"
+    ACFS_BLUE=1 source "$runtime/lib/smoke_test.sh"
+    _SMOKE_TARGET_USER="$(id -un)"
+    _SMOKE_TARGET_HOME="$HOME"
+    smoke_unselected_probe_sentinels
+
+    run run_smoke_test
+    assert_failure
+    assert_output --partial "Saved installation selection"
+    refute_output --partial "PROBE:"
+    refute_output --partial "UNEXPECTED:"
+
+    cp "$PROJECT_ROOT/scripts/generated/manifest_index.sh" "$runtime/generated/manifest_index.sh"
+    printf '\nprintf "executed\\n" > %q\n' "$HOME/catalog-executed" >> "$runtime/generated/manifest_index.sh"
+    run _smoke_load_module_selection
+    assert_success
+    [[ ! -e "$HOME/catalog-executed" ]]
+}
+
+@test "smoke_test.sh: custom checkpoints cannot replace an explicit target user or home" {
+    smoke_scope_fixture safe agents.codex
+    local target_user="$_SMOKE_TARGET_USER" state_user state_home mismatch
+    local checkpoint="$HOME/custom-checkpoint.json"
+    for mismatch in user home; do
+        state_user="$target_user"
+        state_home="$HOME"
+        if [[ "$mismatch" == user ]]; then
+            state_user=somebody-else
+        else
+            state_home="$HOME/different-home"
+        fi
+        jq --arg user "$state_user" --arg home "$state_home" \
+            '.target_user = $user | .target_home = $home' \
+            "$HOME/.acfs/state.json" > "$checkpoint"
+        run bash -c '
+            TARGET_USER="$2"
+            TARGET_HOME="$3"
+            ACFS_STATE_FILE="$4"
+            ACFS_BLUE=1 source "$1"
+            _smoke_binary_exists() { printf "PROBE:%s\n" "$1"; return 0; }
+            run_smoke_test
+        ' _ "$PROJECT_ROOT/scripts/lib/smoke_test.sh" "$target_user" "$HOME" "$checkpoint"
+        assert_failure
+        assert_output --partial "Saved installation selection"
+        refute_output --partial "PROBE:"
+    done
+}
+
+@test "smoke_test.sh: strict-shell failures report the summary and restore caller PATH" {
+    smoke_scope_fixture safe agents.codex
+    run bash -c '
+        set -euo pipefail
+        ACFS_BLUE=1 source "$1"
+        _SMOKE_TARGET_HOME="$2"
+        _SMOKE_TARGET_USER="$3"
+        _smoke_binary_exists() { return 1; }
+        original_path="$PATH"
+        trap '\''[[ "$PATH" == "$original_path" ]] || { printf "PATH_CHANGED\n"; exit 99; }'\'' EXIT
+        run_smoke_test
+        printf "UNEXPECTED_SUCCESS\n"
+    ' _ "$PROJECT_ROOT/scripts/lib/smoke_test.sh" "$HOME" "$_SMOKE_TARGET_USER"
+    assert_failure
+    [[ "$status" -eq 1 ]]
+    assert_output --partial "Agents: missing codex"
+    assert_output --partial "0/1 critical passed, 1 failed"
+    refute_output --partial "PATH_CHANGED"
+    refute_output --partial "UNEXPECTED_SUCCESS"
+}
+
+@test "smoke_test.sh: selection reads preserve the caller state policy and lock ownership" {
+    smoke_scope_fixture safe agents.codex
+    source "$PROJECT_ROOT/scripts/lib/state.sh"
+    ACFS_STATE_SELECTION_MODE=scoped
+    ACFS_STATE_SELECTED_MODULES=(agents.claude)
+    ACFS_STATE_REQUESTED_MODULES=(agents.claude)
+    ACFS_STATE_INSTALL_MODE=vibe
+    _ACFS_STATE_LOCKED=true
+    _ACFS_STATE_LOCK_DEPTH=2
+    _ACFS_STATE_LOCK_OWNER_PID="$BASHPID"
+    _ACFS_STATE_LOCK_FILE="$HOME/caller-state.lock"
+    local before after
+    before="$(declare -p ACFS_STATE_SELECTION_MODE ACFS_STATE_SELECTED_MODULES \
+        ACFS_STATE_REQUESTED_MODULES ACFS_STATE_INSTALL_MODE _ACFS_STATE_LOCKED \
+        _ACFS_STATE_LOCK_DEPTH _ACFS_STATE_LOCK_OWNER_PID _ACFS_STATE_LOCK_FILE)"
+    _smoke_load_module_selection
+    after="$(declare -p ACFS_STATE_SELECTION_MODE ACFS_STATE_SELECTED_MODULES \
+        ACFS_STATE_REQUESTED_MODULES ACFS_STATE_INSTALL_MODE _ACFS_STATE_LOCKED \
+        _ACFS_STATE_LOCK_DEPTH _ACFS_STATE_LOCK_OWNER_PID _ACFS_STATE_LOCK_FILE)"
+    [[ "$before" == "$after" ]]
+    [[ "$_SMOKE_INSTALL_MODE" == safe ]]
+    [[ "${_SMOKE_SELECTED_MODULES[*]}" == agents.codex ]]
+}
+
+@test "smoke_test.sh: saved safe mode checks sudo membership without requiring passwordless access" {
+    smoke_scope_fixture safe users.ubuntu
+    export SMOKE_FIXTURE_USER="$_SMOKE_TARGET_USER"
+    export SMOKE_SUDO_TRACE="$HOME/sudo-invocations"
+    cat > "$HOME/mock-sudo" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$SMOKE_SUDO_TRACE"
+exit 1
+EOF
+    cat > "$HOME/mock-id" <<'EOF'
+#!/usr/bin/env bash
+case "$1" in
+    -un) printf '%s\n' "$SMOKE_FIXTURE_USER" ;;
+    -nG) printf '%s sudo wheel\n' "$SMOKE_FIXTURE_USER" ;;
+    *) exit 1 ;;
+esac
+EOF
+    chmod +x "$HOME/mock-sudo" "$HOME/mock-id"
+    MODE=vibe
+    _smoke_load_module_selection
+    _smoke_system_binary_path() {
+        case "$1" in
+            sudo|id) printf '%s/mock-%s\n' "$HOME" "$1" ;;
+            *) command -v "$1" ;;
+        esac
+    }
+    run _check_sudo
+    assert_success
+    assert_output --partial "safe mode"
+    [[ ! -e "$SMOKE_SUDO_TRACE" ]]
+
+    _SMOKE_INSTALL_MODE=vibe
+    run _check_sudo
+    assert_failure
+    [[ "$(cat "$SMOKE_SUDO_TRACE")" == '-n true' ]]
+}
+
 @test "cheatsheet.sh: prepend_user_paths prefers ACFS bin and skips missing dirs" {
     local cheatsheet="$PROJECT_ROOT/scripts/lib/cheatsheet.sh"
     local test_home

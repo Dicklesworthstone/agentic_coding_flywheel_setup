@@ -291,6 +291,11 @@ _SMOKE_CRITICAL_PASS=0
 _SMOKE_CRITICAL_FAIL=0
 _SMOKE_NONCRITICAL_PASS=0
 _SMOKE_WARNING_COUNT=0
+_SMOKE_SKIPPED_COUNT=0
+_SMOKE_SELECTION_MODE=invalid
+_SMOKE_INSTALL_MODE=""
+_SMOKE_SELECTION_STATE_FILE=""
+declare -ga _SMOKE_SELECTED_MODULES=()
 
 _smoke_read_state_string() {
     local state_file="$1"
@@ -765,6 +770,80 @@ _smoke_repair_target_context_from_resolved_state() {
 
 _smoke_repair_target_context_from_resolved_state
 
+# Validate the same saved intent as Doctor and update before probing tools.
+# Read in a subshell: sourcing state.sh must not reset a caller's active state
+# lock or overwrite the policy it is using for a different installation.
+_smoke_load_module_selection() {
+    _SMOKE_SELECTION_MODE=invalid
+    _SMOKE_INSTALL_MODE=""
+    _SMOKE_SELECTION_STATE_FILE=""
+    _SMOKE_SELECTED_MODULES=()
+    local default_state_file="${_SMOKE_TARGET_HOME:+$_SMOKE_TARGET_HOME/.acfs/state.json}"
+    local state_file="${ACFS_STATE_FILE:-}"
+    local lib_dir="${BASH_SOURCE[0]%/*}" parsed="" explicit_home=""
+    local -a identity=("${_SMOKE_TARGET_HOME:-}" "${_SMOKE_TARGET_USER:-}") records=()
+
+    [[ "${_SMOKE_TARGET_HOME:-}" == /* && "$_SMOKE_TARGET_HOME" != / \
+        && "${_SMOKE_TARGET_USER:-}" =~ ^[a-z_][a-z0-9._-]*$ ]] || return 1
+    # Discovery may recover an installation from its checkpoint when no
+    # target was given. It must never replace an explicitly requested target.
+    [[ -z "${TARGET_USER:-}" || "$TARGET_USER" == "$_SMOKE_TARGET_USER" ]] || return 1
+    if [[ -n "${TARGET_HOME:-}" ]]; then
+        explicit_home="$(_smoke_sanitize_abs_nonroot_path "$TARGET_HOME")" || return 1
+        [[ "$explicit_home" == "$_SMOKE_TARGET_HOME" ]] || return 1
+    fi
+    [[ "$lib_dir" != "${BASH_SOURCE[0]}" ]] || lib_dir=.
+    lib_dir="$(cd "$lib_dir" && pwd)" || return 1
+    [[ -f "$lib_dir/state.sh" && ! -L "$lib_dir/state.sh" && -r "$lib_dir/state.sh" ]] || return 1
+
+    if [[ -z "$state_file" ]]; then
+        # A malformed canonical entry is an error; do not fall through from
+        # a directory or dangling link to a different installation's state.
+        if [[ -e "$default_state_file" || -L "$default_state_file" ]]; then
+            state_file="$default_state_file"
+        else
+            state_file="$(_smoke_resolve_state_file 2>/dev/null || true)"
+            state_file="${state_file:-$default_state_file}"
+        fi
+    fi
+    [[ "$state_file" == /* && "$state_file" != / ]] || return 1
+    if [[ "$state_file" == "$default_state_file" ]]; then
+        identity+=(allow-legacy-identity)
+    fi
+    if ! parsed=$(
+        # shellcheck source=state.sh
+        source "$lib_dir/state.sh" || exit 1
+        declare -F state_load_module_selection >/dev/null || exit 1
+        declare -F state_validate_module_selection_catalog_file >/dev/null || exit 1
+        state_load_module_selection "$state_file" "${identity[@]}" || exit 1
+        state_validate_module_selection_catalog_file "$lib_dir/../generated/manifest_index.sh" || exit 1
+        install_mode="${ACFS_STATE_INSTALL_MODE:-${MODE:-${ACFS_MODE:-vibe}}}"
+        case "$install_mode" in safe|vibe) ;; *) exit 1 ;; esac
+        printf '%s\n' "$ACFS_STATE_SELECTION_MODE" "$install_mode" "${ACFS_STATE_SELECTED_MODULES[@]}"
+    ); then
+        return 1
+    fi
+    mapfile -t records <<< "$parsed"
+    _SMOKE_SELECTION_MODE="${records[0]}"
+    _SMOKE_INSTALL_MODE="${records[1]}"
+    _SMOKE_SELECTED_MODULES=("${records[@]:2}")
+    _SMOKE_SELECTION_STATE_FILE="$state_file"
+}
+
+_smoke_module_selected() {
+    local wanted="$1" module=""
+    case "${_SMOKE_SELECTION_MODE:-invalid}" in
+        legacy) return 0 ;;
+        scoped)
+            for module in "${_SMOKE_SELECTED_MODULES[@]}"; do
+                [[ "$module" != "$wanted" ]] || return 0
+            done
+            return 1
+            ;;
+        *) return 2 ;;
+    esac
+}
+
 _smoke_read_bin_dir_from_state() {
     local state_file="${1:-}"
     local bin_dir=""
@@ -825,7 +904,8 @@ _smoke_preferred_bin_dir() {
     local state_file=""
     local candidate=""
 
-    state_file="$(_smoke_resolve_state_file 2>/dev/null || true)"
+    state_file="${_SMOKE_SELECTION_STATE_FILE:-}"
+    [[ -n "$state_file" ]] || state_file="$(_smoke_resolve_state_file 2>/dev/null || true)"
 
     candidate="$(_smoke_read_bin_dir_from_state "$state_file" 2>/dev/null || true)"
     candidate="$(_smoke_validate_bin_dir_for_home "$candidate" "$base_home" 2>/dev/null || true)"
@@ -1011,6 +1091,21 @@ _smoke_info() {
     ((_SMOKE_NONCRITICAL_PASS += 1))
 }
 
+_smoke_skip() {
+    echo "  $1: not selected during installation"
+    ((_SMOKE_SKIPPED_COUNT += 1))
+}
+
+_smoke_run_selected_check() {
+    local module="$1" label="$2" check_function="$3" selected_status=0
+    _smoke_module_selected "$module" || selected_status=$?
+    case "$selected_status" in
+        0) "$check_function" ;;
+        1) _smoke_skip "$label" ;;
+        *) _smoke_fail "$label: invalid installation selection"; return 1 ;;
+    esac
+}
+
 _smoke_header() {
     echo ""
     echo -e "${ACFS_BLUE-\033[0;34m}[Smoke Test]${ACFS_NC-\033[0m}"
@@ -1073,15 +1168,49 @@ _check_shell() {
     return 1
 }
 
-# Check 3: Passwordless sudo works
+# Check 3: Respect the installation's accepted sudo policy. Safe mode needs
+# sudo and administrator membership, but does not require passwordless access.
 _check_sudo() {
-    if sudo -n true 2>/dev/null; then
-        _smoke_pass "Sudo: passwordless"
-        return 0
-    else
-        _smoke_fail "Sudo: requires password" "Re-run installer with --mode vibe"
+    local sudo_bin="" id_bin="" groups="" admin_group=sudo
+    local install_mode="${_SMOKE_INSTALL_MODE:-${MODE:-${ACFS_MODE:-vibe}}}"
+    sudo_bin="$(_smoke_system_binary_path sudo 2>/dev/null || true)"
+    if [[ -z "$sudo_bin" ]]; then
+        _smoke_fail "Sudo: not installed" "Install sudo for $_SMOKE_TARGET_USER"
         return 1
     fi
+    if [[ "$install_mode" == safe ]]; then
+        if [[ "${ACFS_DISTRO_FAMILY:-}" == arch ]] || {
+            [[ -z "${ACFS_DISTRO_FAMILY:-}" && -r /etc/os-release ]] &&
+                grep -Eq '^(ID_LIKE=.*arch|ID="?(arch|omarchy)"?$)' /etc/os-release
+        }; then
+            admin_group=wheel
+        fi
+        id_bin="$(_smoke_system_binary_path id 2>/dev/null || true)"
+        if [[ -n "$id_bin" ]]; then
+            groups="$("$id_bin" -nG "$_SMOKE_TARGET_USER" 2>/dev/null || true)"
+        fi
+        if [[ " $groups " == *" $admin_group "* ]]; then
+            _smoke_pass "Sudo: available (safe mode; a password may be required)"
+            return 0
+        fi
+        _smoke_fail "Sudo: administrator membership missing (safe mode)" \
+            "Ensure $_SMOKE_TARGET_USER belongs to the $admin_group group"
+        return 1
+    fi
+    if [[ "$install_mode" != vibe ]]; then
+        _smoke_fail "Sudo: invalid installation mode"
+        return 1
+    fi
+    if [[ "$(_smoke_resolve_current_user 2>/dev/null || true)" != "$_SMOKE_TARGET_USER" ]]; then
+        _smoke_fail "Sudo: run the check as $_SMOKE_TARGET_USER" "ssh $_SMOKE_TARGET_USER@YOUR_SERVER"
+        return 1
+    fi
+    if "$sudo_bin" -n true 2>/dev/null; then
+        _smoke_pass "Sudo: passwordless (vibe mode)"
+        return 0
+    fi
+    _smoke_fail "Sudo: requires password (vibe mode)" "Re-run the selected user setup to restore the accepted sudo policy"
+    return 1
 }
 
 # Check 4: /data/projects exists
@@ -1097,15 +1226,21 @@ _check_workspace() {
 
 # Check 5: Language runtimes available
 _check_languages() {
-    local missing=()
+    local missing=() selected=()
+    local module="" tool=""
+    for module in lang.bun lang.uv lang.rust lang.go; do
+        _smoke_module_selected "$module" || continue
+        tool="${module#lang.}"
+        [[ "$tool" != rust ]] || tool=cargo
+        selected+=("$tool")
+        _smoke_binary_exists "$tool" || missing+=("$tool")
+    done
 
-    _smoke_binary_exists "bun" || missing+=("bun")
-    _smoke_binary_exists "uv" || missing+=("uv")
-    _smoke_binary_exists "cargo" || missing+=("cargo")
-    _smoke_binary_exists "go" || missing+=("go")
-
-    if [[ ${#missing[@]} -eq 0 ]]; then
-        _smoke_pass "Languages: bun, uv, cargo, go"
+    if [[ ${#selected[@]} -eq 0 ]]; then
+        _smoke_skip "Languages"
+        return 0
+    elif [[ ${#missing[@]} -eq 0 ]]; then
+        _smoke_pass "Languages: ${selected[*]}"
         return 0
     else
         _smoke_fail "Languages: missing ${missing[*]}" "Re-run installer"
@@ -1117,31 +1252,43 @@ _check_languages() {
 _check_agents() {
     local found=()
     local missing=()
-
-    # Check for each agent CLI
-    if _smoke_binary_exists "claude"; then
-        found+=("claude")
-    else
-        missing+=("claude")
+    local selected=()
+    local module="" tool="" companion=""
+    local modules=(agents.claude agents.codex agents.antigravity)
+    if [[ "$_SMOKE_SELECTION_MODE" == scoped ]]; then
+        modules+=(agents.gemini agents.opencode agents.omp agents.grok stack.pi_agent_rust)
     fi
+    for module in "${modules[@]}"; do
+        _smoke_module_selected "$module" || continue
+        case "$module" in
+            agents.antigravity) tool=agy ;;
+            stack.pi_agent_rust) tool=pi ;;
+            *) tool="${module#agents.}" ;;
+        esac
+        selected+=("$tool")
+        if _smoke_binary_exists "$tool"; then
+            found+=("$tool")
+        else
+            missing+=("$tool")
+        fi
+        if [[ "$module" == agents.antigravity && "$_SMOKE_SELECTION_MODE" == scoped ]]; then
+            for companion in agy-locked agy-real; do
+                _smoke_binary_exists "$companion" || missing+=("$companion")
+            done
+        fi
+    done
 
-    if _smoke_binary_exists "codex"; then
-        found+=("codex")
-    else
-        missing+=("codex")
-    fi
-
-    if _smoke_binary_exists "agy"; then
-        found+=("agy")
-    else
-        missing+=("agy")
-    fi
-
-    if [[ ${#missing[@]} -eq 0 ]]; then
+    if [[ ${#selected[@]} -eq 0 ]]; then
+        _smoke_skip "Agents"
+        return 0
+    elif [[ ${#missing[@]} -eq 0 ]]; then
         _smoke_pass "Agents: ${found[*]}"
         return 0
+    elif [[ "$_SMOKE_SELECTION_MODE" == scoped ]]; then
+        _smoke_fail "Agents: missing ${missing[*]}" "Re-run the installer for the selected agent modules"
+        return 1
     elif [[ ${#found[@]} -gt 0 ]]; then
-        # At least one agent found
+        # Historical checkpoints do not record which agents were requested.
         _smoke_pass "Agents: ${found[*]}"
         _smoke_warn "Missing agents: ${missing[*]}" "May need manual installation"
         return 0
@@ -1159,7 +1306,7 @@ _check_ntm() {
         _smoke_pass "NTM: installed"
         return 0
     else
-        _smoke_fail "NTM: not found" "Re-run: curl -fsSL https://agent-flywheel.com/install | bash -s -- --yes --force-reinstall --only stack.ntm"
+        _smoke_fail "NTM: not found" "Re-run your ACFS installer with --force-reinstall --only stack.ntm"
         return 1
     fi
 }
@@ -1193,8 +1340,17 @@ _check_stack_tools() {
     local stack_tools=("slb" "ubs" "bv" "cass" "cm" "caam")
     local found=()
     local missing=()
+    local selected=()
+    local tool="" module=""
 
     for tool in "${stack_tools[@]}"; do
+        case "$tool" in
+            ubs) module=stack.ultimate_bug_scanner ;;
+            bv) module=stack.beads_viewer ;;
+            *) module="stack.$tool" ;;
+        esac
+        _smoke_module_selected "$module" || continue
+        selected+=("$tool")
         if _smoke_binary_exists "$tool"; then
             found+=("$tool")
         else
@@ -1202,7 +1358,9 @@ _check_stack_tools() {
         fi
     done
 
-    if [[ ${#missing[@]} -eq 0 ]]; then
+    if [[ ${#selected[@]} -eq 0 ]]; then
+        _smoke_skip "Stack tools"
+    elif [[ ${#missing[@]} -eq 0 ]]; then
         _smoke_info "Stack tools: all installed"
     else
         _smoke_warn "Stack tools missing: ${missing[*]}" "Some tools may need manual install"
@@ -1230,6 +1388,13 @@ run_smoke_test() {
     _SMOKE_CRITICAL_FAIL=0
     _SMOKE_NONCRITICAL_PASS=0
     _SMOKE_WARNING_COUNT=0
+    _SMOKE_SKIPPED_COUNT=0
+
+    if ! _smoke_load_module_selection; then
+        _smoke_fail "Saved installation selection: cannot validate the target checkpoint and module catalogue" \
+            "Restore matching ACFS state and runtime files before running diagnostics"
+        return 1
+    fi
 
     local original_path="$PATH"
 
@@ -1245,23 +1410,24 @@ run_smoke_test() {
 
     echo "Critical Checks:"
 
-    # Run all critical checks
-    _check_user
-    _check_shell
-    _check_sudo
-    _check_workspace
-    _check_languages
-    _check_agents
-    _check_ntm
-    _check_onboard
+    # Explicitly collect failures so callers using errexit still receive the
+    # full result, and their PATH is restored before the final nonzero return.
+    _smoke_run_selected_check users.ubuntu User _check_user || true
+    _smoke_run_selected_check shell.login Shell _check_shell || true
+    _smoke_run_selected_check users.ubuntu Sudo _check_sudo || true
+    _smoke_run_selected_check base.filesystem Workspace _check_workspace || true
+    _check_languages || true
+    _check_agents || true
+    _smoke_run_selected_check stack.ntm NTM _check_ntm || true
+    _smoke_run_selected_check acfs.onboard Onboard _check_onboard || true
 
     echo ""
     echo "Non-Critical Checks:"
 
     # Run non-critical checks
-    _check_agent_mail
-    _check_stack_tools
-    _check_postgres
+    _smoke_run_selected_check stack.mcp_agent_mail "Agent Mail" _check_agent_mail || true
+    _check_stack_tools || true
+    _smoke_run_selected_check db.postgres18 PostgreSQL _check_postgres || true
 
     # Calculate duration
     local end_time
@@ -1281,6 +1447,9 @@ run_smoke_test() {
     if [[ $_SMOKE_WARNING_COUNT -gt 0 ]]; then
         echo -e "${ACFS_YELLOW-\033[0;33m}$_SMOKE_WARNING_COUNT warning(s)${ACFS_NC-\033[0m}"
     fi
+    if [[ $_SMOKE_SKIPPED_COUNT -gt 0 ]]; then
+        echo "$_SMOKE_SKIPPED_COUNT check group(s) omitted by the installation selection"
+    fi
 
     echo -e "${ACFS_GRAY-\033[0;90m}Completed in ${duration}s${ACFS_NC-\033[0m}"
     echo ""
@@ -1296,7 +1465,13 @@ run_smoke_test() {
         return 1
     fi
 
-    echo -e "${ACFS_GREEN-\033[0;32m}Installation successful! Run 'onboard' to start the tutorial.${ACFS_NC-\033[0m}"
+    if [[ "$total_critical" -eq 0 ]]; then
+        echo "No applicable critical smoke checks. Run 'acfs doctor' to check the selected modules."
+    elif _smoke_module_selected acfs.onboard; then
+        echo -e "${ACFS_GREEN-\033[0;32m}Smoke checks passed! Run 'onboard' to start the tutorial.${ACFS_NC-\033[0m}"
+    else
+        echo -e "${ACFS_GREEN-\033[0;32m}Selected smoke checks passed.${ACFS_NC-\033[0m}"
+    fi
     return 0
 }
 
