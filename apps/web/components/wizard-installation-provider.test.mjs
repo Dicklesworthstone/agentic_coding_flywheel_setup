@@ -418,7 +418,9 @@ function fixture(sessionEntries = new Map(), initialPath = "/wizard/run-installe
         useWizardForwardNav: () => ({}),
         validateStep: () => ({ valid: true }),
       },
-      "@/lib/services": load(new URL("../lib/services.ts", import.meta.url), {}),
+      "@/lib/services": load(new URL("../lib/services.ts", import.meta.url), {
+        "./generated/manifest-agents": load(new URL("../lib/generated/manifest-agents.ts", import.meta.url), {}),
+      }),
       "@/lib/hooks/useWizardAnalytics": { useWizardAnalytics: () => ({ markComplete() {} }) },
     });
     return statusPage;

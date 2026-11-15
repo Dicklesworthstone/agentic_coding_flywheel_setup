@@ -13,6 +13,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { defaultManifestAgents, manifestAgents } from "./generated/manifest-web-index";
+import { resolveModuleSelection } from "./moduleSelection";
+import { getSelectedAgentSignIns, getSelectedAuthServices } from "./services";
 
 const WEB_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -74,5 +76,48 @@ describe("roster surfaces", () => {
 
     expect(source).not.toContain("Your three coding agents");
     expect(source).toContain("defaultManifestAgents.length");
+  });
+});
+
+describe("selected agent sign-in guidance", () => {
+  test("every selected manifest agent has exactly one source of guidance", () => {
+    const selected = new Set(manifestAgents.map((agent) => agent.moduleId));
+    const covered = getSelectedAuthServices(selected).agent.map((service) => service.moduleId);
+    const additional = getSelectedAgentSignIns(selected);
+    const combined = [...covered, ...additional.map((agent) => agent.moduleId)];
+    expect(combined.sort()).toEqual([...selected].sort());
+    expect(new Set(combined).size).toBe(combined.length);
+    expect(additional).toEqual(manifestAgents.filter((agent) => !covered.includes(agent.moduleId)));
+  });
+
+  test.each(manifestAgents.filter((agent) => agent.status !== "default"))(
+    "preserves generated sign-in metadata for a narrow $moduleId selection",
+    (agent) => {
+      const plan = resolveModuleSelection({ onlyModules: [agent.moduleId] });
+      expect(plan.ok).toBe(true);
+      const selected = new Set(plan.included.map((entry) => entry.id));
+      expect(getSelectedAgentSignIns(selected)).toEqual([agent]);
+      expect(getSelectedAuthServices(selected).agent).toEqual([]);
+    },
+  );
+
+  test("skipping optional and legacy agents suppresses their guidance even in an agent profile", () => {
+    const skipModules = manifestAgents.filter((agent) => agent.status !== "default").map((agent) => agent.moduleId);
+    const plan = resolveModuleSelection({ profile: "agents-only", skipModules });
+    expect(plan.ok).toBe(true);
+    const selected = new Set(plan.included.map((entry) => entry.id));
+    const additional = getSelectedAgentSignIns(selected);
+    expect(additional.every((agent) => agent.status === "default")).toBe(true);
+    expect([
+      ...getSelectedAuthServices(selected).agent.map((service) => service.moduleId),
+      ...additional.map((agent) => agent.moduleId),
+    ].sort()).toEqual(defaultManifestAgents.map((agent) => agent.moduleId).sort());
+  });
+
+  test("default, empty and non-agent selections do not add optional sign-ins", () => {
+    const selectedDefaults = new Set(defaultManifestAgents.map((agent) => agent.moduleId));
+    expect(getSelectedAgentSignIns(selectedDefaults).every((agent) => agent.status === "default")).toBe(true);
+    expect(getSelectedAgentSignIns(new Set())).toEqual([]);
+    expect(getSelectedAgentSignIns(new Set(["cloud.vercel", "agents.unknown"]))).toEqual([]);
   });
 });

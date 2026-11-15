@@ -455,10 +455,27 @@ export default function AccountsPage() {
         </div>
       </div>}
 
-      {selectedServices.length === 0 && <AlertCard variant="info" title="No listed accounts needed for this selection">
-        Your selected modules do not use the services listed in this step. Continue to pre-flight
-        checks; you can create additional accounts later if you add tools that need them.
-      </AlertCard>}
+      {selectedServices.length === 0 && (
+        <AlertCard
+          variant="info"
+          title={selectedAgents.length > 0
+            ? "Review your selected agents' sign-in options"
+            : "No listed accounts needed for this selection"}
+        >
+          {selectedAgents.length > 0 ? (
+            <>
+              Use the agent documentation below to choose the accounts or providers you need.
+              After installation, Status Check will show sign-in guidance for these selected agents.
+            </>
+          ) : (
+            <>
+              Your selected modules do not use the services listed in this step. Continue to
+              pre-flight checks; you can create additional accounts later if you add tools that
+              need them.
+            </>
+          )}
+        </AlertCard>
+      )}
 
       {/* Service tiers */}
       <div className="space-y-4">

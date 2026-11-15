@@ -68,7 +68,9 @@ function fixture(selection = { profile: "full" }) {
   const catalogue = load(new URL("../../../lib/generated/manifest-modules.ts", import.meta.url));
   const agents = load(new URL("../../../lib/generated/manifest-agents.ts", import.meta.url));
   const index = { ...agents, defaultManifestAgents: agents.manifestAgents.filter((agent) => agent.status === "default") };
-  const services = load(new URL("../../../lib/services.ts", import.meta.url));
+  const services = load(new URL("../../../lib/services.ts", import.meta.url), {
+    "./generated/manifest-agents": agents,
+  });
   const resolver = load(new URL("../../../lib/moduleSelection.ts", import.meta.url), {
     "./generated/manifest-modules": catalogue,
   });
@@ -235,6 +237,19 @@ test("a reviewed base-only installation can continue without irrelevant signup o
   assert.deepEqual(f.completion, [7]);
   assert.deepEqual(f.routes, ["/wizard/preflight-check"]);
   assert.deepEqual(f.profileWrites, []);
+});
+
+test("an optional-agent-only selection explains provider accounts instead of claiming none are needed", () => {
+  const f = fixture();
+  f.reviewed({ onlyModules: ["agents.omp", "agents.opencode"] });
+  const view = f.expand();
+  assert.deepEqual(view.services(), []);
+  assert.ok(view.nodes.some((node) => node.props.title === "Review your selected agents' sign-in options"));
+  assert.ok(!view.nodes.some((node) => node.props.title === "No listed accounts needed for this selection"));
+  assert.match(view.text(), /omp auth-broker login <provider>/);
+  assert.match(view.text(), /opencode auth login/);
+  assert.doesNotMatch(view.text(), /Claude Code|Codex CLI|Grok CLI/);
+  assert.equal(f.forward().disabled, false, "provider signup remains optional");
 });
 
 for (const status of ["loading", "review_required", "unavailable"]) {

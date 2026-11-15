@@ -33,6 +33,7 @@ import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
 import { getMissingWizardPrerequisites } from "@/lib/moduleSelection";
 import {
   CATEGORY_NAMES,
+  getSelectedAgentSignIns,
   getSelectedAuthServices,
   type Service,
   type ServiceCategory,
@@ -202,6 +203,7 @@ export default function StatusCheckPage() {
   const quickChecks = QUICK_CHECKS.filter((check) => selectedModules.has(check.moduleId));
   const authServices = getSelectedAuthServices(selectedModules);
   const selectedServices = Object.values(authServices).flat();
+  const additionalAgentSignIns = getSelectedAgentSignIns(selectedModules);
   const hasService = (id: string) => selectedServices.some((service) => service.id === id);
 
   if (!ready || vpsIP === null) {
@@ -404,7 +406,7 @@ export default function StatusCheckPage() {
       )}
 
       {/* Authenticate your services */}
-      {selectedServices.length > 0 ? (
+      {selectedServices.length > 0 || additionalAgentSignIns.length > 0 ? (
         <div className="space-y-6">
           <div className="flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -630,6 +632,9 @@ export default function StatusCheckPage() {
                 {selectedServices.map((service) => (
                   <li key={service.id}>{service.name}</li>
                 ))}
+                {additionalAgentSignIns.map((agent) => (
+                  <li key={agent.moduleId}>{agent.displayName}</li>
+                ))}
               </ul>
               <p className="text-xs text-muted-foreground">
                 Skipping a login does not change the installation plan. Check the tool&apos;s actual
@@ -645,7 +650,8 @@ export default function StatusCheckPage() {
           {/* Auth commands grouped by category */}
           {(["devtools", "agent", "access", "cloud"] as const).map((category) => {
             const services = authServices[category];
-            if (services.length === 0) return null;
+            const agents = category === "agent" ? additionalAgentSignIns : [];
+            if (services.length === 0 && agents.length === 0) return null;
 
             return (
               <div key={category} className="space-y-3">
@@ -673,6 +679,53 @@ export default function StatusCheckPage() {
                           : undefined
                       }
                     />
+                  ))}
+                  {agents.map((agent) => (
+                    <div key={agent.moduleId} className="space-y-2 rounded-xl border border-border/50 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h4 className="font-medium">
+                          {agent.displayName}
+                          {agent.status === "legacy" && (
+                            <span className="ml-2 text-xs text-amber">Legacy</span>
+                          )}
+                        </h4>
+                        <a
+                          href={agent.docsUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex min-h-11 items-center text-sm text-primary underline"
+                        >
+                          {agent.displayName} documentation
+                        </a>
+                      </div>
+                      <p className="text-sm text-muted-foreground">{agent.summary}</p>
+                      {/<[^>]+>/.test(agent.auth) ? (
+                        <div className="space-y-2 text-sm">
+                          <p>
+                            Choose your provider in the agent&apos;s documentation, then replace the
+                            placeholder before running this command on the VPS. The angle brackets
+                            are not part of the command.
+                          </p>
+                          <pre className="overflow-x-auto rounded-lg bg-muted p-3">
+                            <code>{agent.auth}</code>
+                          </pre>
+                        </div>
+                      ) : (
+                        <CommandCard
+                          command={agent.auth}
+                          description={`Sign in to ${agent.displayName}`}
+                          runLocation="vps"
+                          showCheckbox={Boolean(activeCheckpoint)}
+                          checkboxLabel={`I've signed in to ${agent.displayName} (optional)`}
+                          completedLabel={`${agent.displayName} sign-in noted`}
+                          persistKey={
+                            activeCheckpoint
+                              ? `auth-${agent.moduleId}-${activeCheckpoint.persistKey}`
+                              : undefined
+                          }
+                        />
+                      )}
+                    </div>
                   ))}
                 </div>
               </div>

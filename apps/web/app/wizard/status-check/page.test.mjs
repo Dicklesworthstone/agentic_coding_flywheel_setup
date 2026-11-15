@@ -166,12 +166,14 @@ function fixture() {
     {},
     scope,
   );
-  const catalogue = load(new URL("../../../lib/services.ts", import.meta.url), {}, scope);
   const agentCatalogue = load(
     new URL("../../../lib/generated/manifest-agents.ts", import.meta.url),
     {},
     scope,
   );
+  const catalogue = load(new URL("../../../lib/services.ts", import.meta.url), {
+    "./generated/manifest-agents": agentCatalogue,
+  }, scope);
   const rawSteps = load(
     new URL("../../../lib/wizardSteps.ts", import.meta.url),
     {
@@ -432,6 +434,7 @@ function fixture() {
     metadata,
     checkpoint,
     catalogue,
+    agentCatalogue,
     rawSteps,
     routes,
     redirects,
@@ -856,6 +859,72 @@ test("empty/no-login selections do not invent a full set of services or quick ch
   assert.equal(view.cards.filter((card) => card.props.persistKey?.startsWith("auth-")).length, 0);
   assert.match(view.text(), /No service sign-ins/);
   assert.doesNotMatch(view.text(), /cc --version|bun --version|ms --version|which tmux/);
+});
+
+for (const moduleId of ["agents.grok", "agents.opencode", "agents.gemini"]) {
+  test(`selected manifest agent exposes its real sign-in guidance: ${moduleId}`, async () => {
+    const f = fixture();
+    const agent = f.agentCatalogue.manifestAgents.find((entry) => entry.moduleId === moduleId);
+    f.prefs.selection = { onlyModules: [moduleId] };
+    f.select([moduleId]);
+    f.render();
+    const view = await f.settle();
+    const auth = view.cards.filter((card) => card.props.persistKey?.startsWith("auth-"));
+    assert.equal(auth.length, 1);
+    assert.equal(auth[0].props.command, agent.auth);
+    assert.equal(auth[0].props.runLocation, "vps");
+    assert.match(auth[0].props.checkboxLabel, /optional/);
+    assert.ok(auth[0].props.persistKey.includes(view.doctor().props.persistKey));
+    assert.ok(view.nodes.some((node) => node.type === "a" && node.props.href === agent.docsUrl));
+    assert.ok(view.text().includes(agent.summary));
+    if (agent.status === "legacy") assert.match(view.text(), /Legacy/);
+    assert.doesNotMatch(view.text(), /No service sign-ins/);
+
+    const noteKey = `acfs-command-${auth[0].props.persistKey}`;
+    f.storage.set(noteKey, "true");
+    f.queries.set(JSON.stringify(["commandCompletion", noteKey]), true);
+    const noted = f.render();
+    assert.equal(noted.continue().props.disabled, true);
+    assert.equal(f.rawSteps.validateStep(12).valid, false, "a sign-in note does not verify installation or authentication");
+  });
+}
+
+test("provider placeholders remain instructions and are never exposed as copyable shell commands", async () => {
+  const f = fixture();
+  const agent = f.agentCatalogue.manifestAgents.find((entry) => entry.moduleId === "agents.omp");
+  f.select([agent.moduleId]);
+  f.render();
+  const view = await f.settle();
+  assert.match(view.text(), /omp auth-broker login <provider>/);
+  assert.match(view.text(), /replace the\s+placeholder before running/);
+  assert.ok(view.nodes.some((node) => node.type === "a" && node.props.href === agent.docsUrl));
+  assert.ok(view.cards.every((card) => card.props.command !== agent.auth));
+  assert.ok(view.nodes.filter((node) => node.type === "code-block").every((node) => node.props.code !== agent.auth));
+  assert.doesNotMatch(view.text(), /No service sign-ins|Grok CLI|OpenCode/);
+  assert.equal(view.continue().props.disabled, true);
+});
+
+test("optional agent guidance follows the resolved selection and rotates notes when the target changes", async () => {
+  const f = fixture();
+  f.prefs.selection = {
+    profile: "agents-only",
+    skipModules: ["agents.grok", "agents.omp", "agents.gemini"],
+  };
+  f.select(["agents.codex", "agents.opencode"]);
+  f.render();
+  const first = await f.settle();
+  const auth = first.cards.filter((card) => card.props.persistKey?.startsWith("auth-"));
+  assert.deepEqual(auth.map((card) => card.props.command).sort(), ["codex login --device-auth", "opencode auth login"]);
+  assert.doesNotMatch(first.text(), /Grok CLI|oh-my-pi|Gemini CLI/);
+  const previous = auth.find((card) => card.props.command === "opencode auth login").props.persistKey;
+
+  f.prefs.host = "203.0.113.99";
+  f.render();
+  const changed = await f.settle();
+  const next = changed.cards.find((card) => card.props.command === "opencode auth login");
+  assert.notEqual(next.props.persistKey, previous);
+  assert.ok(next.props.persistKey.includes(changed.doctor().props.persistKey));
+  assert.equal(changed.continue().props.disabled, true);
 });
 
 test("all 256 service module combinations preserve exact membership without mutating the catalogue", () => {

@@ -5,6 +5,8 @@
  * Used by the Accounts wizard step and other components.
  */
 
+import { type ManifestAgent, manifestAgents } from "./generated/manifest-agents";
+
 export type ServiceCategory = "access" | "agent" | "cloud" | "devtools";
 export type ServicePriority = "strongly-recommended" | "recommended" | "optional";
 export type ServiceTier = "essential" | "recommended" | "optional";
@@ -273,6 +275,16 @@ export function getSelectedAuthServices(
       groups[service.category].push(service);
   }
   return groups;
+}
+
+/** Selected agents whose sign-in guidance is not already supplied by a service card. */
+export function getSelectedAgentSignIns(moduleIds: ReadonlySet<string>): ManifestAgent[] {
+  const covered = new Set(
+    getSelectedAuthServices(moduleIds).agent.map((service) => service.moduleId),
+  );
+  return manifestAgents.filter(
+    (agent) => moduleIds.has(agent.moduleId) && !covered.has(agent.moduleId),
+  );
 }
 
 export function getServicesByCategory(category: ServiceCategory): Service[] {
