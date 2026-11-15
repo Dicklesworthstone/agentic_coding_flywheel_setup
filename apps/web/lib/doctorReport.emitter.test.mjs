@@ -30,6 +30,72 @@ assert.ok(start >= 0 && end > start, "the actual print_json function must be pre
 const emitter = source.slice(start, end);
 const quote = (value) => `'${value.replaceAll("'", "'\\''")}'`;
 
+test("maps actual Doctor check IDs to the same modules as the Bash producer", async () => {
+  const ownership = source.match(/^doctor_check_module_id\(\) \{[\s\S]*?^\}/m)?.[0];
+  assert.ok(ownership, "the production ownership resolver must be present");
+  const generated = readFileSync(
+    new URL("../../../scripts/generated/doctor_checks.sh", import.meta.url), "utf8",
+  );
+  const manifestChecks = generated.match(/^declare -a MANIFEST_CHECKS=\([\s\S]*?^\)/m)?.[0];
+  assert.ok(manifestChecks, "the canonical generated check table must be present");
+  const manifestCjs = { exports: {} };
+  runInNewContext(ts.transpileModule(readFileSync(
+    new URL("./generated/manifest-modules.ts", import.meta.url), "utf8",
+  ), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText, { module: manifestCjs, exports: manifestCjs.exports });
+  const known = manifestCjs.exports.manifestModules.map((module) => module.id);
+  // Inventory literal IDs used by the current producer, including multiline
+  // deep-check calls. No verify/install command from the table is executed.
+  const emittedIds = [...new Set([...source.matchAll(
+    /"((?:identity|workspace|shell|config|path|tool|bun|agent|cloud|stack|symlink|updates|util|deep)\.[a-z0-9_.]+)"/g,
+  )].map((match) => match[1]))];
+  const rows = execFileSync("/bin/bash", ["-p", "-s", "--", ...emittedIds], {
+    input: [
+      "set -euo pipefail",
+      manifestChecks,
+      ownership,
+      'for entry in "${MANIFEST_CHECKS[@]}"; do set -- "$@" "${entry%%\t*}"; done',
+      'for id in "$@"; do',
+      '  module="$(doctor_check_module_id "$id")" || continue',
+      '  printf "%s\\t%s\\n" "$id" "$module"',
+      "done",
+    ].join("\n"),
+    env: { PATH: "/usr/bin:/bin", LANG: "C.UTF-8", TZ: "UTC" },
+    timeout: 10000,
+  }).toString().trim().split("\n").map((row) => row.split("\t"));
+  assert.ok(rows.length > known.length, "exercise both generated checks and legacy aliases");
+  const mismatches = [];
+  for (const [id, module] of rows) {
+    assert.ok(known.includes(module), `${id} must have an actual manifest owner`);
+    const bytes = Buffer.from(JSON.stringify({
+      acfs_version: "0.10.0",
+      timestamp: "2026-11-14T12:00:00Z",
+      mode: "safe",
+      deep_mode: true,
+      user: "fixture-user",
+      os: { id: "ubuntu", version: "26.04" },
+      checks: [{ id, status: "fail", label: "PRIVATE", details: "PRIVATE", fix: null }],
+      summary: { pass: 0, warn: 0, fail: 1, skip: 0 },
+    }));
+    const value = await reader.reviewDoctorReportFile(new Blob([bytes]), {
+      host: "203.0.113.7",
+      username: "fixture-user",
+      mode: "safe",
+      installerCommand: "fixture-installer",
+      manifestSha256: "a".repeat(64),
+      checksumsYamlSha256: "b".repeat(64),
+      selectedModuleIds: known,
+      knownModuleIds: known,
+    }, Date.parse("2026-11-14T12:00:00Z"));
+    const result = value.modules.find((entry) => entry.id === module);
+    if (result?.counts.fail !== 1 || result.checkCount !== 1 || value.unmapped.fail !== 0)
+      mismatches.push(`${id} -> ${module}: ${result?.status ?? "missing"}`);
+    assert.equal(value.needsAttention, true);
+  }
+  assert.deepEqual(mismatches, []);
+});
+
 for (const deep of [false, true]) {
   test(`accepts actual print_json output with mixed check results (deep=${deep})`, async () => {
     const checks = [

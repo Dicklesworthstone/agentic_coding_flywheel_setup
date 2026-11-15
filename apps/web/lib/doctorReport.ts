@@ -234,10 +234,27 @@ function timestamp(value: unknown): number {
   return epoch;
 }
 
-// Explicit aliases used by scripts/lib/doctor.sh. Never infer ownership from a
-// report's label, details or suggested fix. Unknown/aggregate checks stay separate.
+// Match scripts/lib/doctor.sh's doctor_check_module_id, including its stable
+// aliases for Flywheel, utility and deep checks. The emitter contract test runs
+// that actual Bash resolver against this reader. Never infer ownership from a
+// report's label, details or suggested fix. Platform checks stay separate.
 const CHECK_MODULES: Readonly<Record<string, string>> = Object.freeze({
+  "identity.passwordless_sudo": "users.ubuntu",
+  "identity.sudo": "users.ubuntu",
+  "workspace.data_projects": "base.filesystem",
+  "shell.zsh": "shell.zsh",
+  "shell.login_shell": "shell.login",
+  "shell.ohmyzsh": "shell.omz",
+  "shell.p10k": "shell.omz",
+  "shell.acfs_sourced": "shell.omz",
+  "config.acfs_zshrc": "shell.omz",
+  "path.ordering": "shell.omz",
+  "shell.lsd_or_eza": "cli.modern",
+  "shell.fzf": "cli.modern",
+  "shell.direnv": "cli.modern",
+  "config.tmux": "cli.modern",
   "tool.bun": "lang.bun",
+  "bun.global_bin_dir": "lang.bun",
   "tool.uv": "lang.uv",
   "tool.cargo": "lang.rust",
   "tool.go": "lang.go",
@@ -250,19 +267,73 @@ const CHECK_MODULES: Readonly<Record<string, string>> = Object.freeze({
   "tool.lsof": "cli.modern",
   "tool.dig": "cli.modern",
   "tool.nc": "cli.modern",
-  "shell.fzf": "cli.modern",
-  "shell.direnv": "cli.modern",
+  "tool.zstd": "cli.modern",
+  "tool.minisign": "cli.modern",
+  "deep.cloud.gh_auth": "cli.modern",
+  "tool.sg": "tools.ast_grep",
+  "shell.atuin_daemon": "tools.atuin",
   "agent.claude": "agents.claude",
+  "agent.alias.cc": "agents.claude",
+  "agent.path.claude": "agents.claude",
+  "deep.agent.claude_auth": "agents.claude",
   "agent.codex": "agents.codex",
+  "agent.alias.cod": "agents.codex",
+  "deep.agent.codex_auth": "agents.codex",
   "agent.antigravity": "agents.antigravity",
-  "shell.ohmyzsh": "shell.omz",
-  "shell.p10k": "shell.p10k",
+  "agent.alias.agy": "agents.antigravity",
+  "agent.alias.gmi": "agents.antigravity",
+  "deep.agent.antigravity_auth": "agents.antigravity",
+  "deep.agent.gemini_auth": "agents.gemini",
+  "cloud.vault": "tools.vault",
+  "cloud.postgres": "db.postgres18",
+  "deep.cloud.wrangler_auth": "cloud.wrangler",
+  "deep.cloud.supabase_auth": "cloud.supabase",
+  "deep.cloud.vercel_auth": "cloud.vercel",
+  "stack.ubs": "stack.ultimate_bug_scanner",
+  "stack.bv": "stack.beads_viewer",
+  "symlink.am": "stack.mcp_agent_mail",
+  "updates.nightly_runs": "acfs.nightly",
+  "util.tru": "utils.toon_rust",
+  "util.pt": "stack.process_triage",
+  "util.rust_proxy": "utils.rust_proxy",
+  "util.rano": "utils.rano",
+  "util.xf": "utils.xf",
+  "util.mdwb": "utils.mdwb",
+  "util.aadc": "utils.aadc",
+  "util.s2p": "utils.s2p",
+  "util.caut": "utils.caut",
+  "deep.stack.pt": "stack.process_triage",
+  "deep.stack.fsfs": "stack.frankensearch",
+  "deep.stack.sbh": "stack.storage_ballast_helper",
+  "deep.stack.casr": "stack.cross_agent_session_resumer",
+  "deep.stack.dsr": "stack.doodlestein_self_releaser",
+  "deep.stack.asb": "stack.agent_settings_backup",
+  "deep.stack.ee": "stack.eidetic_engine_cli",
+  "deep.stack.fmd": "stack.franken_markdown",
+  "deep.stack.pi": "stack.pi_agent_rust",
+  "deep.stack.pfr": "stack.power_failure_resumer",
+  "deep.stack.rch": "stack.rch",
+  "deep.stack.ru": "stack.ru",
+  "deep.stack.pcr": "stack.pcr",
 });
+// These four check families are declared by Doctor; other dotted IDs do not
+// establish ownership merely because they look similar to a known module.
+const CHECK_MODULE_PREFIXES: readonly (readonly [string, string])[] = [
+  ["shell.plugins.", "shell.omz"],
+  ["deep.tmux.", "cli.modern"],
+  ["deep.cloud.vault_", "tools.vault"],
+  ["deep.db.postgres_", "db.postgres18"],
+];
+const AGENT_ALIAS_CHECKS = new Set([
+  "agent.alias.cc", "agent.alias.cod", "agent.alias.agy", "agent.alias.gmi",
+]);
 function owner(id: string, known: ReadonlySet<string>): string | null {
   if (known.has(id)) return id;
   const generated = /^(.*)\.[1-9][0-9]*$/.exec(id)?.[1];
   if (generated && known.has(generated)) return generated;
-  const alias = Object.hasOwn(CHECK_MODULES, id) ? CHECK_MODULES[id] : undefined;
+  const alias = Object.hasOwn(CHECK_MODULES, id)
+    ? CHECK_MODULES[id]
+    : CHECK_MODULE_PREFIXES.find(([prefix]) => id.startsWith(prefix))?.[1];
   return alias && known.has(alias) ? alias : null;
 }
 function moduleStatus(value: DoctorReportCounts): DoctorReportModuleStatus {
@@ -361,7 +432,16 @@ export async function reviewDoctorReportFile(
     const status = check.status as DoctorReportStatus;
     totals[status]++;
     const ownerModule = owner(check.id, known);
-    const destination = ownerModule ? (modules.get(ownerModule) ?? outsideSelection) : unmapped;
+    // Doctor gates aliases on both the agent and shell.omz. With an agent-only
+    // install it deliberately skips the excluded shell's aliases. Preserve
+    // those skips outside selection; they neither verify the selected binary
+    // nor turn its reported pass into a skipped result. Failures still count.
+    const excludedShellAlias =
+      status === "skip" && AGENT_ALIAS_CHECKS.has(check.id) &&
+      known.has("shell.omz") && !modules.has("shell.omz");
+    const destination = ownerModule
+      ? (excludedShellAlias ? outsideSelection : modules.get(ownerModule) ?? outsideSelection)
+      : unmapped;
     destination[status]++;
   }
   // The producer counts timeouts as WARN, while this review displays them separately.

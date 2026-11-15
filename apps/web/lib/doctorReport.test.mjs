@@ -200,7 +200,7 @@ test("maps the published CLI, language, agent and shell aliases without fuzzy in
     "agent.codex": "agents.codex",
     "agent.antigravity": "agents.antigravity",
     "shell.ohmyzsh": "shell.omz",
-    "shell.p10k": "shell.p10k",
+    "shell.p10k": "shell.omz",
   };
   const current = context();
   current.knownModuleIds = [...new Set(Object.values(aliases))];
@@ -210,6 +210,120 @@ test("maps the published CLI, language, agent and shell aliases without fuzzy in
   assert.equal(value.outsideSelection.pass, 0);
   for (const row of value.modules)
     assert.equal(row.checkCount, Object.values(aliases).filter((id) => id === row.id).length);
+});
+
+test("reports the selected Flywheel and utility tools under their canonical modules", async () => {
+  const aliases = {
+    "identity.sudo": "users.ubuntu",
+    "workspace.data_projects": "base.filesystem",
+    "stack.ubs": "stack.ultimate_bug_scanner",
+    "stack.bv": "stack.beads_viewer",
+    "symlink.am": "stack.mcp_agent_mail",
+    "cloud.postgres": "db.postgres18",
+    "cloud.vault": "tools.vault",
+    "tool.sg": "tools.ast_grep",
+    "util.tru": "utils.toon_rust",
+    "util.pt": "stack.process_triage",
+    "util.rano": "utils.rano",
+    "util.caut": "utils.caut",
+  };
+  const current = context();
+  current.knownModuleIds = [...new Set(Object.values(aliases))];
+  current.selectedModuleIds = [...current.knownModuleIds];
+  const value = await read(report(Object.keys(aliases).map((id) => check(id))), current);
+  assert.equal(value.unmapped.pass, 0);
+  assert.equal(value.outsideSelection.pass, 0);
+  assert.equal(value.needsAttention, false);
+  for (const row of value.modules) {
+    assert.equal(row.status, "pass", row.id);
+    assert.equal(row.checkCount, 1, row.id);
+  }
+});
+
+test("shell and deep-check failures stay attached to the selected capability", async () => {
+  const current = context();
+  current.knownModuleIds = [
+    "shell.omz", "agents.claude", "cloud.wrangler", "stack.frankensearch",
+  ];
+  current.selectedModuleIds = [...current.knownModuleIds];
+  const value = await read(report([
+    check("shell.ohmyzsh"),
+    check("shell.p10k", "fail"),
+    check("shell.plugins.zsh_autosuggestions", "warn"),
+    check("agent.claude"),
+    check("deep.agent.claude_auth", "warn"),
+    check("cloud.wrangler"),
+    check("deep.cloud.wrangler_auth", "timeout"),
+    check("stack.frankensearch"),
+    check("deep.stack.fsfs", "fail"),
+  ]), current);
+  assert.deepEqual(plain(value.modules.map((row) => [row.id, row.status, row.checkCount])), [
+    ["shell.omz", "fail", 3],
+    ["agents.claude", "warn", 2],
+    ["cloud.wrangler", "timeout", 2],
+    ["stack.frankensearch", "fail", 2],
+  ]);
+  assert.deepEqual(plain(value.unmapped), { pass: 0, warn: 0, fail: 0, skip: 0, timeout: 0 });
+  assert.equal(value.needsAttention, true);
+});
+
+test("an excluded shell's skipped alias does not mark a working selected agent as skipped", async () => {
+  const current = context();
+  current.selectedModuleIds = ["agents.claude"];
+  const value = await read(report([
+    check("agent.claude"),
+    check("agent.alias.cc", "skip"),
+  ]), current);
+  assert.equal(value.modules[0].status, "pass");
+  assert.equal(value.modules[0].checkCount, 1);
+  assert.equal(value.outsideSelection.skip, 1);
+  assert.equal(value.unmapped.skip, 0);
+  assert.equal(value.needsAttention, false);
+
+  const missingBinary = await read(report([check("agent.alias.cc", "skip")]), current);
+  assert.equal(missingBinary.modules[0].status, "unreported");
+  assert.equal(missingBinary.needsAttention, true);
+
+  current.selectedModuleIds.push("shell.omz");
+  const selectedShell = await read(report([
+    check("agent.claude"),
+    check("agent.alias.cc", "skip"),
+    check("shell.ohmyzsh"),
+  ]), current);
+  assert.equal(selectedShell.modules[0].status, "skip");
+  assert.equal(selectedShell.outsideSelection.skip, 0);
+  assert.equal(selectedShell.needsAttention, true);
+});
+
+for (const status of ["fail", "warn", "timeout"]) {
+  test(`an alias ${status} remains a finding even when the shell is outside selection`, async () => {
+    const current = context();
+    current.selectedModuleIds = ["agents.claude"];
+    const value = await read(report([
+      check("agent.claude"),
+      check("agent.alias.cc", status),
+    ]), current);
+    assert.equal(value.modules[0].status, status);
+    assert.equal(value.modules[0].counts[status], 1);
+    assert.equal(value.outsideSelection[status], 0);
+    assert.equal(value.needsAttention, true);
+  });
+}
+
+test("unrecognized aliases and platform findings are not assigned by category or label", async () => {
+  const current = context();
+  current.knownModuleIds = [
+    "shell.omz", "agents.claude", "stack.ultimate_bug_scanner", "utils.rano", "base.system",
+  ];
+  current.selectedModuleIds = [...current.knownModuleIds];
+  const unknown = [
+    "agent.alias.not_a_real_alias", "stack.ubs.extra", "util.not_a_real_tool",
+    "deep.stack.not_a_real_tool", "system.ubuntu_archive_suites", "identity.user_is_ubuntu",
+  ];
+  const value = await read(report(unknown.map((id) => check(id, "fail"))), current);
+  assert.equal(value.unmapped.fail, unknown.length);
+  assert.ok(value.modules.every((row) => row.status === "unreported"));
+  assert.equal(value.needsAttention, true);
 });
 
 for (const field of [
