@@ -386,6 +386,67 @@ assert_contains "Redis URL credentials redacted" "$result" "redis://<REDACTED:cr
 assert_contains "Non-credential URL preserved" "$result" "https://example.com:443/path"
 assert_not_contains "URL passwords removed" "$result" "supersecret"
 
+# HTTP credentials are identified by their header, not just a known token shape.
+# Exercise nested/escaped JSON without rounding public identifiers or rewriting
+# similarly named public metadata. Empty and non-string fields remain unchanged.
+http_header_json='{"headers":{"Authorization":"Basic fixtureHeaderBasic+tail==","Proxy-Authorization":"Digest username=\"fixtureHeaderUser\", response=\"fixtureHeaderResponse\"","aUtHoRiZaTiOn":"bEaReR fixtureHeaderBearer+fixtureHeaderBearerTail/==","pRoXy-AuThOrIzAtIoN":"fixtureHeaderOpaque"},"document":"{\"Authoriz\\u0061tion\":\"Basic fixtureHeaderEncoded+fixtureHeaderEncodedTail==\",\"publicId\":9007199254740993}","snippet":"Authorization: Basic fixtureHeaderSnippet+fixtureHeaderSnippetTail==\nX-Public-Header: visible","token":"fixtureTokenOpaque","TOKEN":"x","authorizationCount":4,"authorizationPolicy":"public policy","Proxy-Authorization-Policy":"public proxy policy","tokenCount":123,"token_type":"Bearer","eventId":9007199254740993,"unconfigured":{"Authorization":"","Proxy-Authorization":null,"token":"","TOKEN":false}}'
+result=$(redact_and_read "http_headers.json" "$http_header_json")
+http_case_index=0
+for secret in fixtureHeaderBasic fixtureHeaderUser fixtureHeaderResponse \
+    fixtureHeaderBearer fixtureHeaderBearerTail fixtureHeaderOpaque \
+    fixtureHeaderEncoded fixtureHeaderEncodedTail fixtureHeaderSnippet \
+    fixtureHeaderSnippetTail fixtureTokenOpaque; do
+    http_case_index=$((http_case_index + 1))
+    assert_not_contains "JSON HTTP/token credential absent (case $http_case_index)" "$result" "$secret"
+done
+if printf '%s' "$result" | jq -e '
+    (.headers | to_entries | all(.value == "<REDACTED:authorization>")) and
+    (.document | fromjson | .Authorization == "<REDACTED:authorization>") and
+    .TOKEN == "<REDACTED:TOKEN>" and .token == "<REDACTED:token>" and
+    .authorizationCount == 4 and .authorizationPolicy == "public policy" and
+    .["Proxy-Authorization-Policy"] == "public proxy policy" and
+    .tokenCount == 123 and .token_type == "Bearer" and
+    (.snippet | contains("X-Public-Header: visible")) and
+    .unconfigured == {"Authorization":"","Proxy-Authorization":null,"token":"","TOKEN":false}
+' >/dev/null; then
+    pass "HTTP redaction keeps valid JSON, public metadata and empty fields"
+else
+    fail "HTTP redaction keeps valid JSON, public metadata and empty fields"
+fi
+assert_contains "HTTP redaction preserves large public JSON identifiers" "$result" '"eventId":9007199254740993'
+assert_contains "HTTP redaction preserves nested large public identifiers" "$result" '\"publicId\":9007199254740993'
+
+http_header_text=$(cat <<'HTTP_HEADERS'
+Authorization: Basic fixtureHeaderRawBasic+==
+pRoXy-AuThOrIzAtIoN: bAsIc fixtureHeaderRawProxy==
+Authorization: Bearer fixtureHeaderRawBearer+fixtureHeaderRawTail/==
+Authorization: Digest username="fixtureHeaderRawUser", response="fixtureHeaderRawResponse", nonce="fixtureHeaderRawNonce"
+Authorization: "Bearer fixtureHeaderDoubleFirst
+fixtureHeaderDoubleTail"
+curl -H 'Authorization: Basic fixtureHeaderCurlBasic+==' https://example.com/basic
+curl -H "Proxy-Authorization: Digest username=\"fixtureHeaderCurlUser\", response=\"fixtureHeaderCurlResponse\"" https://example.com/digest
+Authorization: \"Bearer fixtureHeaderEscapedFirst \\\"fixtureHeaderEscapedTail\"
+token=fixtureTokenRaw+fixtureTokenTail/==
+TOKEN="fixtureTokenQuotedFirst \"fixtureTokenQuotedTail"
+token='fixtureTokenSingleFirst fixtureTokenSingleTail'
+token_count=123456789
+tokenCount=123456789
+authorizationCount=4
+Authorization-Policy: public policy
+X-Public-Header: visible
+HTTP_HEADERS
+)
+result=$(redact_and_read "http_headers.log" "$http_header_text")
+assert_not_contains "Plain and quoted HTTP headers remove every credential segment" "$result" "fixtureHeader"
+assert_not_contains "Opaque token assignments remove quoted and punctuation tails" "$result" "fixtureToken"
+assert_contains "HTTP redaction preserves Basic request URL" "$result" "https://example.com/basic"
+assert_contains "HTTP redaction preserves Digest request URL" "$result" "https://example.com/digest"
+assert_contains "HTTP redaction preserves public headers" "$result" "X-Public-Header: visible"
+assert_contains "HTTP redaction preserves policy metadata" "$result" "Authorization-Policy: public policy"
+assert_contains "HTTP redaction preserves authorization counters" "$result" "authorizationCount=4"
+assert_contains "Token redaction preserves snake-case counters" "$result" "token_count=123456789"
+assert_contains "Token redaction preserves camelCase counters" "$result" "tokenCount=123456789"
+
 # ============================================================
 # Tests: Generic secret patterns (KEY=value)
 # ============================================================
@@ -615,6 +676,32 @@ if [[ "$REDACTION_COUNT" -ge 4 ]]; then
     pass "Bundle: redaction count >= 4"
 else
     fail "Bundle: redaction count >= 4" "Got $REDACTION_COUNT"
+fi
+
+# Exercise the actual collection -> redaction -> archive writer path. Source
+# fixtures stay untouched; inspect the gzip payload, not only a helper result.
+http_archive_root="$TEST_DIR/http-archive"
+mkdir -p "$http_archive_root/source" "$http_archive_root/diagnostics"
+printf '%s\n' "$http_header_json" > "$http_archive_root/source/state.json"
+printf '%s\n' "$http_header_text" > "$http_archive_root/source/install-http.log"
+BUNDLE_FILES=()
+collect_file "$http_archive_root/source/state.json" "$http_archive_root/diagnostics" "state.json"
+collect_file "$http_archive_root/source/install-http.log" "$http_archive_root/diagnostics" "logs/install-http.log"
+redact_bundle "$http_archive_root/diagnostics"
+if support_verify_identity_redaction "$http_archive_root/diagnostics" &&
+    (cd "$http_archive_root" && support_write_archive "./diagnostics.tar.gz" "diagnostics"); then
+    archive_json=$(tar -xOzf "$http_archive_root/diagnostics.tar.gz" "diagnostics/state.json")
+    archive_log=$(tar -xOzf "$http_archive_root/diagnostics.tar.gz" "diagnostics/logs/install-http.log")
+    assert_not_contains "Archive: JSON HTTP credentials absent" "$archive_json" "fixtureHeader"
+    assert_not_contains "Archive: JSON opaque tokens absent" "$archive_json" "fixtureToken"
+    assert_not_contains "Archive: log HTTP credentials absent" "$archive_log" "fixtureHeader"
+    assert_not_contains "Archive: log opaque tokens absent" "$archive_log" "fixtureToken"
+    assert_contains "Archive: public identifiers preserved" "$archive_json" '"eventId":9007199254740993'
+    assert_contains "Archive: public request URL preserved" "$archive_log" "https://example.com/digest"
+    assert_equals "Archive collection preserves original JSON" "$(cat "$http_archive_root/source/state.json")" "$http_header_json"
+    assert_equals "Archive collection preserves original log" "$(cat "$http_archive_root/source/install-http.log")" "$http_header_text"
+else
+    fail "HTTP credential fixture creates a verified support archive"
 fi
 
 # ============================================================

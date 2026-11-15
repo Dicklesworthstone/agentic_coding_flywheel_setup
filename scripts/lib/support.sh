@@ -3349,26 +3349,73 @@ support_redact_quoted_values() {
     if "$jq_bin" -Rjs '
       def string_token: "\"(?:\\\\.|[^\"\\\\])*\"";
       def aliases:
-        "(?i:password|passwd|MYSQL_PWD|api_?key|api_secret|secret_?key|access_?key|access_token|refresh_token|auth_token|client_secret|private_?key)";
+        "(?i:password|passwd|MYSQL_PWD|api_?key|api_secret|secret_?key|access_?key|access_token|refresh_token|auth_token|client_secret|private_?key|token)";
+      def authorization_name: "(?i:(?:proxy[-_]?)?authorization)";
       def suffixes:
         "password|passwd|api[_-]?key|api[_-]?secret|secret[_-]?key|access[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token|client[_-]?secret|private[_-]?key|secret|token";
       def names:
         aliases + "|[A-Za-z][A-Za-z0-9]*[_-]+[A-Za-z0-9_-]*(?i:" + suffixes + ")|[A-Za-z][A-Za-z0-9]*(Password|Passwd|ApiKey|APIKey|ApiSecret|SecretKey|AccessKey|AccessToken|RefreshToken|AuthToken|ClientSecret|PrivateKey|Secret|Token)";
       def snippet_key: test("^(body_md|body_text|thread_snippet|message_snippet|mail_snippet|message_preview)$");
+      # Keep the established categories when masking a complete quoted value.
+      # Later line filters cannot safely reclassify a placeholder containing <>.
+      def secret_marker($key; $value):
+        if ($key | snippet_key) then "<REDACTED:message_snippet>"
+        elif ($key | test("^" + authorization_name + "$")) then "<REDACTED:authorization>"
+        elif ($key | test("(?i:password|passwd|MYSQL_PWD)$")) then "<REDACTED:password>"
+        elif ($key | test("^(?i:token)$")) then
+          # Opaque token fields need no provider-specific shape, but keep the
+          # familiar category when a known token is masked before line filters.
+          if ($value | startswith("sk-")) then "<REDACTED:api_key>"
+          elif ($value | test("^gh[pousr]_")) then "<REDACTED:github_token>"
+          elif ($value | startswith("github_pat_")) then "<REDACTED:github_pat>"
+          elif ($value | startswith("hvs.")) then "<REDACTED:vault_token>"
+          elif ($value | test("^xox[bpsar]-")) then "<REDACTED:slack_token>"
+          elif ($value | startswith("tskey-")) then "<REDACTED:tailscale_key>"
+          elif ($value | startswith("AIza")) then "<REDACTED:google_api_key>"
+          elif ($value | test("^eyJ[^.]+\\.[^.]+\\.[^.]+$")) then "<REDACTED:jwt>"
+          else "<REDACTED:" + $key + ">" end
+        elif ($key | test("^" + aliases + "$")) then "<REDACTED:" + $key + ">"
+        else "<REDACTED:generic_secret>" end;
       def redact_fields:
         gsub("(?<key>" + string_token + ")(?<separator>\\s*:\\s*)(?<value>" + string_token + ")";
           . as $match | (.key | fromjson) as $key | (.value | fromjson) as $value
           | if ($key | snippet_key) or
+              (($key | test("^(" + authorization_name + "|(?i:token))$")) and ($value | length) > 0) or
               (($key | test("^(" + names + ")$")) and
                ($value | length) >= (if ($key | test("(?i:password|passwd|MYSQL_PWD)$")) then 4 else 8 end))
-            then .key + .separator + "\"<REDACTED:quoted_secret>\""
+            then .key + ": " + (secret_marker($key; $value) | tojson)
             else $match.key + $match.separator + $match.value end);
+      # A header is a complete credential, regardless of scheme or token shape.
+      # Match quoted curl headers first so a public URL after the quote survives.
+      # Bare header lines include the entire value: Basic padding, Bearer +/=
+      # suffixes and Digest parameters must not survive a partial substitution.
+      def authorization_marker($value):
+        if ($value | test("^(?i:Bearer)[ \\t]+")) then
+          ($value | capture("^(?<scheme>(?i:Bearer))")) as $bearer
+          | $bearer.scheme + " <REDACTED:bearer>"
+        else "<REDACTED:authorization>" end;
+      def redact_authorization:
+        ("\\b(?:" + authorization_name + ")[ \\t]*:[ \\t]*") as $header
+        | gsub(
+            "\u0027(?<single_prefix>[ \\t]*" + $header + ")(?<single_value>(?:\\\\.|[^\u0027\\\\])+)(?<single_tail>\u0027|$)"
+            + "|\"(?<double_prefix>[ \\t]*" + $header + ")(?<double_value>(?:\\\\.|[^\"\\\\])+)(?<double_tail>\"|$)"
+            + "|(?<double_value_prefix>" + $header + ")\"(?<quoted_double_value>(?:\\\\.|[^\"\\\\])+)(?<double_value_tail>\"|$)"
+            + "|(?<single_value_prefix>" + $header + ")\u0027(?<quoted_single_value>(?:\\\\.|[^\u0027\\\\])+)(?<single_value_tail>\u0027|$)"
+            + "|(?<line_prefix>" + $header + ")(?<line_value>[^\\r\\n]+)";
+            if .single_prefix != null then "\u0027" + .single_prefix + authorization_marker(.single_value) + .single_tail
+            elif .double_prefix != null then "\"" + .double_prefix + authorization_marker(.double_value) + .double_tail
+            elif .double_value_prefix != null then .double_value_prefix + "\"" + authorization_marker(.quoted_double_value) + .double_value_tail
+            elif .single_value_prefix != null then .single_value_prefix + "\u0027" + authorization_marker(.quoted_single_value) + .single_value_tail
+            else .line_prefix + authorization_marker(.line_value) end);
       def redact_inline:
-        ("(?<prefix>\\b(?:" + names + ")\\b\\s*[=:]\\s*)") as $prefix
+        redact_authorization
+        | ("(?<prefix>\\b(?<name>(?:" + names + "))\\b\\s*[=:]\\s*)") as $prefix
         | gsub($prefix + "\"(?<value>(?:\\\\.|[^\"\\\\])+)(?<tail>\"|$)";
-            "\(.prefix)\"<REDACTED:quoted_secret>\(.tail)")
+            .prefix + "\"" + secret_marker(.name; .value) + .tail)
         | gsub($prefix + "\u0027(?<value>(?:\\\\.|[^\u0027\\\\])+)(?<tail>\u0027|$)";
-            "\(.prefix)\u0027<REDACTED:quoted_secret>\(.tail)");
+            .prefix + "\u0027" + secret_marker(.name; .value) + .tail)
+        | gsub("(?<prefix>(?<![A-Za-z0-9_.-])(?<name>(?i:token))\\b\\s*[=:]\\s*)(?<value>[^\\s\"\u0027\\\\<>]+)";
+            .prefix + secret_marker(.name; .value));
       def scrub:
         . as $input | (try ($input | fromjson | true) catch false) as $is_json
         | redact_fields
