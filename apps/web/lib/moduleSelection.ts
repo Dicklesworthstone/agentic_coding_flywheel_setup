@@ -583,7 +583,13 @@ export function buildInstallSelectorArgs(input: ModuleSelectionInput = {}): stri
       (normalized.profile.onlyModules.length > 0 || normalized.profile.onlyPhases.length > 0),
   );
 
-  if (normalized.profile && profileHasSelectors) {
+  // Full is an explicit expansion choice. Omitting it would let the installer
+  // reuse a saved subset even though the wizard displays the default full plan.
+  // Explicit roots still take precedence over this mode-free profile.
+  const explicitFullDefaults = normalized.profile?.id === "full" &&
+    normalized.onlyModules.length === 0 && normalized.onlyPhases.length === 0;
+
+  if (normalized.profile && (profileHasSelectors || explicitFullDefaults)) {
     args.push("--profile", quoteInstallArg(normalized.profile.id));
   } else {
     for (const moduleId of normalized.onlyModules) {

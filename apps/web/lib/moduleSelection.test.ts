@@ -336,6 +336,17 @@ describe("resolveModuleSelection", () => {
 });
 
 describe("buildInstallSelectorArgs", () => {
+  test("retains an explicit Full choice without turning implicit or targeted installs into full installs", () => {
+    expect(buildInstallSelectorArgs({ profile: "full" })).toEqual(["--profile", '"full"']);
+    expect(
+      buildInstallSelectorArgs({ profile: "full", skipModules: ["network.tailscale"] }),
+    ).toEqual(["--profile", '"full"', "--skip", '"network.tailscale"']);
+    expect(buildInstallSelectorArgs()).toEqual([]);
+    expect(
+      buildInstallSelectorArgs({ profile: "full", onlyModules: ["agents.codex"] }),
+    ).toEqual(["--only", '"agents.codex"']);
+  });
+
   test("serializes profile-lowered cloud-only selectors", () => {
     expect(buildInstallSelectorArgs({ profile: "cloud-only" })).toEqual([
       "--profile",

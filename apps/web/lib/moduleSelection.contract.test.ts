@@ -1,5 +1,6 @@
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
@@ -232,9 +233,24 @@ function selectorRoundTrip(input: ModuleSelectionInput): ModuleSelectionInput {
   return decoded;
 }
 
+/** Exercise the production saved-default consumer with a narrow installation fixture. */
+function savedInstallationSetup(): string {
+  const source = readFileSync(new URL("../../../install.sh", import.meta.url), "utf8");
+  const applySaved = source.match(/^acfs_apply_saved_installation_selection\(\) \{[\s\S]*?^\}/m)?.[0];
+  assert.ok(applySaved, "the installer must expose its saved-selection consumer");
+  return `${applySaved}
+ACFS_STATE_SELECTION_MODE=scoped
+ACFS_STATE_SELECTED_MODULES=(base.system users.ubuntu lang.bun agents.codex)
+ACFS_STATE_REQUESTED_MODULES=(agents.codex)
+ACFS_CLI_PROFILE="$profile"
+acfs_apply_saved_installation_selection
+`;
+}
+
 /** Resolve the emitted arguments with the real installer, without installing anything. */
-function runInstallerSelection(input: ModuleSelectionInput, probe: string) {
+function runInstallerSelection(input: ModuleSelectionInput, probe: string, savedInstallation = false) {
   const args = buildInstallSelectorArgs(input);
+  const savedSetup = savedInstallation ? savedInstallationSetup() : "";
   return spawnSync(
     "/bin/bash",
     [
@@ -255,6 +271,7 @@ while (( $# )); do
     *) exit 90 ;;
   esac
 done
+${savedSetup}
 if [[ -n "$profile" ]]; then acfs_apply_profile "$profile"; fi
 acfs_resolve_selection
 ${probe}`,
@@ -268,17 +285,38 @@ ${probe}`,
   );
 }
 
-function installerPlan(input: ModuleSelectionInput) {
+function installerPlan(input: ModuleSelectionInput, savedInstallation = false) {
   const result = runInstallerSelection(input, `
 for module in "\${ACFS_EFFECTIVE_PLAN[@]}"; do
   explicit=false
   if acfs_module_explicitly_selected "$module"; then explicit=true; fi
   printf '%s\\t%s\\n' "$module" "$explicit"
-done`);
+done`, savedInstallation);
   assert.equal(result.status, 0, result.error?.message ?? result.stderr);
   return result.stdout.trim().split("\n").map((line) => {
     const [id, explicit] = line.split("\t");
     return { id, explicit: explicit === "true" };
+  });
+}
+
+test("implicit installer commands retain the saved subset", () => {
+  assert.deepEqual(
+    installerPlan({}, true).map((entry) => entry.id),
+    ["base.system", "users.ubuntu", "lang.bun", "agents.codex"],
+  );
+});
+
+const savedInstallationCases: Array<{ name: string; selection: ModuleSelectionInput }> = [
+  { name: "Full", selection: { profile: "full" } },
+  { name: "Full with exclusions", selection: { profile: "full", skipTags: ["maintenance"] } },
+  { name: "Full with explicit roots", selection: { profile: "full", onlyModules: ["lang.go"] } },
+];
+for (const { name, selection } of savedInstallationCases) {
+  test(`${name} replaces saved defaults with exactly the displayed module plan`, () => {
+    assert.deepEqual(
+      installerPlan(selection, true).map((entry) => entry.id),
+      resolveModuleSelection(selection).included.map((entry) => entry.id),
+    );
   });
 }
 
