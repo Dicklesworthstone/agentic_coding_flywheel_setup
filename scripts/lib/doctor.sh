@@ -2214,6 +2214,50 @@ doctor_skip_unselected_check() {
     return 0
 }
 
+# Optional describes the manifest default, not an explicit installation request.
+# A missing optional tool is still worth diagnosing when it belongs to the
+# saved scope, and a failed --only request must affect Doctor's exit status.
+# Legacy checkpoints retain the caller's historical warning/skip policy.
+doctor_optional_failure_status() {
+    local id="$1"
+    local status="${2:-warn}"
+    local module=""
+    local requested=""
+
+    if [[ "${ACFS_STATE_SELECTION_MODE:-legacy}" == scoped ]] \
+        && module="$(doctor_check_module_id "$id")" \
+        && state_module_is_selected "$module"; then
+        status=warn
+        for requested in "${ACFS_STATE_REQUESTED_MODULES[@]}"; do
+            if [[ "$requested" == "$module" ]]; then
+                status=fail
+                break
+            fi
+        done
+    fi
+    printf '%s\n' "$status"
+}
+
+# Bespoke optional checks historically skip absent tools. Preserve that for
+# legacy installs while providing a manifest-bound repair for selected tools.
+check_missing_optional_command() {
+    local id="$1"
+    local label="$2"
+    local status=""
+    local module=""
+    local fix=""
+
+    doctor_skip_unselected_check "$id" "$label" && return 0
+    status="$(doctor_optional_failure_status "$id" skip)"
+    if [[ "$status" != skip ]]; then
+        module="$(doctor_check_module_id "$id")" || return 1
+        fix="$(fix_for_module "$module")"
+        check "$id" "$label" "$status" "selected during installation but not installed" "$fix"
+    else
+        check "$id" "$label" skip "not installed (optional)"
+    fi
+}
+
 # Check result helper
 check() {
     local id="$1"
@@ -2558,7 +2602,7 @@ check_optional_command() {
         version=$(get_version_line "$cmd_path")
         check "$id" "$label ($version)" "pass" "installed"
     else
-        check "$id" "$label" "warn" "not found" "$fix"
+        check "$id" "$label" "$(doctor_optional_failure_status "$id" warn)" "not found" "$fix"
     fi
 }
 
@@ -3940,7 +3984,7 @@ check_stack() {
         version=$(get_version_line "$wa_bin")
         check "stack.wezterm_automata" "wezterm_automata ($version)" "pass" "installed"
     else
-        check "stack.wezterm_automata" "wezterm_automata (wa)" "skip" "not installed (optional)"
+        check_missing_optional_command "stack.wezterm_automata" "wezterm_automata (wa)"
     fi
 
     # Check brenner (Brenner Bot) - optional
@@ -3953,7 +3997,7 @@ check_stack() {
         version=$(get_version_line "$brenner_bin")
         check "stack.brenner_bot" "brenner_bot ($version)" "pass" "installed"
     else
-        check "stack.brenner_bot" "brenner_bot" "skip" "not installed (optional)"
+        check_missing_optional_command "stack.brenner_bot" "brenner_bot"
     fi
 
     # Check DCG (Destructive Command Guard)
@@ -4097,7 +4141,7 @@ check_utilities() {
         version=$(get_version_line "$util_bin")
         check "util.tru" "toon ($version)" "pass" "installed"
     else
-        check "util.tru" "toon (token notation)" "skip" "not installed (optional)"
+        check_missing_optional_command "util.tru" "toon (token notation)"
     fi
 
     # rust_proxy (Transparent Proxy Routing)
@@ -4109,7 +4153,7 @@ check_utilities() {
         version=$(get_version_line "$util_bin")
         check "util.rust_proxy" "rust_proxy ($version)" "pass" "installed"
     else
-        check "util.rust_proxy" "rust_proxy (proxy routing)" "skip" "not installed (optional)"
+        check_missing_optional_command "util.rust_proxy" "rust_proxy (proxy routing)"
     fi
 
     # rano (Network Observer for AI CLIs)
@@ -4121,7 +4165,7 @@ check_utilities() {
         version=$(get_version_line "$util_bin")
         check "util.rano" "rano ($version)" "pass" "installed"
     else
-        check "util.rano" "rano (network observer)" "skip" "not installed (optional)"
+        check_missing_optional_command "util.rano" "rano (network observer)"
     fi
 
     # xf (X/Twitter Archive Search)
@@ -4133,7 +4177,7 @@ check_utilities() {
         version=$(get_version_line "$util_bin")
         check "util.xf" "xf ($version)" "pass" "installed"
     else
-        check "util.xf" "xf (X archive search)" "skip" "not installed (optional)"
+        check_missing_optional_command "util.xf" "xf (X archive search)"
     fi
 
     # mdwb (Markdown Web Browser)
@@ -4145,7 +4189,7 @@ check_utilities() {
         version=$(get_version_line "$util_bin")
         check "util.mdwb" "mdwb ($version)" "pass" "installed"
     else
-        check "util.mdwb" "mdwb (markdown browser)" "skip" "not installed (optional)"
+        check_missing_optional_command "util.mdwb" "mdwb (markdown browser)"
     fi
 
     # pt (Process Triage)
@@ -4157,7 +4201,7 @@ check_utilities() {
         version=$(get_version_line "$util_bin")
         check "util.pt" "pt ($version)" "pass" "installed"
     else
-        check "util.pt" "pt (process triage)" "skip" "not installed (optional)"
+        check_missing_optional_command "util.pt" "pt (process triage)"
     fi
 
     # aadc (ASCII Diagram Corrector)
@@ -4169,7 +4213,7 @@ check_utilities() {
         version=$(get_version_line "$util_bin")
         check "util.aadc" "aadc ($version)" "pass" "installed"
     else
-        check "util.aadc" "aadc (ASCII diagram corrector)" "skip" "not installed (optional)"
+        check_missing_optional_command "util.aadc" "aadc (ASCII diagram corrector)"
     fi
 
     # s2p (Source to Prompt TUI)
@@ -4181,7 +4225,7 @@ check_utilities() {
         version=$(get_version_line "$util_bin")
         check "util.s2p" "s2p ($version)" "pass" "installed"
     else
-        check "util.s2p" "s2p (source to prompt)" "skip" "not installed (optional)"
+        check_missing_optional_command "util.s2p" "s2p (source to prompt)"
     fi
 
     # caut (Coding Agent Usage Tracker)
@@ -4193,7 +4237,7 @@ check_utilities() {
         version=$(get_version_line "$util_bin")
         check "util.caut" "caut ($version)" "pass" "installed"
     else
-        check "util.caut" "caut (usage tracker)" "skip" "not installed (optional)"
+        check_missing_optional_command "util.caut" "caut (usage tracker)"
     fi
 
     blank_line
@@ -4250,8 +4294,10 @@ _is_bespoke_covered() {
         stack.brenner_bot|stack.rch|stack.wezterm_automata) return 0 ;;
         # check_stack  (acfs nightly timer — bespoke handles D-Bus gracefully)
         acfs.nightly) return 0 ;;
-        # check_utilities (bd-2gog)
-        util|util.*|utils|utils.*) return 0 ;;
+        # check_utilities covers these exact manifest probes. Do not suppress
+        # the namespace: GIIL, CSCTF, and future utilities rely on their authored
+        # manifest checks, and new numbered checks must remain visible too.
+        utils.toon_rust|utils.rust_proxy|utils.rano|utils.xf|utils.mdwb|utils.aadc|utils.s2p|utils.caut) return 0 ;;
     esac
     return 1
 }
@@ -4532,7 +4578,7 @@ check_manifest_supplemental() {
         elif [[ "$req_flag" == "optional" ]]; then
             # Optional tools use "warn" status (not critical failures)
             # Still provide fix suggestion so users know how to install if desired
-            check "$id" "$tool_name" "warn" "$desc (optional)" "$fix"
+            check "$id" "$tool_name" "$(doctor_optional_failure_status "$id" warn)" "$desc (optional)" "$fix"
         else
             check "$id" "$tool_name" "fail" "$desc" "$fix"
         fi

@@ -721,6 +721,96 @@ run_doctor_wrapper_checkpoint() {
     doctor_selection_json | jq -e '.[1].status == "fail" and .[1].fix == "install bun"' >/dev/null
 }
 
+@test "doctor selection: missing selected utilities and optional stack tools retain installation intent" {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["utils.toon_rust","utils.rust_proxy","utils.rano","utils.xf","utils.mdwb","stack.process_triage","utils.aadc","utils.s2p","utils.caut","stack.wezterm_automata","stack.brenner_bot"],"requested_modules":["utils.toon_rust","stack.process_triage","stack.wezterm_automata"]},"skipped_tools":["utils.toon_rust","utils.rano"]}'
+    FIX_MODE=true
+    DOCTOR_FIX_SCOPED=true
+
+    check_utilities
+    check_stack
+
+    [ "$FAIL_COUNT:$WARN_COUNT" = 3:8 ]
+    doctor_selection_json | jq -e '
+        ([.[] | select(.status == "fail") | .id] | sort) ==
+            ["stack.wezterm_automata","util.pt","util.tru"] and
+        ([.[] | select(.status == "warn")] | length) == 8 and
+        all(.[] | select(.status == "fail" or .status == "warn");
+            (.fix | contains("--only")) and (.details | contains("not installed"))) and
+        all(.[] | select(.status == "skip"); .fix == null)' >/dev/null
+    [ "${#DOCTOR_FIX_PENDING_IDS[@]}" -eq 11 ]
+    [ ! -e "$DOCTOR_TEST_PROBES" ]
+}
+
+@test "doctor selection: excluded utility executables are not probed or queued for repair" {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["lang.bun"]}}'
+    local binary=""
+    for binary in toon rust_proxy rano xf mdwb pt aadc s2p caut; do
+        doctor_selection_binary "$binary"
+    done
+    FIX_MODE=true
+    DOCTOR_FIX_SCOPED=true
+
+    check_utilities
+
+    [ "$FAIL_COUNT:$WARN_COUNT:$SKIP_COUNT" = 0:0:9 ]
+    [ "${#DOCTOR_FIX_PENDING_IDS[@]}" -eq 0 ]
+    [ ! -e "$DOCTOR_TEST_PROBES" ]
+    doctor_selection_json | jq -e 'length == 9 and all(.status == "skip" and .fix == null)' >/dev/null
+}
+
+@test "doctor selection: legacy optional utilities remain nonfatal skips without repair hints" {
+    doctor_selection_fixture '{"skipped_tools":["utils.toon_rust","utils.rano"]}'
+    FIX_MODE=true
+    DOCTOR_FIX_SCOPED=true
+
+    check_utilities
+
+    [ "$FAIL_COUNT:$WARN_COUNT:$SKIP_COUNT" = 0:0:9 ]
+    [ "${#DOCTOR_FIX_PENDING_IDS[@]}" -eq 0 ]
+    doctor_selection_json | jq -e 'length == 9 and all(.status == "skip" and .fix == null)' >/dev/null
+}
+
+@test "doctor selection: requested optional cloud tools fail while selected defaults warn" {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["cloud.vercel","cloud.supabase"],"requested_modules":["cloud.vercel"]}}'
+    FIX_MODE=true
+    DOCTOR_FIX_SCOPED=true
+
+    check_optional_command cloud.vercel Vercel vercel "repair vercel"
+    check_optional_command cloud.supabase Supabase supabase "repair supabase"
+    check_optional_command cloud.wrangler Wrangler wrangler "repair wrangler"
+
+    [ "$FAIL_COUNT:$WARN_COUNT:$SKIP_COUNT" = 1:1:1 ]
+    [ "${DOCTOR_FIX_PENDING_IDS[*]}" = 'cloud.vercel cloud.supabase' ]
+    doctor_selection_json | jq -e '
+        .[0].status == "fail" and .[0].fix == "repair vercel" and
+        .[1].status == "warn" and .[1].fix == "repair supabase" and
+        .[2].status == "skip" and .[2].fix == null' >/dev/null
+}
+
+@test "doctor selection: GIIL CSCTF and future utility manifest checks execute without blanket suppression" {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["utils.giil","utils.csctf"],"requested_modules":["utils.giil"]}}'
+    # Real generated catalog membership validates the saved selection above.
+    # Controlled commands exercise the production bounded subprocess runner:
+    # GIIL fails, CSCTF succeeds, and an excluded future module must not execute.
+    MANIFEST_CHECKS=(
+        $'utils.giil\tGIIL functional check\tprintf giil >> "$DOCTOR_TEST_PROBES"; false\toptional\tcurrent'
+        $'utils.csctf\tCSCTF functional check\tprintf csctf >> "$DOCTOR_TEST_PROBES"; true\toptional\tcurrent'
+        $'utils.future_tool\tExcluded utility\tprintf EXCLUDED >> "$DOCTOR_TEST_PROBES"; false\toptional\tcurrent'
+    )
+    FIX_MODE=true
+    DOCTOR_FIX_SCOPED=true
+
+    check_manifest_supplemental
+
+    [ "$(cat "$DOCTOR_TEST_PROBES")" = giilcsctf ]
+    [ "$FAIL_COUNT:$PASS_COUNT:$SKIP_COUNT" = 1:1:1 ]
+    [ "${DOCTOR_FIX_PENDING_IDS[*]}" = utils.giil ]
+    doctor_selection_json | jq -e '
+        .[0].id == "utils.giil" and .[0].status == "fail" and (.[0].fix | contains("--only utils.giil")) and
+        .[1].id == "utils.csctf" and .[1].status == "pass" and
+        .[2].id == "utils.future_tool" and .[2].status == "skip" and .[2].fix == null' >/dev/null
+}
+
 @test "doctor selection: legacy failures in skipped_tools do not hide broken tools" {
     doctor_selection_fixture '{"skipped_tools":["lang.bun","agents.claude"]}'
     [ "$ACFS_STATE_SELECTION_MODE" = legacy ]
