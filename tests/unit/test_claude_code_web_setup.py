@@ -2895,11 +2895,50 @@ os.replace = interrupt_second_binary
         self.assertLess(time.monotonic() - started, 6)
         self.assertIn('timed out', output)
         self.assertEqual(reached.read_text(), 'reached\n')
+        self.assertEqual(target.read_bytes(), original,
+                         'A timed-out refresh must restore the working tool before the cloud session starts')
+        journal = self.home / '.acfs/cloud/transactions/br.json'
+        self.assertEqual(json.loads(journal.read_text())['state'], 'rolled-back')
         requests = (self.root / 'requests').read_text()
         recovered = self.run_setup(ACFS_CLOUD_AGENT='generic')
         self.assertIn('br 1.2.3 (already installed)', recovered)
         self.assertEqual(target.read_bytes(), original)
         self.assertEqual((self.root / 'requests').read_text(), requests)
+
+    def test_killed_tool_job_restores_the_whole_bundle_before_session_starts(self):
+        binaries = self.home / '.local/bin'
+        binaries.mkdir(parents=True)
+        original = {name: f'#!/bin/sh\necho {name}-working\n'.encode() for name in ('am', 'mcp-agent-mail')}
+        for name, content in original.items():
+            (binaries / name).write_bytes(content)
+            (binaries / name).chmod(0o755)
+        new_code = b'#!/bin/sh\necho am-interrupted-refresh\n'
+        self.bundle('am', new_code)
+        target = self.home / '.local/bin/am'
+        reached = self.root / 'first-executable-promoted'
+        self.python_fault(f'''
+import os, pathlib, signal
+replace = os.replace
+def kill_job_after_first_binary(src, dst, *args, **kwargs):
+    interrupt = pathlib.Path(dst) == pathlib.Path({str(target)!r}) and pathlib.Path(src).read_bytes() == {new_code!r}
+    result = replace(src, dst, *args, **kwargs)
+    if interrupt:
+        pathlib.Path({str(reached)!r}).write_text('promoted')
+        # The production supervisor starts the tool job in its own session.
+        # Kill that job only, after the first of two real file replacements.
+        os.kill(os.getpgid(0), signal.SIGKILL)
+        os._exit(73)
+    return result
+os.replace = kill_job_after_first_binary
+''')
+        output = self.run_setup('am', ACFS_CLOUD_AGENT='generic', ACFS_CLOUD_REINSTALL='1')
+        self.assertEqual(reached.read_text(), 'promoted')
+        self.assertNotIn('(verified prebuilt)', output)
+        for name, content in original.items():
+            self.assertEqual((self.home / '.local/bin' / name).read_bytes(), content,
+                             'The next cloud task must not receive a half-updated Agent Mail bundle')
+        journal = self.home / '.acfs/cloud/transactions/am.json'
+        self.assertEqual(json.loads(journal.read_text())['state'], 'rolled-back')
 
     def test_reinstall_replaces_binary_atomically_for_existing_readers(self):
         original = b'#!/bin/sh\necho br-old\n'

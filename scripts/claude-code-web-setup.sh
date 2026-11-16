@@ -144,6 +144,8 @@ operations = [('job', tool, ['bash', '-c', 'set -uo pipefail; cloud_install_tool
               for tool in tools]
 operations.extend(('recover', tool, ['bash', '-c', 'set -uo pipefail; cloud_promote_tool recover "$1"', '_', tool])
                   for tool in tools)
+operations.extend(('rollback', tool, ['bash', '-c', 'set -uo pipefail; cloud_promote_tool rollback "$1"', '_', tool])
+                  for tool in tools)
 for name in (*tools, 'mcp-agent-mail'):
     binary = shutil.which(name)
     if binary is not None:
@@ -381,7 +383,7 @@ def interrupt(signum, frame):
     raise InterruptedError('tool refresh interrupted; recovering prior installation')
 signal.signal(signal.SIGTERM, interrupt)
 try:
-    if mode not in ('recover', 'install') or tool not in ('br', 'bv', 'am', 'ubs', 'cass', 'cm', 'ms', 'ast-grep', 'jsm', 'jfp'):
+    if mode not in ('recover', 'install', 'rollback') or tool not in ('br', 'bv', 'am', 'ubs', 'cass', 'cm', 'ms', 'ast-grep', 'jsm', 'jfp'):
         raise ValueError('Unsupported bundle promotion')
     directory = state / 'transactions'
     reject_links(directory)
@@ -392,8 +394,10 @@ try:
         info = os.fstat(lock.fileno())
         if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
             raise ValueError('Unsafe bundle promotion lock')
-        # The outer supervisor bounds lock waits as part of the whole tool job.
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        # A terminated job has released its lock before immediate rollback.
+        # Never wait for (or undo) a different setup that acquired it meanwhile.
+        # Ordinary recovery/install waits remain inside the whole-job deadline.
+        fcntl.flock(lock, fcntl.LOCK_EX | (fcntl.LOCK_NB if mode == 'rollback' else 0))
         journal = directory / (tool + '.json')
         reject_links(journal)
         journal_bytes = None
@@ -475,8 +479,10 @@ try:
             save(record)
             print('Recovered prior ' + tool + ' installation after incomplete refresh', file=sys.stderr)
         if journal_bytes is not None:
-            recover(json.loads(journal_bytes))
-        if mode == 'recover':
+            previous = json.loads(journal_bytes)
+            if mode != 'rollback' or previous.get('transaction') == work.name:
+                recover(previous)
+        if mode in ('recover', 'rollback'):
             sys.exit(0)
         stage = work / (tool + '-stage')
         names = sorted(path.relative_to(stage).as_posix() for path in stage.rglob('*') if not path.is_dir())
@@ -739,6 +745,16 @@ cloud_install_tool() {
     : > "$log"
     cloud_run_bounded "$ACFS_CLOUD_TIMEOUT" 2 job "$tool"
     rc=$?
+    if [[ $rc -ne 0 ]]; then
+        # The supervisor has reaped this job and all its descendants. Restore
+        # its interrupted replacement now, before the always-successful setup
+        # hands control to a cloud task. Keep the original failure status even
+        # when rollback succeeds. Recovery is separately bounded, in parallel
+        # with other jobs, and never waits on another setup's promotion lock.
+        if ! cloud_run_bounded 5 1 rollback "$tool" >>"$log" 2>&1; then
+            printf '%s\n' 'Immediate recovery did not complete; retained backups and recovery metadata for the next setup.' >>"$log"
+        fi
+    fi
     if [[ $rc -eq 124 || $rc -eq 137 ]]; then
         cloud_record "$tool" fail "download/install timed out after ${ACFS_CLOUD_TIMEOUT}s (see $log)"
     elif [[ $rc -ne 0 || ! -f "$ACFS_CLOUD_WORK/status/$tool" ]]; then
