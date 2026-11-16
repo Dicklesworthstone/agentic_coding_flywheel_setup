@@ -950,9 +950,17 @@ acfs holds        # list holds (also surfaced by `acfs doctor` and every update 
 acfs unhold br    # release the hold
 ```
 
-Held tools are skipped by every update run with the owner/reason/expiry named
-in the log. Expired holds warn and are ignored. Holds live in
-`~/.acfs/holds.yaml`.
+Component updates honor holds for verified installers, native self-updaters,
+package installs, and shell Git updates, including `--force` and `--dry-run`.
+The log names the owner, reason, and expiry; the summary counts each held tool
+once. Expired holds warn and are ignored. Holds live in `~/.acfs/holds.yaml`.
+
+Use the installer key (for example `bun`, `uv`, `codex`, `antigravity`, `omp`,
+`opencode`, or `atuin`), the Cargo package name (`ast-grep`, `du-dust`,
+`tealdeer`), or the shell component (`omz`, `p10k`, `zsh-autosuggestions`).
+A Bun hold pauses Bun's own upgrade while allowing selected tools such as Codex
+to update through the installed Bun. A `gh` hold pauses extension updates.
+ACFS holds do not replace distribution package holds during full system upgrades.
 
 ### Post-Install Verification and Rollback
 

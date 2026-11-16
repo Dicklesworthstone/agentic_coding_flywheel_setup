@@ -2157,6 +2157,7 @@ class AgentPackageDeadlineTests(unittest.TestCase):
     owned_dir = RustRuntimeContextTests.owned_dir
     write_input = RustRuntimeContextTests.write_input
     write_native_tool = RustRuntimeContextTests.write_native_tool
+    write_tools = RustRuntimeContextTests.write_tools
     write_maintenance_tool = RustRuntimeContextTests.write_maintenance_tool
     cloud_command = RustRuntimeContextTests.cloud_command
     events = RustRuntimeContextTests.events
@@ -2189,6 +2190,7 @@ class AgentPackageDeadlineTests(unittest.TestCase):
         env = {
             "HOME": str(self.home), "PATH": "/usr/bin:/bin",
             "TARGET_USER": self.account.pw_name, "TARGET_HOME": str(self.home),
+            "ACFS_HOLDS_FILE": str(self.home / ".acfs/holds.yaml"),
             "UPDATE_TEST_LIBRARY": str(self.library), "TEST_ROOT": str(self.base),
             "TEST_USER": self.account.pw_name, "TEST_UID": str(self.account.pw_uid),
             "TEST_GID": str(self.account.pw_gid), "TEST_HOME": str(self.home),
@@ -2219,6 +2221,166 @@ printf 'COUNTS=%s,%s,%s\n' "$SUCCESS_COUNT" "$SKIP_COUNT" "$FAIL_COUNT"
             "target_home": str(self.home), "target_user": self.account.pw_name,
             "module_selection": {"schema_version": 1, "selected_modules": modules},
         }))
+
+    def write_holds(self, tools, *, expiry="2999-12-31"):
+        directory = self.home / ".acfs"
+        self.owned_dir(directory)
+        self.write_input(directory / "holds.yaml", "holds:\n" + "".join(
+            f'  {tool}:\n    held_version: "current"\n    owner: "operator"\n'
+            f'    reason: "retain working version"\n    expiry: "{expiry}"\n'
+            for tool in tools))
+
+    def test_held_native_runtimes_skip_probes_updates_and_forced_repair(self):
+        self.write_selection(["lang.bun", "lang.uv", "tools.atuin"])
+        self.write_holds(["bun", "uv", "atuin"])
+        for tool in ("bun", "uv", "atuin"):
+            self.write_native_tool(tool)
+        self.write_native_tool("atuin-update", directory=self.home / ".atuin/bin")
+        output = self.run_update(command=r'''
+FORCE_MODE=true
+update_bun
+update_uv
+update_run_selected_module tools.atuin update_atuin
+printf 'HELD=%s:%s\n' "$HELD_COUNT" "${UPDATE_HELD_TOOLS[*]}"
+''')
+        self.assertEqual(self.events(), [])
+        self.assertIn("COUNTS=0,3,0", output)
+        self.assertIn("HELD=3:bun uv atuin", output)
+        log = (self.base / "update.log").read_text()
+        self.assertIn("by operator: retain working version (expires 2999-12-31)", log)
+
+    def test_held_agents_skip_native_and_package_updates_even_with_force(self):
+        self.write_selection(["agents.codex", "agents.antigravity", "agents.omp", "agents.opencode"])
+        self.write_holds(["codex", "antigravity", "omp", "opencode"])
+        for tool in ("bun", "codex", "agy", "agy-real", "omp", "opencode"):
+            self.write_native_tool(tool)
+        output = self.run_update(command=r'''
+FORCE_MODE=true
+update_agents
+printf 'HELD=%s:%s\n' "$HELD_COUNT" "${UPDATE_HELD_TOOLS[*]}"
+''')
+        self.assertEqual(self.events(), [])
+        self.assertIn("COUNTS=0,6,0", output)
+        self.assertIn("HELD=4:codex antigravity omp opencode", output)
+        self.assertFalse((self.home / ".local/bin/agy-locked").exists())
+
+    def test_held_cloud_tools_skip_packages_release_downloads_and_extensions(self):
+        self.write_selection(["cloud.wrangler", "cloud.supabase", "cloud.vercel", "cli.modern"])
+        self.write_holds(["wrangler", "supabase", "vercel", "gh"])
+        for tool in ("bun", "wrangler", "supabase", "vercel"):
+            self.write_native_tool(tool)
+        self.write_maintenance_tool("gh")
+        # Replace only the release payload with an inert marker; the real
+        # dispatcher/account runner still decides whether it may execute.
+        output = self.run_update(command=r'''
+FORCE_MODE=true
+supabase_release_update_script() { printf 'printf "release-download\\n" >> %q\n' "$TEST_ROOT/events.tsv"; }
+update_cloud
+printf 'HELD=%s:%s\n' "$HELD_COUNT" "${UPDATE_HELD_TOOLS[*]}"
+''')
+        self.assertEqual(self.events(), [])
+        self.assertIn("COUNTS=0,5,0", output)
+        self.assertIn("HELD=4:wrangler supabase vercel gh", output)
+
+    def test_holding_bun_keeps_other_selected_package_updates_available(self):
+        self.write_selection(["lang.bun", "agents.codex", "agents.omp"])
+        self.write_holds(["bun", "omp"])
+        for tool in ("bun", "codex", "omp"):
+            self.write_native_tool(tool)
+        output = self.run_update(command="update_bun; update_agents")
+        self.assert_target_events(self.events())
+        self.assertNotIn("omp", [event[0] for event in self.events()])
+        self.assertEqual([event[-1] for event in self.events() if event[0] == "bun"],
+                         ["install -g --trust @openai/codex@latest"])
+        self.assertIn("COUNTS=1,6,0", output)
+
+    def test_expired_native_hold_warns_and_update_still_runs(self):
+        self.write_selection(["lang.bun"])
+        self.write_holds(["bun"], expiry="2000-01-01")
+        self.write_native_tool("bun")
+        output = self.run_update(command="update_bun; printf 'HELD=%s\\n' \"$HELD_COUNT\"")
+        self.assertEqual([event[-1] for event in self.events()], ["--version", "upgrade", "--version"])
+        self.assertIn("COUNTS=1,0,0", output)
+        self.assertIn("HELD=0", output)
+        self.assertIn("hold ignored, updating normally", (self.base / "update.log").read_text())
+
+    def test_dry_run_reports_holds_once_without_probing_held_tools(self):
+        self.write_selection(["lang.bun"])
+        self.write_holds(["bun"])
+        self.write_native_tool("bun")
+        checkpoint = self.home / ".acfs/state.json"
+        original_checkpoint = checkpoint.read_bytes()
+        output = self.run_update(dry_run=True, command=r'''
+update_bun
+update_bun
+printf 'HELD=%s:%s\n' "$HELD_COUNT" "${UPDATE_HELD_TOOLS[*]}"
+''')
+        self.assertEqual(self.events(), [])
+        self.assertIn("COUNTS=0,2,0", output)
+        self.assertIn("HELD=1:bun", output)
+        self.assertEqual(checkpoint.read_bytes(), original_checkpoint)
+
+    def test_held_cargo_tool_skips_reinstall_and_missing_cargo_repair(self):
+        self.write_selection(["tools.ast_grep"])
+        self.write_holds(["ast-grep"])
+        self.write_tools(self.home / ".cargo/bin", "target-cargo")
+        self.write_native_tool("sg")
+        output = self.run_update(command=r'''
+FORCE_MODE=true
+update_cargo_tools
+update_rust_binary_path() { return 1; }
+update_cargo_tools
+printf 'HELD=%s:%s\n' "$HELD_COUNT" "${UPDATE_HELD_TOOLS[*]}"
+''')
+        self.assertEqual(self.events(), [])
+        self.assertIn("COUNTS=0,2,0", output)
+        self.assertIn("HELD=1:ast-grep", output)
+
+    def test_legacy_cargo_hold_keeps_other_packages_updating(self):
+        self.write_holds(["ast-grep", "du-dust"])
+        self.write_tools(self.home / ".cargo/bin", "target-cargo")
+        for tool in ("sg", "lsd", "dust", "tldr"):
+            self.write_native_tool(tool)
+        output = self.run_update(command="update_cargo_tools")
+        self.assertEqual([event[-1] for event in self.events() if event[0] == "cargo"],
+                         ["install lsd --locked --force", "install tealdeer --locked --force"])
+        self.assertFalse(any(event[0] in ("sg", "dust") for event in self.events()))
+        self.assertIn("COUNTS=2,2,0", output)
+
+    def test_held_shell_components_do_not_block_unheld_plugin(self):
+        self.write_selection(["shell.omz"])
+        self.write_holds(["omz", "p10k", "zsh-autosuggestions"])
+        custom = self.home / ".oh-my-zsh/custom"
+        self.write_maintenance_tool("omz-upgrade", path=self.home / ".oh-my-zsh/tools/upgrade.sh")
+        self.owned_dir(custom / "themes/powerlevel10k/.git")
+        for plugin in ("zsh-autosuggestions", "zsh-syntax-highlighting"):
+            self.owned_dir(custom / "plugins" / plugin / ".git")
+        output = self.run_update(command=r'''
+# Network acquisition is inert; normal selection, shell path resolution and
+# hold lookup decide whether each repository reaches the git boundary.
+update_run_shell_git() { printf '%s\n' "$*" >> "$TEST_ROOT/events.tsv"; printf 'updated\n'; }
+update_run_selected_module shell.omz update_omz
+update_run_selected_module shell.omz update_p10k
+update_run_selected_module shell.omz update_zsh_plugins
+printf 'HELD=%s:%s\n' "$HELD_COUNT" "${UPDATE_HELD_TOOLS[*]}"
+''')
+        self.assertEqual(self.events(), [[str(custom / "plugins/zsh-syntax-highlighting") + " pull --ff-only"]])
+        self.assertIn("COUNTS=1,3,0", output)
+        self.assertIn("HELD=3:omz p10k zsh-autosuggestions", output)
+
+    def test_unselected_hold_does_not_count_as_held_and_missing_held_tool_stays_absent(self):
+        self.write_selection(["lang.bun"])
+        self.write_holds(["bun", "uv"])
+        output = self.run_update(command=r'''
+FORCE_MODE=true
+update_require_security() { printf 'unexpected-download\n' >> "$TEST_ROOT/events.tsv"; return 1; }
+update_bun
+update_uv
+printf 'HELD=%s:%s\n' "$HELD_COUNT" "${UPDATE_HELD_TOOLS[*]}"
+''')
+        self.assertEqual(self.events(), [])
+        self.assertIn("COUNTS=0,1,0", output)
+        self.assertIn("HELD=1:bun", output)
 
     def test_stack_update_skips_selected_ubuntu_only_module_on_arch(self):
         self.write_selection(["stack.srps"])

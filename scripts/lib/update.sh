@@ -6050,6 +6050,17 @@ update_note_held_tool() {
     return 0
 }
 
+# Native and package-manager updates do not pass through the verified
+# installer wrapper. Apply the same policy before probing or replacing their
+# tools, including --force and previews, and account for skips in this shell.
+update_skip_held_tool() {
+    local tool="$1" description="${2:-$1}"
+    update_tool_hold_details "$tool" || return 1
+    log_item "skip" "$description" "HELD: $UPDATE_LAST_HOLD_DETAILS"
+    update_note_held_tool "$tool"
+    return 0
+}
+
 # ============================================================
 # minisign prerequisite (issue #375)
 # ============================================================
@@ -8688,6 +8699,7 @@ update_bun() {
     fi
     update_load_module_selection || return 1
     update_module_is_selected lang.bun || return 0
+    update_skip_held_tool bun "Bun" && return 0
 
     log_section "Bun Runtime"
 
@@ -8969,6 +8981,8 @@ update_agents() {
 
     if ! update_module_is_selected agents.claude; then
         log_item "skip" "Claude Code" "$(update_module_skip_reason agents.claude)"
+    elif update_skip_held_tool claude "Claude Code"; then
+        :
     elif [[ -n "$claude_path" ]] && [[ "$bun_claude_detected" != "true" || "$FORCE_MODE" != "true" ]]; then
         capture_version_before "claude"
 
@@ -9020,6 +9034,8 @@ update_agents() {
     # npm can 404 briefly after publishing; pinned version is reliable fallback
     if ! update_module_is_selected agents.codex; then
         log_item "skip" "Codex CLI" "$(update_module_skip_reason agents.codex)"
+    elif update_skip_held_tool codex "Codex CLI"; then
+        :
     elif [[ -z "$bun_bin" ]]; then
         # One line for one cause: a missing Bun only matters through Codex, so
         # it is reported once, against Codex (it used to be a Bun line plus a
@@ -9098,6 +9114,8 @@ update_agents() {
 
     if ! update_module_is_selected agents.antigravity; then
         log_item "skip" "Antigravity CLI" "$(update_module_skip_reason agents.antigravity)"
+    elif update_skip_held_tool antigravity "Antigravity CLI"; then
+        :
     elif [[ -n "$agy_bin" ]]; then
         capture_version_before "agy"
         run_cmd "Antigravity CLI" update_run_bounded_in_target_context "$agy_bin" update
@@ -9125,6 +9143,8 @@ update_agents() {
     # native 'omp update', fall back to the verified installer for fresh installs.
     if ! update_module_is_selected agents.omp; then
         log_item "skip" "oh-my-pi (omp)" "$(update_module_skip_reason agents.omp)"
+    elif update_skip_held_tool omp "oh-my-pi (omp)"; then
+        :
     elif update_binary_exists omp; then
         local omp_bin=""
         omp_bin="$(update_binary_path omp 2>/dev/null || true)"
@@ -9153,6 +9173,8 @@ update_agents() {
     # block the updater never touched opencode at all.)
     if ! update_module_is_selected agents.opencode; then
         log_item "skip" "OpenCode" "$(update_module_skip_reason agents.opencode)"
+    elif update_skip_held_tool opencode "OpenCode"; then
+        :
     elif update_binary_exists opencode; then
         local opencode_bin=""
         local opencode_timeout_bin=""
@@ -9196,6 +9218,8 @@ update_agents() {
     # instead of the upstream default ~/.grok/bin.
     if ! update_module_is_selected agents.grok; then
         log_item "skip" "Grok CLI" "$(update_module_skip_reason agents.grok)"
+    elif update_skip_held_tool grok "Grok CLI"; then
+        :
     elif update_binary_exists grok || [[ "$FORCE_MODE" == "true" ]]; then
         if update_require_security; then
             local grok_bin_dir=""
@@ -9548,6 +9572,8 @@ update_cloud() {
     # Wrangler (--trust allows postinstall scripts for native binaries)
     if ! update_module_is_selected cloud.wrangler; then
         log_item "skip" "Wrangler" "$(update_module_skip_reason cloud.wrangler)"
+    elif update_skip_held_tool wrangler "Wrangler (Cloudflare)"; then
+        :
     elif update_binary_exists wrangler || [[ "$FORCE_MODE" == "true" ]]; then
         if [[ "$has_bun" == "true" ]]; then
             run_cmd_bun_with_retry "Wrangler (Cloudflare)" update_run_bounded_in_target_context "$bun_bin" install -g --trust wrangler@latest
@@ -9561,6 +9587,8 @@ update_cloud() {
     # Supabase (verified GitHub release binary; installed to ~/.local/bin)
     if ! update_module_is_selected cloud.supabase; then
         log_item "skip" "Supabase CLI" "$(update_module_skip_reason cloud.supabase)"
+    elif update_skip_held_tool supabase "Supabase CLI"; then
+        :
     elif update_binary_exists supabase || [[ "$FORCE_MODE" == "true" ]]; then
         local supabase_primary_bin=""
         capture_version_before "supabase"
@@ -9582,6 +9610,8 @@ update_cloud() {
     # Vercel (--trust allows postinstall scripts for native binaries)
     if ! update_module_is_selected cloud.vercel; then
         log_item "skip" "Vercel CLI" "$(update_module_skip_reason cloud.vercel)"
+    elif update_skip_held_tool vercel "Vercel CLI"; then
+        :
     elif update_binary_exists vercel || [[ "$FORCE_MODE" == "true" ]]; then
         if [[ "$has_bun" == "true" ]]; then
             run_cmd_bun_with_retry "Vercel CLI" update_run_bounded_in_target_context "$bun_bin" install -g --trust vercel@latest
@@ -9597,6 +9627,8 @@ update_cloud() {
     gh_bin="$(update_binary_path gh 2>/dev/null || true)"
     if ! update_module_is_selected cli.modern; then
         log_item "skip" "GitHub CLI" "$(update_module_skip_reason cli.modern)"
+    elif update_skip_held_tool gh "GitHub CLI extensions"; then
+        :
     elif [[ -n "$gh_bin" ]]; then
         capture_version_before "gh"
         # Update gh extensions if any are installed
@@ -9632,6 +9664,8 @@ update_cloud() {
     # claim an independently installed SDK as part of a saved module selection.
     if [[ "${ACFS_STATE_SELECTION_MODE:-invalid}" != legacy ]]; then
         log_item "skip" "Google Cloud SDK" "not managed by the saved installation selection"
+    elif update_skip_held_tool gcloud "Google Cloud SDK"; then
+        :
     elif [[ -n "$gcloud_bin" ]]; then
         if dpkg -s google-cloud-cli >/dev/null 2>&1; then
             # apt-managed installs disable `gcloud components update`;
@@ -9719,6 +9753,7 @@ update_cargo_tools() {
     cargo_bin="$(update_rust_binary_path cargo 2>/dev/null || true)"
     if [[ -z "$cargo_bin" ]]; then
         if [[ "$FORCE_MODE" == "true" ]] && update_module_is_selected tools.ast_grep; then
+            update_skip_held_tool ast-grep "ast-grep" && return 0
             if [[ "$DRY_RUN" == "true" ]] && update_module_is_selected lang.rust \
                 && ! update_tool_hold_details rust; then
                 # update_rust previews the prerequisite without creating Cargo.
@@ -9748,6 +9783,8 @@ update_cargo_tools() {
             *) [[ "${ACFS_STATE_SELECTION_MODE:-invalid}" == legacy ]] || continue ;;
         esac
 
+        update_skip_held_tool "$tool" "$tool" && continue
+
         if ! update_binary_exists "$binary_name"; then
             [[ "$FORCE_MODE" == "true" && "$tool" == ast-grep ]] || continue
         fi
@@ -9770,6 +9807,7 @@ update_uv() {
     fi
     update_load_module_selection || return 1
     update_module_is_selected lang.uv || return 0
+    update_skip_held_tool uv "uv" && return 0
 
     log_section "Python Tools (uv)"
 
@@ -11150,6 +11188,7 @@ update_root_agents_md() {
 
 # Update Oh-My-Zsh via its built-in upgrade script
 update_omz() {
+    update_skip_held_tool omz "Oh-My-Zsh" && return 0
     local omz_dir=""
     omz_dir="$(update_shell_install_dir omz 2>/dev/null || true)"
 
@@ -11192,6 +11231,7 @@ update_omz() {
 
 # Update Powerlevel10k theme via git
 update_p10k() {
+    update_skip_held_tool p10k "Powerlevel10k" && return 0
     local p10k_dir=""
     p10k_dir="$(update_shell_install_dir custom 2>/dev/null || true)"
     [[ -z "$p10k_dir" ]] || p10k_dir+="/themes/powerlevel10k"
@@ -11274,6 +11314,8 @@ update_zsh_plugins() {
             continue
         fi
 
+        update_skip_held_tool "$plugin" "$plugin" && continue
+
         if [[ ! -d "$plugin_dir/.git" ]]; then
             log_item "warn" "$plugin" "not a git repo (skipped)"
             log_to_file "Plugin $plugin exists but is not a git repo"
@@ -11311,6 +11353,7 @@ update_zsh_plugins() {
 # Update Atuin with its dedicated cargo-dist updater, falling back only when
 # older installations do not provide one.
 update_atuin() {
+    update_skip_held_tool atuin "Atuin" && return 0
     local atuin_bin=""
     local atuin_update_bin=""
     local target_home=""
@@ -11404,6 +11447,7 @@ update_atuin() {
 
 # Update Zoxide via reinstall (checksum verified)
 update_zoxide() {
+    update_skip_held_tool zoxide "Zoxide" && return 0
     local zoxide_bin=""
     zoxide_bin="$(update_tool_binary_path "zoxide" 2>/dev/null || true)"
     if [[ -z "$zoxide_bin" ]]; then
