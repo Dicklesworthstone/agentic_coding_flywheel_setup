@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-11-16T04:31:30+00:00
+# checksums.yaml - Auto-generated 2026-11-16T12:31:31+00:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -32,7 +32,7 @@ installers:
 
   bv:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/beads_viewer/main/install.sh"
-    sha256: "0a222d4441aff9f2722d575909a6c94486bcca7d6eb99d5e2d907b3b13bd4d2a"
+    sha256: "e27b070709a2177c86612e2a4be2004c3a8def6ac059be79eb931bd373174e1e"
 
   caam:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/coding_agent_account_manager/main/install.sh"
