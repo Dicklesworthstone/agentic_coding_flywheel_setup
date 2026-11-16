@@ -2588,6 +2588,104 @@ state_phase_is_clean() {
     fi
 }
 
+# A successful check of the current repair plan is not proof about failures
+# from an earlier, broader plan. Before reconciling those failures, verify the
+# cumulative installation intent too. Keep the wider plan inside a subshell:
+# no later phase installer may inherit these read-only verification selectors.
+state_verify_phase_recovery() (
+    local phase_id="$1"
+    state_phase_is_clean "$phase_id" && return 0
+
+    local state_file=""
+    state_file="$(state_get_file)" || return 1
+    state_load_module_selection "$state_file" || return 1
+    case "${ACFS_STATE_SELECTION_MODE:-invalid}" in
+        legacy)
+            # There is no recorded scope for old checkpoints. A filtered run
+            # cannot establish which omitted modules produced their failures.
+            local narrowed=false
+            state_has_module_selection && narrowed=true
+            if [[ "${SKIP_MODULES+x}" == x ]] && [[ ${#SKIP_MODULES[@]} -gt 0 ]]; then
+                narrowed=true
+            fi
+            if [[ "${SKIP_TAGS+x}" == x ]] && [[ ${#SKIP_TAGS[@]} -gt 0 ]]; then
+                narrowed=true
+            fi
+            if [[ "${SKIP_CATEGORIES+x}" == x ]] && [[ ${#SKIP_CATEGORIES[@]} -gt 0 ]]; then
+                narrowed=true
+            fi
+            if [[ "${SKIP_POSTGRES:-false}" == true || "${SKIP_VAULT:-false}" == true ||
+                  "${SKIP_CLOUD:-false}" == true ]]; then
+                narrowed=true
+            fi
+            if [[ "$narrowed" == true ]]; then
+                printf '%s\n' 'Previous phase failures remain unresolved: a filtered repair cannot verify the original scope of this legacy checkpoint.' >&2
+                printf '%s\n' 'Rerun the original full installation plan to verify the remaining work.' >&2
+                return 1
+            fi
+            return 0
+            ;;
+        scoped)
+            if ! declare -p ACFS_MODULES_IN_ORDER >/dev/null 2>&1; then
+                printf '%s\n' 'Cannot verify previous phase failures without the module catalogue.' >&2
+                return 1
+            fi
+            state_validate_module_selection_catalog "${ACFS_MODULES_IN_ORDER[@]}" || return 1
+            ;;
+        *) return 1 ;;
+    esac
+
+    local module="" reasons_decl=""
+    local -A seen=()
+    for module in "${ACFS_EFFECTIVE_PLAN[@]}"; do
+        seen["$module"]=1
+    done
+    for module in "${ACFS_STATE_SELECTED_MODULES[@]}"; do
+        if [[ -z "${seen[$module]+present}" ]]; then
+            ACFS_EFFECTIVE_PLAN+=("$module")
+            seen["$module"]=1
+        fi
+    done
+    reasons_decl="$(declare -p ACFS_PLAN_REASON 2>/dev/null || true)"
+    if [[ "$reasons_decl" != declare\ -A* ]]; then
+        unset ACFS_PLAN_REASON
+        declare -A ACFS_PLAN_REASON=()
+    fi
+    # Optional modules explicitly requested by an earlier run remain required,
+    # even though the current repair requests a different module.
+    for module in "${ACFS_STATE_REQUESTED_MODULES[@]}"; do
+        ACFS_PLAN_REASON["$module"]="explicitly requested"
+    done
+    # The phase verifier intentionally skips unknown phase entries and modules
+    # for other platforms during normal installation. Neither is live proof
+    # that a previous required failure recovered.
+    local map_name="" map_decl="" module_phase=""
+    for map_name in ACFS_MODULE_PHASE ACFS_MODULE_OPTIONAL; do
+        map_decl="$(declare -p "$map_name" 2>/dev/null || true)"
+        [[ "$map_decl" == declare\ -A* ]] || return 1
+    done
+    for module in "${ACFS_EFFECTIVE_PLAN[@]}"; do
+        if ! module_phase="$(state_manifest_phase_to_id "${ACFS_MODULE_PHASE[$module]:-}")"; then
+            printf 'Cannot verify previous phase failures: missing or invalid phase for %s.\n' "$module" >&2
+            return 1
+        fi
+        [[ "${ACFS_MODULE_PHASE[$module]}" != 1 ]] || module_phase=base_deps
+        case "${ACFS_MODULE_OPTIONAL[$module]:-}" in
+            0|1) ;;
+            *) printf 'Cannot verify previous phase failures: invalid optionality for %s.\n' "$module" >&2; return 1 ;;
+        esac
+        [[ "$module_phase" == "$phase_id" ]] || continue
+        if [[ "${ACFS_MODULE_OPTIONAL[$module]}" == 1 ]] && ! acfs_module_explicitly_selected "$module"; then
+            continue
+        fi
+        if ! acfs_module_supports_family "$module"; then
+            printf 'Cannot verify previous phase failures: required module %s is not applicable on this platform.\n' "$module" >&2
+            return 1
+        fi
+    done
+    acfs_verify_phase "$phase_id" complete
+)
+
 # Live verification may resolve old failures, including an installation repaired
 # manually or by an alternate dependency path. Never forgive a required failure
 # from the current attempt. `all` is reserved for verification before execution.
@@ -3648,7 +3746,11 @@ run_phase() {
             # Installed-state checks may resolve a previous run's failures.
             # Current required failures were rejected above and are never
             # forgiven by verification of some other working component.
-            state_phase_reconcile "$phase_id" || exit_code=1
+            if state_verify_phase_recovery "$phase_id"; then
+                state_phase_reconcile "$phase_id" || exit_code=1
+            else
+                exit_code=1
+            fi
         else
             state_phase_fail "$phase_id" "Verification failed" "Required installed-state checks failed" || true
             exit_code=1

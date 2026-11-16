@@ -837,6 +837,177 @@ class OptionalModuleResumeTests(unittest.TestCase):
                 self.assertEqual(statuses, [0, 0])
 
 
+class TargetedPhaseRecoveryTests(unittest.TestCase):
+    """A narrow repair must not certify a different failed selected module."""
+
+    @classmethod
+    def setUpClass(cls):
+        for executable in ("bash", "flock", "jq", "timeout"):
+            if shutil.which(executable) is None:
+                raise unittest.SkipTest(f"{executable} is required")
+        installer = Path(os.environ.get("ACFS_INSTALLER_MAIN_TEST_SOURCE", ROOT / "install.sh"))
+        cls.verify_phase = _main_fixture.definition(installer.read_text(), "acfs_verify_phase")
+
+    def run_repair(self, *, previous="agents.codex", healthy=False, requested=False,
+                   legacy=False, selector="only", current_failure=False, alter=""):
+        folder = Path(tempfile.mkdtemp(prefix="acfs-targeted-phase-recovery-"))
+        home = folder / "home"
+        home.mkdir()
+        for module in ("agents.claude", previous):
+            probe = folder / module
+            probe.write_text(
+                "#!/bin/bash\n"
+                f"printf '%s\\n' {shlex.quote('probe:' + module)} >> {shlex.quote(str(folder / 'trace'))}\n"
+                + ("exit 0\n" if module == "agents.claude" else
+                   f"test -f {shlex.quote(str(folder / 'previous-ready'))}\n"))
+            probe.chmod(0o755)
+        if healthy:
+            (folder / "previous-ready").touch()
+        helpers = Path(os.environ.get(
+            "ACFS_INSTALL_HELPERS_TEST_SOURCE", ROOT / "scripts/lib/install_helpers.sh"))
+        script = [
+            "set -euo pipefail",
+            f"source {shlex.quote(str(helpers))}",
+            f"source {shlex.quote(str(STATE))}",
+            f"source {shlex.quote(str(ROOT / 'scripts/generated/manifest_index.sh'))}",
+            self.verify_phase,
+            f"export TEST_ROOT={shlex.quote(str(folder))}",
+            'export TARGET_HOME="$HOME" ACFS_HOME="$HOME/.acfs"',
+            'export TARGET_USER="$(id -un)" ACFS_STATE_FILE="$ACFS_HOME/state.json"',
+            "ACFS_VERSION=fixture; MODE=safe; HAS_GUM=false; ACFS_DISTRO_FAMILY=ubuntu",
+            "state_getent_passwd_entry() { printf '%s:x:1000:1000::%s:/bin/bash\\n' \"$TARGET_USER\" \"$TARGET_HOME\"; }",
+            f"ACFS_EFFECTIVE_PLAN=(agents.claude {previous})",
+            "ACFS_PLAN_REASON=()",
+            f"ACFS_PLAN_REASON[{previous}]='explicitly requested'" if requested else "",
+        ]
+        for module in ("agents.claude", previous):
+            script.extend([
+                f"ACFS_MODULE_VERIFY_COUNT[{module}]=1",
+                f"ACFS_MODULE_VERIFY_COMMAND[{module}.0]={shlex.quote(shlex.quote(str(folder / module)))}",
+                f"ACFS_MODULE_VERIFY_RUN_AS[{module}]=current",
+            ])
+        script.extend([
+            "state_init",
+            "state_update 'del(.module_selection)'" if legacy else "",
+            "state_phase_start agents",
+            "state_step_result agents 'Prior install failure' failed true 'previous required payload is missing'",
+            alter,
+            'cp "$ACFS_STATE_FILE" "$TEST_ROOT/before.json"',
+            "ACFS_PLAN_REASON=([agents.claude]='explicitly requested')",
+            "ACFS_EFFECTIVE_PLAN=(agents.claude)" if selector not in ("full", "full-profile") else
+            f"ACFS_EFFECTIVE_PLAN=(agents.claude {previous})",
+            "ONLY_MODULES=(agents.claude)" if selector in ("only", "profile") else "ONLY_MODULES=()",
+            f"SKIP_MODULES=({previous})" if selector == "skip" else "SKIP_MODULES=()",
+            "SKIP_TAGS=(fixture-previous)" if selector == "skip-tag" else "SKIP_TAGS=()",
+            "SKIP_CATEGORIES=(fixture-previous)" if selector == "skip-category" else "SKIP_CATEGORIES=()",
+            f"ACFS_MODULE_TAGS[{previous}]=fixture-previous" if selector == "skip-tag" else "",
+            f"ACFS_MODULE_CATEGORY[{previous}]=fixture-previous" if selector == "skip-category" else "",
+            "ACFS_CLI_PROFILE=minimal" if selector == "profile" else
+            "ACFS_CLI_PROFILE=full" if selector == "full-profile" else "ACFS_CLI_PROFILE=''",
+            'declare -p ACFS_EFFECTIVE_PLAN ACFS_PLAN_REASON > "$TEST_ROOT/selection-before"',
+            "fixture_install() {",
+            '    printf "install:agents.claude\\n" >> "$TEST_ROOT/trace"',
+            "    state_step_result agents 'Current install failure' failed true 'current attempt failed'"
+            if current_failure else "    :",
+            "}",
+            "status=0",
+            "run_phase agents 'Coding Agents' fixture_install || status=$?",
+            'printf "%s\\n" "$status" > "$TEST_ROOT/status"',
+            'declare -p ACFS_EFFECTIVE_PLAN ACFS_PLAN_REASON > "$TEST_ROOT/selection-after"',
+        ])
+        source = "\n".join(script) + "\n"
+        (folder / "fixture.sh").write_text(source)
+        result = subprocess.run(
+            ["/bin/bash", "-p", "-c", source], text=True, capture_output=True,
+            stdin=subprocess.DEVNULL, env=clean_environment(home), timeout=10)
+        (folder / "output.log").write_text(result.stdout + result.stderr)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual((folder / "selection-after").read_bytes(),
+                         (folder / "selection-before").read_bytes())
+        state = json.loads((home / ".acfs/state.json").read_text())
+        before = json.loads((folder / "before.json").read_text())
+        self.assertEqual(state.get("module_selection"), before.get("module_selection"))
+        trace = (folder / "trace").read_text().splitlines()
+        self.assertEqual([event for event in trace if event.startswith("install:")],
+                         ["install:agents.claude"])
+        return int((folder / "status").read_text()), trace, state
+
+    def assert_failure_preserved(self, status, state):
+        self.assertEqual(status, 1)
+        self.assertNotIn("agents", state["completed_phases"])
+        self.assertIn("agents", state["partial_phases"])
+        prior = state["phase_steps"]["agents"]["Prior install failure"]
+        self.assertEqual(prior["status"], "failed")
+        self.assertEqual(prior["error"], "previous required payload is missing")
+        self.assertNotIn("verified_at", prior)
+
+    def test_narrow_repair_cannot_clear_another_selected_required_failure(self):
+        status, trace, state = self.run_repair()
+        self.assert_failure_preserved(status, state)
+        self.assertIn("probe:agents.codex", trace)
+
+    def test_cumulative_live_verification_can_resolve_an_earlier_failure(self):
+        status, trace, state = self.run_repair(healthy=True)
+        self.assertEqual(status, 0)
+        self.assertIn("probe:agents.codex", trace)
+        self.assertIn("agents", state["completed_phases"])
+        self.assertIsNone(state["failed_phase"])
+        prior = state["phase_steps"]["agents"]["Prior install failure"]
+        self.assertEqual(prior["status"], "verified")
+        self.assertEqual(prior["error"], "previous required payload is missing")
+
+    def test_saved_explicit_optional_failure_is_still_required(self):
+        status, trace, state = self.run_repair(previous="agents.opencode", requested=True)
+        self.assert_failure_preserved(status, state)
+        self.assertIn("probe:agents.opencode", trace)
+
+    def test_current_attempt_failure_is_never_reconciled_by_other_live_probes(self):
+        status, trace, state = self.run_repair(healthy=True, current_failure=True)
+        self.assert_failure_preserved(status, state)
+        self.assertEqual(state["phase_steps"]["agents"]["Current install failure"]["status"], "failed")
+        self.assertFalse(any(event.startswith("probe:") for event in trace), trace)
+
+    def test_legacy_narrow_repairs_retain_unproven_earlier_failures(self):
+        for selector in ("only", "skip", "skip-tag", "skip-category", "profile"):
+            with self.subTest(selector=selector):
+                status, trace, state = self.run_repair(legacy=True, selector=selector)
+                self.assert_failure_preserved(status, state)
+                self.assertNotIn("probe:agents.codex", trace)
+
+    def test_legacy_full_phase_verification_can_still_recover(self):
+        for selector in ("full", "full-profile"):
+            with self.subTest(selector=selector):
+                status, trace, state = self.run_repair(legacy=True, selector=selector, healthy=True)
+                self.assertEqual(status, 0)
+                self.assertIn("probe:agents.codex", trace)
+                self.assertEqual(state["phase_steps"]["agents"]["Prior install failure"]["status"], "verified")
+
+    def test_inapplicable_required_module_cannot_certify_an_earlier_failure(self):
+        status, trace, state = self.run_repair(
+            healthy=True, alter="ACFS_MODULE_FAMILIES[agents.codex]=arch")
+        self.assert_failure_preserved(status, state)
+        self.assertNotIn("probe:agents.codex", trace)
+
+    def test_incomplete_manifest_metadata_cannot_certify_an_earlier_failure(self):
+        for mapping in ("ACFS_MODULE_PHASE", "ACFS_MODULE_OPTIONAL"):
+            with self.subTest(mapping=mapping):
+                status, trace, state = self.run_repair(
+                    healthy=True, alter=f"unset '{mapping}[agents.codex]'")
+                self.assert_failure_preserved(status, state)
+                self.assertNotIn("probe:agents.codex", trace)
+
+    def test_invalid_cumulative_selection_never_certifies_previous_failures(self):
+        for expression in (
+                '.module_selection.selected_modules += ["retired.tool"]',
+                '.module_selection.schema_version = 2',
+                '.module_selection.requested_modules = ["agents.opencode"]'):
+            with self.subTest(expression=expression):
+                status, trace, state = self.run_repair(
+                    healthy=True, alter="state_update " + shlex.quote(expression))
+                self.assert_failure_preserved(status, state)
+                self.assertNotIn("probe:agents.codex", trace)
+
+
 class ScopedInstallerResumeTests(unittest.TestCase):
     BASE_SCOPE = ("base.system", "users.ubuntu", "lang.bun")
 
