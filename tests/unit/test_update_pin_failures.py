@@ -793,7 +793,7 @@ update_run_verified_installer fixturetool
             return False
         return state not in ("Z", "X")
 
-    def assert_deadline_stops_descendants_before_recovery(self, parent_ignores_term):
+    def assert_deadline_stops_descendants_before_recovery(self, parent_ignores_term, *, claude=False):
         # The restored tool records whether the installer child is still alive
         # when recovery probes it. A zombie is finished and cannot mutate files.
         self.old = br'''#!/bin/bash
@@ -817,8 +817,18 @@ printf 'fixturetool 1.0.0\n'
         self.write_installer(trap + '\ncp "$TEST_ROOT/broken" "$TEST_ROOT/bin/fixturetool"\n'
                              '/bin/bash "$TEST_ROOT/child.sh" &\nwait\n')
         try:
-            output = self.shell('update_run_verified_installer fixturetool\n', code=137,
-                                timeout=10, UPDATE_CMD_TIMEOUT="1s")
+            if claude:
+                # The generic ceiling deliberately exceeds Claude's limit.
+                # Its old outer timer killed only the verifier shell, leaving
+                # the installer group alive and skipping rollback altogether.
+                output = self.shell(r'''
+status=0
+_run_claude_installer_with_timeout 1 || status=$?
+printf 'CLAUDE_STATUS=%s\n' "$status"
+''', timeout=10, TEST_TOOL="claude", UPDATE_CMD_TIMEOUT="10s")
+            else:
+                output = self.shell('update_run_verified_installer fixturetool\n', code=137,
+                                    timeout=10, UPDATE_CMD_TIMEOUT="1s")
             pid = int((self.base / "child.pid").read_text())
             self.assertFalse(self.process_is_running(pid), f"installer child {pid} survived recovery")
             # Observe past the child's scheduled write, including the case in
@@ -827,6 +837,8 @@ printf 'fixturetool 1.0.0\n'
             self.assertEqual(self.events(), ["download", "execute"])
             self.assertEqual(self.active.read_bytes(), self.old)
             self.assertIn("ROLLED BACK", output)
+            if claude:
+                self.assertIn("CLAUDE_STATUS=137", output)
         finally:
             pid_file = self.base / "child.pid"
             if pid_file.exists():
@@ -839,6 +851,122 @@ printf 'fixturetool 1.0.0\n'
 
     def test_deadline_kills_child_even_when_parent_would_exit_on_term(self):
         self.assert_deadline_stops_descendants_before_recovery(parent_ignores_term=False)
+
+    def test_claude_limit_kills_term_resistant_descendants_before_recovery(self):
+        self.assert_deadline_stops_descendants_before_recovery(parent_ignores_term=True, claude=True)
+
+    def test_claude_limit_kills_child_even_when_parent_would_exit_on_term(self):
+        self.assert_deadline_stops_descendants_before_recovery(parent_ignores_term=False, claude=True)
+
+    def test_claude_limit_rejects_invalid_values_before_acquisition(self):
+        for duration in ("0", "0.0s", "-1", "invalid", "1ms", "9" * 400 + "d"):
+            with self.subTest(duration=duration):
+                self.shell('_run_claude_installer_with_timeout "$TEST_DURATION"\n', code=1,
+                           TEST_TOOL="claude", TEST_DURATION=duration)
+                self.assertEqual(self.events(), [])
+                self.assertFalse(self.backup.exists())
+                self.assertEqual(self.active.read_bytes(), self.old)
+
+    def test_claude_limit_preserves_arguments_statuses_and_other_tool_deadline(self):
+        for native_status, expected in ((0, 0), (17, 17), (124, 124), (137, 137), (95, 1)):
+            with self.subTest(native_status=native_status):
+                self.write_installer('[[ "$#" == 1 && "$1" == latest ]] || exit 88\n'
+                                     f'exit {native_status}')
+                output = self.shell(r'''
+status=0
+_run_claude_installer_with_timeout 2s || status=$?
+printf 'STATUS=%s GENERIC_LIMIT=%s\n' "$status" "$UPDATE_CMD_TIMEOUT"
+''', TEST_TOOL="claude", UPDATE_CMD_TIMEOUT="10s")
+                self.assertIn(f"STATUS={expected} GENERIC_LIMIT=10s", output)
+                self.assertNotIn("CHECKSUM BLOCKED", output)
+                self.assertEqual(self.active.read_bytes(), self.old)
+
+
+    def test_claude_native_statuses_do_not_claim_unproved_timeout_or_elapsed_time(self):
+        for native_status in (124, 125, 137):
+            with self.subTest(native_status=native_status):
+                self.write_installer(f'exit {native_status}')
+                self.shell(r'''
+run_cmd_claude_update || true
+run_cmd "Claude Code (reinstall)" _run_claude_installer_with_timeout 2s
+''', TEST_TOOL="claude", CLAUDE_INSTALLER_TIMEOUT="2s", UPDATE_CMD_TIMEOUT="10s")
+                log = (self.base / "update.log").read_text()
+                self.assertIn(f"exit code: {native_status}", log)
+                self.assertIn("installer execution limit: 2s", log)
+                self.assertNotIn("TIMEOUT", log)
+                self.assertNotIn(">=", log)
+
+    def test_claude_output_capture_does_not_wait_for_inherited_descriptors(self):
+        child = self.base / "capture-child.sh"
+        child.write_text(r'''#!/bin/bash
+for ((attempt=0; attempt<150; attempt++)); do
+    if [[ -e "$TEST_ROOT/returned-$TEST_CASE" ]]; then
+        printf 'released\n' > "$TEST_ROOT/child-done-$TEST_CASE"
+        exit 0
+    fi
+    sleep 0.02
+done
+printf 'capture waited for child\n' > "$TEST_ROOT/capture-blocked-$TEST_CASE"
+printf 'expired\n' > "$TEST_ROOT/child-done-$TEST_CASE"
+''')
+        self.write_installer('/bin/bash "$TEST_ROOT/capture-child.sh" &\nexit 0')
+        for case, quiet, verbose in (("capture", "true", "false"), ("stream", "false", "true")):
+            with self.subTest(case=case):
+                output = self.shell(r'''
+QUIET="$TEST_QUIET" VERBOSE="$TEST_VERBOSE"
+run_cmd_claude_update
+printf 'returned\n' > "$TEST_ROOT/returned-$TEST_CASE"
+printf 'COUNTS=%s,%s,%s\n' "$SUCCESS_COUNT" "$SKIP_COUNT" "$FAIL_COUNT"
+''', TEST_TOOL="claude", TEST_CASE=case, TEST_QUIET=quiet, TEST_VERBOSE=verbose)
+                done = self.base / f"child-done-{case}"
+                for _ in range(200):
+                    if done.exists():
+                        break
+                    time.sleep(0.02)
+                self.assertTrue(done.exists(), f"capture child did not finish; artifacts: {self.base}")
+                self.assertEqual(done.read_text(), "released\n")
+                self.assertFalse((self.base / f"capture-blocked-{case}").exists())
+                self.assertIn("COUNTS=1,0,0", output)
+
+    def test_claude_reinstall_cannot_overlap_a_timed_out_installer(self):
+        child = self.base / "retry-child.sh"
+        child.write_text(r'''#!/bin/bash
+trap '' TERM
+printf '%s\n' "$BASHPID" >> "$TEST_ROOT/children"
+sleep 3
+printf 'late-child-write\n' >> "$TEST_ROOT/events"
+cp "$TEST_ROOT/broken" "$TEST_ROOT/bin/fixturetool"
+''')
+        self.write_installer(r'''
+if [[ -r "$TEST_ROOT/children" ]]; then
+    while read -r child_pid; do
+        if [[ -r "/proc/$child_pid/stat" ]]; then
+            read -r child_stat < "/proc/$child_pid/stat"
+            child_state="${child_stat##*) }"
+            case "$child_state" in Z\ *|X\ *) ;; *) printf 'overlapping-installers\n' >> "$TEST_ROOT/events" ;; esac
+        fi
+    done < "$TEST_ROOT/children"
+fi
+/bin/bash "$TEST_ROOT/retry-child.sh" &
+wait
+''')
+        output = self.shell(r'''
+UPDATE_AGENTS=true
+update_binary_path() { [[ "$1" == claude ]] && printf '%s\n' "$TEST_ROOT/bin/fixturetool"; }
+update_binary_exists() { return 1; }
+capture_version_before() { return 0; }
+capture_version_after() { return 1; }
+update_install_agy_locked_launchers() { return 0; }
+update_agents
+printf 'SUCCESS=%s FAILURES=%s PINS=%s\n' "$SUCCESS_COUNT" "$FAIL_COUNT" "${#UPDATE_PIN_FAILURES[@]}"
+''', timeout=15, TEST_TOOL="claude", CLAUDE_INSTALLER_TIMEOUT="1", UPDATE_CMD_TIMEOUT="10s")
+        pids = [int(pid) for pid in (self.base / "children").read_text().splitlines()]
+        self.assertEqual(len(pids), 2)
+        self.assertTrue(all(not self.process_is_running(pid) for pid in pids))
+        time.sleep(2.2)
+        self.assertEqual(self.events(), ["download", "execute", "download", "execute"])
+        self.assertEqual(self.active.read_bytes(), self.old)
+        self.assertIn("SUCCESS=0 FAILURES=1 PINS=0", output)
 
 
 AGENT_MAIL_DEADLINE_COMMON = ROLLBACK_COMMON + r'''

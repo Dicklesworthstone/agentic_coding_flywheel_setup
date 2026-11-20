@@ -21,6 +21,21 @@ installer, not as a pre-execution pin refusal. Missing or malformed pins also
 block execution. Network errors remain eligible for the existing bounded retry
 policy; active holds and rollback backoff still take precedence.
 
+### Claude installer execution deadline
+
+`CLAUDE_INSTALLER_TIMEOUT` defaults to 300 seconds and applies to each Claude
+installer payload, including the reinstall attempt. The updater passes this
+limit to the shared verified-installer runner inside the target account. The
+runner stops the payload's process group while the supervising verifier remains
+alive to finish cleanup, probe the installation, and roll back when needed.
+Reinstallation starts only after that recovery has completed.
+
+This limit is local to the Claude attempt; it does not replace the timeout for
+other tools. Installer acquisition and checksum metadata refresh keep their
+separate bounded network retries, so the setting is not a wall-clock limit for
+the entire update. Logs preserve native failure statuses without treating exit
+124 or 137 alone as proof that a deadline expired.
+
 ## Operator output
 
 Pin-blocked updates remain included in the existing failed-tool count and

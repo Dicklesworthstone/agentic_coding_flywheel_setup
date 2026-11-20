@@ -2355,7 +2355,9 @@ run_cmd() {
             output=$(_run_bounded "$@" 2>&1) || exit_code=$?
         fi
         [[ -n "$output" ]] && log_to_file "Output: $output"
-        case "$exit_code" in 124|125|137) log_to_file "TIMEOUT/killed (>= ${UPDATE_CMD_TIMEOUT:-1800}s): $cmd_display" ;; esac
+        # These are also valid native command statuses. The ordinary failure
+        # log below preserves them without inventing an elapsed duration or
+        # attributing a tool-specific deadline to this caller's global limit.
     fi
 
     if [[ $exit_code -eq 0 ]]; then
@@ -9243,26 +9245,17 @@ update_agents() {
     fi
 }
 
-# Run update_run_verified_installer for Claude with a bounded timeout.
-# Uses a background-process approach so that shell functions remain available.
-# Returns 124 on timeout (matching timeout(1) convention).
+# Claude uses the same target-account payload deadline as other verified
+# installers. Killing an outer verifier shell leaves its timeout/installer
+# descendants alive and prevents cleanup or rollback from finishing. Keep the
+# verifier synchronous and scope the shorter limit to this invocation. Network
+# acquisition retains security.sh's independent transfer/retry bounds; this is
+# an installer-execution limit, not a deadline for the complete update job.
+# Preserve native statuses, including 124/137; the shared KILL deadline returns
+# 137, which by itself cannot distinguish expiry from a native installer exit.
 _run_claude_installer_with_timeout() {
-    local seconds="${1:-300}"
-    update_run_verified_installer claude latest &
-    local pid=$!
-    local elapsed=0
-    while kill -0 "$pid" 2>/dev/null; do
-        if [[ $elapsed -ge $seconds ]]; then
-            kill -TERM "$pid" 2>/dev/null || true
-            sleep 1
-            kill -KILL "$pid" 2>/dev/null || true
-            wait "$pid" 2>/dev/null || true
-            return 124
-        fi
-        sleep 1
-        elapsed=$((elapsed + 1))
-    done
-    wait "$pid"
+    local UPDATE_CMD_TIMEOUT="${1:-300}"
+    update_run_verified_installer claude latest
 }
 
 # Helper for Claude update with proper error handling
@@ -9273,16 +9266,18 @@ run_cmd_claude_update() {
     local desc="Claude Code (verified installer)"
     local cmd_display="update_run_verified_installer claude latest"
     local claude_installer_timeout="${CLAUDE_INSTALLER_TIMEOUT:-300}"
+    local claude_timeout_display="$claude_installer_timeout"
+    [[ "$claude_timeout_display" == *[smhd] ]] || claude_timeout_display+="s"
 
-    log_to_file "Running: $cmd_display (timeout: ${claude_installer_timeout}s)"
+    log_to_file "Running: $cmd_display (installer execution limit: $claude_timeout_display)"
 
     if [[ "$DRY_RUN" == "true" ]]; then
         log_item "skip" "$desc" "dry-run: $cmd_display"
         return 0
     fi
 
-    # The installer runs in a background subshell below, so hold/backoff must
-    # be checked here in the parent shell where the counters live (#357).
+    # Account for intentional skips before execution so the counters and
+    # operator-visible hold/backoff details remain in this shell (#357).
     if update_tool_hold_details "claude"; then
         log_item "skip" "$desc" "HELD: $UPDATE_LAST_HOLD_DETAILS"
         update_note_held_tool "claude"
@@ -9298,52 +9293,21 @@ run_cmd_claude_update() {
     local exit_code=0
 
     if [[ "$VERBOSE" == "true" ]]; then
-        if [[ -n "${UPDATE_LOG_FILE:-}" ]]; then
-            {
-                echo ""
-                echo "----- COMMAND: $cmd_display (timeout: ${claude_installer_timeout}s)"
-            } >> "$UPDATE_LOG_FILE"
-        fi
-
-        if [[ "$QUIET" != "true" ]] && [[ -n "${UPDATE_LOG_FILE:-}" ]]; then
-            if _run_claude_installer_with_timeout "$claude_installer_timeout" 2>&1 | tee -a "$UPDATE_LOG_FILE"; then
-                exit_code=0
-            else
-                exit_code=${PIPESTATUS[0]}
-            fi
-        elif [[ -n "${UPDATE_LOG_FILE:-}" ]]; then
-            if _run_claude_installer_with_timeout "$claude_installer_timeout" >> "$UPDATE_LOG_FILE" 2>&1; then
-                exit_code=0
-            else
-                exit_code=$?
-            fi
-        else
-            if [[ "$QUIET" != "true" ]]; then
-                _run_claude_installer_with_timeout "$claude_installer_timeout" || exit_code=$?
-            else
-                _run_claude_installer_with_timeout "$claude_installer_timeout" >/dev/null 2>&1 || exit_code=$?
-            fi
-        fi
+        update_run_logged_passthrough _run_claude_installer_with_timeout \
+            "$claude_installer_timeout" || exit_code=$?
     else
-        local output=""
-        output=$(_run_claude_installer_with_timeout "$claude_installer_timeout" 2>&1) || exit_code=$?
-        [[ -n "$output" ]] && log_to_file "Output: $output"
+        # A child can inherit stdout even when its parent has completed. Use
+        # the shared file capture instead of waiting for a pipe to reach EOF.
+        update_capture_command _run_claude_installer_with_timeout \
+            "$claude_installer_timeout" || exit_code=$?
+        [[ -n "$UPDATE_LAST_COMMAND_OUTPUT" ]] && log_to_file "Output: $UPDATE_LAST_COMMAND_OUTPUT"
     fi
 
-    # This typed result crosses the background process/pipeline boundary;
+    # This typed result crosses the target-account process boundary;
     # do not infer checksum failures from log text or a stale shell global.
     if [[ $exit_code -eq $UPDATE_EXIT_CHECKSUM ]]; then
         update_finish_cmd_pin_failure "$desc"
         return "$exit_code"
-    fi
-
-    # Detect timeout specifically (exit code 124 from timeout(1))
-    if [[ $exit_code -eq 124 ]]; then
-        log_to_file "TIMEOUT: Claude installer exceeded ${claude_installer_timeout}s limit"
-        if [[ "$QUIET" != "true" ]]; then
-            echo -e "  ${YELLOW}[timeout]${NC} $desc (exceeded ${claude_installer_timeout}s)"
-        fi
-        return 1
     fi
 
     if [[ $exit_code -eq 0 ]]; then
@@ -9361,7 +9325,7 @@ run_cmd_claude_update() {
         elif [[ "$QUIET" != "true" ]]; then
             echo -e "  ${YELLOW}[retry]${NC} $desc"
         fi
-        log_to_file "Failed: $desc (exit code: $exit_code), will try reinstall"
+        log_to_file "Failed: $desc (exit code: $exit_code; installer execution limit: $claude_timeout_display), will try reinstall"
         return 1
     fi
 }
