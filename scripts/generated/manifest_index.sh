@@ -6,7 +6,7 @@
 # ============================================================
 # Data-only manifest index. Safe to source.
 
-ACFS_MANIFEST_SHA256="035a100223b467297e3fd99d1206a28e22f93a526994991d761fd96813c52298"
+ACFS_MANIFEST_SHA256="5389f6221d59da36c752386d5449b9b2448b326314fc6716395957282ccd5852"
 
 ACFS_MODULES_IN_ORDER=(
   "base.system"
@@ -1349,7 +1349,7 @@ except Exception as exc:
     raise SystemExit(1)
 
 expected = {
-    "model": "Gemini 4 Argon (High)",
+    "model": "Gemini 4 Neon (XHigh)",
     "toolPermission": "always-proceed",
     "artifactReviewPolicy": "always-proceed",
     "enableTelemetry": False,

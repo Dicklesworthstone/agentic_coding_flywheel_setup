@@ -2942,7 +2942,7 @@ And you can't do this sort of thing using regex or a script, you MUST manually r
               <CodeBlock
                 language="bash"
                 code={`alias cc='NODE_OPTIONS="--max-old-space-size=32768" claude --dangerously-skip-permissions'
-alias cod='codex --dangerously-bypass-approvals-and-sandbox --search -m gpt-6-astra -c model_reasoning_effort=xhigh -c model_reasoning_summary_format=experimental'
+alias cod='codex --dangerously-bypass-approvals-and-sandbox --search -m gpt-6.2-sol -c model_reasoning_effort=xhigh -c model_reasoning_summary_format=experimental'
 alias agy='agy-locked'
 alias gmi='agy-locked'  # legacy shortcut now launches agy`}
               />

@@ -19,7 +19,7 @@ forward path for all new work.
 - **Operational** ("start a session" / spawn / recommend / default swarm) → `agy`
   through the ACFS `agy-locked` launcher.
 - **Historical** (resume/read/discover an existing Gemini session) → keep `gmi`/`gemini`.
-- **Model mandate**: every `agy` invocation is pinned to **`Gemini 4 Argon (High)`** —
+- **Model mandate**: every `agy` invocation is pinned to **`Gemini 4 Neon (XHigh)`** —
   the only allowed model. Single source of truth: `scripts/lib/agy_model_guard.sh`
   (referenced by the bash, Go, and Rust ports).
 - **Disambiguation**: the `~/.gemini/` parent is shared. `~/.gemini/tmp` = gmi;
@@ -102,10 +102,15 @@ history and must not break:
   `Gemini 3.1 Pro (High)` — agy round-trip + model guard, conversation persisted,
   cass index, casr resume, caam provider, dcg guard, am detection, ntm agy type, a
   deployed skill drives agy. It has not been re-run since the pin moved (3.7 Flash
-  2026-08-24, 3.8 Flash 2026-09-03, Gemini 4 Argon (High) 2026-10-13).
+  2026-08-24, 3.8 Flash 2026-09-03, Gemini 4 Argon (High) 2026-10-13, Gemini 4
+  Neon (XHigh) 2026-11-19).
 - 2026-10-13: `agy-locked --effort max -p "…"` returned a real completion from
   Gemini 4 Argon on all 11 dev hosts (the stray `--effort` was stripped by the
   launcher).
+- 2026-11-19 (agy 1.5.13, one Mac): `agy --model "Gemini 4 Neon (XHigh)" -p "…"`
+  returned a real completion from Gemini 4 Neon; adding `--effort xhigh` to the
+  named model is rejected ("--effort is not supported for model"), which is why
+  the launcher keeps stripping `--effort`.
 - `bash scripts/lib/agy_model_guard.sh --self-test` and
   `bash scripts/lib/agy_e2e_harness.sh --self-test` pass.
 - `bash tests/unit/test_agy_install.sh` — agy install contract (13 checks) passes;

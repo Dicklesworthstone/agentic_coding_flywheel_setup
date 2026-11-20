@@ -50,8 +50,8 @@ test.describe
           await expect(page.getByText(/Antigravity CLI/i).first()).toBeVisible();
         });
 
-        await test.step("mentions the pinned Gemini 4 Argon model + agy command", async () => {
-          await expect(page.getByText(/Gemini 4 Argon/i).first()).toBeVisible();
+        await test.step("mentions the pinned Gemini 4 Neon model + agy command", async () => {
+          await expect(page.getByText(/Gemini 4 Neon/i).first()).toBeVisible();
         });
 
         expect(errors).toEqual([]);

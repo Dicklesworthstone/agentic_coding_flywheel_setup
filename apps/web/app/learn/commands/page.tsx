@@ -125,7 +125,7 @@ const COMMANDS: CommandEntry[] = [
   {
     name: "agy",
     fullName: "Antigravity CLI",
-    description: "Google coding agent, pinned to Gemini 4 Argon (High)",
+    description: "Google coding agent, pinned to Gemini 4 Neon (XHigh)",
     example: 'agy -p "explain the repo structure"',
     category: "agents",
     learnMoreHref: "/learn/tools/antigravity-cli",

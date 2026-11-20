@@ -1325,7 +1325,7 @@ Example output:
 ║  Quick Commands:                                              ║
 ║    cc    → Claude Code (dangerous mode)                       ║
 ║    cod   → Codex CLI (dangerous mode)                         ║
-║    agy   → Antigravity CLI (Gemini 4 Argon High)              ║
+║    agy   → Antigravity CLI (Gemini 4 Neon XHigh)              ║
 ║    ntm   → Named Tmux Manager                                 ║
 ╚══════════════════════════════════════════════════════════════╝
 ```
@@ -1358,7 +1358,7 @@ Example output:
 ║  Agents                                                        ║
 ║    cc   → claude --dangerously-skip-permissions                ║
 ║    cod  → codex --dangerously-bypass-approvals-and-sandbox     ║
-║    agy  → agy --model 'Gemini 4 Argon (High)'                  ║
+║    agy  → agy --model 'Gemini 4 Neon (XHigh)'                  ║
 ║                                                                ║
 ║  Git                                                           ║
 ║    gs   → git status                                           ║
@@ -1853,7 +1853,7 @@ Turn any of them on or off at install time with the **Module** column above: `--
 alias cc='NODE_OPTIONS="--max-old-space-size=32768" claude --dangerously-skip-permissions'
 
 # Codex with bypass and dangerous filesystem access
-alias cod='codex --dangerously-bypass-approvals-and-sandbox --search -m gpt-6-astra -c model_reasoning_effort=xhigh -c model_reasoning_summary_format=experimental'
+alias cod='codex --dangerously-bypass-approvals-and-sandbox --search -m gpt-6.2-sol -c model_reasoning_effort=xhigh -c model_reasoning_summary_format=experimental'
 
 # Antigravity CLI, model/settings/DCG locked by the ACFS launcher
 alias agy='$HOME/.local/bin/agy-locked'

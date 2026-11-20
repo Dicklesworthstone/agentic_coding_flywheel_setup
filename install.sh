@@ -10374,12 +10374,12 @@ projects_base = "/data/projects"
 [models]
 # Default models when no specifier given
 default_claude = "claude-fable-5"
-default_codex = "gpt-6-astra"
-default_gemini = "Gemini 4 Argon (High)"
+default_codex = "gpt-6.2-sol"
+default_gemini = "Gemini 4 Neon (XHigh)"
 
 [agents]
 # Keep Codex model and effort independent of the installed NTM binary's defaults.
-codex = '{{if .SystemPromptFile}}CODEX_SYSTEM_PROMPT="$(cat {{shellQuote .SystemPromptFile}})" {{end}}codex --dangerously-bypass-approvals-and-sandbox --search -m {{shellQuote (.Model | default "gpt-6-astra")}} -c model_reasoning_effort={{shellQuote (.ReasoningEffort | default "xhigh")}} -c model_reasoning_summary_format=experimental'
+codex = '{{if .SystemPromptFile}}CODEX_SYSTEM_PROMPT="$(cat {{shellQuote .SystemPromptFile}})" {{end}}codex --dangerously-bypass-approvals-and-sandbox --search -m {{shellQuote (.Model | default "gpt-6.2-sol")}} -c model_reasoning_effort={{shellQuote (.ReasoningEffort | default "xhigh")}} -c model_reasoning_summary_format=experimental'
 # Route legacy Gemini slots through ACFS's locked Antigravity launcher.
 gemini = "agy-locked{{if .Model}} --model {{shellQuote .Model}}{{end}}"
 NTM_CONFIG_EOF

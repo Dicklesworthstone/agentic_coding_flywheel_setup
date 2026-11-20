@@ -1579,7 +1579,7 @@ info_get_quick_commands() {
     cat <<'EOF'
 cc|Launch Claude Code
 cod|Launch Codex CLI
-agy|Launch Antigravity CLI, model Gemini 4 Argon (High)
+agy|Launch Antigravity CLI, model Gemini 4 Neon (XHigh)
 ntm new X|Create tmux session
 ntm attach X|Resume session
 lazygit|Visual git interface
@@ -2003,7 +2003,7 @@ info_render_json() {
   "quick_commands": [
     {"cmd": "cc", "desc": "Launch Claude Code"},
     {"cmd": "cod", "desc": "Launch Codex CLI"},
-    {"cmd": "agy", "desc": "Launch Antigravity CLI, model Gemini 4 Argon (High)"},
+    {"cmd": "agy", "desc": "Launch Antigravity CLI, model Gemini 4 Neon (XHigh)"},
     {"cmd": "ntm new X", "desc": "Create tmux session"},
     {"cmd": "ntm attach X", "desc": "Resume session"},
     {"cmd": "lazygit", "desc": "Visual git interface"},

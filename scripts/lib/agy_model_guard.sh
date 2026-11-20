@@ -2,11 +2,13 @@
 # agy_model_guard.sh — canonical model-pin guard for the Antigravity CLI (`agy`).
 #
 # USER MANDATE (2026-08-24): every `agy` invocation across ACFS, the skills, and
-# every spawned-agent flow MUST run on "Gemini 4 Argon (High)" and NOTHING else —
-# never a Gemini Flash model (3.8 Flash was the pin until 2026-10-13), never an
-# Argon Medium/Low tier, never a Gemini Pro model, never an Anthropic/Claude
-# model via agy, never GPT-OSS. Argon takes no separate --effort: the tier is in
-# the model name and "(High)" is the top one (agy rejects --effort xhigh/max).
+# every spawned-agent flow MUST run on "Gemini 4 Neon (XHigh)" and NOTHING else —
+# never a Gemini Argon model (Argon High was the pin 2026-10-13..2026-11-19),
+# never a Gemini Flash model (3.8 Flash was the pin until 2026-10-13), never a
+# Neon Low/Medium/High tier, never Gemini 4 Carbon/Hydrogen or an Orchestrator
+# model, never a Gemini Pro model, never an Anthropic/Claude model via agy,
+# never GPT-OSS. Neon takes no separate --effort: the tier is in the model name,
+# "(XHigh)" is the top one, and agy rejects --effort when the model is named.
 #
 # This file is the SINGLE SOURCE OF TRUTH for the allowed-model string and the
 # verification logic on the shell side. Source it; do not re-hardcode the model
@@ -17,7 +19,7 @@
 # Usage:
 #   source "$ACFS_ROOT/scripts/lib/agy_model_guard.sh"
 #   agy_run --add-dir "$dir" --dangerously-skip-permissions --print "<prompt>"
-#   #   -> runs: agy --model "Gemini 4 Argon (High)" <your args>
+#   #   -> runs: agy --model "Gemini 4 Neon (XHigh)" <your args>
 #   # For scripted/CI use that must prove the model post-hoc:
 #   out="$(agy_run_checked --add-dir "$dir" --print "Reply with your model name.")" || exit 1
 #
@@ -25,18 +27,20 @@
 
 # The ONE allowed model. Defined here; referenced everywhere.
 # shellcheck disable=SC2034  # exported for sourcing callers
-readonly AGY_REQUIRED_MODEL="Gemini 4 Argon (High)"
+readonly AGY_REQUIRED_MODEL="Gemini 4 Neon (XHigh)"
 
 # Forbidden-model families, as an extended-regex matched (case-insensitively)
 # against any text where agy might self-report or echo a model name.
 # Conservative backstop denylist of forbidden model families (case-insensitive).
-# Covers ANY Gemini Flash model, any Medium/Low Argon tier, ANY Gemini Pro
-# tier, all Anthropic/Claude families, and GPT/GPT-OSS — i.e. everything that is
-# NOT the single allowed "Gemini 4 Argon (High)". This is a heuristic post-hoc
+# Covers ANY Gemini Flash or Argon model, the Neon Low/Medium/High tiers, the
+# Carbon/Hydrogen families and the Orchestrator models, ANY Gemini Pro tier, all
+# Anthropic/Claude families, and GPT/GPT-OSS — i.e. everything that is NOT the
+# single allowed "Gemini 4 Neon (XHigh)". A bare "Gemini 4 Neon" self-report
+# passes (agy's replies name the family without the tier). This is a heuristic post-hoc
 # check; the authoritative guarantee is the explicit `--model` flag +
 # agy_verify_model.
 # shellcheck disable=SC2034
-readonly AGY_FORBIDDEN_MODEL_REGEX='Gemini [0-9][0-9.]* Flash|Gemini [0-9][0-9.]* Argon \((Low|Medium)\)|Gemini [0-9][0-9.]* Pro|Claude (Sonnet|Opus|Haiku)|GPT-?OSS|gpt-[0-9]'
+readonly AGY_FORBIDDEN_MODEL_REGEX='Gemini [0-9][0-9.]* Flash|Gemini [0-9][0-9.]* Argon|Gemini [0-9][0-9.]* Neon \((Low|Medium|High)\)|Gemini [0-9][0-9.]* (Carbon|Hydrogen)|Orchestrator \((Neon|Carbon|Argon)\)|Gemini [0-9][0-9.]* Pro|Claude (Sonnet|Opus|Haiku)|GPT-?OSS|gpt-[0-9]'
 
 # Path to agy's persisted settings (holds the default "model").
 agy_settings_path() {
@@ -136,24 +140,39 @@ _agy_guard_self_test() {
   local fails=0
   printf 'agy_model_guard self-test\n'
 
-  if [[ "$AGY_REQUIRED_MODEL" == "Gemini 4 Argon (High)" ]]; then
+  if [[ "$AGY_REQUIRED_MODEL" == "Gemini 4 Neon (XHigh)" ]]; then
     printf '  ok   required model constant\n'
   else
     printf '  FAIL required model constant: %q\n' "$AGY_REQUIRED_MODEL"; fails=$((fails + 1))
   fi
 
   # assert_output: allowed text passes
-  if agy_assert_output_model "I am currently using the Gemini 4 Argon (High) model." 2>/dev/null; then
+  if agy_assert_output_model "I am currently using the Gemini 4 Neon (XHigh) model." 2>/dev/null; then
     printf '  ok   allowed-model output accepted\n'
   else
     printf '  FAIL allowed-model output rejected\n'; fails=$((fails + 1))
   fi
 
+  # assert_output: agy's bare family self-report (no tier suffix) passes
+  if agy_assert_output_model "OK Gemini 4 Neon" 2>/dev/null; then
+    printf '  ok   bare "Gemini 4 Neon" self-report accepted\n'
+  else
+    printf '  FAIL bare "Gemini 4 Neon" self-report rejected\n'; fails=$((fails + 1))
+  fi
+
   # assert_output: each forbidden family is caught
   local bad
   for bad in \
+    "Running on Gemini 4 Neon (High)." \
+    "Running on Gemini 4 Neon (Medium)." \
+    "Running on Gemini 4 Neon (Low)." \
+    "Using Gemini 4 Argon (High)." \
     "Running on Gemini 4 Argon (Medium)." \
     "Running on Gemini 4 Argon (Low)." \
+    "I am currently running as Gemini 4 Argon." \
+    "Using Gemini 4 Carbon (High)." \
+    "Using Gemini 4 Hydrogen (XHigh)." \
+    "Model: Orchestrator (Neon)." \
     "Using Gemini 3.8 Flash (High)." \
     "Running on Gemini 3.8 Flash (Medium)." \
     "Running on Gemini 3.8 Flash (Low)." \
