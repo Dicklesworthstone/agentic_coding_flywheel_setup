@@ -13070,6 +13070,7 @@ _assert_update_verified_installer_runner() {
 }
 
 @test "update verified installer env assignment values are argv-safe data" {
+    source_lib "security"
     declare -gA KNOWN_INSTALLERS=([test_tool]="https://example.test/install.sh")
     UPDATE_CMD_TIMEOUT=17
 
@@ -13107,6 +13108,7 @@ _assert_update_verified_installer_runner() {
 }
 
 @test "update verified installer accepts multiple env assignments" {
+    source_lib "security"
     declare -gA KNOWN_INSTALLERS=([test_tool]="https://example.test/install.sh")
     UPDATE_CMD_TIMEOUT=17
 
@@ -13155,6 +13157,7 @@ _assert_update_verified_installer_runner() {
 }
 
 @test "update verified installer temp script is target-readable" {
+    source_lib "security"
     local mode_file="$BATS_TEST_TMPDIR/verified-installer-mode"
     local path_file="$BATS_TEST_TMPDIR/verified-installer-path"
     local private_tmp="$BATS_TEST_TMPDIR/private-tmp"
@@ -13202,6 +13205,7 @@ _assert_update_verified_installer_runner() {
 }
 
 @test "update verified installer temp script ignores untrusted temp overrides" {
+    source_lib "security"
     local path_file="$BATS_TEST_TMPDIR/verified-installer-fallback-path"
     local private_tmp="$BATS_TEST_TMPDIR/private-tmp"
     local override_tmp="$BATS_TEST_TMPDIR/override-tmp"

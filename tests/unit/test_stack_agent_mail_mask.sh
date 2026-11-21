@@ -28,6 +28,8 @@
 #   - changed binaries, managed units, or failed readiness still restart
 #   - both public command links are repaired independently of the service;
 #     missing, wrong, or blocked links never force a healthy-process restart
+#   - without systemd, only the recorded, unchanged native process can no-op;
+#     upgraded fallback images restart and unrelated listeners are preserved
 #
 # No real systemd, no real network, no real agent-mail.service is
 # touched: everything runs inside a mktemp sandbox with stubbed
@@ -848,6 +850,214 @@ check "missing server source is reported" grep -q 'command missing or not execut
 check_not "no CLI link is created before validating both payloads" test -L "$FAKE_HOME/.local/bin/am"
 check_not "no dangling server link is created" test -L "$FAKE_HOME/.local/bin/mcp-agent-mail"
 check_not "missing server does not call systemctl" test -s "$FAKE_STATE_DIR/calls.log"
+
+# Exercise the actual fallback helpers with harmless native sleepers. A copied
+# sleep executable supplies real /proc image identity, including the old-cli
+# pathname produced by an upstream installer transaction. Only HTTP responses
+# and nohup's final argument translation are fixtures; no listener is opened,
+# no Agent Mail binary runs, and every signalled process is our own child.
+if [[ -d /proc/self && -x /bin/sleep ]] && command -v python3 >/dev/null 2>&1; then
+    begin_test "native fallback upgrades, no-ops and process ownership"
+    fallback_library="$SANDBOX/fallback-functions.sh"
+    if python3 - "${ACFS_STACK_TEST_LIBRARY:-$LIB_DIR/stack.sh}" "$fallback_library" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+source = Path(sys.argv[1]).read_text()
+required = ("_stop_agent_mail_pid", "stop_agent_mail_fallback",
+            "launch_agent_mail_fallback", "agent_mail_endpoint_ready",
+            "agent_mail_readiness_ready")
+optional = ("agent_mail_pid_matches", "agent_mail_endpoint_alive")
+bodies = []
+for name in (*required, *optional):
+    body = re.search(r"^" + re.escape(name) + r"\(\) \{\n.*?^\}", source, re.M | re.S)
+    if body is None:
+        if name in required:
+            raise AssertionError("missing fallback helper: " + name)
+        continue
+    bodies.append(body[0])
+Path(sys.argv[2]).write_text("\n\n".join(bodies) + "\n")
+PY
+    then
+        if env -i PATH="$BASH_BIN_DIR:/usr/bin:/bin" HOME="$FAKE_HOME" \
+            FALLBACK_LIBRARY="$fallback_library" bash -p <<'FALLBACK_TEST'
+set -euo pipefail
+# shellcheck disable=SC1090
+source "$FALLBACK_LIBRARY"
+am_bin="$HOME/mcp_agent_mail/am"
+storage_root="$HOME/mailbox"
+fallback_pid_file="$storage_root/agent-mail.pid"
+fallback_log_file="$storage_root/agent-mail.log"
+db_url="sqlite:///$storage_root/storage.sqlite3"
+am_mcp_path=/mcp/
+write_unit=true
+external_listener=false
+launch_log="$HOME/launches"
+mkdir -p "$storage_root"
+mv "$am_bin" "$am_bin.script-fixture"
+cp /bin/sleep "$am_bin"
+trap 'for child in $(jobs -pr); do kill "$child" 2>/dev/null || true; done; wait 2>/dev/null || true' EXIT
+
+# Invoked by the extracted production helpers.
+# shellcheck disable=SC2329
+systemctl() { return 1; }
+# shellcheck disable=SC2329
+stack_service_curl() {
+    local pid=""
+    if [[ "$external_listener" != true ]]; then
+        [[ -f "$fallback_pid_file" && ! -L "$fallback_pid_file" ]] || return 1
+        pid="$(cat "$fallback_pid_file")"
+        [[ "$pid" =~ ^[1-9][0-9]*$ ]] && kill -0 "$pid" 2>/dev/null || return 1
+    fi
+    printf '{"status":"ready"}\n'
+}
+# shellcheck disable=SC2329
+nohup() {
+    printf '%s\n' "$*" >> "$launch_log"
+    exec -a "$am_bin serve-http --port 8765" "$am_bin" 120
+}
+current_pid=""
+await_running_image() {
+    current_pid="$(cat "$fallback_pid_file")"
+    for _ in {1..100}; do
+        if cmp -s "/proc/$current_pid/exe" "$am_bin"; then
+            return 0
+        fi
+        sleep 0.01
+    done
+    echo "Native fallback never ran the installed image" >&2
+    return 1
+}
+assert_launch_count() { [[ "$(wc -l < "$launch_log")" -eq "$1" ]]; }
+
+launch_agent_mail_fallback
+await_running_image
+first_pid="$current_pid"
+write_unit=false
+launch_agent_mail_fallback
+[[ "$(cat "$fallback_pid_file")" == "$first_pid" ]]
+assert_launch_count 1
+echo 'FALLBACK PASS: unchanged healthy native process is preserved'
+
+history="$HOME/mcp_agent_mail/.mcp-agent-mail-install-transaction.committed.first"
+mkdir "$history"
+mv "$am_bin" "$history/old-cli"
+cp "$history/old-cli" "$am_bin"
+launch_agent_mail_fallback
+[[ "$(cat "$fallback_pid_file")" == "$first_pid" ]]
+assert_launch_count 1
+echo 'FALLBACK PASS: identical replacement with a new inode is preserved'
+
+history="$HOME/mcp_agent_mail/.mcp-agent-mail-install-transaction.committed.second"
+mkdir "$history"
+mv "$am_bin" "$history/old-cli"
+cp /bin/sleep "$am_bin"
+printf '\nfixture: new release bytes\n' >> "$am_bin"
+launch_agent_mail_fallback
+current_pid="$(cat "$fallback_pid_file")"
+if [[ "$current_pid" == "$first_pid" ]]; then
+    echo 'Changed fallback release left the original PID running' >&2
+    exit 1
+fi
+await_running_image
+! kill -0 "$first_pid" 2>/dev/null
+assert_launch_count 2
+launch_agent_mail_fallback
+[[ "$(cat "$fallback_pid_file")" == "$current_pid" ]]
+assert_launch_count 2
+echo 'FALLBACK PASS: archived old image is stopped; new release starts exactly once'
+
+previous_pid="$current_pid"
+write_unit=true
+launch_agent_mail_fallback
+await_running_image
+[[ "$current_pid" != "$previous_pid" ]]
+! kill -0 "$previous_pid" 2>/dev/null
+assert_launch_count 3
+write_unit=false
+echo 'FALLBACK PASS: changed launch configuration restarts the native fallback'
+
+# A leftover fallback PID can identify the process after systemd adopted it.
+# That process belongs to its supervisor and must never receive our SIGTERM.
+# shellcheck disable=SC2329
+systemctl() {
+    case "$*" in
+        '--user show-environment') return 0 ;;
+        '--user show agent-mail.service -p MainPID --value') printf '%s\n' "$current_pid" ;;
+        *) return 1 ;;
+    esac
+}
+_stop_agent_mail_pid "$current_pid"
+kill -0 "$current_pid"
+# shellcheck disable=SC2329
+systemctl() { return 1; }
+echo 'FALLBACK PASS: supervised process is left to systemd during handoff'
+
+cp /bin/sleep "$HOME/unrelated-am"
+(exec -a "$am_bin serve-http --port 8765" "$HOME/unrelated-am" 120) &
+unrelated_pid=$!
+for _ in {1..100}; do
+    [[ "$(readlink -f "/proc/$unrelated_pid/exe")" == "$HOME/unrelated-am" ]] && break
+    sleep 0.01
+done
+[[ "$(readlink -f "/proc/$unrelated_pid/exe")" == "$HOME/unrelated-am" ]]
+printf '%s\n' "$unrelated_pid" > "$fallback_pid_file"
+if launch_agent_mail_fallback; then
+    echo 'Unrelated PID was accepted as the installed fallback' >&2
+    exit 1
+fi
+kill -0 "$unrelated_pid"
+kill -0 "$current_pid"
+[[ "$(cat "$fallback_pid_file")" == "$unrelated_pid" ]]
+assert_launch_count 3
+kill "$unrelated_pid"
+wait "$unrelated_pid" 2>/dev/null || true
+printf '%s\n' "$current_pid" > "$fallback_pid_file"
+echo 'FALLBACK PASS: unrelated native process and its PID record are preserved'
+
+kill "$current_pid"
+wait "$current_pid" 2>/dev/null || true
+launch_agent_mail_fallback
+await_running_image
+assert_launch_count 4
+echo 'FALLBACK PASS: stale dead PID is replaced by a working native process'
+
+kill "$current_pid"
+wait "$current_pid" 2>/dev/null || true
+mv "$fallback_pid_file" "$fallback_pid_file.retained"
+external_listener=true
+if launch_agent_mail_fallback; then
+    echo 'Untracked healthy listener was accepted as the installed fallback' >&2
+    exit 1
+fi
+[[ ! -e "$fallback_pid_file" ]]
+assert_launch_count 4
+external_listener=false
+echo 'FALLBACK PASS: untracked healthy listener is not adopted or replaced'
+
+printf 'not-a-pid\n' > "$fallback_pid_file"
+if launch_agent_mail_fallback; then exit 1; fi
+[[ "$(cat "$fallback_pid_file")" == not-a-pid ]]
+mv "$fallback_pid_file" "$fallback_pid_file.invalid"
+ln -s "$fallback_pid_file.invalid" "$fallback_pid_file"
+if launch_agent_mail_fallback; then exit 1; fi
+[[ -L "$fallback_pid_file" ]]
+[[ "$(cat "$fallback_pid_file.invalid")" == not-a-pid ]]
+assert_launch_count 4
+echo 'FALLBACK PASS: invalid and symlinked PID records fail without mutation'
+FALLBACK_TEST
+        then
+            say_pass "native fallback upgrade and ownership regressions"
+        else
+            say_fail "native fallback upgrade and ownership regressions"
+        fi
+    else
+        say_fail "native fallback helper extraction"
+    fi
+else
+    echo '[SKIP] Native fallback process checks require Linux /proc, /bin/sleep and Python 3'
+fi
 
 # ------------------------------------------------------------
 # Summary

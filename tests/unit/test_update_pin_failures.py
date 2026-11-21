@@ -568,6 +568,101 @@ real_target_runner="$(declare -f update_run_in_target_context)"
         if log.exists():
             self.assertNotIn("ROLLED BACK", log.read_text())
 
+    def test_claude_changed_installer_pin_lifts_rollback_backoff(self):
+        output = self.shell(r'''
+update_tool_latest_release_tag() { return 1; }
+update_rollback_state_record_failure claude "$(printf '1%.0s' {1..64})"
+run_cmd_claude_update
+printf 'COUNTS=%s,%s,%s\n' "$SUCCESS_COUNT" "$SKIP_COUNT" "$FAIL_COUNT"
+''', TEST_TOOL="claude")
+        self.assertEqual(self.events(), ["download", "execute"])
+        self.assertIn("COUNTS=1,0,0", output)
+        self.assertEqual(self.active.read_bytes(), self.old)
+        self.assertEqual((self.base / "state/acfs/update-rollback.state").read_text(), "")
+
+    def test_claude_unchanged_installer_pin_stays_in_rollback_backoff(self):
+        output = self.shell(r'''
+update_tool_latest_release_tag() { return 1; }
+update_rollback_state_record_failure claude "$TEST_PIN"
+run_cmd_claude_update
+printf 'COUNTS=%s,%s,%s\n' "$SUCCESS_COUNT" "$SKIP_COUNT" "$FAIL_COUNT"
+''', TEST_TOOL="claude")
+        self.assertEqual(self.events(), [])
+        self.assertIn("COUNTS=0,1,0", output)
+        self.assertFalse(self.backup.exists())
+        self.assertEqual(self.active.read_bytes(), self.old)
+
+    def test_claude_force_retries_unchanged_installer_pin(self):
+        output = self.shell(r'''
+update_tool_latest_release_tag() { return 1; }
+update_rollback_state_record_failure claude "$TEST_PIN"
+FORCE_MODE=true
+run_cmd_claude_update
+printf 'COUNTS=%s,%s,%s\n' "$SUCCESS_COUNT" "$SKIP_COUNT" "$FAIL_COUNT"
+''', TEST_TOOL="claude")
+        self.assertEqual(self.events(), ["download", "execute"])
+        self.assertIn("COUNTS=1,0,0", output)
+        self.assertEqual(self.active.read_bytes(), self.old)
+
+    def assert_refreshed_failure_stays_backed_off(self, *, changed_url):
+        self.write_installer('cp "$TEST_ROOT/broken" "$TEST_ROOT/bin/fixturetool"\nexit 17')
+        executed_sha = hashlib.sha256(self.installer.read_bytes()).hexdigest()
+        (self.base / "obsolete-installer.sh").write_text('#!/bin/bash\nexit 23\n')
+        output = self.shell(r'''
+accepted_pin="$TEST_PIN"
+TEST_PIN="$(printf '1%.0s' {1..64})"
+acfs_refresh_loaded_checksums_from_remote() {
+    printf 'refresh\n' >> "$TEST_ROOT/events"
+    TEST_PIN="$accepted_pin"
+    if [[ "$TEST_CHANGED_URL" == true ]]; then
+        KNOWN_INSTALLERS[fixturetool]='https://fixture.invalid/replacement.sh'
+    fi
+}
+acfs_download_to_file() {
+    printf 'download\n' >> "$TEST_ROOT/events"
+    if [[ "$TEST_CHANGED_URL" == true && "$1" != */replacement.sh ]]; then
+        cat "$TEST_ROOT/obsolete-installer.sh" > "$2"
+    else
+        cat "$TEST_ROOT/installer.sh" > "$2"
+    fi
+}
+update_run_verified_installer fixturetool
+''', code=17, TEST_CHANGED_URL="true" if changed_url else "false")
+        expected_events = ["download", "refresh"] + (["download"] if changed_url else []) + ["execute"]
+        self.assertEqual(self.events(), expected_events)
+        self.assertIn("ROLLED BACK", output)
+        self.assertEqual(self.active.read_bytes(), self.old)
+        state_path = self.base / "state/acfs/update-rollback.state"
+        first_state = state_path.read_text()
+        self.assertEqual(first_state.split()[3], executed_sha)
+
+        output = self.shell('update_run_verified_installer fixturetool\n', code=94)
+        self.assertIn("SKIPPED (rollback backoff)", output)
+        self.assertEqual(self.events(), expected_events)
+        self.assertEqual(state_path.read_text(), first_state)
+        self.assertEqual(self.active.read_bytes(), self.old)
+
+    def test_refreshed_pin_records_executed_installer_and_suppresses_repeat_damage(self):
+        self.assert_refreshed_failure_stays_backed_off(changed_url=False)
+
+    def test_refreshed_url_records_replacement_installer_and_suppresses_repeat_damage(self):
+        self.assert_refreshed_failure_stays_backed_off(changed_url=True)
+
+    def test_unavailable_staged_installer_digest_prevents_execution_and_snapshot(self):
+        output = self.shell(r'''
+real_hash_function="$(declare -f calculate_file_sha256)"
+eval "${real_hash_function/calculate_file_sha256/fixture_calculate_file_sha256}"
+calculate_file_sha256() {
+    [[ "$1" != "$TEST_ROOT"/stage.* ]] || return 1
+    fixture_calculate_file_sha256 "$@"
+}
+update_run_verified_installer fixturetool
+''', code=1)
+        self.assertIn("Cannot hash verified installer", output)
+        self.assertEqual(self.events(), ["download"])
+        self.assertFalse(self.backup.exists())
+        self.assertEqual(self.active.read_bytes(), self.old)
+
     def test_snapshot_refuses_symlink_backup_without_overwriting_its_target(self):
         self.backup.symlink_to(self.victim)
         output = self.shell('update_snapshot_tool_binary fixturetool\n'

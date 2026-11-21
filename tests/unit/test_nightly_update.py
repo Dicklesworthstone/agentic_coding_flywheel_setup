@@ -9,11 +9,13 @@ changes are performed.
 """
 import configparser
 import datetime
+import fcntl
 import json
 import os
 from pathlib import Path
 import select
 import signal
+import stat
 import subprocess
 import tempfile
 import time
@@ -114,6 +116,116 @@ exit "${FIXTURE_UPDATE_RC:-0}"
 
     def assert_no_update(self):
         self.assertFalse((self.home / "updates").exists())
+
+    def assert_legacy_lock_is_preserved(self, kind):
+        lock = self.acfs / "nightly-update.lock"
+        target = self.home / "preserved-lock-target"
+        content = b"existing user data must not become a lock stamp\n"
+        target.write_bytes(content)
+        if kind == "symlink":
+            lock.symlink_to(target)
+        elif kind == "hardlink":
+            os.link(target, lock)
+        else:
+            os.mkfifo(lock, 0o600)
+        before = lock.lstat()
+        self.run_wrapper()
+        self.assertEqual(target.read_bytes(), content)
+        self.assertEqual((lock.lstat().st_ino, lock.lstat().st_mode),
+                         (before.st_ino, before.st_mode))
+        self.assertEqual(self.read_state()["outcome"], "success")
+        self.assertEqual((self.home / "updates").read_text().splitlines(),
+                         ["--yes --quiet --no-self-update"])
+
+    def test_legacy_symlink_lock_target_is_not_truncated(self):
+        self.assert_legacy_lock_is_preserved("symlink")
+
+    def test_legacy_hardlink_lock_target_is_not_truncated(self):
+        self.assert_legacy_lock_is_preserved("hardlink")
+
+    def test_legacy_fifo_lock_never_blocks_the_wrapper(self):
+        self.assert_legacy_lock_is_preserved("fifo")
+
+    def test_running_wrapper_excludes_another_wrapper_and_direct_recorder(self):
+        (self.bin / "acfs-update").write_text(r'''#!/usr/bin/env bash
+if [[ "${1:-}" == --help ]]; then echo --no-self-update; exit 0; fi
+printf '%s\n' "$*" >> "$FIXTURE/updates"
+printf 'fixture-ready\n'
+IFS= read -r _fixture_release
+''')
+        with subprocess.Popen(
+            ["bash", str(WRAPPER)], env=self.env, stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True,
+        ) as process:
+            try:
+                output = b""
+                deadline = time.monotonic() + 10
+                while b"fixture-ready\n" not in output:
+                    remaining = deadline - time.monotonic()
+                    self.assertGreater(remaining, 0, output)
+                    ready, _, _ = select.select([process.stdout], [], [], remaining)
+                    self.assertTrue(ready, output)
+                    chunk = os.read(process.stdout.fileno(), 4096)
+                    self.assertTrue(chunk, output)
+                    output += chunk
+                original = self.state.read_bytes()
+                self.assertEqual(self.read_state()["outcome"], "running")
+                self.assertIn("another nightly update/retry window is already running",
+                              self.run_wrapper())
+                result = subprocess.run(
+                    ["bash", "-c", 'source "$1"; acfs_nightly_record_direct_update "$2" 0 "$3"',
+                     "test", str(WRAPPER), str(self.state), str(START + 60)],
+                    env=self.env, capture_output=True, text=True, timeout=5)
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertEqual(self.state.read_bytes(), original)
+                self.assert_probes(1)
+                stdout, stderr = process.communicate(input=b"release\n", timeout=10)
+                self.assertEqual(process.returncode, 0, output + stdout + stderr)
+            finally:
+                if process.poll() is None:
+                    os.killpg(process.pid, signal.SIGKILL)
+                    process.communicate(timeout=10)
+        self.assertEqual(self.read_state()["outcome"], "success")
+        self.assertEqual((self.home / "updates").read_text().splitlines(),
+                         ["--yes --quiet --no-self-update"])
+
+    def test_updater_and_notification_children_cannot_keep_the_lock(self):
+        # Keep detached fixture children alive with a pipe, not a real sleep.
+        # Their inherited lock would prevent an independent post-run flock.
+        gate = self.home / "child-gate"
+        os.mkfifo(gate, 0o600)
+        (self.bin / "acfs-update").write_text(r'''#!/usr/bin/env bash
+( IFS= read -r _fixture_release < "$FIXTURE/child-gate" ) </dev/null >/dev/null 2>&1 &
+printf '%s\n' "$*" >> "$FIXTURE/child-invocations"
+if [[ "${1:-}" == --help ]]; then echo --no-self-update; fi
+''')
+        notify = self.acfs / "scripts/lib/notify.sh"
+        notify.parent.mkdir(parents=True)
+        notify.write_text(r'''acfs_notify_update_success() {
+    ( IFS= read -r _fixture_release < "$FIXTURE/child-gate" ) </dev/null >/dev/null 2>&1 &
+    printf 'notification\n' >> "$FIXTURE/child-invocations"
+}
+''')
+        with gate.open("r+b", buffering=0), subprocess.Popen(
+            ["bash", str(WRAPPER)], env=self.env, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, start_new_session=True,
+        ) as process:
+            try:
+                stdout, stderr = process.communicate(timeout=10)
+                self.assertEqual(process.returncode, 0, stdout + stderr)
+                self.assertEqual((self.home / "child-invocations").read_text().splitlines(),
+                                 ["--help", "--yes --quiet --no-self-update", "notification"])
+                lock_fd = os.open(self.acfs, os.O_RDONLY | os.O_DIRECTORY)
+                try:
+                    fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                finally:
+                    os.close(lock_fd)
+            finally:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                process.communicate(timeout=10)
 
     def test_permissive_umask_is_reset_before_logs_and_updater(self):
         self.run_wrapper(umask=0o002, ACFS_NIGHTLY_SELF_UPDATE="true")
@@ -308,8 +420,8 @@ class DirectUpdateRecordTests(unittest.TestCase):
         return dict(zip(FIELDS, values))
 
     RECORD = 'source "$1"; acfs_nightly_record_direct_update "$2" "$3" "$4"'
-    # The wrapper holds nightly-update.lock for its whole retry window.
-    RECORD_UNDER_WRAPPER_LOCK = ('exec 9>>"$(dirname "$2")/nightly-update.lock"; flock -n 9; '
+    # The wrapper holds the state directory for its whole retry window.
+    RECORD_UNDER_WRAPPER_LOCK = ('exec 9<"$(dirname "$2")/."; flock -n 9; '
                                  'source "$1"; acfs_nightly_record_direct_update "$2" "$3" "$4"')
 
     def record(self, rc, script=RECORD):
@@ -394,6 +506,26 @@ class DirectUpdateRecordTests(unittest.TestCase):
         result = self.record(0)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.read_state()["outcome"], "success")
+
+    def test_direct_recorder_ignores_a_legacy_fifo_lock(self):
+        self.write_interrupted()
+        lock = self.acfs / "nightly-update.lock"
+        os.mkfifo(lock, 0o600)
+        result = self.record(0)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(stat.S_ISFIFO(lock.lstat().st_mode))
+        self.assertEqual(self.read_state()["outcome"], "success")
+
+    def test_direct_recorder_refuses_a_symlink_state_directory(self):
+        original = self.write_interrupted()
+        alias = self.home / "state-directory-alias"
+        alias.symlink_to(self.acfs, target_is_directory=True)
+        result = subprocess.run(
+            ["bash", "-c", self.RECORD, "test", str(WRAPPER),
+             str(alias / self.state.name), "0", str(self.NOW)],
+            env=self.env, capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(self.state.read_bytes(), original)
 
     def test_update_main_refreshes_nvm_before_agents(self):
         # Isolate main's dispatch ordering; the runtime tests retain the real
@@ -583,7 +715,7 @@ update_record_nightly_outcome() {
     def test_update_main_early_failure_defers_to_running_wrapper(self):
         original = self.write_interrupted()
         result = self.run_update_main("--yes", "--quiet", overrides=UPDATE_FINALIZATION_AUDIT + r'''
-exec 8>>"$HOME/.acfs/nightly-update.lock"
+exec 8<"$HOME/.acfs/."
 flock -n 8
 update_acfs_self() { return 42; }
 ''')

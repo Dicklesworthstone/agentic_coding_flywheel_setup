@@ -1743,11 +1743,46 @@ clear_runtime_mask() {
     return 0
 }
 
-_stop_agent_mail_pid() {
+agent_mail_pid_matches() {
     local victim_pid="$1"
     local victim_args=""
     local victim_exe=""
     local am_real=""
+    local install_dir="" history_dir="" history_nonce=""
+
+    [[ "$victim_pid" =~ ^[1-9][0-9]*$ ]] || return 1
+    kill -0 "$victim_pid" 2>/dev/null || return 1
+    victim_args="$(ps -p "$victim_pid" -o args= 2>/dev/null || true)"
+    [[ "$victim_args" =~ (^|[[:space:]])serve-http([[:space:]]|$) ]] || return 1
+    [[ "$victim_args" =~ (^|[[:space:]])--port(=|[[:space:]]+)8765([[:space:]]|$) ]] || return 1
+
+    victim_exe="$(readlink -f "/proc/$victim_pid/exe" 2>/dev/null || true)"
+    am_real="$(readlink -f "$am_bin" 2>/dev/null || printf '%s' "$am_bin")"
+    if [[ -n "$victim_exe" ]]; then
+        # Atomic replacement can unlink the running image. The reviewed
+        # Agent Mail installer instead preserves it as old-cli in a committed
+        # transaction. Both are still the recorded fallback, not a different
+        # process just because the installed pathname now names new bytes.
+        victim_exe="${victim_exe% (deleted)}"
+        [[ "$victim_exe" == "$am_real" ]] && return 0
+        install_dir="${am_real%/*}"
+        history_dir="${victim_exe%/old-cli}"
+        [[ "$history_dir" != "$victim_exe" && "${history_dir%/*}" == "$install_dir" ]] || return 1
+        history_nonce="${history_dir##*/}"
+        [[ "$history_nonce" == .mcp-agent-mail-install-transaction.committed.* ]] || return 1
+        history_nonce="${history_nonce#.mcp-agent-mail-install-transaction.committed.}"
+        [[ "$history_nonce" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]]
+    elif [[ ! -d /proc ]]; then
+        # Non-Linux hosts have no /proc executable identity. Keep the existing
+        # command-name check for stopping their recorded fallback.
+        [[ "$victim_args" =~ (^|/)am([[:space:]]|$) ]]
+    else
+        return 1
+    fi
+}
+
+_stop_agent_mail_pid() {
+    local victim_pid="$1"
     local managed_pid=""
 
     [[ "$victim_pid" =~ ^[1-9][0-9]*$ ]] || return 0
@@ -1761,24 +1796,9 @@ _stop_agent_mail_pid() {
         fi
     fi
 
-    # Identify the holder by its RESOLVED EXECUTABLE, not by matching
-    # "$am_bin serve-http" against argv. am is normally reached through the
-    # ~/.local/bin/am symlink, so a holder started by hand shows up in argv as
-    # bare "am" or as the symlink path, while $am_bin is the resolved
-    # mcp_agent_mail/am target. An argv substring match therefore misses exactly
-    # the orphans this function exists to reclaim -- both variants were observed
-    # in the field (one host: argv "am"; another: argv ".local/bin/am").
-    victim_args="$(ps -p "$victim_pid" -o args= 2>/dev/null || true)"
-    [[ "$victim_args" =~ (^|[[:space:]])serve-http([[:space:]]|$) ]] || return 0
-    [[ "$victim_args" =~ (^|[[:space:]])--port(=|[[:space:]]+)8765([[:space:]]|$) ]] || return 0
-
-    victim_exe="$(readlink -f "/proc/$victim_pid/exe" 2>/dev/null || true)"
-    am_real="$(readlink -f "$am_bin" 2>/dev/null || printf '%s' "$am_bin")"
-    if [[ -n "$victim_exe" ]]; then
-        [[ "$victim_exe" == "$am_real" ]] || return 0
-    else
-        # No /proc (non-Linux): tolerate the symlink path and a bare command name.
-        [[ "$victim_args" =~ (^|/)am([[:space:]]|$) ]] || return 0
+    if ! agent_mail_pid_matches "$victim_pid"; then
+        echo "Agent Mail: fallback PID $victim_pid does not match the managed executable and listener; leaving it and its PID file untouched" >&2
+        return 1
     fi
 
     kill "$victim_pid" >/dev/null 2>&1 || true
@@ -1795,23 +1815,46 @@ _stop_agent_mail_pid() {
 stop_agent_mail_fallback() {
     local existing_pid=""
 
-    if [[ -f "$fallback_pid_file" ]]; then
-        existing_pid="$(cat "$fallback_pid_file" 2>/dev/null || true)"
+    if [[ -e "$fallback_pid_file" || -L "$fallback_pid_file" ]]; then
+        if [[ ! -f "$fallback_pid_file" || -L "$fallback_pid_file" ]]; then
+            echo "Agent Mail: fallback PID file is not a regular file; leaving it untouched: $fallback_pid_file" >&2
+            return 1
+        fi
+        existing_pid="$(cat "$fallback_pid_file" 2>/dev/null)" || return 1
+        if [[ ! "$existing_pid" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Agent Mail: fallback PID file is invalid; leaving it untouched: $fallback_pid_file" >&2
+            return 1
+        fi
         _stop_agent_mail_pid "$existing_pid" || return 1
         rm -f "$fallback_pid_file"
     fi
 }
 
 launch_agent_mail_fallback() {
-    if {
-        stack_service_curl -fsS --max-time 5 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1 || \
-        stack_service_curl -fsS --max-time 5 http://127.0.0.1:8765/healthz >/dev/null 2>&1;
-    } && agent_mail_readiness_ready; then
-        return 0
+    local existing_pid=""
+
+    if [[ -f "$fallback_pid_file" && ! -L "$fallback_pid_file" ]]; then
+        existing_pid="$(cat "$fallback_pid_file" 2>/dev/null)" || return 1
+        if agent_mail_pid_matches "$existing_pid" \
+            && [[ "$write_unit" != "true" ]] \
+            && cmp -s "/proc/$existing_pid/exe" "$am_bin" 2>/dev/null \
+            && agent_mail_endpoint_ready \
+            && kill -0 "$existing_pid" 2>/dev/null; then
+            echo "Agent Mail: fallback already runs the installed binary and is ready; not restarting" >&2
+            return 0
+        fi
     fi
 
-    if [[ -f "$fallback_pid_file" ]]; then
+    if [[ -e "$fallback_pid_file" || -L "$fallback_pid_file" ]]; then
         stop_agent_mail_fallback || return 1
+    fi
+
+    # Readiness alone does not prove that an endpoint serves the installed
+    # release. Never bless an older/unrelated listener, take it over, or start
+    # a second writer after losing the authority to stop a recorded fallback.
+    if agent_mail_endpoint_alive; then
+        echo "Agent Mail: an untracked listener is already responding on port 8765; leaving it untouched. Stop it explicitly before starting the managed fallback." >&2
+        return 1
     fi
 
     nohup env \
@@ -1824,15 +1867,13 @@ launch_agent_mail_fallback() {
     echo $! > "$fallback_pid_file"
 }
 
-agent_mail_endpoint_ready() {
-    if ! {
-        stack_service_curl -fsS --max-time 5 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1 || \
-        stack_service_curl -fsS --max-time 5 http://127.0.0.1:8765/healthz >/dev/null 2>&1;
-    }; then
-        return 1
-    fi
+agent_mail_endpoint_alive() {
+    stack_service_curl -fsS --max-time 5 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1 || \
+        stack_service_curl -fsS --max-time 5 http://127.0.0.1:8765/healthz >/dev/null 2>&1
+}
 
-    agent_mail_readiness_ready
+agent_mail_endpoint_ready() {
+    agent_mail_endpoint_alive && agent_mail_readiness_ready
 }
 
 agent_mail_readiness_ready() {

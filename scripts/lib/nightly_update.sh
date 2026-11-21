@@ -153,8 +153,54 @@ acfs_nightly_health_report() (
         "$level" "$message" "$level" "$code" "$data"
 )
 
+# Reserve fd 9 for the nightly state directory, separately from the updater's
+# HOME-directory lock. Call only in the wrapper or a recorder subshell. A
+# read-only directory lock cannot truncate a legacy lock-file target or block
+# opening a FIFO. Both writers must lock this same inode for their whole run.
+# Returns 2 for contention, 1 for an unsafe path or failed locking operation.
+acfs_nightly_lock_acquire() {
+    local directory="${1:-}" flock_bin="" candidate="" rc=0
+
+    while [[ "$directory" == */ ]]; do directory="${directory%/}"; done
+    if [[ "$directory" != /* || -L "$directory" || ! -d "$directory/." ||
+          ! -O "$directory/." || "$directory/." -ef / ]]; then
+        printf 'acfs nightly: cannot validate the state directory; refusing to run unlocked.\n' >&2
+        return 1
+    fi
+    for candidate in /usr/bin/flock /bin/flock; do
+        if [[ -f "$candidate" && -x "$candidate" ]]; then
+            flock_bin="$candidate"
+            break
+        fi
+    done
+    if [[ -z "$flock_bin" ]]; then
+        printf 'acfs nightly: system flock is required; refusing to run unlocked.\n' >&2
+        return 1
+    fi
+
+    # The /. suffix requires directory traversal even if the pathname changes
+    # to a FIFO/device while opening. Keep stderr redirection local to the group.
+    if ! { exec 9<"$directory/."; } 2>/dev/null; then
+        printf 'acfs nightly: cannot open the state directory for locking.\n' >&2
+        return 1
+    fi
+    if "$flock_bin" -x -n -E 75 9; then rc=0; else rc=$?; fi
+    if [[ "$rc" != 0 ]]; then
+        exec 9<&-
+        [[ "$rc" != 75 ]] || return 2
+        printf 'acfs nightly: kernel lock acquisition failed; refusing to run unlocked.\n' >&2
+        return 1
+    fi
+    if [[ -L "$directory" || ! -d /proc/self/fd/9 || ! -O /proc/self/fd/9 ||
+          ! "$directory/." -ef /proc/self/fd/9 ]]; then
+        exec 9<&-
+        printf 'acfs nightly: state directory changed while acquiring its lock.\n' >&2
+        return 1
+    fi
+}
+
 # Atomically replace the record with the ACFS_NIGHTLY_* fields. Writers hold
-# nightly-update.lock; the reader above validates whatever they produce.
+# the state-directory lock; the reader above validates whatever they produce.
 acfs_nightly_state_write() {
     local file="$1" tmp=""
     tmp="$(mktemp "${file}.XXXXXX")" || return 1
@@ -182,15 +228,11 @@ acfs_nightly_state_write() {
 # Returns 0 when recorded, 2 when the running wrapper owns the record, and 1
 # when nothing was recorded.
 acfs_nightly_record_direct_update() (
-    local file="${1:-}" rc="${2:-}" now="${3:-}" lock="" lock_fd=""
+    local file="${1:-}" rc="${2:-}" now="${3:-}"
 
     [[ "$rc" =~ ^[0-9]{1,3}$ ]] || return 1
     [[ -f "$file" && ! -L "$file" && -O "$file" ]] || return 1
-    lock="${file%/*}/nightly-update.lock"
-    [[ ! -L "$lock" ]] || return 1
-    command -v flock >/dev/null 2>&1 || return 1
-    exec {lock_fd}>>"$lock" || return 1
-    flock -n "$lock_fd" || return 2
+    acfs_nightly_lock_acquire "${file%/*}" || return $?
     acfs_nightly_state_read "$file" || return 1
     if [[ -z "$now" ]]; then
         now=$(date +%s 2>/dev/null) || return 1
@@ -636,14 +678,16 @@ if [[ ! "$NIGHTLY_MAX_RETRIES" =~ ^[0-2]$ ]] ||
     exit 1
 fi
 NIGHTLY_STATE_FILE="$HOME/.acfs/nightly-update.state"
-exec 9>"$HOME/.acfs/nightly-update.lock"
-if ! command -v flock >/dev/null 2>&1; then
-    log "ERROR: flock unavailable; refusing an unlocked nightly update"
+if acfs_nightly_lock_acquire "$HOME/.acfs"; then
+    :
+else
+    NIGHTLY_LOCK_RC=$?
+    if [[ "$NIGHTLY_LOCK_RC" == 2 ]]; then
+        log "SKIP: another nightly update/retry window is already running"
+        exit 0
+    fi
+    log "ERROR: cannot acquire the nightly state lock; refusing an unlocked update"
     exit 1
-fi
-if ! flock -n 9; then
-    log "SKIP: another nightly update/retry window is already running"
-    exit 0
 fi
 
 ACFS_NIGHTLY_OUTCOME=running
@@ -672,6 +716,8 @@ nightly_write_state() {
     fi
 }
 
+# Invoked indirectly by the EXIT trap below.
+# shellcheck disable=SC2329
 nightly_on_exit() {
     if [[ "$NIGHTLY_FINALIZED" != true ]]; then
         ACFS_NIGHTLY_OUTCOME=interrupted
@@ -836,7 +882,7 @@ if [[ "${ACFS_NIGHTLY_SELF_UPDATE:-false}" != "true" ]]; then
     # into `grep -q` can fail spuriously (grep exits at the first match and
     # the help writer dies on SIGPIPE), which would silently re-enable
     # self-update on machines that must not self-update.
-    update_help="$("$ACFS_UPDATE" --help 2>&1 || true)"
+    update_help="$("$ACFS_UPDATE" --help 9>&- 2>&1 || true)"
     if grep -q -- '--no-self-update' <<<"$update_help"; then
         NIGHTLY_UPDATE_ARGS+=(--no-self-update)
     fi
@@ -871,7 +917,9 @@ log "---"
 if [[ "$UPDATE_RC" -eq 0 ]]; then
     log "=== Nightly update completed successfully ==="
     if type -t acfs_notify_update_success &>/dev/null; then
-        acfs_notify_update_success 2>/dev/null || true
+        # Close before the function can fork; no saved descriptor may leak to
+        # the notification library's background work.
+        (acfs_notify_update_success) 9>&- 2>/dev/null || true
     fi
 elif [[ "$UPDATE_RC" -eq 2 ]]; then
     # acfs-update exit 2 = partial failure: most tools updated, a few failed
@@ -879,12 +927,12 @@ elif [[ "$UPDATE_RC" -eq 2 ]]; then
     # as "the update failed".
     log "=== Nightly update PARTIALLY failed (exit 2): most tools updated, some failed -- see the acfs-update log ==="
     if type -t acfs_notify_update_failure &>/dev/null; then
-        acfs_notify_update_failure "partial failure (exit code 2): some tools failed while others updated" 2>/dev/null || true
+        (acfs_notify_update_failure "partial failure (exit code 2): some tools failed while others updated") 9>&- 2>/dev/null || true
     fi
 else
     log "=== Nightly update FAILED (exit code $UPDATE_RC) ==="
     if type -t acfs_notify_update_failure &>/dev/null; then
-        acfs_notify_update_failure "exit code $UPDATE_RC" 2>/dev/null || true
+        (acfs_notify_update_failure "exit code $UPDATE_RC") 9>&- 2>/dev/null || true
     fi
 fi
 

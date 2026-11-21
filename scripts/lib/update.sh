@@ -6760,6 +6760,17 @@ update_run_verified_installer_with_env() {
         return "$verify_exit_code"
     fi
 
+    # Verification may accept a new pin or URL after refreshing metadata.
+    # Backoff must identify the accepted bytes, not the stale pin supplied to
+    # the verifier, or the same broken installer can run again after rollback.
+    local installer_sha256=""
+    if ! installer_sha256="$(calculate_file_sha256 "$tmp_install")" \
+        || [[ ! "$installer_sha256" =~ ^[[:xdigit:]]{64}$ ]]; then
+        echo "Cannot hash verified installer for $tool; refusing to execute it" >&2
+        rm -f "$tmp_install" 2>/dev/null || true
+        return 1
+    fi
+
     local installer_chmod_bin=""
     installer_chmod_bin="$(update_system_binary_path chmod 2>/dev/null || true)"
     if [[ -z "$installer_chmod_bin" ]] || ! "$installer_chmod_bin" 0755 "$tmp_install"; then
@@ -6809,7 +6820,7 @@ update_run_verified_installer_with_env() {
         # An installer may damage the working binary before failing. Check the
         # retained installation on that path too, but preserve its original
         # failure status even if recovery succeeds or verification is healthy.
-        if ! update_verify_tool_or_rollback "$tool" "$expected_sha256"; then
+        if ! update_verify_tool_or_rollback "$tool" "$installer_sha256"; then
             [[ $exit_code -ne 0 ]] || exit_code=1
         fi
     fi
@@ -9283,7 +9294,12 @@ run_cmd_claude_update() {
         update_note_held_tool "claude"
         return 0
     fi
-    if update_tool_rollback_backoff_details "claude"; then
+    local backoff_current_sha=""
+    if update_rollback_state_lookup "claude" >/dev/null 2>&1 \
+        && update_require_security >/dev/null 2>&1; then
+        backoff_current_sha="$(get_checksum claude)"
+    fi
+    if update_tool_rollback_backoff_details "claude" "$backoff_current_sha"; then
         log_item "skip" "$desc" "BACKOFF: $UPDATE_LAST_BACKOFF_DETAILS"
         return 0
     fi
@@ -10509,13 +10525,15 @@ update_agent_mail_release_contract() {
     local installer_url="$2" installer_sha="$3"
     am_contract_result=()
     [[ "$installer_url" == https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail_rust/refs/heads/main/install.sh ]] || return 1
-    # Reviewed upstream revisions bc796a2d and baa88392 share this archive,
-    # signature and destination-lock contract. The latter only defers Python
-    # migration takeover until verification succeeds. Keep approval explicit:
-    # a checksum refresh alone must never authorize a new receipt adapter.
+    # Reviewed upstream revisions bc796a2d, baa88392 and 80a64560 share this
+    # signed-archive and destination-lock contract. 80a64560 changes source
+    # build receipts and rejects duplicate authenticated checksums; neither
+    # changes this release-archive adapter. Keep approval explicit: a checksum
+    # refresh alone must never authorize a new receipt adapter.
     case "$installer_sha" in
         3de2d65db5405432e56e28eddfd5046226fc8d2bedf53b7fb56a003aa9e88454|\
-        16c12f599faa11e633dd6bcf9a4f9fb4c0436a7a7514b249eff295bf0ef00af8)
+        16c12f599faa11e633dd6bcf9a4f9fb4c0436a7a7514b249eff295bf0ef00af8|\
+        3ad113dd53c55102b48f472f36672576e068f6f8d8999dad69ac0536043af300)
             ;;
         *)
             log_to_file "MCP Agent Mail release adapter has not reviewed installer SHA-256 ${installer_sha:-<missing>}; using the independently verified upstream installer. Maintainers must review the adapter before enabling release reuse."
