@@ -1017,7 +1017,7 @@ class ScopedInstallerResumeTests(unittest.TestCase):
         cls.harness = _main_fixture.MainUpgradeOrderTests(methodName="runTest")
 
     def run_scoped(self, arguments=(), *, modules=None, requested=("lang.bun",),
-                   alter="", custom=False, completed=True, options=None):
+                   alter="", custom=False, completed=True, options=None, execution=""):
         modules = self.BASE_SCOPE if modules is None else modules
         installer = (ROOT / "install.sh").read_text()
         setup = [
@@ -1068,6 +1068,7 @@ record_scope() {
 print_execution_plan() { record_scope; }
 acfs_verify_phase() { record_scope; exit 0; }
 ''',
+            execution,
         ]
         return self.harness.run_main(
             overrides={"TEST_MISSING_TOOLS": "false", **(options or {})},
@@ -1262,6 +1263,107 @@ acfs_verify_phase() { record_scope; exit 0; }
         self.assertIn("declined-mode:vibe", events)
         self.assertNotIn("mut:base", events)
         self.assert_unchanged(folder)
+
+
+class BaseDependencyRecoveryTests(unittest.TestCase):
+    """The early base phase must preserve the same recovery scope as run_phase."""
+
+    BASE_SCOPE = ScopedInstallerResumeTests.BASE_SCOPE
+
+    @classmethod
+    def setUpClass(cls):
+        ResumeCheckpointGateTests.setUpClass()
+        ScopedInstallerResumeTests.setUpClass()
+        cls.harness = ScopedInstallerResumeTests.harness
+        cls.verify_phase = _main_fixture.definition(
+            _main_fixture.MAIN.read_text(), "acfs_verify_phase")
+
+    run_scoped = ScopedInstallerResumeTests.run_scoped
+    scope_event = ScopedInstallerResumeTests.scope_event
+
+    def run_base_repair(self, *, healthy=False, legacy=False, current_failure=False,
+                        previous_failure=True, full=False):
+        setup = [
+            "state_phase_start base_deps",
+            "state_step_result base_deps 'Prior base failure' failed true 'base.system is missing'"
+            if previous_failure else "",
+            "state_update 'del(.module_selection)'" if legacy else "",
+            'touch "$TEST_ROOT/base-ready"' if healthy else "",
+        ]
+        execution = self.verify_phase + r'''
+# The package boundary is inert; phase attempts, selectors, checkpoint I/O,
+# authored verification and main's recovery decision execute production code.
+ensure_base_deps() {
+    trace mut:base
+    state_phase_start base_deps
+'''
+        if current_failure:
+            execution += "    state_step_result base_deps 'Current base failure' failed true 'current attempt failed'\n"
+        execution += r'''
+}
+ACFS_MODULE_VERIFY_COUNT[base.system]=1
+printf -v base_probe 'printf "EVENT:probe:base.system\\n" >&3; test -f %q' "$TEST_ROOT/base-ready"
+ACFS_MODULE_VERIFY_COMMAND[base.system.0]="$base_probe"
+ACFS_MODULE_VERIFY_RUN_AS[base.system]=current
+run_phase() { trace checkpointed_phases_reached; record_scope; exit 0; }
+'''
+        arguments = ("--profile", "full") if full else ("--only", "lang.bun", "--no-deps")
+        result, events, folder = self.run_scoped(
+            arguments, alter="\n".join(setup), execution=execution)
+        state = json.loads((folder / "home/.acfs/state.json").read_text())
+        before = json.loads((folder / "checkpoint-before.json").read_text())
+        if not full:
+            self.assertEqual(state.get("module_selection"), before.get("module_selection"))
+        return result, events, state
+
+    def assert_prior_failure_retained(self, result, events, state):
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertNotIn("checkpointed_phases_reached", events)
+        prior = state["phase_steps"]["base_deps"]["Prior base failure"]
+        self.assertEqual(prior["status"], "failed")
+        self.assertEqual(prior["error"], "base.system is missing")
+        self.assertNotIn("verified_at", prior)
+        self.assertEqual(state["failed_phase"], "base_deps")
+
+    def test_narrow_repair_cannot_certify_an_unhealthy_prior_base_dependency(self):
+        result, events, state = self.run_base_repair()
+        self.assert_prior_failure_retained(result, events, state)
+        self.assertIn("probe:base.system", events)
+
+    def test_live_base_recovery_preserves_the_narrow_execution_plan(self):
+        result, events, state = self.run_base_repair(healthy=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("probe:base.system", events)
+        self.assertIn("checkpointed_phases_reached", events)
+        self.assertEqual(self.scope_event(events, "resolved"), ["lang.bun"])
+        self.assertEqual(state["phase_steps"]["base_deps"]["Prior base failure"]["status"], "verified")
+        self.assertIsNone(state["failed_phase"])
+
+    def test_legacy_filtered_repair_preserves_unproven_base_failures(self):
+        result, events, state = self.run_base_repair(healthy=True, legacy=True)
+        self.assert_prior_failure_retained(result, events, state)
+        self.assertNotIn("probe:base.system", events)
+
+    def test_legacy_full_repair_can_still_reconcile_healthy_base_dependencies(self):
+        result, events, state = self.run_base_repair(healthy=True, legacy=True, full=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("probe:base.system", events)
+        self.assertIn("checkpointed_phases_reached", events)
+        self.assertEqual(state["phase_steps"]["base_deps"]["Prior base failure"]["status"], "verified")
+        self.assertIsNone(state["failed_phase"])
+
+    def test_current_base_failure_is_not_forgiven_by_a_healthy_saved_scope(self):
+        result, events, state = self.run_base_repair(healthy=True, current_failure=True)
+        self.assert_prior_failure_retained(result, events, state)
+        self.assertEqual(state["phase_steps"]["base_deps"]["Current base failure"]["status"], "failed")
+        self.assertNotIn("probe:base.system", events)
+
+    def test_clean_narrow_repair_does_not_probe_unselected_base_dependencies(self):
+        result, events, _ = self.run_base_repair(previous_failure=False)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("checkpointed_phases_reached", events)
+        self.assertEqual(self.scope_event(events, "resolved"), ["lang.bun"])
+        self.assertNotIn("probe:base.system", events)
 
 
 if __name__ == "__main__":

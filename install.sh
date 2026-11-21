@@ -13094,6 +13094,11 @@ main() {
     if [[ "$DRY_RUN" != "true" ]]; then
         acfs_verify_phase "base_deps" complete || return 1
         if type -t state_phase_reconcile &>/dev/null; then
+            # This phase runs outside run_phase, but has the same recovery
+            # obligation: a narrow repair cannot certify prior base failures
+            # without checking the saved installation's required modules.
+            state_phase_is_clean "base_deps" current || return 1
+            state_verify_phase_recovery "base_deps" || return 1
             state_phase_reconcile "base_deps" previous || return 1
         fi
     fi
