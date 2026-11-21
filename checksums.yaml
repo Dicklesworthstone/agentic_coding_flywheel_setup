@@ -24,7 +24,7 @@ installers:
 
   brenner_bot:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/brenner_bot/main/install.sh"
-    sha256: "171bec954d454e1e01035560376be9ee94552dcb3d1225798b2a66aa890db7bb"
+    sha256: "e69a1a57c24f0ac001b9bc212599c6822d1262f23eb9712faad4292500adac96"
 
   bun:
     url: "https://bun.sh/install"
