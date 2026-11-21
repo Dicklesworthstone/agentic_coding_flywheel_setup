@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { buildInstallCommand } from "./commandBuilder";
+import { type ModuleSelectionInput, resolveModuleSelection } from "./moduleSelection";
 import {
   buildProviderProvisioningPacket,
   manualStepsForProvider,
@@ -206,6 +208,80 @@ describe("buildProviderProvisioningPacket", () => {
     );
   });
 
+  const customCloudInitChoices: Array<{ name: string; choices: Partial<ProviderProvisioningPacketInput> }> = [
+    { name: "safe mode", choices: { installMode: "safe" } },
+    { name: "custom user", choices: { username: "developer" } },
+    { name: "tag pin", choices: { sourceRef: "v1.2.3" } },
+    { name: "commit pin", choices: { sourceRef: "a".repeat(40) } },
+    { name: "agent subset", choices: { moduleSelection: { profile: "agents-only" } } },
+    { name: "explicit module roots", choices: { moduleSelection: { onlyModules: ["agents.codex"] } } },
+    { name: "module exclusions", choices: { moduleSelection: { profile: "full", skipTags: ["cloud"] } } },
+    { name: "dependency override", choices: { moduleSelection: { noDeps: true } } },
+    { name: "mode override profile", choices: { moduleSelection: { profile: "safe" } } },
+  ];
+  for (const { name, choices } of customCloudInitChoices) {
+    test(`routes ${name} through the exact manual command instead of the fixed cloud-init template`, () => {
+      const input = { ...baseInput, providerId: "hetzner", planName: "CX52", region: "fsn1", ...choices };
+      const packet = buildProviderProvisioningPacket(input);
+      expect(packet.cloudInit.mode).toBe("none");
+      expect(packet.cloudInit.userDataIncluded).toBe(false);
+      expect(packet.cloudInit.templateRef).toBeUndefined();
+      expect(packet.install.commandRunLocation).toBe("vps-root-shell");
+      expect(packet.install.command).toBe(buildInstallCommand(
+        input.installMode,
+        input.sourceRef === "main" ? null : input.sourceRef,
+        input.username,
+        input.moduleSelection,
+      ));
+      expect(packet.verificationCommands.find((command) => command.id === "installer")?.command)
+        .toBe(packet.install.command);
+      expect(packet.cloudInit.notes.join(" ")).toContain("exact installer command");
+      expect(packet.provider.manualStepsRemaining.join(" ")).toContain("Leave cloud-init user data blank");
+      expect(packet.provider.manualStepsRemaining.join(" ")).not.toContain("Paste the ACFS cloud-init template");
+    });
+  }
+
+  for (const ubuntuVersion of ["22.04", "24.04"]) {
+    test(`preserves the existing readiness gate for Ubuntu ${ubuntuVersion} cloud-init handoffs`, () => {
+      const packet = buildProviderProvisioningPacket({
+        ...baseInput, providerId: "hetzner", planName: "CX52", region: "fsn1", ubuntuVersion,
+      });
+      expect(packet.cloudInit.mode).toBe("none");
+      expect(packet.cloudInit.userDataIncluded).toBe(false);
+      expect(packet.cloudInit.templateRef).toBeUndefined();
+      expect(packet.install.commandRunLocation).toBe("vps-root-shell");
+      expect(packet.install.command).not.toContain("curl");
+      expect(packet.verificationCommands.find((command) => command.id === "installer")?.expectedStatus)
+        .toBe("fail");
+      expect(packet.provider.manualStepsRemaining.join(" ")).toContain("Leave cloud-init user data blank");
+      expect(packet.provider.manualStepsRemaining.join(" ")).not.toContain("Paste the ACFS cloud-init template");
+    });
+  }
+
+  for (const [index, choices] of [
+    {},
+    { moduleSelection: {} },
+    { moduleSelection: { profile: "full" } },
+    { moduleSelection: { profile: "vibe" } },
+    { moduleSelection: { onlyModules: [], onlyPhases: [], skipModules: [], skipTags: [], skipCategories: [], noDeps: false } },
+    { sourceRef: null, ubuntuVersion: "Ubuntu 26.04.1 LTS" },
+  ].entries()) {
+    test(`retains cloud-init for equivalent default installation ${index + 1}`, () => {
+      const packet = buildProviderProvisioningPacket({
+        ...baseInput,
+        providerId: "hetzner",
+        planName: "CX52",
+        region: "fsn1",
+        ...choices,
+      } as ProviderProvisioningPacketInput);
+      expect(packet.cloudInit.mode).toBe("manual_paste");
+      expect(packet.cloudInit.userDataIncluded).toBe(true);
+      expect(packet.cloudInit.templateRef).toBe("scripts/providers/hetzner-cloud-init.yml");
+      expect(packet.install.commandRunLocation).toBe("cloud-init");
+      expect(packet.provider.manualStepsRemaining.join(" ")).toContain("Paste the ACFS cloud-init template");
+    });
+  }
+
   test("blocks known provider packets with unsupported Ubuntu images", () => {
     const packet = buildProviderProvisioningPacket({
       ...baseInput,
@@ -385,18 +461,113 @@ describe("buildProviderProvisioningPacket", () => {
       moduleSelection: {
         profile: "cloud-only",
         secretToken: "AKIAABCDEFGHIJKLMNOP",
-        onlyModules: "stack.dcg",
-        skipModules: [42, ""],
-        noDeps: "true",
+        skipModules: ["tools.vault"],
       } as unknown as ProviderProvisioningPacketInput["moduleSelection"],
     });
     const json = serializeProviderProvisioningPacketJson(packet);
 
-    expect(packet.install.moduleSelection).toEqual({ profile: "cloud-only" });
+    expect(packet.install.moduleSelection).toEqual({
+      profile: "cloud-only",
+      skipModules: ["tools.vault"],
+    });
+    expect(packet.install.command).toContain('--skip "tools.vault"');
     expect(json).not.toContain("secretToken");
     expect(json).not.toContain("AKIAABCDEFGHIJKLMNOP");
-    expect(json).not.toContain("stack.dcg");
   });
+
+  for (const [name, moduleSelection] of [
+    ["null selection", null],
+    ["scalar selection", "agents.codex"],
+    ["array selection", ["agents.codex"]],
+    ["scalar onlyModules", { onlyModules: "agents.codex" }],
+    ["empty module ID", { onlyModules: [""] }],
+    ["partially valid modules", { onlyModules: ["agents.codex", 42] }],
+    ["null phases", { onlyPhases: null }],
+    ["scalar phase", { onlyPhases: "agents" }],
+    ["numeric phase", { onlyPhases: [7] }],
+    ["scalar skipModules", { skipModules: "tools.vault" }],
+    ["partially valid skips", { skipModules: ["tools.vault", null] }],
+    ["scalar skipTags", { skipTags: "cloud" }],
+    ["scalar skipCategories", { skipCategories: "cloud" }],
+    ["null profile", { profile: null }],
+    ["blank profile", { profile: "" }],
+    ["nonboolean noDeps", { onlyModules: ["agents.codex"], noDeps: "true" }],
+    ["null noDeps", { noDeps: null }],
+    ["unknown module", { onlyModules: ["agents.missing"] }],
+    ["conflicting skips", { onlyModules: ["agents.codex"], skipModules: ["lang.bun"] }],
+    ["sparse modules", { onlyModules: Array(2) }],
+    ["oversized modules", { onlyModules: Array(1025).fill("agents.codex") }],
+    ["inherited selection", Object.create({ onlyModules: ["agents.codex"] })],
+  ] as const) {
+    test(`refuses ${name} instead of emitting a different installation scope`, () => {
+      expect(resolveModuleSelection(moduleSelection as ModuleSelectionInput).ok).toBe(false);
+      expect(() => buildProviderProvisioningPacket({
+        ...baseInput,
+        moduleSelection: moduleSelection as ModuleSelectionInput,
+      })).toThrow("invalid module selection");
+    });
+  }
+
+  test("rejects malformed scope even when provider readiness already blocks installation", () => {
+    expect(() => buildProviderProvisioningPacket({
+      ...baseInput,
+      ubuntuVersion: "20.04",
+      moduleSelection: { onlyModules: "agents.codex" } as unknown as ModuleSelectionInput,
+    })).toThrow("invalid module selection");
+  });
+
+  test("does not evaluate selection accessors or echo secret selector values on rejection", () => {
+    let calls = 0;
+    const moduleSelection = Object.defineProperty({}, "onlyModules", {
+      enumerable: true,
+      get() {
+        calls++;
+        return ["agents.codex"];
+      },
+    });
+    expect(() => buildProviderProvisioningPacket({ ...baseInput, moduleSelection })).toThrow(
+      "invalid module selection",
+    );
+    expect(calls).toBe(0);
+
+    try {
+      buildProviderProvisioningPacket({
+        ...baseInput,
+        moduleSelection: { onlyModules: ["AKIAABCDEFGHIJKLMNOP"] },
+      });
+      throw new Error("malformed selection was accepted");
+    } catch (error) {
+      expect(String(error)).toContain("invalid module selection");
+      expect(String(error)).not.toContain("AKIAABCDEFGHIJKLMNOP");
+    }
+  });
+
+  const validSelections: ModuleSelectionInput[] = [
+    {},
+    { onlyModules: [], onlyPhases: [], skipModules: [], noDeps: false },
+    { profile: "full" },
+    { onlyModules: ["agents.codex"] },
+    { profile: "agents-only", skipModules: ["agents.gemini"] },
+    { onlyModules: ["acfs.doctor"], onlyPhases: ["agents"], skipModules: ["agents.gemini"] },
+    { skipTags: ["cloud"], skipCategories: ["network"] },
+    { onlyModules: ["agents.codex"], skipModules: ["lang.bun"], noDeps: true },
+  ];
+  for (const [index, moduleSelection] of validSelections.entries()) {
+    test(`preserves valid selection ${index + 1} in the packet and executable command`, () => {
+      const before = structuredClone(moduleSelection);
+      const packet = buildProviderProvisioningPacket({ ...baseInput, moduleSelection });
+      expect(packet.install.command).toBe(buildInstallCommand("vibe", null, "ubuntu", before));
+      expect(resolveModuleSelection(packet.install.moduleSelection).included).toEqual(
+        resolveModuleSelection(before).included,
+      );
+      expect(moduleSelection).toEqual(before);
+      if (moduleSelection.onlyModules?.length) {
+        moduleSelection.onlyModules.push("lang.go");
+        expect(packet.install.moduleSelection?.onlyModules).toEqual(before.onlyModules);
+        moduleSelection.onlyModules.pop();
+      }
+    });
+  }
 
   for (const ubuntuVersion of [
     "",

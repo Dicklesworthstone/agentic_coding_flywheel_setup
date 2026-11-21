@@ -1,6 +1,7 @@
 import { buildInstallCommand } from "./commandBuilder";
+import { manifestSelectionProfiles } from "./generated/manifest-modules";
 import { containsIPAddress, normalizeGitRef, normalizeSSHUsername } from "./inputValidation";
-import type { ModuleSelectionInput } from "./moduleSelection";
+import { type ModuleSelectionInput, resolveModuleSelection } from "./moduleSelection";
 import type { InstallMode } from "./userPreferences";
 import type {
   EvaluatedProviderPlan,
@@ -372,6 +373,9 @@ export const PROVIDER_PACKET_BASE_VERIFICATION_COMMANDS = [
   },
 ] as const satisfies readonly ProviderProvisioningPacketVerificationCommand[];
 
+const CLOUD_INIT_MANUAL_STEP = "Paste the ACFS cloud-init template when using cloud-init mode.";
+const HETZNER_CLOUD_INIT_TEMPLATE = "scripts/providers/hetzner-cloud-init.yml";
+
 export const PROVIDER_PACKET_MANUAL_STEPS_BY_PROVIDER: Record<string, string[]> = {
   contabo: [
     "Log in to the provider console and choose the ACFS-recommended VPS product.",
@@ -391,7 +395,7 @@ export const PROVIDER_PACKET_MANUAL_STEPS_BY_PROVIDER: Record<string, string[]> 
     "Create or choose a Hetzner Cloud project manually.",
     "Select an Ubuntu image and a server type that meets the packet capacity warning.",
     "Attach the public SSH key in the provider console.",
-    "Paste the ACFS cloud-init template when using cloud-init mode.",
+    CLOUD_INIT_MANUAL_STEP,
     "Complete checkout and payment manually.",
     "Copy the assigned host address into the wizard; do not store it in a support-safe packet projection.",
   ],
@@ -402,10 +406,17 @@ export const PROVIDER_PACKET_MANUAL_STEPS_BY_PROVIDER: Record<string, string[]> 
   ],
 };
 
-export function manualStepsForProvider(providerId: string): string[] {
-  return (
+export function manualStepsForProvider(
+  providerId: string,
+  cloudInitMode?: ProviderProvisioningPacketCloudInit["mode"],
+): string[] {
+  const steps =
     PROVIDER_PACKET_MANUAL_STEPS_BY_PROVIDER[providerId] ??
-    PROVIDER_PACKET_MANUAL_STEPS_BY_PROVIDER.other
+    PROVIDER_PACKET_MANUAL_STEPS_BY_PROVIDER.other;
+  return steps.map((step) =>
+    step === CLOUD_INIT_MANUAL_STEP && cloudInitMode === "none"
+      ? "Leave cloud-init user data blank. After resolving readiness checks and connecting through SSH, run this packet's exact installer command manually."
+      : step,
   );
 }
 
@@ -416,7 +427,7 @@ const PROVIDER_PACKET_PRESETS: Record<string, ProviderPacketPreset> = {
     productUrl: "https://www.hetzner.com/cloud/",
     automationLevel: "cloud_init_only",
     cloudInitMode: "manual_paste",
-    cloudInitTemplateRef: "scripts/providers/hetzner-cloud-init.yml",
+    cloudInitTemplateRef: HETZNER_CLOUD_INIT_TEMPLATE,
   },
 };
 
@@ -526,43 +537,44 @@ function safeSshPublicKeyMaterial(value: string | null | undefined): string | un
   return collapsed;
 }
 
-function safePacketStringArray(value: unknown): string[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  const strings = value.filter(
-    (entry): entry is string => typeof entry === "string" && entry.length > 0,
-  );
-  return strings.length > 0 ? strings : undefined;
-}
-
 function safePacketModuleSelection(
   value: ModuleSelectionInput | undefined,
 ): ModuleSelectionInput | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-
-  const record = value as Record<string, unknown>;
-  const moduleSelection: ModuleSelectionInput = {};
-  if (typeof record.profile === "string" && record.profile.length > 0) {
-    moduleSelection.profile = record.profile as ModuleSelectionInput["profile"];
+  if (value === undefined) return undefined;
+  // Missing or invalid selectors cannot be sanitized away: dropping --only or
+  // --skip can turn the reviewed subset into a full root-context installation.
+  // Keep errors generic so malformed selector values cannot leak credentials.
+  const invalidSelection = "Cannot create a provisioning packet with an invalid module selection.";
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(invalidSelection);
   }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) throw new Error(invalidSelection);
 
-  const onlyModules = safePacketStringArray(record.onlyModules);
-  if (onlyModules) moduleSelection.onlyModules = onlyModules;
-
-  const onlyPhases = safePacketStringArray(record.onlyPhases);
-  if (onlyPhases) moduleSelection.onlyPhases = onlyPhases;
-
-  const skipModules = safePacketStringArray(record.skipModules);
-  if (skipModules) moduleSelection.skipModules = skipModules;
-
-  const skipTags = safePacketStringArray(record.skipTags);
-  if (skipTags) moduleSelection.skipTags = skipTags;
-
-  const skipCategories = safePacketStringArray(record.skipCategories);
-  if (skipCategories) moduleSelection.skipCategories = skipCategories;
-
-  if (record.noDeps === true) moduleSelection.noDeps = true;
-
-  return Object.keys(moduleSelection).length > 0 ? moduleSelection : undefined;
+  // Project only recognized fields for support safety, preserving their values
+  // for the canonical validator. Reading descriptors never invokes accessors
+  // on untrusted selectors or extra private metadata.
+  const fields = Object.getOwnPropertyDescriptors(value);
+  const projected: Record<string, unknown> = {};
+  for (const key of [
+    "profile", "onlyModules", "onlyPhases", "skipModules", "skipTags", "skipCategories", "noDeps",
+  ] as const) {
+    const field = fields[key];
+    if (!field) continue;
+    if (!field.enumerable || !("value" in field)) throw new Error(invalidSelection);
+    projected[key] = field.value;
+  }
+  if (!resolveModuleSelection(projected as ModuleSelectionInput).ok) {
+    throw new Error(invalidSelection);
+  }
+  // Detach the reviewed selectors from caller-owned arrays so later edits
+  // cannot make the packet's scope disagree with its already-built command.
+  const moduleSelection = Object.fromEntries(
+    Object.entries(projected)
+      .filter(([, entry]) => entry !== undefined)
+      .map(([key, entry]) => [key, Array.isArray(entry) ? [...entry] : entry]),
+  ) as ModuleSelectionInput;
+  return Object.keys(moduleSelection).length ? moduleSelection : undefined;
 }
 
 function readinessCheckStatus(
@@ -633,6 +645,8 @@ function buildVerificationCommands(
 function buildCloudInit(
   preset: ProviderPacketPreset,
   installAllowed: boolean,
+  installation: Pick<ProviderProvisioningPacketInput,
+    "installMode" | "sourceRef" | "username" | "ubuntuVersion" | "moduleSelection">,
 ): ProviderProvisioningPacketCloudInit {
   if (!installAllowed) {
     return {
@@ -644,6 +658,40 @@ function buildCloudInit(
     };
   }
   const userDataIncluded = preset.cloudInitMode !== "none";
+  if (userDataIncluded) {
+    const selection = installation.moduleSelection;
+    const profile = manifestSelectionProfiles.find((entry) => entry.id === selection?.profile);
+    // The supplied template is a fixed, reviewed recipe, not rendered from the
+    // packet. Only no-selector/default profiles preserve its full-install
+    // behavior; expanding --only to the same IDs would still change which
+    // optional module failures are fatal. Keep this contract with the template.
+    const templateCompatible =
+      preset.cloudInitTemplateRef === HETZNER_CLOUD_INIT_TEMPLATE &&
+      installation.installMode === "vibe" &&
+      installation.sourceRef === "main" &&
+      installation.username === "ubuntu" &&
+      installation.ubuntuVersion === "26.04" &&
+      (!profile || (
+        profile.onlyModules.length === 0 && profile.onlyPhases.length === 0 &&
+        (!profile.mode || profile.mode === "vibe")
+      )) &&
+      !selection?.noDeps &&
+      !selection?.onlyModules?.length &&
+      !selection?.onlyPhases?.length &&
+      !selection?.skipModules?.length &&
+      !selection?.skipTags?.length &&
+      !selection?.skipCategories?.length;
+    if (!templateCompatible) {
+      return {
+        mode: "none",
+        userDataIncluded: false,
+        notes: [
+          "The supplied cloud-init template installs the full default stack as ubuntu in vibe mode from main on a fresh Ubuntu 26.04 image. It cannot apply this packet's custom choices.",
+          "Leave provider user data blank and run the exact installer command manually from the VPS root SSH session to preserve this packet's choices.",
+        ],
+      };
+    }
+  }
   return {
     mode: preset.cloudInitMode,
     userDataIncluded,
@@ -697,7 +745,13 @@ export function buildProviderProvisioningPacket(
         moduleSelection,
       )
     : PROVISIONING_NOT_READY_COMMAND;
-  const cloudInit = buildCloudInit(preset, installAllowed);
+  const cloudInit = buildCloudInit(preset, installAllowed, {
+    installMode: input.installMode,
+    sourceRef,
+    username: targetUsername,
+    ubuntuVersion,
+    moduleSelection,
+  });
 
   return {
     schema: PROVIDER_PROVISIONING_PACKET_SCHEMA,
@@ -731,7 +785,7 @@ export function buildProviderProvisioningPacket(
       productUrl: preset.productUrl,
       automationLevel: preset.automationLevel,
       manualCheckoutRequired: true,
-      manualStepsRemaining: manualStepsForProvider(preset.id),
+      manualStepsRemaining: manualStepsForProvider(preset.id, cloudInit.mode),
     },
     region: {
       id: regionId,
