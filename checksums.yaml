@@ -152,7 +152,7 @@ installers:
 
   ru:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/repo_updater/main/install.sh"
-    sha256: "77d3743db7683e7de8ca3190f19728ed34c543e66cc570fa289cc173e4e4e7cb"
+    sha256: "e42b0e0f521f2da719058d692b97bb46a4344c5abbd4d09f8c25c77d8003b305"
 
   rust:
     url: "https://sh.rustup.rs"
