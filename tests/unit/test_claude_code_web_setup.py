@@ -2789,12 +2789,20 @@ replace = os.replace
 def interrupt_second_binary(src, dst, *args, **kwargs):
     if pathlib.Path(dst) == pathlib.Path({str(legacy)!r}) and pathlib.Path(src).read_bytes() == {new_code!r}:
         os._exit(73)
+    # Retain an incomplete transaction for the later recovery tests by
+    # failing the real restore operation too. A child-only exit now triggers
+    # immediate recovery before setup returns, covered separately below.
+    if pathlib.Path(dst) == pathlib.Path({str(self.home / '.local/bin/am')!r}) and pathlib.Path(src).read_bytes() == {original['am']!r}:
+        raise OSError('injected rollback write failure')
     return replace(src, dst, *args, **kwargs)
 os.replace = interrupt_second_binary
 ''')
         interrupted = self.run_setup('am', ACFS_CLOUD_AGENT='generic', ACFS_CLOUD_REINSTALL='1')
         self.assertIn('bundle activation failed', interrupted)
         self.assertNotIn('(verified prebuilt)', interrupted)
+        log = (self.home / '.acfs/cloud/logs/am.log').read_text()
+        self.assertIn('injected rollback write failure', log)
+        self.assertIn('Immediate recovery did not complete', log)
         self.assertEqual((self.home / '.local/bin/am').read_bytes(), new_code)
         self.assertEqual(legacy.read_bytes(), original['mcp-agent-mail'])
         self.env.pop('PYTHONPATH')
@@ -2939,6 +2947,91 @@ os.replace = kill_job_after_first_binary
                              'The next cloud task must not receive a half-updated Agent Mail bundle')
         journal = self.home / '.acfs/cloud/transactions/am.json'
         self.assertEqual(json.loads(journal.read_text())['state'], 'rolled-back')
+
+    def test_killed_promotion_child_restores_bundle_before_session_starts(self):
+        self.bundle('am')
+        self.run_setup('am', ACFS_CLOUD_AGENT='generic')
+        binaries = self.home / '.local/bin'
+        original = {name: (binaries / name).read_bytes() for name in ('am', 'mcp-agent-mail')}
+        new_code = b'#!/bin/sh\necho am-interrupted-refresh\n'
+        self.bundle('am', new_code)
+        target = binaries / 'am'
+        reached = self.root / 'promotion-child-interrupted'
+        self.python_fault(f'''
+import os, pathlib
+replace = os.replace
+def kill_promotion_after_first_binary(src, dst, *args, **kwargs):
+    interrupt = pathlib.Path(dst) == pathlib.Path({str(target)!r}) and pathlib.Path(src).read_bytes() == {new_code!r}
+    result = replace(src, dst, *args, **kwargs)
+    if interrupt:
+        pathlib.Path({str(reached)!r}).write_text('promoted')
+        # Only the promotion process exits. Its enclosing Bash job records
+        # the activation failure and exits zero through the normal path.
+        os._exit(73)
+    return result
+os.replace = kill_promotion_after_first_binary
+''')
+        output = self.run_setup('am', ACFS_CLOUD_AGENT='generic', ACFS_CLOUD_REINSTALL='1')
+        self.assertEqual(reached.read_text(), 'promoted')
+        self.assertIn('bundle activation failed', output)
+        self.assertNotIn('tool job failed', output)
+        self.assertNotIn('(verified prebuilt)', output)
+        self.assertNotIn('`am` / `mcp-agent-mail`', (self.home / '.acfs/cloud/AGENTS.md').read_text())
+        for name, content in original.items():
+            self.assertEqual((binaries / name).read_bytes(), content,
+                             'A failed activation must restore the entire bundle before the next task')
+        journal = self.home / '.acfs/cloud/transactions/am.json'
+        self.assertEqual(json.loads(journal.read_text())['state'], 'rolled-back')
+
+    def test_failed_activation_report_preserves_committed_bundle(self):
+        self.bundle('am')
+        self.run_setup('am', ACFS_CLOUD_AGENT='generic')
+        new_code = b'#!/bin/sh\necho am-verified-refresh\n'
+        self.bundle('am', new_code)
+        journal = self.home / '.acfs/cloud/transactions/am.json'
+        self.python_fault(f'''
+import json, os, pathlib
+replace = os.replace
+def interrupt_after_commit(src, dst, *args, **kwargs):
+    committed = (pathlib.Path(dst) == pathlib.Path({str(journal)!r})
+                 and json.loads(pathlib.Path(src).read_text())['state'] == 'committed')
+    result = replace(src, dst, *args, **kwargs)
+    if committed:
+        os._exit(73)
+    return result
+os.replace = interrupt_after_commit
+''')
+        output = self.run_setup('am', ACFS_CLOUD_AGENT='generic', ACFS_CLOUD_REINSTALL='1')
+        self.assertIn('bundle activation failed', output)
+        self.assertNotIn('(verified prebuilt)', output)
+        for name in ('am', 'mcp-agent-mail'):
+            self.assertEqual((self.home / '.local/bin' / name).read_bytes(), new_code)
+        self.assertEqual(json.loads(journal.read_text())['state'], 'committed')
+
+    def test_failed_recovery_does_not_roll_back_another_invocations_transaction(self):
+        self.interrupted_agent_mail_refresh()
+        target = self.home / '.local/bin/am'
+        journal = self.home / '.acfs/cloud/transactions/am.json'
+        original_target, original_record = target.read_bytes(), journal.read_bytes()
+        reached = self.root / 'initial-recovery-failed'
+        self.python_fault(f'''
+import pathlib, os
+replace = os.replace
+def fail_recovery_once(src, dst, *args, **kwargs):
+    if (pathlib.Path(dst) == pathlib.Path({str(target)!r})
+            and pathlib.Path(src).name.endswith('.before')
+            and not pathlib.Path({str(reached)!r}).exists()):
+        pathlib.Path({str(reached)!r}).write_text('failed once')
+        raise OSError('injected prior-transaction recovery failure')
+    return replace(src, dst, *args, **kwargs)
+os.replace = fail_recovery_once
+''')
+        output = self.run_setup('am', ACFS_CLOUD_AGENT='generic')
+        self.assertEqual(reached.read_text(), 'failed once')
+        self.assertIn('bundle recovery failed', output)
+        self.assertNotIn('(already installed)', output)
+        self.assertEqual(target.read_bytes(), original_target)
+        self.assertEqual(journal.read_bytes(), original_record)
 
     def test_reinstall_replaces_binary_atomically_for_existing_readers(self):
         original = b'#!/bin/sh\necho br-old\n'

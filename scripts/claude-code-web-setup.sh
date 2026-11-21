@@ -741,23 +741,29 @@ PY
 cloud_install_tool() {
     # Bound the entire job, including existing/final binary probes and any
     # descendant process groups they create, not only downloads.
-    local tool="$1" rc log="$ACFS_CLOUD_STATE_DIR/logs/$1.log"
+    local tool="$1" rc status="" detail log="$ACFS_CLOUD_STATE_DIR/logs/$1.log"
     : > "$log"
     cloud_run_bounded "$ACFS_CLOUD_TIMEOUT" 2 job "$tool"
     rc=$?
-    if [[ $rc -ne 0 ]]; then
+    if [[ -f "$ACFS_CLOUD_WORK/status/$tool" ]]; then
+        IFS='|' read -r status detail < "$ACFS_CLOUD_WORK/status/$tool" || status=""
+    fi
+    if [[ $rc -ne 0 || "$status" != ok ]]; then
         # The supervisor has reaped this job and all its descendants. Restore
         # its interrupted replacement now, before the always-successful setup
-        # hands control to a cloud task. Keep the original failure status even
-        # when rollback succeeds. Recovery is separately bounded, in parallel
-        # with other jobs, and never waits on another setup's promotion lock.
+        # hands control to a cloud task. A killed promotion child is recorded
+        # as a failure even though its enclosing Bash job exits zero. Missing
+        # or incomplete status is also insufficient to leave a pending bundle.
+        # Keep the original failure even when rollback succeeds. Recovery is
+        # separately bounded, in parallel with other jobs, and never waits on
+        # another setup's promotion lock or rolls back its transaction.
         if ! cloud_run_bounded 5 1 rollback "$tool" >>"$log" 2>&1; then
             printf '%s\n' 'Immediate recovery did not complete; retained backups and recovery metadata for the next setup.' >>"$log"
         fi
     fi
     if [[ $rc -eq 124 || $rc -eq 137 ]]; then
         cloud_record "$tool" fail "download/install timed out after ${ACFS_CLOUD_TIMEOUT}s (see $log)"
-    elif [[ $rc -ne 0 || ! -f "$ACFS_CLOUD_WORK/status/$tool" ]]; then
+    elif [[ $rc -ne 0 || ( "$status" != ok && "$status" != fail ) ]]; then
         cloud_record "$tool" fail "tool job failed (exit $rc); see $log; no source build attempted"
     fi
 }
