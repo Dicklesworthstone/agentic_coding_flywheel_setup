@@ -1319,9 +1319,8 @@ modules:
     installed_check:
       run_as: target_user
       command: "command -v omp"
-    # POSIX sh installer; --binary forces the prebuilt release binary so the
-    # install is deterministic even when bun is present (default mode would
-    # otherwise do a `bun install -g` into ~/.bun/bin instead).
+    # POSIX sh installer; explicitly select the prebuilt release binary so
+    # ACFS's install mode does not depend on upstream defaults or Bun availability.
     verified_installer:
       tool: omp
       runner: sh

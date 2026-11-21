@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-11-20T15:52:57-05:00
+# checksums.yaml - Auto-generated 2026-11-20T20:27:49-05:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -16,7 +16,7 @@ installers:
 
   atuin:
     url: "https://github.com/atuinsh/atuin/releases/latest/download/atuin-installer.sh"
-    sha256: "f2fc43523b07cf293ef57dc190eacc9c3bf1924a5f3cee725bd36adbeab5623a"
+    sha256: "6dd0e64254caf4e6d841a13a1e7c2b2dd9b61315fcf8f6e96777fcd376824d1f"
 
   br:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/beads_rust/main/install.sh"
@@ -116,11 +116,11 @@ installers:
 
   ohmyzsh:
     url: "https://install.ohmyz.sh/"
-    sha256: "5574b96e94dbcb769f0d1592fa83aeb6ca2caf41c6ae5d76fcc7f04c524b4f55"
+    sha256: "3f9f1b6269deddc51cdcab2a689f54821e6e62c24401f970de4bfafad328b2ef"
 
   omp:
     url: "https://omp.sh/install.sh"
-    sha256: "cd8f77920da58c6f56b5851c841b61d5e30b4ba8f4cab683afba1f8274b56a06"
+    sha256: "9d8aea7105ab30b46f048c3ba9216ae9f92375491b883e510059069dbf968a5f"
 
   opencode:
     url: "https://opencode.ai/install"
