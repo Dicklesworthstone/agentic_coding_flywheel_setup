@@ -285,6 +285,14 @@ acfs_resolve_selection() {
                 log_error "Unknown module id in --only: $module"
                 return 1
             fi
+            # A direct request must install the named module, not succeed via
+            # the generated family's skip guard. Defaults, phase selections,
+            # and saved cross-platform scope retain their normal skip policy.
+            if ! acfs_module_supports_family "$module"; then
+                log_error "Selection error: $module was explicitly requested but is not supported on the ${ACFS_DISTRO_FAMILY:-ubuntu} distro family."
+                log_error "Supported families: ${ACFS_MODULE_FAMILIES[$module]}. Use a supported host or remove --only $module."
+                return 1
+            fi
             desired["$module"]=1
             start_reason["$module"]="explicitly requested"
         done

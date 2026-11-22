@@ -180,6 +180,24 @@ confirm_resume() { trace normal_install_ready; exit 0; }
                 self.assertIn('confirm_declined', events)
                 self.assertNotIn('mut:base', events)
 
+    def test_explicit_platform_mismatch_stops_before_install_mutations(self):
+        # Use the real manifest and selection resolver: SRPS is Ubuntu-only.
+        # Its generated family guard deliberately skips it on ordinary Arch
+        # installs, but a user's direct request cannot be a successful no-op.
+        source_selection = '\n'.join([
+            'builtin source ' + shlex.quote(str(ROOT / 'scripts/lib/install_helpers.sh')),
+            'builtin source ' + shlex.quote(str(ROOT / 'scripts/generated/manifest_index.sh')),
+            'ONLY_MODULES=(stack.srps)',
+        ])
+        for dependency_mode in ('false', 'true'):
+            with self.subTest(no_deps=dependency_mode):
+                result, events, _ = self.run_main(
+                    overrides={'TEST_OS': 'arch', 'ACFS_DISTRO_FAMILY': 'arch'},
+                    extra=source_selection + '\nNO_DEPS=' + dependency_mode)
+                self.assert_no_mutation(result, events)
+                self.assertIn('stack.srps was explicitly requested but is not supported', result.stderr)
+                self.assertIn('Supported families: ubuntu', result.stderr)
+
     def test_base_dependencies_follow_confirmation(self):
         for resume_status, gate in (('1', 'confirm_accepted'), ('0', 'resume_accepted')):
             with self.subTest(gate=gate):

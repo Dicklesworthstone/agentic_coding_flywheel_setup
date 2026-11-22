@@ -114,6 +114,53 @@ use_spy_sudo() {
     if [[ -n "${ACFS_EFFECTIVE_RUN[mod1]}" ]]; then fail "mod1 selected"; fi
 }
 
+@test "acfs_resolve_selection: explicit unsupported roots fail with and without dependencies" {
+    declare -gA ACFS_MODULE_FAMILIES=( ["mod3"]="ubuntu" )
+    ACFS_DISTRO_FAMILY=arch
+    ONLY_MODULES=("mod3")
+
+    local dependency_mode
+    for dependency_mode in false true; do
+        NO_DEPS="$dependency_mode"
+        run acfs_resolve_selection
+        assert_failure
+        assert_output --partial "mod3 was explicitly requested but is not supported on the arch distro family"
+        assert_output --partial "Supported families: ubuntu"
+    done
+}
+
+@test "acfs_resolve_selection: supported explicit roots retain dependencies and ordering" {
+    declare -gA ACFS_MODULE_FAMILIES=( ["mod3"]="ubuntu arch" )
+    ACFS_DISTRO_FAMILY=arch
+    ACFS_MODULE_DEPS["mod3"]="mod2"
+    ONLY_MODULES=("mod3")
+
+    acfs_resolve_selection
+
+    assert_equal "${ACFS_EFFECTIVE_PLAN[*]}" "mod2 mod3"
+    assert_equal "${ACFS_PLAN_REASON[mod3]}" "explicitly requested"
+}
+
+@test "acfs_resolve_selection: platform-specific defaults phases and saved scope remain portable" {
+    declare -gA ACFS_MODULE_FAMILIES=( ["mod1"]="ubuntu" ["mod3"]="ubuntu" )
+    ACFS_DISTRO_FAMILY=arch
+    acfs_resolve_selection
+    assert_equal "${ACFS_EFFECTIVE_PLAN[*]}" "mod1 mod2"
+
+    ONLY_PHASES=("3")
+    acfs_resolve_selection
+    assert_equal "${ACFS_EFFECTIVE_PLAN[*]}" "mod3"
+    assert_equal "${ACFS_PLAN_REASON[mod3]}" "phase 3"
+
+    ONLY_PHASES=()
+    ACFS_SAVED_SELECTION_ACTIVE=true
+    ACFS_SAVED_SELECTION_MODULES=("mod1" "mod3")
+    ACFS_SAVED_REQUESTED_MODULES=("mod3")
+    acfs_resolve_selection
+    assert_equal "${ACFS_EFFECTIVE_PLAN[*]}" "mod1 mod3"
+    assert_equal "${ACFS_PLAN_REASON[mod3]}" "explicitly requested"
+}
+
 @test "acfs_resolve_selection: --skip module" {
     SKIP_MODULES=("mod1")
     acfs_resolve_selection
