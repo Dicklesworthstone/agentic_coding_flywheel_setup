@@ -1068,7 +1068,7 @@ update_deployed_asset_is_selected() {
 update_binary_exists() {
     local resolved=""
     case "$1" in
-        sg|lsd|dust|tldr) resolved="$(update_rust_binary_path "$1" 2>/dev/null || true)" ;;
+        sg|lsd|dust|tldr|aadc|rust_proxy|caut) resolved="$(update_rust_binary_path "$1" 2>/dev/null || true)" ;;
         *) resolved="$(update_binary_path "$1" 2>/dev/null || true)" ;;
     esac
     [[ -n "$resolved" ]]
@@ -1417,7 +1417,7 @@ get_version() {
                 version="unknown"
             fi
             ;;
-        ubs|bv|cass|cm|caam|slb|ru|dcg|apr|pt|xf|jfp|ms|br|rch|giil|csctf|srps|tru|rano|mdwb|s2p|brenner|fsfs|sbh|casr|dsr|asb|aadc|rust_proxy|ee|fmd|pi)
+        ubs|bv|cass|cm|caam|slb|ru|dcg|apr|pt|xf|jfp|ms|br|rch|giil|csctf|srps|tru|rano|mdwb|s2p|brenner|fsfs|sbh|casr|dsr|asb|ee|fmd|pi)
             tool_bin="$(update_binary_path "$tool" 2>/dev/null || true)"
             if [[ -n "$tool_bin" ]]; then
                 version=$(update_run_bounded_in_target_context "$tool_bin" --version 2>/dev/null | awk 'NR == 1 { print }' || echo "unknown")
@@ -1425,7 +1425,7 @@ get_version() {
                 version="unknown"
             fi
             ;;
-        sg|lsd|dust|tldr)
+        sg|lsd|dust|tldr|aadc|rust_proxy|caut)
             tool_bin="$(update_rust_binary_path "$tool" 2>/dev/null || true)"
             if [[ -n "$tool_bin" ]]; then
                 version=$(update_run_rust_in_target_context "$tool_bin" --version 2>/dev/null | awk 'NR == 1 { print }' || echo "unknown")
@@ -3239,7 +3239,7 @@ update_run_bounded_in_target_context() {
 # Resolve relative overrides before the target runner changes directory.
 update_rust_binary_path() {
     local tool="${1:-}" target_user="" current_user="" cargo_home=""
-    case "$tool" in rustup|rustc|cargo|sg|lsd|dust|tldr) ;; *) return 1 ;; esac
+    case "$tool" in rustup|rustc|cargo|sg|lsd|dust|tldr|aadc|rust_proxy|caut) ;; *) return 1 ;; esac
     target_user="$(update_target_user)" || return 1
     current_user="$(update_current_user)" || return 1
     if [[ "$target_user" == "$current_user" && -n "${CARGO_HOME:-}" ]]; then
@@ -5887,16 +5887,24 @@ update_run_cargo_git_source_install() {
         return "$UPDATE_EXIT_HELD"
     fi
 
+    local cargo_bin="" bash_bin=""
+    if ! cargo_bin="$(update_rust_binary_path cargo)" \
+        || ! bash_bin="$(update_system_binary_path bash)"; then
+        printf 'Cannot build %s: target Cargo and a system Bash are required.\n' "$binary_name" >&2
+        return 1
+    fi
+
     local build_cmd
     build_cmd="$(cat <<'EOF'
 set -euo pipefail
-mkdir -p "$HOME/.cargo/bin"
+cargo_home="${CARGO_HOME:-$HOME/.cargo}"
+mkdir -p "$cargo_home/bin"
 # Skip the full release build when the installed binary was already built from
 # the current upstream HEAD (stamp written after each successful install).
 # Without this, every run cloned and rebuilt every source tool from scratch.
 # ACFS_SOURCE_REBUILD=1 forces a rebuild.
 acfs_src_stamp="$HOME/.cache/acfs/source-builds/$2.commit"
-if [[ "${ACFS_SOURCE_REBUILD:-0}" != "1" && -x "$HOME/.cargo/bin/$2" && -s "$acfs_src_stamp" ]]; then
+if [[ "${ACFS_SOURCE_REBUILD:-0}" != "1" && -x "$cargo_home/bin/$2" && -s "$acfs_src_stamp" ]]; then
     acfs_upstream="$(git ls-remote "$1" HEAD 2>/dev/null | awk 'NR==1 { print $1 }')" || acfs_upstream=""
     if [[ -n "$acfs_upstream" && "$(cat "$acfs_src_stamp")" == "$acfs_upstream" ]]; then
         echo "$2 already built from upstream ${acfs_upstream:0:12}; skipping source rebuild"
@@ -5945,13 +5953,17 @@ cd "$ACFS_TMP_DIR/src"
 # rch rejects it ("Project path normalization failed ... outside canonical root")
 # and, where the shim requires remote, refuses local fallback too (exit 103).
 # RCH_ENABLED=0 is rch's own disable switch, scoped to this one-off tool build.
-RCH_ENABLED=0 cargo build --release --target-dir "$ACFS_TMP_DIR/target"
-install -m 0755 "$ACFS_TMP_DIR/target/release/$2" "$HOME/.cargo/bin/$2"
+RCH_ENABLED=0 "$3" build --release --target-dir "$ACFS_TMP_DIR/target"
+install -m 0755 "$ACFS_TMP_DIR/target/release/$2" "$cargo_home/bin/$2"
 (umask 077; mkdir -p "${acfs_src_stamp%/*}")
 git rev-parse HEAD > "$acfs_src_stamp.tmp" && mv -f "$acfs_src_stamp.tmp" "$acfs_src_stamp"
 EOF
 )"
-    update_run_in_target_context "" bash -c "$build_cmd" _ "$repo_url" "$binary_name"
+    # Source utilities share runtime maintenance's account isolation and
+    # deadline. In particular, a custom CARGO_HOME belongs only to its caller;
+    # a privileged updater must not build into its own stores for another user.
+    update_run_rust_in_target_context "$bash_bin" --noprofile --norc -c "$build_cmd" \
+        _ "$repo_url" "$binary_name" "$cargo_bin"
 }
 
 # ============================================================
@@ -11051,6 +11063,22 @@ update_stack() {
             update_say "       ${DIM}%s → %s${NC}\n" "${VERSION_BEFORE[rust_proxy]}" "${VERSION_AFTER[rust_proxy]}"
         else
             log_to_file "Rust Proxy already up to date: ${VERSION_AFTER[rust_proxy]:-${VERSION_BEFORE[rust_proxy]:-unknown}}"
+        fi
+    fi
+
+    # Coding Agent Usage Tracker (caut) - maintain the selected source-built
+    # utility, including a missing installation explicitly repaired with --force.
+    if update_module_is_selected utils.caut; then
+        if update_skip_held_tool caut "CAUT"; then
+            :
+        elif update_binary_exists caut || [[ "$FORCE_MODE" == "true" ]]; then
+            capture_version_before "caut"
+            run_cmd "CAUT" update_run_cargo_git_source_install https://github.com/Dicklesworthstone/coding_agent_usage_tracker.git caut
+            if capture_version_after "caut"; then
+                update_say "       ${DIM}%s → %s${NC}\n" "${VERSION_BEFORE[caut]}" "${VERSION_AFTER[caut]}"
+            fi
+        else
+            log_item "skip" "CAUT" "not installed (use --force to install)"
         fi
     fi
 

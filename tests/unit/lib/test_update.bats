@@ -13744,28 +13744,29 @@ EOF
 }
 
 @test "update cargo git source installer delegates through target context" {
-    update_run_in_target_context() {
-        printf 'env=%s\n' "$1"
-        printf 'cmd=%s\n' "$2"
-        printf 'mode=%s\n' "$3"
-        printf 'script=%s\n' "$4"
-        printf 'sentinel=%s\n' "$5"
-        printf 'repo=%s\n' "$6"
-        printf 'binary=%s\n' "$7"
+    update_rust_binary_path() { printf '%s\n' "$HOME/.cargo/bin/cargo"; }
+    update_run_rust_in_target_context() {
+        printf 'cmd=%s\n' "$1"
+        printf 'mode=%s %s %s\n' "$2" "$3" "$4"
+        printf 'script=%s\n' "$5"
+        printf 'sentinel=%s\n' "$6"
+        printf 'repo=%s\n' "$7"
+        printf 'binary=%s\n' "$8"
+        printf 'cargo=%s\n' "$9"
     }
 
     run update_run_cargo_git_source_install "https://example.test/tool.git" "tool-bin"
     assert_success
-    assert_output --partial "env="
-    assert_output --partial "cmd=bash"
-    assert_output --partial "mode=-c"
+    assert_output --partial "cmd=$(update_system_binary_path bash)"
+    assert_output --partial "mode=--noprofile --norc -c"
     assert_output --partial "ACFS_UPDATE_TMPDIR"
     assert_output --partial "/data/tmp"
     assert_output --partial 'mktemp -d "$candidate/acfs_cargo_build.XXXXXX"'
-    assert_output --partial "RCH_ENABLED=0 cargo build --release"
+    assert_output --partial 'RCH_ENABLED=0 "$3" build --release'
     assert_output --partial "sentinel=_"
     assert_output --partial "repo=https://example.test/tool.git"
     assert_output --partial "binary=tool-bin"
+    assert_output --partial "cargo=$HOME/.cargo/bin/cargo"
 }
 
 @test "update cargo git source installer honors an active hold before any clone (#357)" {
@@ -13799,6 +13800,32 @@ EOF
     printf '#!/bin/sh\n' > "$HOME/.cargo/bin/tool-bin"
     chmod +x "$HOME/.cargo/bin/tool-bin"
     update_run_in_target_context() { shift; PATH="$FAKE_SRC_BIN:$PATH" "$@"; }
+    update_rust_binary_path() {
+        [[ "$1" == cargo ]] || return 1
+        printf '%s\n' "$FAKE_SRC_BIN/cargo"
+    }
+}
+
+@test "update cargo source maintenance installs into the selected Cargo home" {
+    write_fake_source_build_tools 1111111111111111111111111111111111111111
+    export CARGO_HOME="$HOME/custom cargo"
+    cat > "$FAKE_SRC_BIN/cargo" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "$1" == build && "$2" == --release && "$3" == --target-dir ]]
+mkdir -p "$4/release"
+printf '#!/bin/sh\nprintf "source tool 2.0.0\\n"\n' > "$4/release/tool-bin"
+chmod +x "$4/release/tool-bin"
+EOF
+
+    run update_run_cargo_git_source_install "https://example.test/tool.git" "tool-bin"
+
+    assert_success
+    [[ -x "$CARGO_HOME/bin/tool-bin" ]] || fail "source binary was not installed into CARGO_HOME"
+    run "$CARGO_HOME/bin/tool-bin" --version
+    assert_success
+    assert_output "source tool 2.0.0"
+    [[ "$(cat "$HOME/.cargo/bin/tool-bin")" == '#!/bin/sh' ]] || fail "default Cargo home was modified"
 }
 
 @test "update cargo git source installer skips the rebuild when the stamp matches upstream HEAD" {

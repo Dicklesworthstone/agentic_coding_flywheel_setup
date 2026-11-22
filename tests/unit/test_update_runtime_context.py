@@ -2411,6 +2411,73 @@ update_stack
 ''')
         self.assertEqual(self.events(), [["srps"]])
 
+    def test_caut_selected_install_reaches_source_maintenance(self):
+        self.write_selection(["utils.caut"])
+        self.write_native_tool("caut", directory=self.home / ".cargo/bin")
+        output = self.run_update(command=r'''
+update_require_security() { return 0; }
+update_run_cargo_git_source_install() {
+    printf '%s\n' "$*" > "$TEST_ROOT/source-install"
+}
+update_stack
+''')
+        self.assertTrue((self.base / "source-install").exists(), output)
+        self.assertEqual((self.base / "source-install").read_text(),
+                         "https://github.com/Dicklesworthstone/coding_agent_usage_tracker.git caut\n")
+        self.assertEqual([(event[0], event[-1]) for event in self.events()],
+                         [("caut", "--version"), ("caut", "--version")])
+        self.assertIn("Version before [caut]: caut 1.2.3-fixture",
+                      (self.base / "update.log").read_text())
+        self.assertIn("COUNTS=1,", output)
+
+    def test_caut_maintenance_finds_custom_cargo_home_and_reports_build_failure(self):
+        self.write_selection(["utils.caut"])
+        self.write_native_tool("caut", directory=self.home / "custom cargo/bin")
+        output = self.run_update(command=r'''
+export CARGO_HOME="$TEST_HOME/custom cargo"
+update_require_security() { return 0; }
+update_run_cargo_git_source_install() {
+    printf '%s\n' "$*" > "$TEST_ROOT/source-install"
+    return 17
+}
+update_stack
+''')
+        self.assertTrue((self.base / "source-install").exists(), output)
+        self.assertEqual([(event[0], event[-1]) for event in self.events()],
+                         [("caut", "--version"), ("caut", "--version")])
+        log = (self.base / "update.log").read_text()
+        self.assertIn("Failed: CAUT (exit code: 17)", log)
+        self.assertNotIn("Success: CAUT", log)
+        self.assertIn("COUNTS=0,", output)
+        self.assertTrue(output.rstrip().endswith(",1"), output)
+
+    def test_caut_forced_repair_respects_selection_and_hold(self):
+        self.write_selection(["utils.caut"])
+        command = r'''
+update_require_security() { return 0; }
+update_run_cargo_git_source_install() {
+    printf '%s\n' "$*" >> "$TEST_ROOT/source-install"
+}
+update_stack
+printf 'HELD=%s:%s\n' "$HELD_COUNT" "${UPDATE_HELD_TOOLS[*]}"
+'''
+        self.run_update(command=command)
+        self.assertFalse((self.base / "source-install").exists())
+        self.run_update(command="FORCE_MODE=true\n" + command, dry_run=True)
+        self.assertFalse((self.base / "source-install").exists())
+        output = self.run_update(command="FORCE_MODE=true\n" + command)
+        self.assertTrue((self.base / "source-install").exists(), output)
+        self.assertEqual((self.base / "source-install").read_text().count("caut\n"), 1)
+        self.write_native_tool("caut", directory=self.home / ".cargo/bin")
+        self.write_holds(["caut"])
+        output = self.run_update(command="FORCE_MODE=true\n" + command)
+        self.assertIn("HELD=1:caut", output)
+        self.assertEqual((self.base / "source-install").read_text().count("caut\n"), 1)
+        self.assertEqual(self.events(), [])
+        self.write_selection(["utils.aadc"])
+        self.run_update(command="FORCE_MODE=true\n" + command)
+        self.assertEqual((self.base / "source-install").read_text().count("caut\n"), 1)
+
     def test_legacy_scope_also_honors_manifest_platforms(self):
         output = self.run_update(command=r'''
 ACFS_DISTRO_FAMILY=arch FORCE_MODE=true
