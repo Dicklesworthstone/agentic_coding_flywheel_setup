@@ -7928,6 +7928,14 @@ update_bootstrap_admit() {
     target_user="$(update_target_user)" || return 1
     target_home="$(update_target_home "$target_user")" || return 1
     running_root="$(cd "$SCRIPT_DIR/../.." && pwd -P)" || return 1
+    # Every bootstrap check below refuses group-writable runtime code, so the
+    # repair at the end of sync_acfs_deployed never ran on an installation a
+    # umask-0002 shell left at 664/775. Apply that same owned, private-group
+    # repair first; anything it refuses is still refused below. Diagnostics
+    # run unlocked and stay read-only.
+    if [[ "$CHECK_RUNTIME" != "true" ]]; then
+        update_normalize_runtime_modes "$target_home/.acfs"
+    fi
     if [[ "$REPAIR_RUNTIME" == "true" ]]; then
         update_bootstrap_repair "$target_home" "$target_user" "$@"
         return $?

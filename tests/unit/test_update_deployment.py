@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import grp
 import pwd
 import re
 import select
@@ -2304,6 +2305,39 @@ main "$@"
             destination.write_bytes((self.snapshot / relative).read_bytes())
             destination.chmod(0o644)
 
+    @staticmethod
+    def user_private_group():
+        """The runtime mode repair only tightens objects in this kind of group."""
+        account = pwd.getpwuid(os.geteuid())
+        try:
+            group = grp.getgrgid(os.getegid())
+        except KeyError:
+            return False
+        return (account.pw_gid == group.gr_gid and group.gr_name == account.pw_name
+                and not set(group.gr_mem) - {account.pw_name}
+                and not any(other.pw_uid != account.pw_uid and other.pw_gid == group.gr_gid
+                            for other in pwd.getpwall()))
+
+    def umask_0002_runtime(self):
+        """Give ~/.acfs the 664/775 modes a umask-0002 installer leaves behind.
+
+        Explicitly private objects (state.json, .update-runtime) keep their
+        modes, as a umask can only clear requested bits.
+        """
+        self.acfs.chmod(0o755)
+        modes = {}
+        for directory, _, files in os.walk(self.acfs):
+            for path in (Path(directory), *(Path(directory) / name for name in files)):
+                mode = path.lstat().st_mode & 0o7777
+                if not path.is_symlink() and mode & 0o040:
+                    path.chmod(mode | 0o020)
+                    modes[path] = mode | 0o020
+        return modes
+
+    @staticmethod
+    def modes(paths):
+        return {path: path.lstat().st_mode & 0o7777 for path in paths}
+
     def test_prepare_validates_full_revision_without_publishing_or_rewriting_checkpoint(self):
         previous = self.old_runtime("outdated")
         before = self.file_identity(previous)
@@ -3023,6 +3057,59 @@ fi
         self.assertNotEqual(process.returncode, 0, (stdout + stderr).decode())
         self.assertEqual(self.file_identity(self.state), checkpoint)
         self.assertFalse((self.acfs / ".update-runtime").exists())
+        self.assert_no_installer()
+
+    @unittest.skipIf(os.geteuid() == 0, "actual entrypoint uses root's fixed /root home")
+    def test_umask_0002_private_runtime_is_repaired_before_admission(self):
+        # Admission used to refuse 664/775 runtime code before the end-of-sync
+        # repair could run, so every update failed until a manual chmod.
+        if not self.user_private_group():
+            self.skipTest("requires a user-private primary group")
+        arguments = ["--yes", "--quiet", "--no-self-update", "--stack-only", "--force"]
+        for activated in (False, True):
+            with self.subTest(activated=activated):
+                case = self.nested_case()
+                entry, _ = case.stranded_entry()
+                if activated:
+                    recovery = case.main_process(entry, "--yes", "--repair-runtime")
+                    stdout, stderr = recovery.communicate(timeout=45)
+                    self.assertEqual(recovery.returncode, 0, (stdout + stderr).decode())
+                else:
+                    case.complete_adjacent_scope_libraries()
+                writable = case.umask_0002_runtime()
+                self.assertEqual(writable[case.acfs], 0o775)
+                self.assertEqual(writable[entry], 0o775)
+                checkpoint = case.file_identity(case.state)
+                # The unlocked diagnostic reports the refusal and repairs nothing.
+                check = subprocess.run(["/bin/bash", str(entry), "--check-runtime"], env=case.env,
+                                       capture_output=True, text=True, timeout=15)
+                self.assertNotEqual(check.returncode, 0, check.stdout + check.stderr)
+                self.assertIn("unsafe ownership, permissions or type", check.stderr)
+                self.assertEqual(case.modes(writable), writable)
+                process = case.main_process(entry, *arguments)
+                stdout, stderr = process.communicate(timeout=45)
+                self.assertEqual(process.returncode, 0, (stdout + stderr).decode())
+                self.assertEqual(case.modes(writable),
+                                 {path: mode & ~0o022 for path, mode in writable.items()})
+                self.assertTrue((case.base / "handoff-receipt").is_file())
+                self.assertEqual(case.file_identity(case.state), checkpoint)
+
+    @unittest.skipIf(os.geteuid() == 0, "actual entrypoint uses root's fixed /root home")
+    def test_umask_0002_private_runtime_is_repaired_before_runtime_recovery(self):
+        if not self.user_private_group():
+            self.skipTest("requires a user-private primary group")
+        entry, revision = self.stranded_entry("outdated")
+        writable = self.umask_0002_runtime()
+        checkpoint = self.file_identity(self.state)
+        process = self.main_process(entry, "--yes", "--repair-runtime")
+        stdout, stderr = process.communicate(timeout=45)
+        self.assertEqual(process.returncode, 0, (stdout + stderr).decode())
+        self.assertIn(revision.encode(), stdout + stderr)
+        self.assertEqual(self.modes(writable),
+                         {path: mode & ~0o022 for path, mode in writable.items()})
+        self.assertEqual((self.current() / "scripts/lib/state.sh").read_bytes(),
+                         (self.snapshot / "scripts/lib/state.sh").read_bytes())
+        self.assertEqual(self.file_identity(self.state), checkpoint)
         self.assert_no_installer()
 
 
