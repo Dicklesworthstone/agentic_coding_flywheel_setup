@@ -1113,7 +1113,7 @@ update_tool_binary_path() {
     esac
 
     for candidate in "${candidates[@]}"; do
-        [[ -x "$candidate" ]] || continue
+        [[ -x "$candidate" && ! -d "$candidate" ]] || continue
         printf '%s\n' "$candidate"
         return 0
     done
@@ -1836,7 +1836,13 @@ update_write_atuin_guard_wrapper() {
     local real_bin_q=""
     local backup_path=""
 
-    [[ -n "$wrapper_path" && -n "$real_bin" && -x "$real_bin" ]] || return 1
+    [[ -n "$wrapper_path" && -n "$real_bin" && -x "$real_bin" && ! -d "$real_bin" ]] || return 1
+    # A command-name directory is user data, and a custom bin directory can
+    # alias the payload directory itself. Neither may be replaced by a wrapper.
+    [[ ! -d "$wrapper_path" ]] || return 1
+    if [[ ! -L "$wrapper_path" && "$wrapper_path" -ef "$real_bin" ]]; then
+        return 1
+    fi
     printf -v real_bin_q '%q' "$real_bin"
 
     if [[ -e "$wrapper_path" || -L "$wrapper_path" ]]; then
@@ -1900,7 +1906,7 @@ fi
 
 exec "$real_atuin_bin" "$@"
 ATUIN_ACFS_WRAPPER_TAIL
-    } > "$wrapper_path"
+    } > "$wrapper_path" || return 1
     chmod 0755 "$wrapper_path"
 }
 
@@ -1988,10 +1994,10 @@ update_repair_atuin_install() {
         bin_dirs+=("$user_bin")
     fi
 
-    if [[ -x "$preferred_src" ]]; then
+    if [[ -x "$preferred_src" && ! -d "$preferred_src" ]]; then
         for dir in "${bin_dirs[@]}"; do
             [[ -n "$dir" ]] || continue
-            mkdir -p "$dir" 2>/dev/null || true
+            mkdir -p "$dir" 2>/dev/null || return 1
             if [[ "${EUID:-$(id -u)}" -eq 0 && -n "$target_home" && "$dir" == "$target_home/"* ]]; then
                 local chown_dir="$dir"
                 while [[ "$chown_dir" == "$target_home/"* && "$chown_dir" != "$target_home" ]]; do
@@ -2005,11 +2011,13 @@ update_repair_atuin_install() {
                     chown "$target_user:$target_user" "$dir/atuin" 2>/dev/null || chown "$target_user" "$dir/atuin" 2>/dev/null || true
                 fi
                 log_to_file "Atuin guard wrapper installed: $dir/atuin -> $preferred_src"
+            else
+                return 1
             fi
         done
     fi
 
-    if [[ -x "$preferred_src" && "$installed_wrapper" != true ]]; then
+    if [[ "$installed_wrapper" != true ]]; then
         return 1
     fi
 
@@ -2036,10 +2044,17 @@ update_repair_zoxide_install() {
     # copy from the custom directory.
     if [[ -n "$primary_dir" && -n "$user_bin" && "$primary_dir" != "$user_bin" ]]; then
         local preferred_src="$user_bin/zoxide"
-        [[ -x "$preferred_src" ]] || return 1
-        mkdir -p "$primary_dir" 2>/dev/null || true
-        if ln -sf "$preferred_src" "$primary_dir/zoxide" 2>/dev/null; then
-            log_to_file "Zoxide symlink normalized: $primary_dir/zoxide -> $preferred_src"
+        [[ -x "$preferred_src" && ! -d "$preferred_src" && ! -d "$primary_dir/zoxide" ]] || return 1
+        mkdir -p "$primary_dir" 2>/dev/null || return 1
+        # Distinct spellings can name the same directory. Check after mkdir:
+        # a path like new/../.local/bin becomes resolvable only when new exists.
+        # Relinking through that alias would replace the payload with itself.
+        if [[ ! "$primary_dir" -ef "$user_bin" ]]; then
+            if ln -sfn -- "$preferred_src" "$primary_dir/zoxide" 2>/dev/null; then
+                log_to_file "Zoxide symlink normalized: $primary_dir/zoxide -> $preferred_src"
+            else
+                return 1
+            fi
         fi
     fi
 
@@ -2114,8 +2129,20 @@ update_run_verified_installer_with_shell_repair() {
         update_finish_cmd_skip "$desc" "BACKOFF: $UPDATE_LAST_BACKOFF_DETAILS"
         return 0
     fi
+    if update_is_pin_failure "$exit_code" update_run_verified_installer; then
+        # A shim repair cannot make rejected installer bytes trustworthy. Keep
+        # this refusal visible and do not mutate the installed configuration.
+        update_finish_cmd_pin_failure "$desc"
+        return "$UPDATE_EXIT_CHECKSUM"
+    fi
 
-    "$repair_fn" >/dev/null 2>&1 || true
+    if ! "$repair_fn" >/dev/null 2>&1; then
+        # A runnable payload is not enough: Atuin also requires guarded
+        # launchers and removal of its agent hooks, and custom bin paths must
+        # resolve to the repaired tool before this update can report success.
+        update_finish_cmd_fail "$desc" "post-install repair failed"
+        return 1
+    fi
     after_path="$(update_tool_binary_path "$tool" 2>/dev/null || true)"
     after_version="$(get_version "$tool")"
 
@@ -6849,7 +6876,13 @@ update_run_verified_installer() {
 
     local tool="$1"
     shift
-    update_run_verified_installer_with_env "$tool" "" "$@"
+    local installer_env=""
+    if [[ "$tool" == atuin ]]; then
+        # Pass this explicitly through sudo/runuser too. The updater owns the
+        # guarded launchers; the upstream installer must not edit shell PATH.
+        installer_env="ATUIN_NO_MODIFY_PATH=1"
+    fi
+    update_run_verified_installer_with_env "$tool" "$installer_env" "$@"
 }
 
 update_prepare_target_installer_tmpdir() {
@@ -11462,7 +11495,7 @@ update_atuin() {
     local target_home=""
     local ver_after=""
     atuin_bin="$(update_tool_binary_path "atuin" 2>/dev/null || true)"
-    if [[ -z "$atuin_bin" ]]; then
+    if [[ -z "$atuin_bin" && "$FORCE_MODE" != "true" ]]; then
         log_item "skip" "Atuin" "not installed"
         return 0
     fi
@@ -11473,7 +11506,7 @@ update_atuin() {
     target_home="$(update_target_home "$(update_target_user)" 2>/dev/null || true)"
     [[ -n "$target_home" ]] && atuin_update_bin="$target_home/.atuin/bin/atuin-update"
 
-    if [[ -x "$atuin_update_bin" ]]; then
+    if [[ -n "$atuin_bin" && -x "$atuin_update_bin" ]]; then
         if run_cmd_attempt_with_retry "Atuin updater" update_run_bounded_in_target_context "$atuin_update_bin"; then
             if ! update_repair_atuin_install >/dev/null 2>&1; then
                 log_item "fail" "Atuin" "updated, but agent-integration cleanup failed"
@@ -11490,7 +11523,7 @@ update_atuin() {
             return 0
         fi
     # Compatibility path for releases that exposed self-update on the main CLI.
-    elif update_run_bounded_in_target_context "$atuin_bin" --help 2>&1 | grep "self-update" >/dev/null; then
+    elif [[ -n "$atuin_bin" ]] && update_run_bounded_in_target_context "$atuin_bin" --help 2>&1 | grep "self-update" >/dev/null; then
         if run_cmd_attempt_with_retry "Atuin self-update" update_run_bounded_in_target_context "$atuin_bin" self-update; then
             if ! update_repair_atuin_install >/dev/null 2>&1; then
                 log_item "fail" "Atuin" "updated, but agent-integration cleanup failed"
@@ -11517,13 +11550,23 @@ update_atuin() {
     if [[ "$needs_reinstall" == "true" ]]; then
         if update_require_security; then
             if declare -p KNOWN_INSTALLERS >/dev/null 2>&1 && [[ "${KNOWN_INSTALLERS[atuin]-}" == "https://setup.atuin.sh" ]]; then
-                log_item "skip" "Atuin" "refusing agent-aware setup installer"
+                if [[ -z "$atuin_bin" ]]; then
+                    log_item "fail" "Atuin" "cannot repair missing tool with the agent-aware setup installer"
+                else
+                    log_item "skip" "Atuin" "refusing agent-aware setup installer"
+                fi
                 return 0
             fi
-            if ! ATUIN_NO_MODIFY_PATH=1 update_run_verified_installer_with_shell_repair "Atuin (reinstall)" "atuin" update_repair_atuin_install; then
+            local install_desc="Atuin (reinstall)"
+            [[ -n "$atuin_bin" ]] || install_desc="Atuin (install)"
+            if ! update_run_verified_installer_with_shell_repair "$install_desc" "atuin" update_repair_atuin_install; then
                 :
             fi
         else
+            if [[ -z "$atuin_bin" ]]; then
+                log_item "fail" "Atuin" "not installed and checksum-verified installer unavailable"
+                return 0
+            fi
             # Last resort: no checksum verification available
             if [[ "$YES_MODE" == "true" ]]; then
                 log_item "skip" "Atuin" "checksum verification unavailable (missing security.sh/checksums.yaml)"
@@ -11553,7 +11596,7 @@ update_zoxide() {
     update_skip_held_tool zoxide "Zoxide" && return 0
     local zoxide_bin=""
     zoxide_bin="$(update_tool_binary_path "zoxide" 2>/dev/null || true)"
-    if [[ -z "$zoxide_bin" ]]; then
+    if [[ -z "$zoxide_bin" && "$FORCE_MODE" != "true" ]]; then
         log_item "skip" "Zoxide" "not installed"
         return 0
     fi
@@ -11562,10 +11605,16 @@ update_zoxide() {
 
     # Zoxide doesn't have self-update, reinstall via official installer
     if update_require_security; then
-        if ! update_run_verified_installer_with_shell_repair "Zoxide (reinstall)" "zoxide" update_repair_zoxide_install; then
+        local install_desc="Zoxide (reinstall)"
+        [[ -n "$zoxide_bin" ]] || install_desc="Zoxide (install)"
+        if ! update_run_verified_installer_with_shell_repair "$install_desc" "zoxide" update_repair_zoxide_install; then
             :
         fi
     else
+        if [[ -z "$zoxide_bin" ]]; then
+            log_item "fail" "Zoxide" "not installed and checksum-verified installer unavailable"
+            return 0
+        fi
         # Last resort: no checksum verification available
         if [[ "$YES_MODE" == "true" ]]; then
             log_item "skip" "Zoxide" "checksum verification unavailable (missing security.sh/checksums.yaml)"

@@ -55,6 +55,30 @@ have been updated when another tool is blocked. The updater does not weaken
 verification, change pins automatically outside its existing metadata refresh,
 or launch a live update as part of the regression tests.
 
+## Restoring selected shell tools
+
+To restore missing Atuin or Zoxide installations from the saved module selection:
+
+```sh
+acfs update --shell-only --force --dry-run
+acfs update --shell-only --force
+```
+
+Ordinary updates skip missing tools. Forced updates can install selected missing
+tools, while omitted modules and active holds remain respected. Installer bytes
+still require a valid trusted checksum; `--force` never overrides a refusal.
+
+Atuin's installer receives `ATUIN_NO_MODIFY_PATH=1`, including when updating a
+different target account. ACFS then repairs its guarded launchers and removes
+agent hooks before reporting success. Zoxide's preferred command path must also
+be repaired and executable. An existing runnable fallback does not hide failed
+launcher repair, invalid configuration, or missing installer metadata.
+
+A directory occupying a command name is preserved and reported as a repair
+failure. A custom bin path that resolves to Zoxide's own installation directory
+uses the existing payload directly. Atuin refuses a wrapper destination that
+would overwrite its payload with a wrapper that calls itself.
+
 ## Regression coverage
 
 ```sh

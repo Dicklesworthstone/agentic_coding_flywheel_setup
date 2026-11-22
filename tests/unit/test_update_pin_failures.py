@@ -2187,7 +2187,7 @@ printf '%s\n%s\n' "${KNOWN_INSTALLERS[mcp_agent_mail]}" "$(get_checksum mcp_agen
 
 
 class MissingRuntimeRepairTests(unittest.TestCase):
-    """Repair selected runtimes through real dispatch, pins and executable probes."""
+    """Repair selected tools through real dispatch, pins and executable probes."""
 
     COMMAND = r'''#!/bin/bash
 set -eu
@@ -2214,12 +2214,15 @@ printf 'HOME=%s\nCARGO_HOME=%s\nRUSTUP_HOME=%s\nRUSTUP_TOOLCHAIN=%s\nUV_INSTALL_
     "$HOME" "${CARGO_HOME:-}" "${RUSTUP_HOME:-}" "${RUSTUP_TOOLCHAIN:-}" \
     "${UV_INSTALL_DIR:-}" "${UV_NO_MODIFY_PATH:-}" "${UV_UNMANAGED_INSTALL:-}" \
     > "$TEST_ROOT/context-$TEST_RUNTIME"
+printf 'ATUIN_NO_MODIFY_PATH=%s\n' "${ATUIN_NO_MODIFY_PATH:-}" >> "$TEST_ROOT/context-$TEST_RUNTIME"
 [[ "${TEST_INSTALLER_EXIT:-0}" == 0 ]] || exit "$TEST_INSTALLER_EXIT"
 [[ "${TEST_PAYLOAD:-good}" != missing ]] || exit 0
 case "$TEST_RUNTIME" in
     bun) install_bin="$BUN_INSTALL/bin"; commands=(bun) ;;
     uv) install_bin="$UV_INSTALL_DIR"; commands=(uv uvx) ;;
     rust) install_bin="$CARGO_HOME/bin"; commands=(rustup cargo rustc) ;;
+    atuin) install_bin="$HOME/.atuin/bin"; commands=(atuin) ;;
+    zoxide) install_bin="$HOME/.local/bin"; commands=(zoxide) ;;
     *) exit 19 ;;
 esac
 mkdir -p "$install_bin"
@@ -2268,7 +2271,7 @@ update_binary_path() {
 update_private_installer_tmpdir() { return 0; }
 capture_version_before() { VERSION_BEFORE["$1"]=fixture; }
 capture_version_after() { return 1; }
-for runtime in bun uv rust; do
+for runtime in bun uv rust atuin zoxide; do
     KNOWN_INSTALLERS[$runtime]="https://fixture.invalid/$runtime.sh"
 done
 '''
@@ -2277,6 +2280,14 @@ done
 for runtime in bun uv rust; do
     export TEST_RUNTIME="$runtime"
     "update_$runtime"
+done
+result
+'''
+
+    SHELL_TOOLS = r'''
+for runtime in atuin zoxide; do
+    export TEST_RUNTIME="$runtime"
+    update_run_selected_module "tools.$runtime" "update_$runtime"
 done
 result
 '''
@@ -2468,6 +2479,200 @@ printf 'OUTCOME=%s,%s\n' "$SUCCESS_COUNT" "$FAIL_COUNT"
         self.assertIn("command:bun:install -g --trust vercel@latest", self.events())
         self.assertEqual([event for event in self.events() if event.startswith("install:")],
                          ["install:bun"])
+
+    def test_force_repairs_selected_missing_shell_tools_and_guarded_launchers(self):
+        self.selection("tools.atuin", "tools.zoxide")
+        output = self.shell(self.SHELL_TOOLS)
+        self.assertIn("COUNTS=2,0,0,0", output)
+        self.assertEqual([event for event in self.events() if event.startswith("install:")],
+                         ["install:atuin", "install:zoxide"])
+        for tool in ("atuin", "zoxide"):
+            self.assertIn(f"command:{tool}:--version", self.events())
+        wrapper = self.home / ".local/bin/atuin"
+        self.assertIn("agent hook integration disabled by ACFS", wrapper.read_text())
+        self.assertFalse(wrapper.is_symlink())
+        # An agent's history hook must be absorbed by the real generated
+        # launcher, while ordinary commands still reach the installed payload.
+        before = self.events()
+        result = subprocess.run(
+            [str(wrapper), "history", "start"], env=self.env | {"CODEX_THREAD_ID": "fixture"},
+            text=True, capture_output=True, timeout=5,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.events(), before)
+
+    def test_normal_update_keeps_missing_shell_tools_absent(self):
+        self.selection("tools.atuin", "tools.zoxide")
+        self.assertIn("COUNTS=0,2,0,0", self.shell(self.SHELL_TOOLS, TEST_FORCE="false"))
+        self.assertEqual(self.events(), [])
+
+    def test_force_shell_repairs_do_not_expand_saved_selection(self):
+        self.selection("tools.zoxide")
+        self.assertIn("COUNTS=1,1,0,0", self.shell(self.SHELL_TOOLS))
+        self.assertEqual([event for event in self.events() if event.startswith("install:")],
+                         ["install:zoxide"])
+        self.assertFalse((self.home / ".atuin").exists())
+
+    def test_force_shell_repair_dry_run_preserves_files_and_skips_downloads(self):
+        self.selection("tools.atuin", "tools.zoxide")
+        checkpoint = self.acfs / "state.json"
+        before = checkpoint.read_bytes()
+        self.assertIn("COUNTS=0,2,0,0", self.shell(self.SHELL_TOOLS, TEST_DRY_RUN="true"))
+        self.assertEqual(self.events(), [])
+        self.assertEqual(checkpoint.read_bytes(), before)
+        self.assertFalse((self.home / ".atuin").exists())
+        self.assertFalse((self.home / ".local").exists())
+
+    def test_missing_shell_tool_repair_honors_holds_before_download(self):
+        self.selection("tools.atuin", "tools.zoxide")
+        output = self.shell(r'''
+update_tool_hold_details() {
+    UPDATE_LAST_HOLD_TOOL="$1"
+    UPDATE_LAST_HOLD_DETAILS='owner=fixture reason=maintenance'
+    return 0
+}
+''' + self.SHELL_TOOLS)
+        self.assertIn("COUNTS=0,2,0,0", output)
+        self.assertEqual(self.events(), [])
+
+    def test_forced_shell_repair_without_verification_is_a_failure(self):
+        self.selection("tools.atuin", "tools.zoxide")
+        output = self.shell("update_require_security() { return 1; }\n" + self.SHELL_TOOLS)
+        self.assertIn("COUNTS=0,0,2,0", output)
+        self.assertEqual(self.events(), [])
+
+    def test_atuin_repair_refuses_the_agent_aware_installer(self):
+        self.selection("tools.atuin")
+        output = self.shell('KNOWN_INSTALLERS[atuin]="https://setup.atuin.sh"\n' + self.SHELL_TOOLS)
+        self.assertIn("COUNTS=0,1,1,0", output)
+        self.assertEqual(self.events(), [])
+
+    def test_missing_shell_payload_is_not_a_successful_repair(self):
+        self.selection("tools.atuin", "tools.zoxide")
+        self.assertIn("COUNTS=0,0,2,0", self.shell(self.SHELL_TOOLS, TEST_PAYLOAD="missing"))
+        self.assertEqual([event for event in self.events() if event.startswith("install:")],
+                         ["install:atuin", "install:zoxide"])
+        self.assertFalse(any(event.startswith("command:") for event in self.events()))
+
+    def test_failed_shell_probe_is_not_success_or_a_checksum_refusal(self):
+        self.selection("tools.atuin", "tools.zoxide")
+        self.assertIn("COUNTS=0,0,2,0", self.shell(self.SHELL_TOOLS, TEST_PROBE_EXIT="95"))
+
+    def test_shell_checksum_refusal_blocks_install_and_post_install_repair(self):
+        self.selection("tools.atuin", "tools.zoxide")
+        self.assertIn("COUNTS=0,0,2,2", self.shell(self.SHELL_TOOLS, TEST_PIN="1" * 64))
+        self.assertEqual(self.events().count("download"), 2)
+        self.assertFalse(any(event.startswith("install:") for event in self.events()))
+        self.assertFalse((self.home / ".atuin").exists())
+        self.assertFalse((self.home / ".local").exists())
+
+    def test_checksum_refusal_cannot_be_hidden_by_repairing_an_existing_payload(self):
+        self.selection("tools.atuin")
+        binary = self.home / ".atuin/bin/atuin"
+        binary.parent.mkdir(parents=True)
+        binary.write_text(self.COMMAND)
+        binary.chmod(0o755)
+        output = self.shell(self.SHELL_TOOLS, TEST_PIN="1" * 64)
+        self.assertIn("COUNTS=0,1,1,1", output)
+        self.assertIn("CHECKSUM BLOCKED", output)
+        self.assertFalse((self.home / ".local/bin/atuin").exists())
+        self.assertFalse(any(event.startswith("install:") for event in self.events()))
+
+    def test_atuin_guard_repair_failure_remains_a_failure_with_working_binary(self):
+        self.selection("tools.atuin")
+        config = self.home / ".codex/hooks.json"
+        config.parent.mkdir()
+        config.write_text('{"hooks":')
+        output = self.shell(self.SHELL_TOOLS)
+        self.assertIn("COUNTS=0,1,1,0", output)
+        self.assertIn("post-install repair failed", output)
+        self.assertTrue((self.home / ".atuin/bin/atuin").is_file())
+        self.assertEqual(config.read_text(), '{"hooks":')
+
+    def test_shell_repair_uses_target_home_and_configured_command_directory(self):
+        self.selection("tools.atuin", "tools.zoxide")
+        custom_bin = self.home / "custom bin"
+        output = self.shell(
+            self.SHELL_TOOLS, ACFS_BIN_DIR=str(custom_bin), TEST_CURRENT_USER="operator",
+            ATUIN_NO_MODIFY_PATH="0",
+        )
+        self.assertIn("COUNTS=2,0,0,0", output)
+        self.assertEqual(self.context("atuin")["HOME"], str(self.home))
+        self.assertEqual(self.context("atuin")["ATUIN_NO_MODIFY_PATH"], "1")
+        self.assertIn("agent hook integration disabled by ACFS", (custom_bin / "atuin").read_text())
+        self.assertEqual((custom_bin / "zoxide").resolve(), self.home / ".local/bin/zoxide")
+
+    def test_shell_repair_preserves_command_directory_collisions_and_fails(self):
+        custom_bin = self.home / "custom bin"
+        for tool in ("atuin", "zoxide"):
+            with self.subTest(tool=tool):
+                self.selection(f"tools.{tool}")
+                collision = custom_bin / tool
+                collision.mkdir(parents=True)
+                marker = collision / "user-data"
+                marker.write_text("preserve this directory\n")
+                output = self.shell(self.SHELL_TOOLS, ACFS_BIN_DIR=str(custom_bin))
+                self.assertIn("COUNTS=0,1,1,0", output)
+                self.assertIn("post-install repair failed", output)
+                self.assertEqual(marker.read_text(), "preserve this directory\n")
+                self.assertEqual(list(collision.iterdir()), [marker])
+
+    def test_atuin_repair_cannot_replace_its_payload_with_a_recursive_wrapper(self):
+        self.selection("tools.atuin")
+        payload_dir = self.home / ".atuin/bin"
+        output = self.shell(self.SHELL_TOOLS, ACFS_BIN_DIR=str(payload_dir))
+        self.assertIn("COUNTS=0,1,1,0", output)
+        self.assertIn("post-install repair failed", output)
+        self.assertEqual((payload_dir / "atuin").read_text(), self.COMMAND)
+
+    def test_zoxide_repair_preserves_payload_when_custom_bin_aliases_its_directory(self):
+        self.selection("tools.zoxide")
+        payload_dir = self.home / ".local/bin"
+        payload_dir.mkdir(parents=True)
+        custom_bin = self.home / "custom bin"
+        custom_bin.symlink_to(payload_dir, target_is_directory=True)
+        output = self.shell(self.SHELL_TOOLS, ACFS_BIN_DIR=str(custom_bin))
+        self.assertIn("COUNTS=1,1,0,0", output)
+        self.assertTrue(custom_bin.is_symlink())
+        payload = payload_dir / "zoxide"
+        self.assertFalse(payload.is_symlink())
+        self.assertEqual(payload.read_text(), self.COMMAND)
+        self.assertIn("command:zoxide:--version", self.events())
+
+    def test_zoxide_repair_checks_directory_identity_after_creating_custom_path(self):
+        self.selection("tools.zoxide")
+        new_parent = self.home / "not-created-yet"
+        custom_bin = new_parent / "../.local/bin"
+        self.assertFalse(new_parent.exists())
+        output = self.shell(self.SHELL_TOOLS, ACFS_BIN_DIR=str(custom_bin))
+        self.assertIn("COUNTS=1,1,0,0", output)
+        self.assertTrue(new_parent.is_dir())
+        payload = self.home / ".local/bin/zoxide"
+        self.assertFalse(payload.is_symlink())
+        self.assertEqual(payload.read_text(), self.COMMAND)
+        self.assertEqual(custom_bin.resolve(), payload.parent)
+        self.assertIn("command:zoxide:--version", self.events())
+
+    def test_shell_category_dispatch_repairs_the_selected_tool(self):
+        self.selection("tools.atuin")
+        output = self.shell(r'''
+export TEST_RUNTIME=atuin
+update_shell
+result
+''')
+        self.assertIn("install:atuin", self.events())
+        self.assertFalse(any(event == "install:zoxide" for event in self.events()))
+        self.assertIn("COUNTS=1,4,0,0", output)
+
+    def test_disabled_shell_category_never_repairs_missing_tools(self):
+        self.selection("tools.atuin", "tools.zoxide")
+        output = self.shell(r'''
+UPDATE_SHELL=false
+update_shell
+result
+''')
+        self.assertIn("COUNTS=0,0,0,0", output)
+        self.assertEqual(self.events(), [])
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
