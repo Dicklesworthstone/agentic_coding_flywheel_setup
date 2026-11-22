@@ -424,8 +424,16 @@ export function LessonContent({ lesson }: Props) {
     hasLoaded && nextLesson && isLessonAccessible(nextLesson.id, completedLessons)
       ? nextLesson
       : undefined;
+  const firstUnfinishedLesson = hasLoaded
+    ? getNextUncompletedLesson(completedLessons)
+    : undefined;
+  // Completed references still need a path back to unfinished learning.
+  // Keep curriculum arrows separate from this primary continuation action.
+  const completionNextLesson = firstUnfinishedLesson
+    ? (accessibleNextLesson ?? firstUnfinishedLesson)
+    : undefined;
   const nextAvailableLesson = hasLoaded
-    ? (getNextUncompletedLesson(completedLessons) ?? LESSONS[LESSONS.length - 1])
+    ? (firstUnfinishedLesson ?? LESSONS[LESSONS.length - 1])
     : undefined;
   const isWizardComplete = completedSteps.length === TOTAL_WIZARD_STEPS;
   const [showToast, setShowToast] = useState(false);
@@ -464,8 +472,8 @@ export function LessonContent({ lesson }: Props) {
     }
 
     if (isCompleted) {
-      if (accessibleNextLesson) {
-        router.push(`/learn/${accessibleNextLesson.slug}`);
+      if (completionNextLesson) {
+        router.push(`/learn/${completionNextLesson.slug}`);
       }
       return;
     }
@@ -474,12 +482,15 @@ export function LessonContent({ lesson }: Props) {
     setIsMarkingComplete(true);
 
     try {
-      await markComplete(lesson.id);
+      const persistedLessons = await markComplete(lesson.id);
+      // References can be completed before earlier lessons. Use the persisted
+      // progress returned by the mutation, not an inaccessible adjacent lesson
+      // or a render snapshot that may lag another completion.
+      const nextUncompleted = getNextUncompletedLesson(persistedLessons);
+      const isFinalLesson = nextUncompleted === undefined;
 
       // Track in GA4 analytics only after persistence succeeds.
-      markAnalyticsComplete({ is_final_lesson: !nextLesson });
-
-      const isFinalLesson = !nextLesson;
+      markAnalyticsComplete({ is_final_lesson: isFinalLesson });
 
       celebrate(isFinalLesson);
       setToastMessage(getCompletionMessage(isFinalLesson));
@@ -487,14 +498,14 @@ export function LessonContent({ lesson }: Props) {
 
       timeoutsRef.current.push(setTimeout(() => setShowToast(false), 2500));
 
-      if (isFinalLesson) {
-        timeoutsRef.current.push(setTimeout(() => setShowFinalCelebration(true), 500));
-      } else {
+      if (nextUncompleted) {
         timeoutsRef.current.push(
           setTimeout(() => {
-            router.push(`/learn/${nextLesson.slug}`);
+            router.push(`/learn/${nextUncompleted.slug}`);
           }, 1500),
         );
+      } else {
+        timeoutsRef.current.push(setTimeout(() => setShowFinalCelebration(true), 500));
       }
     } catch (error) {
       console.error("Failed to save lesson progress", error);
@@ -505,14 +516,13 @@ export function LessonContent({ lesson }: Props) {
       setIsMarkingComplete(false);
     }
   }, [
-    accessibleNextLesson,
+    completionNextLesson,
     hasLoaded,
     isLocked,
     isMarkingComplete,
     lesson.id,
     markComplete,
     markAnalyticsComplete,
-    nextLesson,
     router,
     celebrate,
     isCompleted,
@@ -850,8 +860,8 @@ export function LessonContent({ lesson }: Props) {
                         </h3>
                         <p className="text-muted-foreground text-lg">
                           {isCompleted
-                            ? accessibleNextLesson
-                              ? "Outstanding work! Continue to the next lesson."
+                            ? completionNextLesson
+                              ? "Continue with your unfinished learning."
                               : "You've completed the entire curriculum!"
                             : "Mark complete to track your learning progress."}
                         </p>
@@ -867,7 +877,7 @@ export function LessonContent({ lesson }: Props) {
                       onClick={() => {
                         void handleMarkComplete();
                       }}
-                      disabled={!hasLoaded || isMarkingComplete || (isCompleted && !accessibleNextLesson)}
+                      disabled={!hasLoaded || isMarkingComplete || (isCompleted && !completionNextLesson)}
                       size="lg"
                       className={`shrink-0 h-14 px-8 text-lg font-semibold rounded-xl transition duration-500 ${
                         isCompleted
@@ -876,7 +886,7 @@ export function LessonContent({ lesson }: Props) {
                       }`}
                     >
                       {isCompleted ? (
-                        accessibleNextLesson ? (
+                        completionNextLesson ? (
                           <span className="flex items-center gap-3">
                             Next Lesson
                             <ArrowRight className="h-5 w-5" />
@@ -989,10 +999,10 @@ export function LessonContent({ lesson }: Props) {
               onClick={() => {
                 void handleMarkComplete();
               }}
-              disabled={!hasLoaded || isMarkingComplete || (isCompleted && !accessibleNextLesson)}
+              disabled={!hasLoaded || isMarkingComplete || (isCompleted && !completionNextLesson)}
             >
               {isCompleted ? (
-                accessibleNextLesson ? (
+                completionNextLesson ? (
                   <span className="flex items-center gap-2">
                     Next
                     <ArrowRight className="h-5 w-5" />

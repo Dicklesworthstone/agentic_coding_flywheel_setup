@@ -51,6 +51,14 @@ type QuickReferenceItem = {
 
 const QUICK_REFERENCE_ITEMS: QuickReferenceItem[] = [
   {
+    href: "/learn/project-bootstrap",
+    lessonSlug: "project-bootstrap",
+    icon: Sparkles,
+    title: "Create Your First Project",
+    desc: "Guided starter, tests, and first agent task",
+    gradient: "from-emerald-500/10 to-teal-500/5",
+  },
+  {
     href: "/learn/agent-commands",
     lessonSlug: "agent-commands",
     icon: Terminal,

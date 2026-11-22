@@ -1,6 +1,25 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
+import { getLessonBySlug, LESSONS } from "../lib/lessons";
 import { resolveModuleSelection } from "../lib/moduleSelection";
 import { ACFS_RECOMMENDED_UBUNTU } from "../lib/vpsProviders";
+
+async function completeCurrentLesson(page: Page): Promise<void> {
+  const dock = page.getByRole("navigation", { name: "Lesson navigation", exact: true });
+  const button = await dock.isVisible()
+    ? dock.getByRole("button", { name: "Complete", exact: true })
+    : page.getByRole("main").getByRole("button", { name: "Mark Complete", exact: true });
+  await expect(button).toBeEnabled();
+  await button.click();
+}
+
+async function continueCompletedLesson(page: Page): Promise<void> {
+  const dock = page.getByRole("navigation", { name: "Lesson navigation", exact: true });
+  const button = await dock.isVisible()
+    ? dock.getByRole("button", { name: "Next", exact: true })
+    : page.getByRole("main").getByRole("button", { name: "Next Lesson", exact: true });
+  await expect(button).toBeEnabled();
+  await button.click();
+}
 
 test.describe
   .serial("Learning Hub", () => {
@@ -329,6 +348,7 @@ test.describe
       // Lessons grid card both render a link, so each href appears twice.
       await expect(page.locator('a[href="/learn/agent-commands"]')).toHaveCount(2);
       await expect(page.locator('a[href="/learn/ntm-palette"]')).toHaveCount(2);
+      await expect(page.locator('a[href="/learn/project-bootstrap"]')).toHaveCount(2);
       // The next-action fallback and the existing Quick Reference both link here.
       await expect(page.locator('a[href="/learn/commands"]')).toHaveCount(2);
       await expect(page.locator('a[href="/glossary"]')).toHaveCount(1);
@@ -354,6 +374,125 @@ test.describe
       // No lock gate, and the actual lesson content renders for a fresh visitor.
       await expect(page.getByText("Lesson Locked")).toHaveCount(0);
       await expect(page.getByRole("heading", { name: "Agent Commands", level: 1 })).toBeVisible();
+    });
+
+
+    test("a fresh visitor can open and copy the guided first-project reference", async ({ page }) => {
+      await page.addInitScript(() => {
+        Object.defineProperty(navigator, "clipboard", {
+          configurable: true,
+          value: {
+            writeText: async (value: string) => {
+              sessionStorage.setItem("project-walkthrough-copy", value);
+            },
+          },
+        });
+      });
+      await page.goto("/learn");
+      await page.getByRole("link", { name: /Create Your First Project/ }).click();
+      await expect(page).toHaveURL(/\/learn\/project-bootstrap$/);
+      await expect(page.getByText("Lesson Locked")).toHaveCount(0);
+      const walkthrough = page.getByTestId("project-bootstrap-walkthrough");
+      await expect(walkthrough).toBeVisible();
+      await expect(walkthrough).toContainText("Creation writes the tests but does not execute them.");
+      await expect(walkthrough).toContainText("The destination must be absent or empty.");
+      const command = walkthrough.getByRole("button", { name: /Copy command:.*acfs newproj --guided/ });
+      await command.click();
+      await expect.poll(() => page.evaluate(
+        () => sessionStorage.getItem("project-walkthrough-copy"),
+      )).toBe("acfs newproj --guided");
+      const copiedCommands = await walkthrough.getByRole("button").allTextContents();
+      expect(copiedCommands.some((value) => value.includes("sh scripts/check.sh"))).toBe(true);
+      expect(copiedCommands.some((value) => value.includes("cat FIRST_AGENT_PROMPT.md"))).toBe(true);
+      expect(copiedCommands.some((value) => value.includes(".git/hooks/pre-commit"))).toBe(false);
+      expect(copiedCommands.some((value) => value.includes("git add ."))).toBe(false);
+      expect(copiedCommands.some((value) => value.includes('git commit -m "test"'))).toBe(false);
+      expect(await page.evaluate(() => localStorage.getItem("acfs-learning-hub-completed-lessons")))
+        .toBeNull();
+    });
+
+    for (const slug of ["project-bootstrap", "agent-commands", "ntm-palette"]) {
+      test(`completing the ${slug} reference resumes unfinished learning without inventing progress`, async ({ page }) => {
+        const lesson = getLessonBySlug(slug)!;
+        await page.goto("/learn/" + slug);
+        await expect(page.getByText("Lesson Locked")).toHaveCount(0);
+        await completeCurrentLesson(page);
+        await expect(page).toHaveURL(/\/learn\/welcome$/);
+        expect(await page.evaluate(
+          () => JSON.parse(localStorage.getItem("acfs-learning-hub-completed-lessons") ?? "[]"),
+        )).toEqual([lesson.id]);
+        await expect(page.getByRole("dialog", { name: "Congratulations!", exact: true })).toHaveCount(0);
+
+        // A full revisit must still offer unfinished learning, not claim the whole course is done.
+        await page.goto("/learn/" + slug);
+        await expect(page.getByText("You've completed the entire curriculum!", { exact: true }))
+          .toHaveCount(0);
+        await continueCompletedLesson(page);
+        await expect(page).toHaveURL(/\/learn\/welcome$/);
+        expect(await page.evaluate(
+          () => JSON.parse(localStorage.getItem("acfs-learning-hub-completed-lessons") ?? "[]"),
+        )).toEqual([lesson.id]);
+
+        await page.goto("/learn/ast-grep");
+        await expect(page.getByText("Lesson Locked")).toBeVisible();
+        await page.goto("/learn/linux-basics");
+        await expect(page.getByText("Lesson Locked")).toBeVisible();
+      });
+    }
+
+    test("normal sequential completion still opens the next unfinished lesson", async ({ page }) => {
+      await page.goto("/learn/welcome");
+      await completeCurrentLesson(page);
+      await expect(page).toHaveURL(/\/learn\/linux-basics$/);
+      expect(await page.evaluate(
+        () => JSON.parse(localStorage.getItem("acfs-learning-hub-completed-lessons") ?? "[]"),
+      )).toEqual([getLessonBySlug("welcome")!.id]);
+    });
+
+    test("the last unfinished reference completes the course even before the final catalogue entry", async ({ page }) => {
+      const project = getLessonBySlug("project-bootstrap")!;
+      const before = LESSONS.filter((lesson) => lesson.id !== project.id).map((lesson) => lesson.id);
+      await page.goto("/learn");
+      await page.evaluate(
+        (ids) => localStorage.setItem("acfs-learning-hub-completed-lessons", JSON.stringify(ids)),
+        before,
+      );
+      await page.goto("/learn/project-bootstrap");
+      await completeCurrentLesson(page);
+      const celebration = page.getByRole("dialog", { name: "Congratulations!", exact: true });
+      await expect(celebration).toBeVisible();
+      await expect(celebration).toContainText("You've completed all lessons!");
+      expect(await page.evaluate(
+        () => JSON.parse(localStorage.getItem("acfs-learning-hub-completed-lessons") ?? "[]"),
+      )).toEqual(LESSONS.map((lesson) => lesson.id));
+      await celebration.getByRole("button", { name: "Stay Here", exact: true }).click();
+      await page.reload();
+      await expect(page).toHaveURL(/\/learn\/project-bootstrap$/);
+      const dock = page.getByRole("navigation", { name: "Lesson navigation", exact: true });
+      const completed = await dock.isVisible()
+        ? dock.getByRole("button", { name: "Done", exact: true })
+        : page.getByRole("main").getByRole("button", { name: "All Complete", exact: true });
+      await expect(completed).toBeDisabled();
+    });
+
+    test("an unsuccessful reference completion keeps its route and progress", async ({ page }) => {
+      await page.goto("/learn/project-bootstrap");
+      await page.evaluate(() => {
+        const original = Storage.prototype.setItem;
+        Storage.prototype.setItem = function (this: Storage, key: string, value: string) {
+          if (key === "acfs-learning-hub-completed-lessons") throw new Error("storage blocked");
+          return original.call(this, key, value);
+        };
+      });
+      await completeCurrentLesson(page);
+      await expect(page.getByText(
+        "Unable to save lesson progress. Check your browser storage settings and try again.",
+        { exact: true },
+      )).toBeVisible();
+      await expect(page).toHaveURL(/\/learn\/project-bootstrap$/);
+      expect(await page.evaluate(() => localStorage.getItem("acfs-learning-hub-completed-lessons")))
+        .toBeNull();
+      await expect(page.getByRole("dialog", { name: "Congratulations!", exact: true })).toHaveCount(0);
     });
 
     test("lesson completion fails cleanly when browser storage rejects writes", async ({

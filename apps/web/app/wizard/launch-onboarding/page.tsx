@@ -246,6 +246,12 @@ function FirstProjectGuidance({ moduleIds }: { moduleIds: readonly string[] }) {
           run its tests from your terminal.
         </p>
       )}
+      <Button asChild className="w-full sm:w-auto">
+        <Link href="/learn/project-bootstrap">
+          Open the project walkthrough
+          <ArrowRight className="ml-2 h-4 w-4" />
+        </Link>
+      </Button>
       <Link
         href="https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/blob/main/docs/operations/guided-first-project.md"
         target="_blank"

@@ -445,7 +445,7 @@ export const LESSONS: Lesson[] = [
     id: 52,
     slug: "project-bootstrap",
     title: "Project Bootstrap",
-    description: "Set up a new multi-agent project with issue tracking, safety, and coordination",
+    description: "Create a reviewed Python or TypeScript starter, run its tests, and begin agent work",
     duration: "7 min",
     file: "52_project_bootstrap.md",
   },
@@ -559,6 +559,7 @@ export const LESSONS: Lesson[] = [
 export const REFERENCE_LESSON_SLUGS: ReadonlySet<string> = new Set([
   "agent-commands",
   "ntm-palette",
+  "project-bootstrap",
 ]);
 
 /** Whether a lesson is an always-available reference lesson (never locked). */
