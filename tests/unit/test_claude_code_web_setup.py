@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 import shlex
 import shutil
+import signal
 import stat
 import struct
 import subprocess
@@ -2676,6 +2677,102 @@ os.open = readonly_open
         self.assertEqual(target.readlink(), manual)
         self.assertEqual(manual.read_text(), '#!/bin/sh\necho br-manual\n')
         self.assertNotIn('(verified prebuilt)', output)
+
+    def alias_adoption_failure_can_retry_and_refresh(self, fault):
+        original = '#!/bin/sh\necho br-existing\n'
+        self.command('br', original)
+        self.python_fault(fault)
+        interrupted = self.run_setup(ACFS_CLOUD_AGENT='generic')
+        self.assertIn('existing binary could not be linked onto PATH', interrupted)
+        self.assertNotIn('(already installed)', interrupted)
+        self.assertEqual((self.bin / 'br').read_text(), original)
+        self.env.pop('PYTHONPATH')
+        resumed = self.run_setup(ACFS_CLOUD_AGENT='generic')
+        self.assertIn('br-existing (already installed)', resumed)
+        self.assertEqual(self.probe_from_guide('br').stdout.strip(), 'br-existing')
+        self.bundle()
+        refreshed = self.run_setup(ACFS_CLOUD_AGENT='generic', ACFS_CLOUD_REINSTALL='1')
+        self.assertIn('br 1.2.3 (verified prebuilt)', refreshed)
+        self.assertFalse((self.home / '.local/bin/br').is_symlink())
+        self.assertEqual((self.bin / 'br').read_text(), original)
+        self.assertEqual(self.probe_from_guide('br').stdout.strip(), 'br 1.2.3')
+
+    def test_failed_alias_ownership_write_can_retry_and_refresh_existing_tool(self):
+        aliases = self.home / '.acfs/cloud/aliases'
+        self.alias_adoption_failure_can_retry_and_refresh(f'''
+import errno, os, pathlib
+open_file = os.open
+def full_alias_metadata(path, flags, *args, **kwargs):
+    if pathlib.Path(path).parent == pathlib.Path({str(aliases)!r}) and flags & os.O_CREAT:
+        raise OSError(errno.ENOSPC, 'injected alias metadata write failure')
+    return open_file(path, flags, *args, **kwargs)
+os.open = full_alias_metadata
+''')
+
+    def test_interrupted_alias_creation_can_retry_and_refresh_existing_tool(self):
+        binaries = self.home / '.local/bin'
+        self.alias_adoption_failure_can_retry_and_refresh(f'''
+import os, pathlib
+symlink = os.symlink
+def interrupt_after_symlink(source, destination, *args, **kwargs):
+    result = symlink(source, destination, *args, **kwargs)
+    if pathlib.Path(destination).parent == pathlib.Path({str(binaries)!r}):
+        os._exit(73)
+    return result
+os.symlink = interrupt_after_symlink
+''')
+
+    def test_alias_publication_failure_after_ownership_can_retry_and_refresh(self):
+        target = self.home / '.local/bin/br'
+        record = self.home / '.acfs/cloud/aliases/br.json'
+        self.alias_adoption_failure_can_retry_and_refresh(f'''
+import errno, os, pathlib
+link = os.link
+def fail_alias_publication(source, destination, *args, **kwargs):
+    if pathlib.Path(destination) == pathlib.Path({str(target)!r}):
+        assert pathlib.Path({str(record)!r}).is_file()
+        raise OSError(errno.ENOSPC, 'injected alias publication failure')
+    return link(source, destination, *args, **kwargs)
+os.link = fail_alias_publication
+''')
+
+    def test_unselected_alias_fifo_lock_cannot_block_guide_discovery(self):
+        self.bundle('bv')
+        lock = self.home / '.acfs/cloud/transactions/br.lock'
+        retained = lock.with_name('br.lock.before-fifo')
+        self.command('br', f'''#!{shutil.which('python3')}
+import os, pathlib, stat
+lock = pathlib.Path({str(lock)!r})
+# Recovery has finished before this version probe. Replace its regular lock
+# with a FIFO before the guide tries to adopt the unselected existing tool.
+if lock.exists() and stat.S_ISREG(lock.lstat().st_mode):
+    lock.rename({str(retained)!r})
+    os.mkfifo(lock)
+print('br-existing')
+''')
+        self.serve(MANIFEST_URL, json.dumps(self.manifest).encode())
+        (self.root / 'urls.json').write_text(json.dumps(self.urls))
+        process = subprocess.Popen(
+            ['bash', str(SCRIPT)],
+            env={**self.env, 'ACFS_CLOUD_TOOLS': 'bv', 'ACFS_CLOUD_AGENT': 'generic'},
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True,
+        )
+        try:
+            _, output = process.communicate(timeout=5)
+            self.assertEqual(process.returncode, 0, output)
+        finally:
+            if process.poll() is None:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait()
+        self.assertIn('bv 1.2.3 (verified prebuilt)', output)
+        self.assertTrue(stat.S_ISFIFO(lock.lstat().st_mode))
+        self.assertTrue(retained.is_file())
+        self.assertFalse((self.home / '.local/bin/br').exists())
+        guide = (self.home / '.acfs/cloud/AGENTS.md').read_text()
+        self.assertIn('`br`: existing binary could not be linked onto PATH', guide)
+        self.assertNotIn('`br` (beads_rust)', guide)
+        self.assertIn('`bv` (beads_viewer)', guide)
+        self.assertFalse((self.root / 'forbidden').exists())
 
     def test_managed_alias_refresh_survives_a_copied_cloud_snapshot(self):
         self.command('br', '#!/bin/sh\necho br-existing\n')

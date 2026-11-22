@@ -265,47 +265,71 @@ cloud_link_onto_path() {
         cloud_version "$bin" "$deadline" >/dev/null
         return $?
     fi
-    # Exclusive symlink creation never writes inside a colliding directory or
-    # replaces an existing destination; reject linked parents before writing.
+    # Publish ownership before the alias becomes visible, so an interrupted
+    # adoption can retry and later refresh without leaving an unowned link.
+    # Share the promotion lock with bundle installs and recovery.
     python3 - "$path" "$target" "$ACFS_CLOUD_STATE_DIR" "$ACFS_CLOUD_WORK" <<'PY' || return 1
-import json, os, pathlib, stat, sys
+import fcntl, json, os, pathlib, stat, sys
 source, target, state, work = sys.argv[1], pathlib.Path(sys.argv[2]), pathlib.Path(sys.argv[3]), pathlib.Path(sys.argv[4])
 try:
     if any(parent.is_symlink() for parent in target.parents):
         raise ValueError('Symlink in binary directory; existing files preserved: ' + str(target))
-    record = state / 'aliases' / (target.name + '.json')
-    if any(parent.is_symlink() for parent in [record, *record.parents]):
-        raise ValueError('Symlink in alias ownership path; existing files preserved: ' + str(record))
-    previous = None
-    if record.exists():
-        info = record.stat()
-        if not stat.S_ISREG(info.st_mode):
-            raise ValueError('Unsafe alias ownership file: ' + str(record))
-        previous = record.read_bytes()
-        saved = json.loads(previous)
-        if saved.get('schema') != 1 or saved.get('path') != str(target):
-            raise ValueError('Unrecognized alias ownership file: ' + str(record))
-    record.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    os.symlink(source, target)
-    info = target.lstat()
-    # Snapshots can be restored onto a different filesystem. Preserve the
-    # link's value and metadata, without persisting device/inode identity.
-    fields = ('st_mode', 'st_uid', 'st_gid', 'st_size', 'st_mtime_ns')
-    owned = {'schema': 1, 'path': str(target), 'source': source,
-             'identity': {field: getattr(info, field) for field in fields}}
-    candidate = record.with_name('.' + record.name + '.' + work.name + '.tmp')
-    with os.fdopen(os.open(candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'w') as output:
-        json.dump(owned, output)
-        output.flush()
-        os.fsync(output.fileno())
-    if any(parent.is_symlink() for parent in [record, *record.parents]):
-        raise ValueError('Alias ownership path changed; candidate retained')
-    if previous is None:
-        os.link(candidate, record)
-    else:
-        if record.read_bytes() != previous:
-            raise ValueError('Alias ownership changed concurrently; candidate retained')
-        os.replace(candidate, record)
+    tool = 'am' if target.name == 'mcp-agent-mail' else target.name
+    lock_path = state / 'transactions' / (tool + '.lock')
+    if any(parent.is_symlink() for parent in [lock_path, *lock_path.parents]):
+        raise ValueError('Symlink in alias lock path; existing files preserved: ' + str(lock_path))
+    lock_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    with os.fdopen(os.open(lock_path, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600), 'w') as lock:
+        info = os.fstat(lock.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            raise ValueError('Unsafe alias ownership lock')
+        # Guide discovery also adopts unselected binaries, outside a tool
+        # job. Never let lock contention consume its remaining probe budget.
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        # Never overwrite a destination installed by another job between
+        # discovery and adoption, or replace a user-created link.
+        if target.exists() or target.is_symlink():
+            raise FileExistsError('Existing binary destination retained: ' + str(target))
+        record = state / 'aliases' / (target.name + '.json')
+        if any(parent.is_symlink() for parent in [record, *record.parents]):
+            raise ValueError('Symlink in alias ownership path; existing files preserved: ' + str(record))
+        previous = None
+        if record.exists():
+            info = record.stat()
+            if not stat.S_ISREG(info.st_mode):
+                raise ValueError('Unsafe alias ownership file: ' + str(record))
+            previous = record.read_bytes()
+            saved = json.loads(previous)
+            if saved.get('schema') != 1 or saved.get('path') != str(target):
+                raise ValueError('Unrecognized alias ownership file: ' + str(record))
+        record.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        alias = target.with_name('.' + target.name + '.' + work.name + '.alias')
+        os.symlink(source, alias)
+        info = alias.lstat()
+        # Snapshots can be restored onto a different filesystem. Preserve the
+        # link's value and metadata, without persisting device/inode identity.
+        fields = ('st_mode', 'st_uid', 'st_gid', 'st_size', 'st_mtime_ns')
+        owned = {'schema': 1, 'path': str(target), 'source': source,
+                 'identity': {field: getattr(info, field) for field in fields}}
+        candidate = record.with_name('.' + record.name + '.' + work.name + '.tmp')
+        with os.fdopen(os.open(candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'w') as output:
+            json.dump(owned, output)
+            output.flush()
+            os.fsync(output.fileno())
+        if any(parent.is_symlink() for parent in [record, *record.parents]):
+            raise ValueError('Alias ownership path changed; candidate retained')
+        if previous is None:
+            os.link(candidate, record)
+        else:
+            if record.read_bytes() != previous:
+                raise ValueError('Alias ownership changed concurrently; candidate retained')
+            os.replace(candidate, record)
+        if any(parent.is_symlink() for parent in target.parents):
+            raise ValueError('Binary directory changed; candidate retained')
+        # Exclusive hard-link publication keeps the staged symlink identity
+        # and cannot clobber a destination that appeared during preparation.
+        # Retain both candidates for diagnosis, as with bundle transactions.
+        os.link(alias, target, follow_symlinks=False)
 except Exception as error:
     print(str(error), file=sys.stderr)
     sys.exit(1)
@@ -390,7 +414,7 @@ try:
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     lock_path = directory / (tool + '.lock')
     reject_links(lock_path)
-    with os.fdopen(os.open(lock_path, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600), 'w') as lock:
+    with os.fdopen(os.open(lock_path, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600), 'w') as lock:
         info = os.fstat(lock.fileno())
         if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
             raise ValueError('Unsafe bundle promotion lock')
