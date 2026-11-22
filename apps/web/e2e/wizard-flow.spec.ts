@@ -1716,6 +1716,128 @@ test.describe("Step 13: Launch Onboarding Page", () => {
     await expect(page.locator("h1").first()).toContainText(/congratulations|set up|complete/i);
   });
 
+  test("hands off a reviewed first project and copies the exact interactive command", async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          writeText: async (value: string) => {
+            sessionStorage.setItem("first-project-copied-command", value);
+          },
+        },
+      });
+    });
+    await page.goto("/wizard/launch-onboarding");
+    const guide = page.getByTestId("first-project-guidance");
+    await expect(guide).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await expect(guide.getByRole("heading", { name: "Create your first working project" }))
+      .toBeVisible();
+    for (const command of ["acfs newproj --guided", "sh scripts/check.sh", "cat FIRST_AGENT_PROMPT.md"]) {
+      await expect(guide.getByRole("region", { name: "Command: " + command, exact: true }))
+        .toHaveText(command);
+    }
+    await expect(guide).toContainText("Creating the starter does not run its tests.");
+    await expect(guide).toContainText("the project directory itself must be absent or empty");
+    await expect(guide).toContainText("GitHub publication defaults to none");
+    await expect(guide.getByRole("region", { name: "Command: claude", exact: true })).toBeVisible();
+    await expect(guide.getByRole("region", { name: "Command: codex", exact: true })).toBeVisible();
+    await expect(page.getByText(
+      "mkdir -p /data/projects/my_first_project && cd /data/projects/my_first_project",
+      { exact: true },
+    )).toHaveCount(0);
+    await expect(page.getByText(
+      "mkdir /data/projects/my-awesome-app && cd /data/projects/my-awesome-app",
+      { exact: true },
+    )).toHaveCount(0);
+
+    await guide.getByRole("button", { name: "Copy command", exact: true }).first().click();
+    await expect.poll(() => page.evaluate(
+      () => sessionStorage.getItem("first-project-copied-command"),
+    )).toBe("acfs newproj --guided");
+  });
+
+  test("offers guided creation for minimal installations with only their selected agents", async ({ page }) => {
+    await page.evaluate(() => localStorage.setItem("agent-flywheel-module-profile", "minimal"));
+    await acknowledgeDoctorRun(page);
+    await page.goto("/wizard/launch-onboarding");
+    await expect(page.getByRole("heading", { level: 1 }))
+      .toHaveText("Continue with your selected setup");
+    const guide = page.getByTestId("first-project-guidance");
+    await expect(guide).toBeVisible();
+    await expect(guide.getByRole("region", { name: "Command: claude", exact: true })).toBeVisible();
+    await expect(guide.getByRole("region", { name: "Command: codex", exact: true })).toBeVisible();
+    await expect(guide.getByRole("region", { name: "Command: agy", exact: true })).toBeVisible();
+    await expect(guide.getByRole("region", { name: "Command: gemini", exact: true })).toHaveCount(0);
+    await expect(guide).toContainText("Your selected setup includes Bun");
+    await expect(page.getByRole("heading", { name: "Open a coding agent" })).toHaveCount(0);
+  });
+
+  test("offers a starter without inventing agent installations for guided cloud setups", async ({ page }) => {
+    await page.evaluate(() => {
+      localStorage.setItem("agent-flywheel-module-profile", "cloud-only");
+      localStorage.setItem("agent-flywheel-wizard-setup-profile", JSON.stringify("cloud-only"));
+    });
+    await acknowledgeDoctorRun(page);
+    await page.goto("/wizard/launch-onboarding");
+    const guide = page.getByTestId("first-project-guidance");
+    await expect(guide).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await expect(guide).toContainText("No coding agent was included in this setup.");
+    await expect(guide.getByRole("region", { name: "Command: acfs newproj --guided", exact: true }))
+      .toBeVisible();
+    for (const command of ["claude", "codex", "agy", "gemini"]) {
+      await expect(guide.getByRole("region", { name: "Command: " + command, exact: true }))
+        .toHaveCount(0);
+    }
+    await expect(page.getByRole("heading", { name: "Use your cloud tools" })).toBeVisible();
+  });
+
+  for (const profile of ["agents-only", "cloud-only", "stack-only"]) {
+    test(`does not offer the unselected project CLI for ${profile}`, async ({ page }) => {
+      await page.evaluate((value) => {
+        localStorage.setItem("agent-flywheel-module-profile", value);
+      }, profile);
+      await acknowledgeDoctorRun(page);
+      await page.goto("/wizard/launch-onboarding");
+      await expect(page.getByRole("heading", { level: 1 }))
+        .toHaveText("Continue with your selected setup");
+      await expect(page.getByTestId("first-project-guidance")).toHaveCount(0);
+      await expect(page.getByRole("region", { name: "Command: acfs newproj --guided", exact: true }))
+        .toHaveCount(0);
+      if (profile === "agents-only") {
+        await expect(page.getByRole("heading", { name: "Open a coding agent" })).toBeVisible();
+      }
+    });
+  }
+
+  test("keeps first-project guidance bound to the acknowledged full installation while editing a draft", async ({ page }) => {
+    await page.goto("/wizard/launch-onboarding");
+    const guide = page.getByTestId("first-project-guidance");
+    await expect(guide).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    const cloudDraft = page.getByRole("group", { name: "Profile selection" })
+      .getByRole("button", { name: "Cloud only", exact: true });
+    await cloudDraft.click();
+    await expect(cloudDraft).toHaveAttribute("aria-pressed", "true");
+    await expect(guide).toBeVisible();
+    await expect(guide.getByRole("region", { name: "Command: claude", exact: true })).toBeVisible();
+    await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/launch-onboarding"));
+  });
+
+  test("editing a full-install draft cannot enable project creation on an acknowledged cloud subset", async ({ page }) => {
+    await page.evaluate(() => localStorage.setItem("agent-flywheel-module-profile", "cloud-only"));
+    await acknowledgeDoctorRun(page);
+    await page.goto("/wizard/launch-onboarding");
+    await expect(page.getByRole("heading", { level: 1 }))
+      .toHaveText("Continue with your selected setup");
+    const fullDraft = page.getByRole("group", { name: "Profile selection" })
+      .getByRole("button", { name: "Full", exact: true });
+    await fullDraft.click();
+    await expect(fullDraft).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("first-project-guidance")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Open a coding agent" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Use your cloud tools" })).toBeVisible();
+    await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/launch-onboarding"));
+  });
+
   test("should display onboarding command", async ({ page }) => {
     await page.goto("/wizard/launch-onboarding");
     await page.waitForLoadState("domcontentloaded");

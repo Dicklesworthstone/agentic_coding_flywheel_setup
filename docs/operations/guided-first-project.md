@@ -6,9 +6,15 @@ Start the reviewed beginner workflow with one command:
 acfs newproj --guided
 ```
 
+Run the guide in an interactive VPS terminal with Python 3 and Git available.
+The final web-wizard page offers this command when the acknowledged installation
+selection includes the public ACFS CLI. An older pinned installation may require
+its own matching instructions; check `acfs newproj --help` if `--guided` is
+unavailable.
+
 The guide asks for a project name, destination, and Python or TypeScript
-starter. Beads task tracking and Agent Mail coordination are separate, optional
-choices. The destination's parent must already exist. The project itself must
+starter. Beads task tracking, Agent Mail coordination, and GitHub publication
+are separate, optional choices. The destination's parent must already exist. The project itself must
 be absent or empty; this is not a migration tool for an existing repository.
 
 Nothing is created while answering questions. The review screen lists the
@@ -34,17 +40,30 @@ use the existing [explicit plan/apply workflow](project-bootstrap.md).
 
 The first-project preset creates a local Git repository on `main`, README,
 `.gitignore`, AGENTS policy, starter source and three tests, `scripts/check.sh`,
-and `FIRST_AGENT_PROMPT.md`. Python uses the standard library; TypeScript uses
-Bun. No dependency installation, model call, agent launch, global settings
-change, Git staging, commit, or push is performed.
+and `FIRST_AGENT_PROMPT.md`. Python uses the standard library; TypeScript checks
+require Bun. Creation writes the test files but does not run them. No dependency
+installation, model call, or agent launch is performed.
+
+With the default choices, the project stays local, no global settings change,
+and no Git staging, commit, or push occurs. GitHub publication defaults to `none`.
+Choosing `private` or `public` explicitly adds creation
+of a new GitHub repository and one reviewed initial commit and push. This needs
+an authenticated `gh` CLI. Optional repo_updater registration additionally
+requires `ru` and writes the reviewed user configuration and state for that
+registration; bootstrap does not install either tool. Review the destination,
+visibility, and exact operations before choosing `create`.
 
 Selecting Beads adds reviewed `br init` and its verification probe. Selecting
 Agent Mail asks for the actual service URL, the **name** of a credential
 environment variable, and the chosen clients. Never enter a credential value.
 The existing transport and native client configuration rules apply. A saved
-plan contains environment references, not tokens. Saving a plan is offline;
-`create` requires the selected tools and credentials before writing the plan or
-creating the project. Bootstrap does not install or start a missing service.
+plan contains environment references, not tokens. Saving a plan is offline.
+Before saving a plan for `create`, the guide checks the selected tools and any
+required Agent Mail token. GitHub authentication and destination checks happen
+after the private plan is saved but before the project is created. A failed
+GitHub check can therefore leave the saved plan for recovery. If no project was
+created, use the printed apply command without `--resume`. Bootstrap does not
+install or start a missing service.
 
 ## Verify and start work
 
@@ -56,7 +75,11 @@ sh scripts/check.sh
 ```
 
 Use the actual destination you selected. Review `FIRST_AGENT_PROMPT.md` before
-starting an agent. For Agent Mail, follow `AGENT_MAIL.md` to approve the client's
+starting one of the coding agents included in your setup. A coding agent is not
+required to create the project or run the starter checks. Agent Mail's native
+configuration choices are Claude Code, Codex, and Gemini; other installed agents
+do not receive client configuration automatically. For Agent Mail, follow
+`AGENT_MAIL.md` to approve the client's
 project trust, check connectivity, and register a separate identity for each
 session. Configuration presence is not proof of a live client connection.
 

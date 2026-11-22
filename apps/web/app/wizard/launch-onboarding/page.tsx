@@ -137,6 +137,128 @@ const FULL_TUTORIAL_MODULES = [
   "lang.go",
 ] as const;
 
+function FirstProjectGuidance({ moduleIds }: { moduleIds: readonly string[] }) {
+  const selected = new Set(moduleIds);
+  // acfs.doctor supplies the public acfs CLI. A later command-builder draft
+  // must not change which tools this acknowledged installation can use.
+  if (!selected.has("acfs.doctor")) return null;
+  const agents = manifestAgents.filter((agent) => selected.has(agent.moduleId));
+
+  return (
+    <Card
+      className="space-y-6 border-primary/30 bg-primary/5 p-6"
+      role="region"
+      aria-labelledby="first-project-heading"
+      data-testid="first-project-guidance"
+    >
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <FolderPlus className="h-5 w-5 text-primary" />
+          <h2 id="first-project-heading" className="text-xl font-semibold">
+            Create your first working project
+          </h2>
+        </div>
+        <p className="text-muted-foreground">
+          Create a Python or TypeScript starter with a local Git repository, three tests,
+          project instructions, and a first task for your coding agent.
+        </p>
+      </div>
+
+      <div className="space-y-3">
+        <h3 className="font-medium">1. Open the guide in your VPS terminal</h3>
+        <CommandCard
+          command="acfs newproj --guided"
+          description="Answer the questions interactively, then review the plan"
+          runLocation="vps"
+        />
+        <p className="text-sm text-muted-foreground">
+          The guide requires Python 3 and Git. Choose a new project name inside an existing
+          parent directory; the project directory itself must be absent or empty.
+          If your installed ACFS version does not recognize <code>--guided</code>, check
+          its <code>acfs newproj --help</code> before continuing.
+        </p>
+        <p className="text-sm text-muted-foreground">
+          Python starter checks use the standard library.{" "}
+          {selected.has("lang.bun")
+            ? "Your selected setup includes Bun for the TypeScript checks."
+            : "Bun was not included in this selection. Choose Python unless you have installed Bun separately for TypeScript checks."}
+        </p>
+      </div>
+
+      <div className="space-y-3">
+        <h3 className="font-medium">2. Review, then choose whether to create</h3>
+        <p className="text-sm text-muted-foreground">
+          Answering the questions creates nothing. At the review prompt, <code>details</code>{" "}
+          shows the complete plan, <code>save</code> keeps only a private plan, and{" "}
+          <code>create</code> applies it. Press Enter or choose <code>cancel</code> at this
+          prompt to leave without creating files.
+        </p>
+        <p className="text-sm text-muted-foreground">
+          GitHub publication defaults to <code>none</code> for a local project. Choosing{" "}
+          <code>private</code> or <code>public</code> creates a new GitHub repository and
+          pushes the reviewed initial commit using your authenticated GitHub CLI.
+          Beads and an existing Agent Mail service are separate optional choices.
+        </p>
+        <p className="text-sm text-muted-foreground">
+          If creation stops partway through, keep the saved plan and project. Follow the
+          recovery command printed by the guide to resume after fixing the reported problem.
+        </p>
+      </div>
+
+      <div className="space-y-3">
+        <h3 className="font-medium">3. Check the starter and read your first task</h3>
+        <p className="text-sm text-muted-foreground">
+          After creation succeeds, run the exact <code>cd</code> command printed for your
+          chosen destination. Then run these commands from that project directory.
+          Creating the starter does not run its tests.
+        </p>
+        <CommandCard
+          command="sh scripts/check.sh"
+          description="Run the starter tests from your new project"
+          runLocation="vps"
+        />
+        <CommandCard
+          command="cat FIRST_AGENT_PROMPT.md"
+          description="Read the first task before giving it to an agent"
+          runLocation="vps"
+        />
+      </div>
+
+      {agents.length > 0 ? (
+        <div className="space-y-3">
+          <h3 className="font-medium">4. Start one of your selected coding agents</h3>
+          <p className="text-sm text-muted-foreground">
+            Launch the agent you want to use from the same project directory, sign in if
+            prompted, and paste the task from <code>FIRST_AGENT_PROMPT.md</code>.
+          </p>
+          {agents.map((agent) => (
+            <CommandCard
+              key={agent.moduleId}
+              command={agent.cli}
+              description={agent.displayName}
+              runLocation="vps"
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          No coding agent was included in this setup. You can still create the starter and
+          run its tests from your terminal.
+        </p>
+      )}
+      <Link
+        href="https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/blob/main/docs/operations/guided-first-project.md"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex min-h-11 items-center gap-2 text-sm text-primary underline"
+      >
+        Full project guide and recovery instructions
+        <ExternalLink className="h-4 w-4" />
+      </Link>
+    </Card>
+  );
+}
+
 function SelectedStackGuidance({
   moduleIds,
   userTarget,
@@ -178,7 +300,8 @@ function SelectedStackGuidance({
           />
         )}
       </Card>
-      {agents.length > 0 && (
+      <FirstProjectGuidance moduleIds={moduleIds} />
+      {!selected.has("acfs.doctor") && agents.length > 0 && (
         <Card className="space-y-4 p-6">
           <h2 className="text-xl font-semibold">Open a coding agent</h2>
           <p className="text-muted-foreground">
@@ -488,6 +611,8 @@ export default function LaunchOnboardingStep() {
         </div>
       </Card>
 
+      <FirstProjectGuidance moduleIds={unlocked.moduleIds} />
+
       {/* Learning Hub CTA - Primary */}
       <Card className="border-primary/20 bg-primary/5 p-6">
         <div className="space-y-4">
@@ -629,53 +754,6 @@ export default function LaunchOnboardingStep() {
         </div>
       </Card>
 
-      {/* Starting a New Project - How to begin real work */}
-      <Card className="border-primary/30 bg-primary/5 p-6">
-        <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <FolderPlus className="h-5 w-5 text-primary" />
-            <h2 className="text-xl font-semibold">Starting a New Project</h2>
-          </div>
-          <p className="text-muted-foreground">
-            Ready to build something? Here&apos;s the pattern:
-          </p>
-        </div>
-
-        <div className="mt-6 space-y-4">
-          <div className="space-y-2">
-            <h3 className="font-medium">1. Create a session for your project</h3>
-            <CommandCard command="ntm new my-awesome-app" runLocation="vps" />
-            <p className="text-sm text-muted-foreground">
-              This creates a persistent workspace named &quot;my-awesome-app&quot;.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <h3 className="font-medium">2. Create and navigate to a project folder</h3>
-            <CommandCard
-              command="mkdir /data/projects/my-awesome-app && cd /data/projects/my-awesome-app"
-              runLocation="vps"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <h3 className="font-medium">3. Start Claude and describe your project</h3>
-            <CommandCard command="cc" runLocation="vps" />
-            <p className="text-sm text-muted-foreground">
-              Tell Claude what you want to build. For example:
-            </p>
-            <div className="rounded-lg bg-muted px-4 py-3 font-mono text-sm">
-              &quot;Create a React app with TypeScript that shows a todo list&quot;
-            </div>
-          </div>
-
-          <GuideTip>
-            Claude will set up the project structure, install dependencies, and start building. You
-            can guide it step by step or give it the whole vision at once.
-          </GuideTip>
-        </div>
-      </Card>
-
       {/* Finding Your Way Around - Filesystem orientation */}
       <Card className="border-magenta/30 bg-magenta/5 p-6">
         <div className="flex items-center gap-2 mb-4">
@@ -747,98 +825,6 @@ export default function LaunchOnboardingStep() {
             <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">z proj</code> to jump
             to your projects folder!
           </GuideTip>
-        </div>
-      </Card>
-
-      {/* Your First 5 Minutes */}
-      <Card className="border-primary/30 bg-primary/5 p-6">
-        <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-amber" />
-            <h2 className="text-xl font-semibold">Your First 5 Minutes</h2>
-          </div>
-          <p className="text-muted-foreground">
-            Let&apos;s make sure everything works with a quick test run.
-          </p>
-        </div>
-
-        <div className="mt-6 space-y-6">
-          <div className="flex gap-4">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold">
-              1
-            </div>
-            <div className="space-y-2">
-              <h3 className="font-medium">Create a project folder</h3>
-              <CommandCard
-                command="mkdir -p /data/projects/my_first_project && cd /data/projects/my_first_project"
-                runLocation="vps"
-              />
-            </div>
-          </div>
-
-          <div className="flex gap-4">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold">
-              2
-            </div>
-            <div className="space-y-2">
-              <h3 className="font-medium">Authenticate Claude</h3>
-              <CommandCard command="claude" runLocation="vps" />
-              <p className="text-sm text-muted-foreground">
-                The terminal will display a URL. Copy it and open in your laptop&apos;s browser to
-                log in, then return to your terminal.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex gap-4">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold">
-              3
-            </div>
-            <div className="space-y-2">
-              <h3 className="font-medium">Start Claude Code</h3>
-              <CommandCard command="cc" runLocation="vps" />
-              <p className="text-sm text-muted-foreground">
-                After authenticating, this launches Claude Code.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex gap-4">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold">
-              4
-            </div>
-            <div className="space-y-2">
-              <h3 className="font-medium">Your first prompt</h3>
-              <p className="text-sm text-muted-foreground">In the Claude prompt, type:</p>
-              <div className="rounded-lg bg-muted px-4 py-3 font-mono text-sm">
-                Create a simple Python script that prints &quot;Hello from AI!&quot; and run it
-              </div>
-            </div>
-          </div>
-
-          <div className="flex gap-4">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold">
-              5
-            </div>
-            <div className="space-y-2">
-              <h3 className="font-medium">Watch the magic!</h3>
-              <p className="text-sm text-muted-foreground">Claude will:</p>
-              <ul className="space-y-1 text-sm text-muted-foreground">
-                <li>
-                  ✓ Create a file called <span className="font-mono">hello.py</span>
-                </li>
-                <li>✓ Write the Python code</li>
-                <li>✓ Run the script for you</li>
-                <li>✓ Show &quot;Hello from AI!&quot; in the output</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-6 rounded-lg border border-green/30 bg-green/10 p-4 text-center">
-          <p className="text-lg font-medium">
-            🎉 Congratulations! You just used AI to write and run code!
-          </p>
         </div>
       </Card>
 
