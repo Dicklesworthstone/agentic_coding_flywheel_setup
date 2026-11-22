@@ -125,6 +125,108 @@ class DiagnosticCaptureTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(result.stdout.strip(), expected)
 
+    def command_check_code(self, kind: str, body: str, *, dpkg_body="exit 1\n",
+                           missing_timeout=False, stranded=""):
+        """Run the real quick check; fixture only tool discovery and rendering."""
+        tool = self.root / f"{kind} fixture"
+        tool.write_text("#!/bin/bash\n" + body)
+        tool.chmod(0o755)
+        dpkg = self.root / "dpkg-query fixture"
+        dpkg.write_text("#!/bin/bash\n" + dpkg_body)
+        dpkg.chmod(0o755)
+        check_name = "check_bun_global_bin_dir" if kind == "bun" else "check_cosign_version"
+        return "\n".join([
+            "set -uo pipefail",
+            doctor_definitions(check_name),
+            "doctor_skip_unselected_check() { return 1; }",
+            "check() { printf '%s|%s|%s\\n' \"$1\" \"$3\" \"${4:-}\"; }",
+            'check_with_timeout_status() { check "$@"; }',
+            "doctor_binary_path() { case \"$1\" in " + kind + ") printf '%s\\n' " +
+            shlex.quote(str(tool)) + ";; dpkg-query) printf '%s\\n' " +
+            shlex.quote(str(dpkg)) + ";; *) return 1;; esac; }",
+            "doctor_runtime_home() { printf '%s\\n' " + shlex.quote(str(self.root)) + "; }",
+            "doctor_bun_stranded_global_binaries() { printf '%s' " + shlex.quote(stranded) + "; }",
+            "_acfs_doctor_current_home=" + shlex.quote(str(self.root)),
+            "DOCTOR_VERSION_TIMEOUT=0.5",
+            "_acfs_doctor_system_binary_path() { return 1; }" if missing_timeout else ":",
+            check_name,
+        ])
+
+    def test_bun_global_bin_check_accepts_only_successful_absolute_path(self):
+        expected = str(self.root / ".bun/bin")
+        cases = [
+            ("printf '%s\\n' " + shlex.quote(expected), "pass"),
+            ("printf '%s\\n' " + shlex.quote(expected) + "; exit 42", "warn"),
+            ("printf 'not-a-path\\n'", "warn"),
+            ("exit 0", "warn"),
+        ]
+        for body, status in cases:
+            with self.subTest(body=body):
+                result = subprocess.run(["/bin/bash", "-c", self.command_check_code("bun", body)],
+                                        capture_output=True, text=True, timeout=3)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(f"bun.global_bin_dir|{status}|", result.stdout)
+
+    def test_bun_global_bin_check_reports_stranded_packages_without_running_bun(self):
+        marker = self.root / "stranded-probe-ran"
+        code = self.command_check_code(
+            "bun", "touch " + shlex.quote(str(marker)),
+            stranded=f"{self.root}/.cache/.bun/bin/codex\t@openai/codex\n")
+        result = subprocess.run(["/bin/bash", "-c", code], capture_output=True,
+                                text=True, timeout=3)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("bun.global_bin_dir|warn|", result.stdout)
+        self.assertIn("codex", result.stdout)
+        self.assertFalse(marker.exists(), "Known stranded packages need no external probe")
+
+    def test_cosign_version_keeps_release_and_distro_versions(self):
+        for body, dpkg_body, expected in [
+            ("printf 'GitVersion: v3.0.2\\n'", "exit 1", "cosign (v3.0.2)"),
+            ("printf 'GitVersion: devel\\n'", "printf '2:2.6.2-0ubuntu1'", "cosign (v2.6.2)"),
+        ]:
+            with self.subTest(body=body):
+                code = self.command_check_code("cosign", body, dpkg_body=dpkg_body)
+                # Include the label to distinguish the exact discovered version.
+                code = code.rsplit("\n", 1)[0] + \
+                    '\ncheck() { printf "%s|%s|%s|%s\\n" "$1" "$2" "$3" "${4:-}"; }\ncheck_cosign_version'
+                result = subprocess.run(["/bin/bash", "-c", code], capture_output=True,
+                                        text=True, timeout=3)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(expected, result.stdout)
+                self.assertIn("|pass|", result.stdout)
+
+    def test_quick_checks_do_not_execute_without_timeout(self):
+        for kind in ("bun", "cosign"):
+            with self.subTest(kind=kind):
+                marker = self.root / f"{kind}-unbounded"
+                code = self.command_check_code(kind, "touch " + shlex.quote(str(marker)),
+                                               missing_timeout=True)
+                result = subprocess.run(["/bin/bash", "-c", code], capture_output=True,
+                                        text=True, timeout=3)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertFalse(marker.exists(), "Missing timeout must not run a probe")
+                self.assertIn("|warn|", result.stdout)
+
+    def test_quick_checks_bound_wrappers_with_resistant_descendants(self):
+        for kind in ("bun", "cosign"):
+            with self.subTest(kind=kind):
+                self.root = Path(tempfile.mkdtemp(prefix="acfs-diagnostic-check-"))
+                fixture, stop, identity = self.wrapper_with_resistant_grandchild()
+                code = self.command_check_code(kind, "exec /usr/bin/python3 " + shlex.quote(str(fixture)))
+                process = subprocess.Popen(["/bin/bash", "-c", code], stdout=subprocess.PIPE,
+                                           stderr=subprocess.PIPE, text=True)
+                try:
+                    try:
+                        stdout, stderr = process.communicate(timeout=9)
+                    except subprocess.TimeoutExpired:
+                        self.fail(f"{kind} quick check exceeded its deadline and termination grace")
+                    self.assertEqual(process.returncode, 0, (stdout, stderr))
+                    self.assertIn("|timeout|", stdout)
+                    self.assert_child_stopped(identity)
+                finally:
+                    stop.touch()
+                    process.communicate(timeout=3)
+
     def test_version_probe_kills_term_ignoring_process(self):
         probe = doctor_definitions("doctor_version_probe")
         fixture = self.root / "stubborn.py"

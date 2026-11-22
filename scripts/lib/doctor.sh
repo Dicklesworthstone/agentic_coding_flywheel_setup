@@ -3070,8 +3070,24 @@ check_cosign_version() {
         return 0
     fi
 
-    local cosign_ver="" source_note=""
-    cosign_ver="$("$cosign_bin" version 2>/dev/null \
+    local cosign_ver="" source_note="" probe_output="" timeout_bin=""
+    local probe_status=0
+    timeout_bin="$(_acfs_doctor_system_binary_path timeout 2>/dev/null || true)"
+    if [[ -z "$timeout_bin" ]]; then
+        check "tool.cosign" "cosign" "warn" "version check unavailable (timeout is required)"
+        return 0
+    fi
+    probe_output="$(_acfs_doctor_run_bounded "$timeout_bin" "$DOCTOR_VERSION_TIMEOUT" "$cosign_bin" version 2>/dev/null)" || probe_status=$?
+    if (( probe_status == 124 || probe_status == 137 )); then
+        check_with_timeout_status "tool.cosign" "cosign" "timeout" \
+            "version check exceeded its ${DOCTOR_VERSION_TIMEOUT}s deadline"
+        return 0
+    elif (( probe_status != 0 )); then
+        check "tool.cosign" "cosign" "warn" "version check failed (exit $probe_status)"
+        return 0
+    fi
+
+    cosign_ver="$(printf '%s\n' "$probe_output" \
         | sed -n 's/^GitVersion:[[:space:]]*v\{0,1\}\([0-9][0-9A-Za-z.-]*\).*/\1/p' \
         | head -n1)"
     if [[ ! "$cosign_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
@@ -3080,7 +3096,15 @@ check_cosign_version() {
         dpkg_query_bin="$(doctor_binary_path dpkg-query 2>/dev/null || true)"
         cosign_ver=""
         if [[ -n "$dpkg_query_bin" ]]; then
-            cosign_ver="$("$dpkg_query_bin" -W -f='${Version}' cosign 2>/dev/null || true)"
+            cosign_ver="$(_acfs_doctor_run_bounded "$timeout_bin" "$DOCTOR_VERSION_TIMEOUT" "$dpkg_query_bin" -W -f='${Version}' cosign 2>/dev/null)" || probe_status=$?
+            if (( probe_status == 124 || probe_status == 137 )); then
+                check_with_timeout_status "tool.cosign" "cosign" "timeout" \
+                    "package version check exceeded its ${DOCTOR_VERSION_TIMEOUT}s deadline"
+                return 0
+            elif (( probe_status != 0 )); then
+                check "tool.cosign" "cosign" "warn" "package version check failed (exit $probe_status)"
+                return 0
+            fi
             cosign_ver="${cosign_ver#*:}"
             cosign_ver="${cosign_ver%%-*}"
         fi
@@ -3296,6 +3320,8 @@ check_bun_global_bin_dir() {
     local resolved_dir=""
     local details=""
     local fix=""
+    local timeout_bin=""
+    local probe_status=0
 
     bun_bin="$(doctor_binary_path bun 2>/dev/null || true)"
     if [[ -z "$bun_bin" ]]; then
@@ -3315,19 +3341,38 @@ check_bun_global_bin_dir() {
         esac
     done <<< "$stranded"
 
-    # Where a `bun install -g` typed in THIS environment would land. Only
-    # meaningful when doctor runs as the account it inspects.
-    if [[ "$runtime_home" == "${_acfs_doctor_current_home:-}" ]]; then
-        resolved_dir="$(HOME="$runtime_home" "$bun_bin" pm -g bin 2>/dev/null | tail -n 1 || true)"
-        [[ "$resolved_dir" == /* ]] || resolved_dir=""
-    fi
-
     if [[ ${#stranded_names[@]} -gt 0 ]]; then
         details="${#stranded_names[@]} global install(s) outside $expected_dir: ${stranded_names[*]}"
         fix="BUN_INSTALL=\"\$HOME/.bun\" bun install -g --trust ${stranded_packages[*]}   (or: acfs doctor --fix --yes)"
         check "bun.global_bin_dir" "Bun global installs stranded off PATH" "warn" "$details" "$fix"
         return 0
     fi
+
+    # Where a `bun install -g` typed in THIS environment would land. Only
+    # meaningful when doctor runs as the account it inspects. Known stranded
+    # packages above need no external probe to produce an actionable warning.
+    if [[ "$runtime_home" == "${_acfs_doctor_current_home:-}" ]]; then
+        timeout_bin="$(_acfs_doctor_system_binary_path timeout 2>/dev/null || true)"
+        if [[ -z "$timeout_bin" ]]; then
+            check "bun.global_bin_dir" "Bun global bin dir" "warn" "directory check unavailable (timeout is required)"
+            return 0
+        fi
+        resolved_dir="$(HOME="$runtime_home" _acfs_doctor_run_bounded "$timeout_bin" "$DOCTOR_VERSION_TIMEOUT" "$bun_bin" pm -g bin 2>/dev/null)" || probe_status=$?
+        if (( probe_status == 124 || probe_status == 137 )); then
+            check_with_timeout_status "bun.global_bin_dir" "Bun global bin dir" "timeout" \
+                "directory check exceeded its ${DOCTOR_VERSION_TIMEOUT}s deadline"
+            return 0
+        elif (( probe_status != 0 )); then
+            check "bun.global_bin_dir" "Bun global bin dir" "warn" "directory check failed (exit $probe_status)"
+            return 0
+        fi
+        resolved_dir="${resolved_dir##*$'\n'}"
+        if [[ "$resolved_dir" != /* ]]; then
+            check "bun.global_bin_dir" "Bun global bin dir" "warn" "bun did not report an absolute global binary directory"
+            return 0
+        fi
+    fi
+
     if [[ -n "$resolved_dir" && "$resolved_dir" != "$expected_dir" ]]; then
         check "bun.global_bin_dir" "Bun global bin dir" "warn" \
             "bun resolves its global bin dir to $resolved_dir, not $expected_dir (BUN_INSTALL is not \$HOME/.bun in this shell, so XDG_CACHE_HOME decides)" \
