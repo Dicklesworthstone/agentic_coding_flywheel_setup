@@ -77,7 +77,10 @@ By default preparation reads each selected task with `br show ID --json` and
 uses the existing packet generator's bounded CM/CASS context lookups. Supply
 `--beads-file full-beads.json --no-live-context` for file-only preparation with
 no br, CM or CASS calls. Beads input can be an object or array of full objects;
-missing, duplicate, closed, blocked or undecomposed epic tasks prevent publication.
+missing, duplicate, assigned, closed, blocked or undecomposed epic tasks prevent
+publication. Preparation rechecks ownership in each full task brief, including
+when an earlier assignment report still lists the task as available. No bundle
+is published if any selected task has acquired an owner.
 Saved assignments do not attest repository identity: `--repo` is an explicit
 operator choice, and saved task data is not proof of current readiness.
 

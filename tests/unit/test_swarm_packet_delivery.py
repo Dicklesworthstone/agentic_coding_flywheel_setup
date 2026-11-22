@@ -22,7 +22,11 @@ with (root / "calls.jsonl").open("a") as f:
     f.write(json.dumps([name, args]) + "\n")
 if name == "br":
     assert args == ["ready", "--json"], args
-    print(json.dumps([] if mode == "closed" else [{"id": "bd-work", "status": "open"}]))
+    ready = root / "ready.json"
+    if ready.exists():
+        print(ready.read_text())
+    else:
+        print(json.dumps([] if mode == "closed" else [{"id": "bd-work", "status": "open"}]))
     sys.exit(0)
 if name == "tmux":
     assert args[:5] == ["display-message", "-p", "-t", "%42", "#{session_name}\t#{pane_id}\t#{pane_current_path}\t#{pane_dead}\t#{pane_current_command}"], args
@@ -54,6 +58,9 @@ if "--dry-run" in args:
     if mode == "shell": preview["would_send_to"] = []
     if mode == "broad": preview["would_send_to"] = ["1", "2"]
     if mode == "injection": preview["cm_injection"] = {"enabled": True, "tokens_added": 10}
+    changed_ready = root / "after-preview-ready.json"
+    if changed_ready.exists():
+        (root / "ready.json").write_bytes(changed_ready.read_bytes())
     print(json.dumps(preview))
     sys.exit(0)
 assert "--op-id=work-one" in args and "--dry-run" not in args
@@ -141,7 +148,7 @@ class DeliveryTests(unittest.TestCase):
         self.assertEqual(stat.S_IMODE(self.receipt.stat().st_mode), 0o600)
         self.assertNotIn(self.prompt, self.receipt.read_text())
         self.assertFalse((self.repo / "should-not-exist").exists())
-        self.assertEqual([name for name, _ in self.calls()], ["br", "tmux", "ntm", "tmux", "ntm"])
+        self.assertEqual([name for name, _ in self.calls()], ["br", "tmux", "ntm", "br", "tmux", "ntm"])
 
     def test_completed_retry_queries_receipt_without_sending(self):
         self.invoke(send=True)
@@ -174,6 +181,66 @@ class DeliveryTests(unittest.TestCase):
         self.assertIn("ready queue", report["error"])
         self.assertFalse(self.receipt.exists())
         self.assertEqual(self.send_count(), 0)
+
+    def test_claims_blockers_and_malformed_readiness_never_start_work(self):
+        for fields in ({"assignee": "ExistingAgent"}, {"assignee": False}, {"assignee": []},
+                       {"assignee": " "}, {"blocked": True}, {"blocked": "false"},
+                       {"blocked_by": ["bd-parent"]}, {"blocked_by": ""}, {"blocked_by": None},
+                       {"status": "in_progress"}):
+            with self.subTest(fields=fields):
+                (self.root / "ready.json").write_text(json.dumps([{"id": "bd-work", "status": "open", **fields}]))
+                code, report = self.invoke(send=True)
+                self.assertEqual(code, 2, report)
+                self.assertIn("ready queue", report["error"])
+                self.assertFalse(self.receipt.exists())
+                self.assertEqual(self.send_count(), 0)
+        self.assertTrue(all(name == "br" for name, _ in self.calls()))
+
+    def test_conflicting_duplicate_ids_do_not_mask_claimed_or_closed_work(self):
+        for second in ({"id": "bd-work", "status": "closed"},
+                       {"id": "bd-work", "status": "in_progress", "assignee": "ExistingAgent"},
+                       {"id": "bd-work", "status": "open"}):
+            with self.subTest(second=second):
+                (self.root / "ready.json").write_text(json.dumps([{"id": "bd-work", "status": "open"}, second]))
+                code, report = self.invoke(send=True)
+                self.assertEqual(code, 2, report)
+                self.assertIn("ambiguous", report["error"])
+                self.assertFalse(self.receipt.exists())
+        self.assertTrue(all(name == "br" for name, _ in self.calls()))
+
+    def test_claim_or_block_during_preview_is_rechecked_before_intent(self):
+        for index, fields in enumerate(({"assignee": "ExistingAgent"}, {"blocked": True}, {"status": "closed"})):
+            with self.subTest(fields=fields):
+                (self.root / "ready.json").write_text('[{"id":"bd-work","status":"open"}]')
+                (self.root / "after-preview-ready.json").write_text(json.dumps([
+                    {"id": "bd-work", "status": "open", **fields}]))
+                code, report = self.invoke(send=True)
+                self.assertEqual(code, 2, report)
+                self.assertIn("ready queue", report["error"])
+                self.assertFalse(self.receipt.exists())
+                self.assertEqual(self.send_count(), 0)
+                self.assertEqual(len(self.calls()), (index + 1) * 4)
+        self.assertEqual([name for name, _ in self.calls()], ["br", "tmux", "ntm", "br"] * 3)
+
+    def test_null_and_empty_ownership_do_not_block_unclaimed_work(self):
+        (self.root / "ready.json").write_text('[{"id":"bd-work","status":"open","assignee":null}]')
+        (self.root / "after-preview-ready.json").write_text('[{"id":"bd-work","status":"open","assignee":"","blocked_by":[]}]')
+        code, report = self.invoke(send=True)
+        self.assertEqual((code, report["status"]), (0, "submitted"), report)
+        self.assertEqual(self.send_count(), 1)
+
+    def test_completed_receipt_reconciliation_ignores_later_task_ownership(self):
+        self.assertEqual(self.invoke(send=True)[0], 0)
+        saved = self.receipt.read_bytes()
+        before = len(self.calls())
+        (self.root / "ready.json").write_text('[{"id":"bd-work","status":"closed","assignee":"ExistingAgent"}]')
+        code, report = self.invoke(send=True)
+        self.assertEqual((code, report["status"]), (0, "submitted"), report)
+        self.assertTrue(report["reconciled_only"])
+        self.assertFalse(report["sends_prompt"])
+        self.assertEqual(self.calls()[before:], [["ntm", ["--robot-send-receipt=work-one", "--robot-format=json"]]])
+        self.assertEqual(self.send_count(), 1)
+        self.assertEqual(self.receipt.read_bytes(), saved)
 
     def test_wrong_repository_blocks_before_dry_run(self):
         code, _ = self.invoke(send=True, mode="wrong-repo")

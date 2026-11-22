@@ -255,13 +255,34 @@ class PreparationTests(unittest.TestCase):
     def test_missing_or_changed_later_bead_prevents_all_publication(self):
         original = copy.deepcopy(self.beads)
         for mutation in ({"id": "bd-other"}, {"status": "closed"}, {"blocked": True},
-                         {"blocked_by": ["bd-first"]}, {"issue_type": "epic"}, {"description": []}):
+                         {"blocked_by": ["bd-first"]}, {"issue_type": "epic"}, {"description": []},
+                         {"assignee": "AnotherAgent"}, {"assignee": False}, {"assignee": []},
+                         {"blocked_by": None}):
             with self.subTest(mutation=mutation):
                 self.beads = copy.deepcopy(original)
                 self.beads[1].update(mutation)
                 self.write_inputs()
                 self.assertEqual(self.invoke()[0], 2)
                 self.assertFalse(self.output.exists())
+
+    def test_empty_ownership_and_absent_blockers_remain_preparable(self):
+        self.beads[0]["assignee"] = None
+        self.beads[1].update(assignee="", blocked_by=[])
+        self.write_inputs()
+        code, report = self.invoke()
+        self.assertEqual((code, report["status"]), (0, "prepared"), report)
+        self.assertEqual(report["delivery_count"], 2)
+        self.assertEqual(self.calls(), [])
+
+    def test_automatic_selection_leaves_claimed_work_for_its_existing_agent(self):
+        self.beads[0]["assignee"] = "ExistingAgent"
+        self.write_inputs()
+        code, report = self.invoke_auto()
+        self.assertEqual((code, report["status"]), (0, "prepared"), report)
+        self.assertEqual([a["bead_id"] for a in report["assignments"]], ["bd-doc"])
+        saved = json.loads((self.output / "assignments.json").read_text())
+        self.assertEqual(saved["excluded_beads"][0]["reason"], "assigned")
+        self.assertEqual(self.calls(), [])
 
     def test_large_brief_blocks_instead_of_truncating_requirements(self):
         self.beads[1]["description"] = "x" * 65000

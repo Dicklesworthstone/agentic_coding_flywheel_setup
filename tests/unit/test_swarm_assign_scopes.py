@@ -140,6 +140,47 @@ class ScopeAssignmentTests(unittest.TestCase):
         self.assertEqual(self.ids(report), ["bd-a"])
         self.assertEqual(report["summary"]["excluded_count"], 3)
 
+    def test_owned_open_work_is_excluded_before_ranking(self):
+        self.save("ready", [issue("bd-a", assignee="ExistingAgent", priority=0),
+                            issue("bd-b", assignee=None), issue("bd-c", assignee="")])
+        for scoped in (True, False):
+            with self.subTest(scoped=scoped):
+                report = self.run_cli(scoped=scoped)
+                self.assertEqual(self.ids(report), ["bd-b", "bd-c"])
+                self.assertEqual(report["summary"]["excluded_count"], 1)
+                self.assertEqual(report["excluded_beads"][0]["reason"], "assigned")
+                self.assertNotIn("ExistingAgent", json.dumps(report))
+
+    def test_triage_cannot_hide_claimed_closed_or_blocked_work(self):
+        for fields, reason in (({"assignee": "ExistingAgent"}, "assigned"),
+                               ({"status": "in_progress"}, "not-ready-status"),
+                               ({"status": "closed"}, "not-ready-status"),
+                               ({"blocked": True}, "blocked")):
+            with self.subTest(fields=fields):
+                self.save("triage", {"recommendations": [{"id": "bd-a", **fields}]})
+                report = self.run_cli()
+                self.assertEqual(self.ids(report), ["bd-b", "bd-c"])
+                self.assertEqual(report["excluded_beads"][0]["reason"], reason)
+
+    def test_empty_triage_ownership_does_not_override_a_ready_claim(self):
+        self.save("ready", [issue("bd-a", assignee="ExistingAgent"), issue("bd-c")])
+        self.save("triage", {"recommendations": [{"id": "bd-a", "assignee": None, "status": "open"}]})
+        report = self.run_cli()
+        self.assertEqual(self.ids(report), ["bd-c"])
+        self.assertEqual(report["excluded_beads"][0]["reason"], "assigned")
+
+    def test_malformed_ownership_is_not_treated_as_unassigned(self):
+        for value in (False, 0, [], {}):
+            for source in ("ready", "triage"):
+                with self.subTest(source=source, value=value):
+                    self.save("ready", [issue("bd-a")])
+                    self.save("triage", {})
+                    if source == "ready":
+                        self.save("ready", [issue("bd-a", assignee=value)])
+                    else:
+                        self.save("triage", {"recommendations": [{"id": "bd-a", "assignee": value}]})
+                    self.run_cli(ok=False)
+
     def test_triage_cannot_hide_a_dependency_block(self):
         self.save("triage", {"recommendations": [{"id": "bd-a", "blocked_by": ["bd-x"]}]})
         report = self.run_cli()

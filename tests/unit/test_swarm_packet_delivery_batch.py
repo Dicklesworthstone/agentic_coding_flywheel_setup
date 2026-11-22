@@ -21,8 +21,12 @@ with (root / "calls.jsonl").open("a") as f:
     f.write(json.dumps([name, args]) + "\n")
 if name == "br":
     assert args == ["ready", "--json"], args
-    print(json.dumps([{"id": "bd-" + str(i), "status": "open"} for i in (1, 2, 3)
-                      if not (mode == "not-ready" and i == 2)]))
+    ready = root / "ready.json"
+    if ready.exists():
+        print(ready.read_text())
+    else:
+        print(json.dumps([{"id": "bd-" + str(i), "status": "open"} for i in (1, 2, 3)
+                          if not (mode == "not-ready" and i == 2)]))
     sys.exit(0)
 if name == "tmux":
     assert args[:3] == ["display-message", "-p", "-t"]
@@ -265,6 +269,29 @@ class BatchDeliveryTests(unittest.TestCase):
         self.assertEqual(code, 0, report)
         self.assertEqual(report["summary"]["reconciled"], 1)
         self.assertEqual(len(self.sends()), 3)
+
+    def test_claimed_middle_task_stops_batch_without_blocking_prior_receipt_recovery(self):
+        ready = [{"id": "bd-1", "status": "open"},
+                 {"id": "bd-2", "status": "open", "assignee": "OtherAgent"},
+                 {"id": "bd-3", "status": "open"}]
+        (self.root / "ready.json").write_text(json.dumps(ready))
+        review = self.preview_hash()
+        code, report = self.invoke(review, send=True)
+        self.assertEqual((code, report["status"]), (2, "stopped"), report)
+        self.assertEqual([item["status"] for item in report["deliveries"]],
+                         ["submitted", "error", "not_attempted"])
+        self.assertEqual(self.sends(), ["--op-id=batch-op-1"])
+        first_receipt = (self.root / "receipt-1.json").read_bytes()
+        self.assertFalse((self.root / "receipt-2.json").exists())
+        self.assertFalse((self.root / "receipt-3.json").exists())
+        ready[0].update(status="closed", assignee="OriginalAgent")
+        ready[1]["assignee"] = None
+        (self.root / "ready.json").write_text(json.dumps(ready))
+        code, report = self.invoke(review, send=True)
+        self.assertEqual((code, report["status"]), (0, "submitted"), report)
+        self.assertEqual(report["summary"]["reconciled"], 1)
+        self.assertEqual(self.sends(), ["--op-id=batch-op-1", "--op-id=batch-op-2", "--op-id=batch-op-3"])
+        self.assertEqual((self.root / "receipt-1.json").read_bytes(), first_receipt)
 
     def test_invalid_manifest_shapes_and_entry_types_are_rejected(self):
         original = copy.deepcopy(self.spec)

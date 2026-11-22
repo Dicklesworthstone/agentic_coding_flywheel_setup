@@ -349,7 +349,7 @@ def records(value):
         if type(item) is not dict or not valid_id(item.get("id")) or item["id"] in seen:
             reject("issue IDs must be present, valid and unique")
         seen.add(item["id"])
-        for key in ("title", "status", "issue_type", "type", "action"):
+        for key in ("title", "status", "issue_type", "type", "action", "assignee"):
             if key in item and item[key] is not None and type(item[key]) is not str:
                 reject("invalid issue text field")
         # bv emits "labels": null for unlabeled beads; null means absent.
@@ -444,11 +444,15 @@ def estimate($i): if ($i.estimated_minutes // null) == null then 999999 else n($
 def has_label($ls; $re): any($ls[]?; test($re));
 def has_text($i; $re): (text(issue_title($i)) | test($re));
 
+def is_blocked($i):
+  (($i.blocked // false) == true) or ((arr($i.blocked_by) | length) > 0);
+def is_assigned($i): ($i.assignee // "") != "";
 def is_ready_issue($i):
-  (($i.status // "open") == "open")
-  and (($i.blocked // false) != true)
-  and ((arr($i.blocked_by) | length) == 0)
-  and ((arr((triage_for($i.id)).blocked_by) | length) == 0);
+  (triage_for($i.id)) as $t
+  | (($i.status // "open") == "open")
+    and (($t.status // "open") == "open")
+    and (is_assigned($i) | not) and (is_assigned($t) | not)
+    and (is_blocked($i) | not) and (is_blocked($t) | not);
 
 def role_fit($i; $role):
   (labels($i)) as $ls
@@ -622,8 +626,9 @@ def assignment($slot; $i):
       bead_id: .id,
       title: issue_title(.),
       status: (.status // null),
-      reason: (if (.blocked // false) == true or ((arr(.blocked_by) | length) > 0)
-               or ((arr((triage_for(.id)).blocked_by) | length) > 0) then "blocked" else "not-ready-status" end)
+      reason: (if is_blocked(.) or is_blocked(triage_for(.id)) then "blocked"
+               elif is_assigned(.) or is_assigned(triage_for(.id)) then "assigned"
+               else "not-ready-status" end)
     }))
   }
 JQ

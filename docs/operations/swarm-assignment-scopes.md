@@ -40,8 +40,11 @@ those roles may edit code, and the planner does not assume they are read-only.
 Beads without a declared scope are deferred with `missing-scope`, not assigned
 using guessed paths. Epics are deferred with `decompose-first`; declare scopes
 for their bounded child tasks instead. Already claimed, non-open and blocked
-Beads are excluded. A dependency block reported by either ready input or triage
-is respected.
+Beads are excluded. A nonempty `assignee` means the work already has an owner,
+even if its status still says `open`. A claim, non-open status, dependency block
+or explicit blocked flag in either ready input or triage excludes the task;
+one input cannot override the other's restriction. Absent, null and empty-string
+assignees mean unassigned. Malformed ownership fields are input errors.
 
 ## Allocation and explanations
 

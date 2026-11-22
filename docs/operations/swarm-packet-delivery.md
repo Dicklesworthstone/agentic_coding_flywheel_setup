@@ -51,6 +51,13 @@ be the requested native agent, and asks NTM for a dry run. NTM must select
 exactly one agent. A shell with an old agent title is not accepted. Node-hosted
 legacy agent wrappers and other provider types are not yet supported here.
 
+The selected task must be open, unassigned and unblocked. Queue membership alone
+does not override an assignee or dependency block, and duplicate task IDs make
+the queue ambiguous. ACFS checks readiness again after the dry run, immediately
+before creating a delivery intent, so a claim or block observed during preflight
+stops submission. These observations do not claim the task or eliminate races
+with other workers; the receiving agent must still claim work and reserve files.
+
 Requires an NTM version supporting `--robot-send`, `--msg-file=-`, `--panes`,
 `--type`, `--dry-run`, `--op-id`, and `--robot-send-receipt`. The prompt is sent
 through stdin, never shell-evaluated or placed in process arguments. NTM context
@@ -66,6 +73,8 @@ receipt. It records the packet hash, target, and operation ID, not the prompt.
 Repeat the identical delivery command after a dropped connection or uncertain
 result. When the receipt exists, ACFS only queries NTM's durable receipt. It does
 not resend, even when the upstream receipt is missing or still in progress.
+This reconciliation does not recheck task readiness: a task that was claimed or
+closed after submission can still have its original delivery confirmed.
 This intentionally avoids NTM's stale-operation takeover becoming a blind retry.
 It also means an intent written just before a crash may require manual inspection
 when no send actually reached NTM. Do not remove receipts merely to retry.

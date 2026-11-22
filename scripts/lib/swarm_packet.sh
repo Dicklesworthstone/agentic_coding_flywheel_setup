@@ -1277,6 +1277,28 @@ def existing_intent(prepared):
     return saved
 
 
+def unclaimed_ready_bead(bead, implicit_open=False):
+    """A ready-list entry alone is not evidence that nobody owns the work."""
+    return (isinstance(bead, dict)
+            and bead.get("status", "open" if implicit_open else None) == "open"
+            and bead.get("assignee") in (None, "")
+            and bead.get("blocked", False) is False
+            and bead.get("blocked_by", []) == [])
+
+
+def check_ready_bead(br, request, repo):
+    code, data = run([br, "ready", "--json"], repo)
+    ready = parse(data)
+    require(code == 0 and isinstance(ready, list) and len(ready) <= 2048
+            and all(isinstance(bead, dict) and isinstance(bead.get("id"), str)
+                    and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", bead["id"]) for bead in ready)
+            and len({bead["id"] for bead in ready}) == len(ready),
+            "The current ready queue is invalid or ambiguous; no prompt was sent.")
+    matches = [bead for bead in ready if bead["id"] == request["bead_id"]]
+    require(len(matches) == 1 and unclaimed_ready_bead(matches[0], implicit_open=True),
+            "Bead is not unassigned, open and unblocked in the current ready queue; no prompt was sent.")
+
+
 def deliver(prepared):
     args, request, receipt = prepared["args"], prepared["request"], prepared["receipt"]
     payload, argv, report = prepared["payload"], prepared["argv"], dict(prepared["report"])
@@ -1295,12 +1317,7 @@ def deliver(prepared):
         report["reconciled_only"] = True
     else:
         tmux, br = binary("tmux"), binary("br")
-        code, data = run([br, "ready", "--json"], repo)
-        ready = parse(data)
-        require(code == 0 and isinstance(ready, list)
-                and sum(isinstance(b, dict) and b.get("id") == request["bead_id"]
-                        and b.get("status", "open") == "open" for b in ready) == 1,
-                "Bead is not in the current ready queue; no prompt was sent.")
+        check_ready_bead(br, request, repo)
         target_check(tmux, request)
         code, data = run([ntm, *[a for a in argv[1:] if not a.startswith("--op-id=")], "--dry-run"], repo, payload)
         preview = parse(data)
@@ -1317,6 +1334,10 @@ def deliver(prepared):
             require(enrichment is None or (isinstance(enrichment, dict) and enrichment.get("enabled") is False),
                     "Disable NTM send-time context injection before delivering an already-reviewed packet.")
         target = preview["would_send_to"][0]
+        # NTM's preview and pane probes can take time. A task claimed or blocked
+        # meanwhile must not create a new delivery intent. This is a fresh
+        # observation, not a claim; the receiving agent still reserves its work.
+        check_ready_bead(br, request, repo)
         target_check(tmux, request)
         publish_intent(receipt, request, target)
         report["status"] = "unconfirmed"
@@ -1560,9 +1581,8 @@ def preparation_bead(value, bead_id):
     matches = [item for item in records if item["id"] == bead_id]
     require(len(matches) == 1, "A selected Bead is missing from the task input.")
     bead = matches[0]
-    require(bead.get("status") == "open" and bead.get("blocked", False) is False
-            and bead.get("blocked_by", []) == [] and bead.get("issue_type") != "epic",
-            "A selected Bead is no longer open, is blocked, or needs decomposition.")
+    require(unclaimed_ready_bead(bead) and bead.get("issue_type") != "epic",
+            "A selected Bead is assigned, no longer open, blocked, or needs decomposition.")
     require(isinstance(bead.get("title"), str) and bead["title"].strip()
             and all(bead.get(key) is None or isinstance(bead[key], str)
                     for key in ("description", "design", "acceptance_criteria")), "Invalid Bead task brief.")
