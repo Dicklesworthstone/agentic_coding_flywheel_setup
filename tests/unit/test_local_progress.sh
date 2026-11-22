@@ -394,6 +394,212 @@ test_normal_helper_path_records_installer_doctor_and_onboard() {
     pass "normal_helper_path_records_installer_doctor_and_onboard"
 }
 
+test_unsafe_progress_storage_is_inert() {
+    local case_dir python_bin
+    case_dir="$(new_case_dir unsafe-storage)"
+    python_bin="$(local_progress_python_binary)" || return 1
+    "$python_bin" -I - "$PROGRESS_SH" "$case_dir" <<'PY' || return 1
+import os
+from pathlib import Path
+import signal
+import stat
+import subprocess
+import sys
+
+source, root = Path(sys.argv[1]), Path(sys.argv[2])
+original = b'{"events":[{"kind":"retained"}],"extra":"preserve me"}\n'
+
+
+def record(progress):
+    process = subprocess.Popen(
+        ["/bin/bash", "-c", 'source "$1"; local_progress_record_event doctor doctor_invoked invoked "{}"',
+         "progress-probe", str(source)],
+        env=dict(os.environ, ACFS_LOCAL_PROGRESS_FILE=str(progress)),
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True,
+    )
+    try:
+        output, errors = process.communicate(timeout=4)
+        assert process.returncode == 0, (progress, process.returncode, errors)
+        assert output == errors == b"", (progress, output, errors)
+    finally:
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+
+
+for role in ("lock", "progress"):
+    for kind in ("symlink", "dangling-symlink", "hardlink", "fifo", "directory"):
+        directory = root / (role + "-" + kind)
+        directory.mkdir()
+        progress = directory / "local_progress.json"
+        target = directory / "unrelated-user-data"
+        if kind != "dangling-symlink":
+            target.write_bytes(original)
+        entry = Path(str(progress) + ".lock") if role == "lock" else progress
+        if role == "lock":
+            progress.write_bytes(original)
+        if kind in ("symlink", "dangling-symlink"):
+            entry.symlink_to(target)
+        elif kind == "hardlink":
+            os.link(target, entry)
+        elif kind == "fifo":
+            os.mkfifo(entry)
+        else:
+            entry.mkdir()
+        before = entry.lstat()
+        record(progress)
+        after = entry.lstat()
+        assert (before.st_dev, before.st_ino, before.st_mode) == (after.st_dev, after.st_ino, after.st_mode), entry
+        if kind == "dangling-symlink":
+            assert not target.exists(), target
+        else:
+            assert target.read_bytes() == original, target
+        if role == "lock":
+            assert progress.read_bytes() == original, progress
+        else:
+            assert not Path(str(progress) + ".lock").exists(), progress
+        if stat.S_ISLNK(before.st_mode):
+            assert entry.readlink() == target, entry
+
+for parent_link in (False, True):
+    directory = root / ("ancestor-link" if parent_link else "directory-link")
+    directory.mkdir()
+    actual = directory / "actual"
+    actual.mkdir()
+    target_dir = actual / ".acfs" if parent_link else actual
+    if parent_link:
+        target_dir.mkdir()
+    target = target_dir / "local_progress.json"
+    target.write_bytes(original)
+    link = directory / "linked"
+    link.symlink_to(actual, target_is_directory=True)
+    record(link / ".acfs" / "local_progress.json" if parent_link else link / "local_progress.json")
+    assert target.read_bytes() == original, target
+    assert not Path(str(target) + ".lock").exists(), target
+print("Verified 10 unsafe file paths and 2 linked directory paths without mutation or blocking")
+PY
+    pass "unsafe_progress_storage_is_inert"
+}
+
+test_recording_preserves_retention_and_unrelated_metadata() {
+    local case_dir progress_file before
+    case_dir="$(new_case_dir retention)"
+    progress_file="$case_dir/home/.acfs/local_progress.json"
+    write_file "$progress_file" <<'JSON'
+{"created_at":"2026-01-01T00:00:00Z","extra":{"keep":true},"events":[{"kind":"oldest"},{"kind":"previous"}]}
+JSON
+    ACFS_LOCAL_PROGRESS_FILE="$progress_file" ACFS_LOCAL_PROGRESS_MAX_EVENTS=0002 \
+        local_progress_record_event "doctor" "doctor_invoked" "invoked" '{"deep_mode":true}' || return 1
+    jq -e '
+      .schema_version == 1 and .created_at == "2026-01-01T00:00:00Z" and
+      .extra.keep == true and (.events | length) == 2 and
+      .events[0].kind == "previous" and .events[1].kind == "doctor_invoked" and
+      .events[1].details.deep_mode == true
+    ' "$progress_file" >/dev/null || return 1
+    [[ "$(stat -c %a "$progress_file")" == 600 ]] || return 1
+    ACFS_LOCAL_PROGRESS_FILE="$progress_file" ACFS_LOCAL_PROGRESS_MAX_EVENTS=invalid \
+        local_progress_record_event 'unsafe/token' "invalid_details" "observed" 'not-json' || return 1
+    jq -e '(.events | length) == 3 and .events[2].source == "unknown" and .events[2].details == {}' \
+        "$progress_file" >/dev/null || return 1
+
+    progress_file="$case_dir/home/.acfs/malformed.json"
+    printf '%s\n' '{"events":[' > "$progress_file"
+    before="$(sha256sum "$progress_file")"
+    ACFS_LOCAL_PROGRESS_FILE="$progress_file" local_progress_record_event doctor invoked invoked || return 1
+    [[ "$(sha256sum "$progress_file")" == "$before" ]] || return 1
+    pass "recording_preserves_retention_and_unrelated_metadata"
+}
+
+test_concurrent_progress_writers_keep_all_events() {
+    local case_dir python_bin
+    case_dir="$(new_case_dir concurrent)"
+    python_bin="$(local_progress_python_binary)" || return 1
+    "$python_bin" -I - "$PROGRESS_SH" "$case_dir/home/.acfs/local_progress.json" <<'PY' || return 1
+import json
+import os
+from pathlib import Path
+import signal
+import subprocess
+import sys
+
+source, progress = sys.argv[1:]
+processes = []
+try:
+    for index in range(8):
+        processes.append(subprocess.Popen(
+            ["/bin/bash", "-c", 'source "$1"; local_progress_record_event installer "$2" completed "{}"',
+             "progress-writer", source, "phase_" + str(index)],
+            env=dict(os.environ, ACFS_LOCAL_PROGRESS_FILE=progress, ACFS_LOCAL_PROGRESS_MAX_EVENTS="100"),
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True,
+        ))
+    for process in processes:
+        output, errors = process.communicate(timeout=10)
+        assert process.returncode == 0 and output == errors == b"", (process.returncode, output, errors)
+    state = json.loads(Path(progress).read_text())
+    assert len(state["events"]) == 8, state
+    assert {event["kind"] for event in state["events"]} == {"phase_" + str(i) for i in range(8)}, state
+finally:
+    for process in processes:
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+PY
+    pass "concurrent_progress_writers_keep_all_events"
+}
+
+test_busy_progress_lock_is_bounded_and_nontruncating() {
+    local case_dir python_bin
+    case_dir="$(new_case_dir busy-lock)"
+    python_bin="$(local_progress_python_binary)" || return 1
+    "$python_bin" -I - "$PROGRESS_SH" "$case_dir/home/.acfs/local_progress.json" <<'PY' || return 1
+import fcntl
+import os
+from pathlib import Path
+import signal
+import subprocess
+import sys
+import time
+
+source, progress = Path(sys.argv[1]), Path(sys.argv[2])
+original = b'{"events":[]}\n'
+progress.write_bytes(original)
+lock = Path(str(progress) + ".lock")
+lock.write_bytes(b"existing lock evidence\n")
+with lock.open("rb") as held:
+    fcntl.flock(held, fcntl.LOCK_EX)
+    started = time.monotonic()
+    process = subprocess.Popen(
+        ["/bin/bash", "-c", 'source "$1"; local_progress_record_event doctor invoked invoked "{}"',
+         "progress-probe", str(source)],
+        env=dict(os.environ, ACFS_LOCAL_PROGRESS_FILE=str(progress)),
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True,
+    )
+    try:
+        output, errors = process.communicate(timeout=6)
+        assert process.returncode == 0 and output == errors == b"", (process.returncode, output, errors)
+        assert time.monotonic() - started >= 1, "regular-file contention did not use the bounded lock wait"
+    finally:
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+    assert progress.read_bytes() == original
+    assert lock.read_bytes() == b"existing lock evidence\n"
+PY
+    pass "busy_progress_lock_is_bounded_and_nontruncating"
+}
+
+test_missing_python_is_an_inert_best_effort_skip() {
+    local case_dir progress_file
+    case_dir="$(new_case_dir no-python)"
+    progress_file="$case_dir/not-created/local_progress.json"
+    (
+        local_progress_python_binary() { return 1; }
+        ACFS_LOCAL_PROGRESS_FILE="$progress_file" local_progress_record_event doctor invoked invoked
+    ) || return 1
+    [[ ! -e "$case_dir/not-created" ]] || return 1
+    pass "missing_python_is_an_inert_best_effort_skip"
+}
+
 run_test() {
     local name="$1"
     if "$name"; then
@@ -415,6 +621,11 @@ main() {
     run_test test_checkpoint_summary_covers_fixture_states
     run_test test_normal_onboard_path_leaves_useful_milestones
     run_test test_normal_helper_path_records_installer_doctor_and_onboard
+    run_test test_unsafe_progress_storage_is_inert
+    run_test test_recording_preserves_retention_and_unrelated_metadata
+    run_test test_concurrent_progress_writers_keep_all_events
+    run_test test_busy_progress_lock_is_bounded_and_nontruncating
+    run_test test_missing_python_is_an_inert_best_effort_skip
 
     echo "Results: $TESTS_PASSED passed, $TESTS_FAILED failed"
     echo "Artifacts: $ARTIFACT_DIR"
