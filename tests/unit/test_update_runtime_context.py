@@ -2603,6 +2603,110 @@ if update_bun; then printf 'UNEXPECTED-ACCEPT\n'; else printf 'PLATFORM-REFUSED\
         self.assertFalse((self.home / "bun-native-attempts").exists())
         self.assertFalse((self.home / "omp-native-attempts").exists())
 
+    def write_codex_package_fixture(self, *, package_mode="success"):
+        """Model Bun's global package and its Node-shebang command, without Node."""
+        self.write_selection(["agents.codex", "lang.bun"])
+        bun_dir = self.home / ".bun/bin"
+        self.owned_dir(bun_dir)
+        bun = bun_dir / "bun"
+        bun.write_text("#!/bin/bash\nset -euo pipefail\nfixture=" + shlex.quote(str(self.base)) + r'''
+printf '%s\t%s\t%s\t%s\t%s\n' "$EUID" "$HOME" "$PWD" "${BUN_INSTALL-}" "$*" >> "$fixture/package-events.tsv"
+case "$*" in
+    'install -g --trust @openai/codex'*)
+        [[ ! -f "$fixture/missing-package" ]] || exit 0
+        printf '#!/usr/bin/env node\nconsole.log("codex-cli 1.2.3-fixture");\n' > "$HOME/.bun/bin/codex"
+        chmod 0755 "$HOME/.bun/bin/codex"
+        ;;
+    "$HOME/.bun/bin/codex --version")
+        [[ -f "$HOME/.bun/bin/codex" ]] || exit 127
+        [[ ! -f "$fixture/failed-package" ]] || { printf 'broken package fixture\n' >&2; exit 42; }
+        [[ ! -f "$fixture/hung-package" ]] || /bin/sleep 5
+        printf 'codex-cli 1.2.3-fixture\n'
+        ;;
+    *) exit 64 ;;
+esac
+''')
+        bun.chmod(0o755)
+        node = self.home / ".local/bin/node"
+        self.owned_dir(node.parent)
+        node.write_text("#!/bin/bash\nexit 127\n")
+        node.chmod(0o755)
+        if package_mode != "success":
+            self.write_input(self.base / f"{package_mode}-package", "fixture\n")
+
+    def assert_codex_launcher_works(self, launcher):
+        self.assertTrue(launcher.is_file(), f"Codex launcher missing: {launcher}")
+        result = subprocess.run([str(launcher), "--version"],
+                                env={"HOME": str(self.home), "PATH": "/usr/bin:/bin"},
+                                text=True, capture_output=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.stdout.strip(), "codex-cli 1.2.3-fixture")
+        self.assertEqual(launcher.stat().st_uid, self.account.pw_uid)
+
+    def test_codex_forced_repair_restores_bun_launcher_without_node(self):
+        self.write_codex_package_fixture()
+        output = self.run_update(command="FORCE_MODE=true; update_agents")
+        self.assertIn("COUNTS=1,5,0", output)
+        self.assert_codex_launcher_works(self.home / ".local/bin/codex")
+        events = [line.split("\t") for line in (self.base / "package-events.tsv").read_text().splitlines()]
+        for event in events[:2]:
+            self.assertEqual(event[:4], [str(self.account.pw_uid), str(self.home),
+                                        str(self.home), str(self.home / ".bun")])
+        self.assertEqual(list(self.caller.iterdir()), [])
+
+    def test_codex_update_repairs_broken_launcher_in_custom_primary_bin(self):
+        self.write_codex_package_fixture()
+        primary = self.home / "custom bin"
+        self.owned_dir(primary)
+        launcher = primary / "codex"
+        launcher.write_text("#!/bin/bash\nexit 127\n")
+        launcher.chmod(0o755)
+        output = self.run_update(command='ACFS_BIN_DIR="$TEST_HOME/custom bin"; update_agents')
+        self.assertIn("COUNTS=1,5,0", output)
+        self.assert_codex_launcher_works(launcher)
+        self.assertFalse((self.home / ".local/bin/codex").exists())
+
+    def test_codex_update_preserves_healthy_custom_launcher(self):
+        self.write_codex_package_fixture()
+        launcher = self.write_native_tool("codex")
+        original = launcher.read_bytes()
+        output = self.run_update(command="update_agents")
+        self.assertIn("COUNTS=1,5,0", output)
+        self.assertEqual(launcher.read_bytes(), original)
+
+    def test_codex_repair_failure_or_timeout_preserves_previous_launcher(self):
+        for mode in ("failed", "hung"):
+            with self.subTest(mode=mode):
+                self.setUp()
+                self.write_codex_package_fixture(package_mode=mode)
+                launcher = self.write_native_tool("codex")
+                original = launcher.read_bytes()
+                output = self.run_update(command="FORCE_MODE=true; UPDATE_SMOKE_TIMEOUT=0.2; update_agents")
+                self.assertIn("COUNTS=0,5,1", output)
+                self.assertEqual(launcher.read_bytes(), original)
+                self.assertEqual(list(launcher.parent.glob(".acfs-codex.*")), [])
+                self.assertIn("launcher verification failed", (self.base / "update.log").read_text())
+
+    def test_codex_repair_rejects_successful_install_without_package(self):
+        self.write_codex_package_fixture(package_mode="missing")
+        output = self.run_update(command="FORCE_MODE=true; update_agents")
+        self.assertIn("COUNTS=0,5,1", output)
+        self.assertFalse((self.home / ".local/bin/codex").exists())
+
+    def test_codex_launcher_repair_obeys_selection_hold_and_dry_run(self):
+        for mode in ("unselected", "held", "dry-run"):
+            with self.subTest(mode=mode):
+                self.setUp()
+                self.write_codex_package_fixture()
+                if mode == "unselected":
+                    self.write_selection(["lang.bun"])
+                elif mode == "held":
+                    self.write_holds(["codex"])
+                self.run_update(command="FORCE_MODE=true; update_agents", dry_run=mode == "dry-run")
+                self.assertFalse((self.base / "package-events.tsv").exists())
+                self.assertFalse((self.home / ".local/bin/codex").exists())
+                self.assertFalse((self.home / ".bun/bin/codex").exists())
+
     def test_cloud_package_timeouts_continue_to_other_tools(self):
         for tool in ("bun", "wrangler", "vercel"):
             self.write_native_tool(tool)

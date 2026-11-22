@@ -8975,6 +8975,67 @@ update_migrate_bun_claude() {
     return 0
 }
 
+# Bun's global package exposes a Node-shebang command. The installer separately
+# supplies a Bun launcher, since Codex does not require the optional Node module.
+# Restore that launcher after package maintenance and verify it before reporting
+# success. Stage as the target account so a failed probe preserves its old entry.
+update_reconcile_codex_launcher() {
+    local bun_bin="$1" primary_bin="" utility="" utility_path=""
+    local -a utility_paths=()
+    primary_bin="$(update_runtime_primary_bin_dir)" || return 1
+    for utility in bash mkdir mktemp chmod mv rm; do
+        utility_path="$(update_system_binary_path "$utility")" || return 1
+        utility_paths+=("$utility_path")
+    done
+
+    local repair_script=""
+    read -r -d '' repair_script <<'CODEX_REPAIR' || true
+set -euo pipefail
+unset BASH_ENV ENV
+bun_bin="$1" primary_bin="$2" force="$3"
+mkdir_bin="$4" mktemp_bin="$5" chmod_bin="$6" mv_bin="$7" rm_bin="$8"
+launcher="$primary_bin/codex"
+package="$HOME/.bun/bin/codex"
+staged=""
+trap '[[ -z "$staged" ]] || "$rm_bin" -f -- "$staged"' EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+# Keep a healthy custom launcher on ordinary updates. --force explicitly
+# rebuilds the managed binding, including one whose version probe hangs.
+if [[ "$force" != true && -x "$launcher" ]] && "$launcher" --version; then
+    exit 0
+fi
+if [[ -e "$launcher" && ! -f "$launcher" && ! -L "$launcher" ]]; then
+    printf 'Codex launcher destination is not a file or symlink: %s\n' "$launcher" >&2
+    exit 1
+fi
+if [[ "$primary_bin" -ef "$HOME/.bun/bin" ]]; then
+    printf 'Cannot replace the Codex package with its launcher; choose a primary bin outside ~/.bun/bin.\n' >&2
+    exit 1
+fi
+if [[ ! -f "$package" ]]; then
+    printf 'Bun reported success but the Codex package command is missing: %s\n' "$package" >&2
+    exit 1
+fi
+
+"$mkdir_bin" -p -- "$primary_bin"
+staged="$("$mktemp_bin" "$primary_bin/.acfs-codex.XXXXXX")"
+printf '#!/bin/bash\nexec %q "$HOME/.bun/bin/codex" "$@"\n' "$bun_bin" > "$staged"
+"$chmod_bin" 0755 "$staged"
+"$staged" --version
+"$mv_bin" -fT -- "$staged" "$launcher"
+staged=""
+CODEX_REPAIR
+
+    # The existing smoke runner bounds the whole reconciliation, detaches stdin
+    # and preserves target-account failures. -p ignores inherited Bash startup
+    # files/functions; the filesystem tools above use trusted system paths.
+    update_run_smoke_probe "${utility_paths[0]}" --noprofile --norc -p -c \
+        "$repair_script" _ "$bun_bin" "$primary_bin" "$FORCE_MODE" "${utility_paths[@]:1}"
+}
+
 update_agents() {
     if [[ "$UPDATE_AGENTS" != "true" ]]; then
         return 0
@@ -9121,7 +9182,14 @@ update_agents() {
             done
             
             if [[ "$success" == "true" ]]; then
-                update_finish_cmd_ok "Codex CLI"
+                local codex_verify_status=0
+                output="$(update_reconcile_codex_launcher "$bun_bin" 2>&1)" || codex_verify_status=$?
+                [[ -z "$output" ]] || log_to_file "Codex launcher verification: $output"
+                if [[ "$codex_verify_status" -eq 0 ]]; then
+                    update_finish_cmd_ok "Codex CLI"
+                else
+                    update_finish_cmd_fail "Codex CLI" "launcher verification failed (exit $codex_verify_status)"
+                fi
             else
                 log_to_file "All Codex install attempts failed. Last output: $output"
                 update_finish_cmd_fail "Codex CLI"
