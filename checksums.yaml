@@ -104,7 +104,7 @@ installers:
 
   ms:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/meta_skill/main/scripts/install.sh"
-    sha256: "b45bd7d38f5c470459c07345e6610c390233610296f5402926204a7e92233460"
+    sha256: "525dbf148ac030b97426ea2e901b4bc1f67bcfe5160a489f03d40c4b9dd412c2"
 
   ntm:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/ntm/main/install.sh"
