@@ -6,6 +6,7 @@ asset authentication, publication, and the manifest's required checks are real.
 No network, installer execution, or writes to the host workspace are needed.
 """
 import hashlib
+import json
 import os
 import pwd
 import re
@@ -90,7 +91,8 @@ class FilesystemSetupTests(unittest.TestCase):
             "SUDO": "", "MODE": "vibe", "NO_COLOR": "1",
         }
 
-    def invoke(self, body=None, *, phase=False, manifest=False, **environment):
+    def invoke(self, body=None, *, phase=False, manifest=False, generated_phase=False,
+               early_runtime=False, selected_modules=None, finalize_cli=False, **environment):
         program = "set -euo pipefail\nsource " + shlex.quote(str(HELPERS)) + "\n"
         program += IDENTITY
         if phase:
@@ -106,18 +108,60 @@ run_as_target() { "$@"; }
 acfs_chown_target_home() { chown -h "$@"; }
 acfs_chown_tree() { chown -hR "$@"; }
 acfs_ensure_primary_bin_dir() { mkdir -p "$ACFS_BIN_DIR"; }
+acfs_link_primary_bin_command() {
+    acfs_ensure_primary_bin_dir && ln -sf "$1" "$ACFS_BIN_DIR/$2"
+}
 # Early doctor script copies are outside this guide-deployment test. Retain
 # any attempted guide copy as an error: it must use the real shared helper.
 install_asset() {
     [[ "$1" != acfs/AGENTS.md ]] || return 91
+    mkdir -p "${2%/*}"
     printf '# fixture early doctor\n' > "$2"
 }
 '''
+            if early_runtime:
+                # Exercise authentication and publication with the real asset
+                # installer. Only privilege/account and fixed host paths are
+                # redirected; runtime bytes come from the verified source.
+                for name in ("acfs_early_system_binary_path", "acfs_calculate_file_sha256",
+                             "_acfs_install_asset_has_symlink_component_under_prefix",
+                             "_acfs_internal_asset_is_rendered_data",
+                             "_acfs_internal_asset_expected_sha256", "install_asset"):
+                    program += function(name) + "\n"
+                program += 'acfs_early_sudo_binary_path() { return 1; }\n'
+                program += 'SCRIPT_DIR="$ACFS_TRUSTED_INTERNAL_SOURCE_ROOT"\n'
+                program += 'declare -gA ACFS_INTERNAL_CHECKSUMS=(\n'
+                for path, digest in re.findall(r'^  \[([^\]]+)\]="([a-f0-9]{64})"$',
+                                               self.ledger.read_text(), re.MULTILINE):
+                    program += f"  [{shlex.quote(path)}]={shlex.quote(digest)}\n"
+                program += ')\n'
+            source = (ROOT / "install.sh").read_text()
+            if "\nacfs_install_early_doctor() {\n" in source:
+                program += function("acfs_install_early_doctor").replace(
+                    "/usr/local/bin", str(self.home / "global-bin")) + "\n"
+            if generated_phase:
+                program += 'acfs_use_generated_category() { return 0; }\n'
+                program += 'acfs_run_generated_category_phase() {\n'
+                program += manifest_install().replace("/data", str(self.root / "data")).replace(
+                    'target_home="/root"', 'target_home="$TARGET_HOME"')
+                program += '\n}\n'
             program += function("acfs_legacy_module_selected") + "\n"
+            if selected_modules is not None:
+                program += 'declare -gA ACFS_EFFECTIVE_RUN=(\n'
+                for module in selected_modules:
+                    program += f"  [{shlex.quote(module)}]=1\n"
+                program += ')\nACFS_GENERATED_SELECTION_READY=true\n'
             # These are the same fixed-path substitutions used by the existing
             # PostgreSQL installer tests, not product test-only configuration.
             program += function("setup_filesystem").replace("/data", str(self.root / "data"))
             program += "\nsetup_filesystem\n"
+            if finalize_cli:
+                # Exercise the actual finalization publication block after
+                # early deployment, without unrelated finalization installs.
+                start = '    if acfs_legacy_module_selected "acfs.doctor"; then\n'
+                block = start + function("finalize").split(start, 1)[1].split(
+                    "\n    # Install DCG", 1)[0]
+                program += block.replace("/usr/local/bin", str(self.home / "global-bin")) + "\n"
         elif manifest:
             program += manifest_install().replace("/data", str(self.root / "data")).replace(
                 'target_home="/root"', 'target_home="$TARGET_HOME"')
@@ -125,10 +169,130 @@ install_asset() {
             program += body or ('acfs_install_workspace_template "$TARGET_HOME" '
                                + shlex.quote(str(self.workspace)) + "\n")
         result = subprocess.run(["/bin/bash", "-p", "-c", program], env={**self.env, **environment},
-                                capture_output=True, text=True, timeout=10, check=False)
+                                capture_output=True, text=True,
+                                timeout=60 if early_runtime else 10, check=False)
         (self.root / "last.stdout").write_text(result.stdout)
         (self.root / "last.stderr").write_text(result.stderr)
         return result
+
+    def prepare_early_runtime(self):
+        # Keep each source's real bytes and the canonical ledger. No fetching,
+        # fixture-success executables, or checkout fallback can hide omissions.
+        for name in ("logging", "output", "progress", "gum_ui", "state", "user", "doctor", "install_helpers"):
+            path = self.source / f"scripts/lib/{name}.sh"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes((ROOT / f"scripts/lib/{name}.sh").read_bytes())
+        for relative in ("VERSION", "scripts/generated/doctor_checks.sh",
+                         "scripts/generated/manifest_index.sh", "scripts/acfs-global"):
+            path = self.source / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes((ROOT / relative).read_bytes())
+
+    def run_early_doctor(self, *, entrypoint=False, selection=None):
+        checkpoint = self.home / ".acfs/state.json"
+        checkpoint.write_text(json.dumps({
+            "schema_version": 3, "target_user": self.user, "target_home": str(self.home),
+            "mode": "safe", "completed_phases": ["filesystem"], "failed_phase": "agents",
+            "module_selection": selection or {
+                "schema_version": 1, "selected_modules": ["acfs.doctor", "agents.grok"],
+                "requested_modules": ["agents.grok"],
+            },
+        }))
+        doctor = self.home / (".acfs/bin/acfs" if entrypoint else ".acfs/scripts/lib/doctor.sh")
+        # Load the exact deployed runtime via its non-mutating help command.
+        # Redirect only the resolved account home after startup, so the real
+        # state parser, generated catalogue, diagnostic dispatch and JSON
+        # reporting operate on this incomplete installation, not this machine.
+        program = 'source ' + shlex.quote(str(doctor)) + ' help >/dev/null\n'
+        program += 'TARGET_HOME="$FIXTURE_HOME"\nACFS_HOME="$FIXTURE_HOME/.acfs"\n'
+        program += 'ACFS_STATE_FILE="$ACFS_HOME/state.json"\n'
+        program += 'main doctor --json\n' if entrypoint else 'main --json\n'
+        result = subprocess.run(["/bin/bash", "-p", "-c", program],
+                                env={**self.env, "FIXTURE_HOME": str(self.home),
+                                     "ACFS_LIB_DIR": str(self.home / ".acfs/scripts/lib"),
+                                     "ACFS_LOCAL_PROGRESS": "0"},
+                                cwd=self.root, capture_output=True, text=True,
+                                timeout=30, check=False)
+        (self.root / "doctor.stdout").write_text(result.stdout)
+        (self.root / "doctor.stderr").write_text(result.stderr)
+        return result
+
+    def test_early_runtime_diagnoses_selected_failure_without_finalization(self):
+        for generated in (False, True):
+            with self.subTest(generated=generated):
+                self.setUp()
+                self.prepare_early_runtime()
+                self.assert_installed(self.invoke(phase=True, early_runtime=True,
+                                                 generated_phase=generated))
+                result = self.run_early_doctor()
+                report = json.loads(result.stdout)
+                checks = {check["id"]: check for check in report["checks"]}
+                self.assertNotIn("config.module_selection", checks, result.stdout)
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertEqual(checks["agents.grok"]["status"], "fail", result.stdout)
+                self.assertEqual(checks["agent.claude"]["status"], "skip", result.stdout)
+                self.assertEqual(report["mode"], "safe")
+
+    def test_selected_early_cli_is_callable_before_shell_and_finalization(self):
+        self.prepare_early_runtime()
+        self.assert_installed(self.invoke(phase=True, early_runtime=True))
+        self.assertTrue((self.home / ".local/bin/acfs").is_symlink())
+        self.assertTrue(os.access(self.home / ".local/bin/acfs", os.X_OK))
+        self.assertEqual((self.home / "global-bin/acfs").read_bytes(),
+                         (ROOT / "scripts/acfs-global").read_bytes())
+        result = self.run_early_doctor(entrypoint=True)
+        checks = {check["id"]: check for check in json.loads(result.stdout)["checks"]}
+        self.assertEqual(checks["agents.grok"]["status"], "fail", result.stdout)
+        self.assertNotIn("config.module_selection", checks, result.stdout)
+
+    def test_early_runtime_does_not_relax_invalid_selection(self):
+        self.prepare_early_runtime()
+        self.assert_installed(self.invoke(phase=True, early_runtime=True))
+        result = self.run_early_doctor(selection={
+            "schema_version": 1, "selected_modules": ["agents.unknown"],
+        })
+        report = json.loads(result.stdout)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual([check["id"] for check in report["checks"]], ["config.module_selection"])
+
+    def test_early_runtime_respects_omitted_doctor_command(self):
+        for generated in (False, True):
+            with self.subTest(generated=generated):
+                self.setUp()
+                self.prepare_early_runtime()
+                self.assert_installed(self.invoke(
+                    phase=True, early_runtime=True, generated_phase=generated,
+                    selected_modules=["base.filesystem"]))
+                self.assertTrue((self.home / ".acfs/scripts/lib/doctor.sh").is_file())
+                self.assertFalse((self.home / ".acfs/bin/acfs").exists())
+                self.assertFalse((self.home / ".local/bin/acfs").is_symlink())
+                self.assertFalse((self.home / "global-bin/acfs").exists())
+
+    def test_missing_early_runtime_dependency_fails_before_public_command(self):
+        self.prepare_early_runtime()
+        source = self.source / "scripts/lib/state.sh"
+        source.rename(source.with_suffix(".retained"))
+        result = self.invoke(phase=True, early_runtime=True)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn("Filesystem setup complete", result.stdout)
+        self.assertFalse((self.home / ".acfs/bin/acfs").exists())
+        self.assertFalse((self.home / "global-bin/acfs").exists())
+
+    def test_early_runtime_and_finalization_preserve_custom_primary_bins(self):
+        for generated in (False, True):
+            for destination in (".acfs/bin", "global-bin"):
+                with self.subTest(generated=generated, destination=destination):
+                    self.setUp()
+                    self.prepare_early_runtime()
+                    self.assert_installed(self.invoke(
+                        phase=True, early_runtime=True, generated_phase=generated,
+                        finalize_cli=True, ACFS_BIN_DIR=str(self.home / destination)))
+                    cli = self.home / ".acfs/bin/acfs"
+                    wrapper = self.home / "global-bin/acfs"
+                    self.assertFalse(cli.is_symlink())
+                    self.assertFalse(wrapper.is_symlink())
+                    self.assertEqual(cli.read_bytes(), (ROOT / "scripts/lib/doctor.sh").read_bytes())
+                    self.assertEqual(wrapper.read_bytes(), (ROOT / "scripts/acfs-global").read_bytes())
 
     def assert_installed(self, result):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

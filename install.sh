@@ -8144,6 +8144,63 @@ normalize_user() {
 # ============================================================
 # Phase 2: Filesystem setup
 # ============================================================
+# Keep diagnostics usable when a later phase fails on a fresh machine. Doctor
+# now validates the saved module scope before running any probes, so copying
+# only doctor.sh leaves it unable to explain the original installation failure.
+# Both filesystem implementations call this after creating the target home.
+acfs_install_early_doctor() {
+    log_detail "Installing early diagnostics from the verified ACFS source"
+    try_step "Creating early Doctor runtime directories" $SUDO mkdir -p \
+        "$ACFS_HOME/bin" "$ACFS_HOME/scripts/lib" "$ACFS_HOME/scripts/generated" || return 1
+
+    local relative_path=""
+    local -a diagnostic_assets=(
+        scripts/lib/logging.sh
+        scripts/lib/output.sh
+        scripts/lib/progress.sh
+        scripts/lib/gum_ui.sh
+        scripts/lib/state.sh
+        scripts/lib/user.sh
+        scripts/lib/install_helpers.sh
+        scripts/generated/manifest_index.sh
+        scripts/generated/doctor_checks.sh
+        scripts/lib/doctor.sh
+    )
+    for relative_path in "${diagnostic_assets[@]}"; do
+        try_step "Installing early diagnostics: $relative_path" \
+            install_asset "$relative_path" "$ACFS_HOME/$relative_path" || return 1
+        try_step "Setting early diagnostics permissions: $relative_path" \
+            $SUDO chmod 755 "$ACFS_HOME/$relative_path" || return 1
+        try_step "Setting early diagnostics ownership: $relative_path" \
+            $SUDO chown -h "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/$relative_path" || return 1
+    done
+    try_step "Installing early Doctor version metadata" install_asset VERSION "$ACFS_HOME/VERSION" || return 1
+    try_step "Setting early Doctor version permissions" $SUDO chmod 644 "$ACFS_HOME/VERSION" || return 1
+    try_step "Setting early Doctor directory ownership" $SUDO chown -h "$TARGET_USER:$TARGET_USER" \
+        "$ACFS_HOME/bin" "$ACFS_HOME/scripts" "$ACFS_HOME/scripts/lib" \
+        "$ACFS_HOME/scripts/generated" "$ACFS_HOME/VERSION" || return 1
+
+    # Publish the public command only after all diagnostic dependencies exist.
+    # Explicit expert subsets that omit Doctor retain their command selection;
+    # they can still invoke the internal diagnostic script by its exact path.
+    if acfs_legacy_module_selected "acfs.doctor"; then
+        try_step "Installing early acfs CLI" install_asset "scripts/lib/doctor.sh" "$ACFS_HOME/bin/acfs" || return 1
+        try_step "Setting early acfs permissions" $SUDO chmod 755 "$ACFS_HOME/bin/acfs" || return 1
+        try_step "Setting early acfs ownership" $SUDO chown -h "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/bin/acfs" || return 1
+        # These two directories already contain the CLI or its global wrapper.
+        # Linking either one would replace a managed file with a self-link or
+        # prevent the authenticated wrapper copy below.
+        if [[ "${ACFS_BIN_DIR%/}" != "${ACFS_HOME%/}/bin" && "${ACFS_BIN_DIR%/}" != "/usr/local/bin" ]]; then
+            try_step "Linking early acfs command" acfs_link_primary_bin_command "$ACFS_HOME/bin/acfs" "acfs" || return 1
+        fi
+        # Fresh Bash/root sessions do not yet have the managed zsh PATH. Reuse
+        # the normal target-aware wrapper so the documented recovery command
+        # works before shell setup and finalization have run.
+        try_step "Installing early global acfs wrapper" install_asset "scripts/acfs-global" "/usr/local/bin/acfs" || return 1
+        try_step "Setting early global acfs permissions" $SUDO chmod 755 "/usr/local/bin/acfs" || return 1
+    fi
+}
+
 setup_filesystem() {
     set_phase "filesystem" "Filesystem Setup"
     log_step "2/9" "Setting up filesystem..."
@@ -8156,6 +8213,7 @@ setup_filesystem() {
     if acfs_use_generated_category "filesystem"; then
         log_detail "Using generated installers for filesystem (phase 3)"
         acfs_run_generated_category_phase "filesystem" "3" || return 1
+        acfs_install_early_doctor || return 1
         log_success "Filesystem setup complete"
         return 0
     fi
@@ -8209,17 +8267,7 @@ setup_filesystem() {
     try_step "Installing workspace AGENTS.md template" \
         acfs_install_workspace_template "$TARGET_HOME" /data/projects || return 1
 
-    # Install essential ACFS scripts early so `acfs doctor` works even after early failures.
-    # This is critical for debugging failed installs - users need `acfs doctor` to work
-    # even if the install failed in Phase 3 (languages) before finalization.
-    log_detail "Installing essential ACFS scripts for early debugging"
-    try_step_optional "Installing logging.sh (early)" install_asset "scripts/lib/logging.sh" "$ACFS_HOME/scripts/lib/logging.sh" || true
-    try_step_optional "Installing gum_ui.sh (early)" install_asset "scripts/lib/gum_ui.sh" "$ACFS_HOME/scripts/lib/gum_ui.sh" || true
-    try_step_optional "Installing doctor.sh (early)" install_asset "scripts/lib/doctor.sh" "$ACFS_HOME/scripts/lib/doctor.sh" || true
-    try_step_optional "Installing user.sh (early doctor dependency)" install_asset "scripts/lib/user.sh" "$ACFS_HOME/scripts/lib/user.sh" || true
-    # Set permissions and ownership so target user can run doctor
-    $SUDO chmod 755 "$ACFS_HOME/scripts/lib/"*.sh 2>/dev/null || true
-    acfs_chown_tree "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/scripts" 2>/dev/null || true
+    acfs_install_early_doctor || return 1
 
     # Create user's bin and .bun directories early - many installers need them
     # This prevents NTM, UBS, CASS, Bun, etc. from creating them as root via sudo
@@ -11644,7 +11692,9 @@ finalize() {
         try_step "Installing acfs CLI" install_asset "scripts/lib/doctor.sh" "$ACFS_HOME/bin/acfs" || return 1
         try_step "Setting acfs permissions" $SUDO chmod 755 "$ACFS_HOME/bin/acfs" || return 1
         try_step "Setting acfs ownership" $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/bin/acfs" || return 1
-        try_step "Linking acfs command" acfs_link_primary_bin_command "$ACFS_HOME/bin/acfs" "acfs" || return 1
+        if [[ "${ACFS_BIN_DIR%/}" != "${ACFS_HOME%/}/bin" && "${ACFS_BIN_DIR%/}" != "/usr/local/bin" ]]; then
+            try_step "Linking acfs command" acfs_link_primary_bin_command "$ACFS_HOME/bin/acfs" "acfs" || return 1
+        fi
 
         # Install global acfs wrapper (works for root and all users)
         # This wrapper finds the target user from state and runs acfs as that user
