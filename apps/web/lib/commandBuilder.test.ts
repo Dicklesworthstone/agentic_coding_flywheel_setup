@@ -1897,7 +1897,7 @@ describe("buildShareURL", () => {
         ref: null,
       });
 
-      expect(shareURL).toBe("https://acfs.dev/wizard/launch-onboarding?os=mac&mode=vibe");
+      expect(shareURL).toBe("https://acfs.dev/wizard/launch-onboarding?os=mac&user=ubuntu&mode=vibe&profile=full&ref=&setup=none");
       expect(shareURL).not.toContain("10.20.30.40");
       expect(shareURL).not.toContain("utm_source=");
     } finally {
@@ -1931,7 +1931,7 @@ describe("buildShareURL", () => {
         ref: null,
       });
 
-      expect(shareURL).toBe("https://acfs.dev/wizard/launch-onboarding?os=linux&mode=safe");
+      expect(shareURL).toBe("https://acfs.dev/wizard/launch-onboarding?os=linux&user=ubuntu&mode=safe&profile=full&ref=&setup=none");
       expect(shareURL).not.toContain("10.20.30.40");
     } finally {
       Object.defineProperty(globalThis, "window", {
@@ -1966,13 +1966,75 @@ describe("buildShareURL", () => {
       });
 
       expect(shareURL).toBe(
-        "https://acfs.dev/wizard/launch-onboarding?os=mac&mode=vibe&profile=minimal",
+        "https://acfs.dev/wizard/launch-onboarding?os=mac&user=ubuntu&mode=vibe&profile=minimal&ref=&setup=none",
       );
     } finally {
       Object.defineProperty(globalThis, "window", {
         value: originalWindow,
         configurable: true,
       });
+    }
+  });
+});
+
+describe("complete shared installation settings", () => {
+  test("retains public account, profile and source choices without including the target host", () => {
+    const originalWindow = globalThis.window;
+    Object.defineProperty(globalThis, "window", {
+      value: { location: { origin: "https://acfs.dev", pathname: "/wizard/run-installer" } },
+      configurable: true,
+    });
+    try {
+      const url = new URL(buildShareURL({
+        ip: "203.0.113.42",
+        os: "windows",
+        username: "dev-user",
+        mode: "safe",
+        ref: "release/reviewed",
+        moduleSelection: { profile: "cloud-only" },
+      }));
+      expect(Array.from(url.searchParams.entries())).toEqual([
+        ["os", "windows"],
+        ["user", "dev-user"],
+        ["mode", "safe"],
+        ["profile", "cloud-only"],
+        ["ref", "release/reviewed"],
+        ["setup", "none"],
+      ]);
+      expect(url.toString()).not.toContain("203.0.113.42");
+    } finally {
+      Object.defineProperty(globalThis, "window", { value: originalWindow, configurable: true });
+    }
+  });
+
+  test("refuses selections a profile-only link cannot preserve", () => {
+    const originalWindow = globalThis.window;
+    Object.defineProperty(globalThis, "window", {
+      value: { location: { origin: "https://acfs.dev", pathname: "/wizard/run-installer" } },
+      configurable: true,
+    });
+    const selections: ModuleSelectionInput[] = [
+      null as unknown as ModuleSelectionInput,
+      { onlyModules: ["agents.claude"] },
+      { onlyPhases: ["7"] },
+      { skipModules: ["acfs.nightly"] },
+      { skipTags: ["maintenance"] },
+      { skipCategories: ["cloud"] },
+      { noDeps: true },
+      { profile: "safe" },
+      { profile: "vibe" },
+      { onlyModules: [""] },
+      getGuidedModuleSelection("cloud-only", true),
+    ];
+    try {
+      for (const moduleSelection of selections) {
+        expect(() => buildShareURL({
+          ip: "203.0.113.42", os: "linux", username: "ubuntu",
+          mode: "safe", ref: null, moduleSelection,
+        })).toThrow();
+      }
+    } finally {
+      Object.defineProperty(globalThis, "window", { value: originalWindow, configurable: true });
     }
   });
 });

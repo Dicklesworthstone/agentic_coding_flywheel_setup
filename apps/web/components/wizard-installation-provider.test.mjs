@@ -45,6 +45,7 @@ function fixture(sessionEntries = new Map(), initialPath = "/wizard/run-installe
   const storageWrites = [];
   const queryWrites = [];
   let loaded = true;
+  let localWritesBlocked = false;
   let path = initialPath;
   const storage = {
     getItem: (name) => sessionEntries.get(name) ?? null,
@@ -240,6 +241,7 @@ function fixture(sessionEntries = new Map(), initialPath = "/wizard/run-installe
       safeGetItem: (name) => local.get(name) ?? null,
       safeGetJSON: (name) => (local.has(name) ? JSON.parse(local.get(name)) : null),
       safeSetItem: (name, value) => {
+        if (localWritesBlocked) return false;
         local.set(name, value);
         return true;
       },
@@ -607,6 +609,8 @@ function fixture(sessionEntries = new Map(), initialPath = "/wizard/run-installe
     storage,
     sessionEntries,
     local,
+    window,
+    blockLocalWrites: () => { localWritesBlocked = true; },
     storageWrites,
     queryWrites,
     catalogue,
@@ -1297,4 +1301,58 @@ test("cached guided setup cannot override a withdrawn canonical opt-in", () => {
   assert.equal(f.hooks().setup[0], false);
   assert.deepEqual(plain(f.hooks().selection[0]), { profile: "cloud-only" });
   assert.deepEqual(plain(f.preferences.getSavedModuleSelection()), { profile: "cloud-only" });
+});
+
+test("shared profile reset reaches both hook and imperative selections until explicit opt-in", () => {
+  const f = fixture();
+  f.local.set("agent-flywheel-module-profile", "cloud-only");
+  f.local.set(f.preferences.WIZARD_SETUP_PROFILE_KEY, JSON.stringify("cloud-only"));
+  f.window.history.replaceState(null, "", "https://example.invalid/wizard/run-installer?profile=cloud-only&setup=none");
+  f.render();
+  assert.equal(f.hooks().setup[0], false);
+  assert.deepEqual(plain(f.hooks().selection[0]), { profile: "cloud-only" });
+  assert.deepEqual(plain(f.preferences.getSavedModuleSelection()), { profile: "cloud-only" });
+  assert.equal(f.local.get(f.preferences.WIZARD_SETUP_PROFILE_KEY), JSON.stringify("cloud-only"));
+
+  f.hooks().setup[1](true);
+  assert.equal(new URL(f.window.location.href).searchParams.has("setup"), false);
+  assert.equal(f.hooks().setup[0], true);
+  assert.ok(plain(f.hooks().selection[0]).onlyModules.includes("acfs.doctor"));
+  assert.deepEqual(plain(f.preferences.getSavedModuleSelection()), plain(f.hooks().selection[0]));
+
+  f.hooks().setup[1](false);
+  assert.equal(new URL(f.window.location.href).searchParams.get("setup"), "none");
+  assert.deepEqual(plain(f.hooks().selection[0]), { profile: "cloud-only" });
+  assert.deepEqual(plain(f.preferences.getSavedModuleSelection()), { profile: "cloud-only" });
+});
+
+test("a blocked History write cannot lift a shared profile reset", () => {
+  const f = fixture();
+  f.local.set("agent-flywheel-module-profile", "cloud-only");
+  f.window.history.replaceState(null, "", "https://example.invalid/wizard/run-installer?profile=cloud-only&setup=none");
+  f.window.history.replaceState = () => { throw new Error("history blocked"); };
+  f.render();
+  f.hooks().setup[1](true);
+  assert.equal(f.hooks().setup[0], false);
+  assert.deepEqual(plain(f.hooks().selection[0]), { profile: "cloud-only" });
+  assert.deepEqual(plain(f.preferences.getSavedModuleSelection()), { profile: "cloud-only" });
+});
+
+test("explicit setup withdrawal survives reload when durable preference writes fail", () => {
+  const f = fixture();
+  f.local.set("agent-flywheel-module-profile", "cloud-only");
+  f.local.set(f.preferences.WIZARD_SETUP_PROFILE_KEY, JSON.stringify("cloud-only"));
+  f.render();
+  assert.equal(f.hooks().setup[0], true);
+  f.blockLocalWrites();
+  f.hooks().setup[1](false);
+  assert.equal(f.hooks().setup[0], false);
+  assert.equal(f.local.get(f.preferences.WIZARD_SETUP_PROFILE_KEY), JSON.stringify("cloud-only"));
+
+  const reloaded = fixture();
+  for (const [name, value] of f.local) reloaded.local.set(name, value);
+  reloaded.window.history.replaceState(null, "", f.window.location.href);
+  reloaded.render();
+  assert.equal(reloaded.hooks().setup[0], false);
+  assert.deepEqual(plain(reloaded.preferences.getSavedModuleSelection()), { profile: "cloud-only" });
 });

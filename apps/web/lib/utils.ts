@@ -157,6 +157,9 @@ function isSafeQueryEntry(key: string, value: string): boolean {
       return value === "vibe" || value === "safe";
     case "profile":
       return SAFE_PROFILE_QUERY_VALUES.has(value);
+    case "setup":
+      // A URL may withdraw inherited setup modules, never authorize adding them.
+      return value === "none";
     case "user":
       return normalizeSSHUsername(value) === value;
     case "ref":

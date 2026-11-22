@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { QueryClient } from "@tanstack/react-query";
+import { buildInstallCommand, buildShareURL } from "./commandBuilder";
 import {
   analyticsContextContainsSensitiveState,
   analyticsPayloadIsPrivacySafe,
@@ -29,6 +30,8 @@ import {
   getACFSRef,
   getCheckedServices,
   getCreateVPSChecklist,
+  getInstallMode,
+  getSavedModuleSelection,
   getSSHUsername,
   getVPSIP,
   getVPSReadinessSelection,
@@ -46,6 +49,7 @@ import {
   userPreferencesKeys,
   type VPSReadinessSelection,
   VPS_READINESS_SELECTION_KEY,
+  WIZARD_SETUP_PROFILE_KEY,
 } from "./userPreferences";
 import {
   isPrivateWizardPath,
@@ -1065,5 +1069,62 @@ describe("progress persistence guards", () => {
     expect(setSSHUsername("root")).toBe(false);
     expect(storedBrowser.getStoredValue(SSH_USERNAME_TEST_KEY)).toBe("root");
     expect(storedBrowser.dispatchCalls).toHaveLength(0);
+  });
+});
+
+describe("shared installation reconstruction", () => {
+  for (const profile of ["full", "minimal", "agents-only", "cloud-only", "stack-only"] as const) {
+    for (const ref of [null, "release/reviewed"]) {
+      test("preserves " + profile + " with " + (ref ?? "no pin") + " over unrelated saved choices", () => {
+        const sender = {
+          ip: "203.0.113.42", os: "linux" as const, username: "ubuntu",
+          mode: "safe" as const, ref, moduleSelection: { profile },
+        };
+        installMockBrowser({ url: "https://example.test/wizard/run-installer?utm_source=sender" });
+        const shared = buildShareURL(sender);
+        const initialValues = {
+          [SSH_USERNAME_TEST_KEY]: "old-user",
+          [ACFS_REF_KEY]: "release/old",
+          "agent-flywheel-module-profile": "cloud-only",
+          "agent-flywheel-install-mode": "vibe",
+          [WIZARD_SETUP_PROFILE_KEY]: JSON.stringify(profile),
+          [VPS_IP_TEST_KEY]: "203.0.113.99",
+        };
+        const browser = installMockBrowser({ initialValues, url: shared });
+        const expected = buildInstallCommand(sender.mode, sender.ref, sender.username, sender.moduleSelection);
+        const received = () => buildInstallCommand(
+          getInstallMode(), getACFSRef(), getSSHUsername(), getSavedModuleSelection(),
+        );
+        expect(received()).toBe(expected);
+        expect(getSavedModuleSelection()).toEqual({ profile });
+        expect(getVPSIP()).toBe("203.0.113.99");
+        for (const [key, value] of Object.entries(initialValues)) {
+          expect(browser.getStoredValue(key)).toBe(value);
+        }
+        expect(shared).not.toContain(sender.ip);
+        expect(shared).not.toContain("utm_source");
+
+        const next = withCurrentSearch("/wizard/status-check");
+        expect(new URL(next, shared).searchParams.get("setup")).toBe("none");
+        expect(new URL(next, shared).searchParams.get("ref")).toBe(ref ?? "");
+        installMockBrowser({ initialValues, url: new URL(next, shared).toString() });
+        expect(received()).toBe(expected);
+        expect(getSavedModuleSelection()).toEqual({ profile });
+      });
+    }
+  }
+
+  test("navigation permits only a setup withdrawal, never a URL-granted opt-in", () => {
+    const shared = "os=linux&user=ubuntu&mode=safe&profile=cloud-only&ref=&setup=none";
+    expect(queryContainsSensitiveState("?" + shared)).toBe(false);
+    expect(stripSensitiveQueryState("?" + shared)).toBe(shared);
+    for (const value of ["true", "1", "cloud-only", "full", ""]) {
+      expect(queryContainsSensitiveState("?setup=" + value)).toBe(true);
+      expect(stripSensitiveQueryState("?setup=" + value)).toBe("");
+      installMockBrowser({
+        url: "https://example.test/wizard/run-installer?profile=cloud-only&setup=" + value,
+      });
+      expect(getSavedModuleSelection()).toEqual({ profile: "cloud-only" });
+    }
   });
 });

@@ -61,6 +61,7 @@ const INSTALL_MODE_QUERY_KEY = "mode";
 const SSH_USERNAME_QUERY_KEY = "user";
 const MODULE_PROFILE_QUERY_KEY = "profile";
 const ACFS_REF_QUERY_KEY = "ref";
+const WIZARD_SETUP_QUERY_KEY = "setup";
 const USER_PREFERENCES_EVENT = "acfs:user-preferences-updated";
 const WORKLOAD_IDS: readonly WorkloadId[] = ["light", "standard", "heavy"];
 const MIN_TARGET_AGENTS = 5;
@@ -819,6 +820,8 @@ export function useModuleProfile(): [
 }
 
 function getWizardSetupProfile(): ModuleSelectionProfileId | null {
+  // Shared profile links can withdraw inherited setup modules, never grant them.
+  if (getQueryParam(WIZARD_SETUP_QUERY_KEY) === "none") return null;
   const value = getPrivateJSONPreference(WIZARD_SETUP_PROFILE_KEY);
   return typeof value === "string" && VALID_WEB_PROFILES.has(value as ModuleSelectionProfileId)
     ? (value as ModuleSelectionProfileId)
@@ -839,6 +842,9 @@ function useSavedWizardSetup(): [boolean, (enabled: boolean) => void, boolean] {
   const setEnabled = useCallback(
     (enabled: boolean) => {
       if (setPrivateJSONPreference(WIZARD_SETUP_PROFILE_KEY, enabled ? profile : null)) {
+        // Only this explicit user action may lift a shared link's reset. Read
+        // back the effective choice so blocked History writes stay fail-closed.
+        setQueryParam(WIZARD_SETUP_QUERY_KEY, enabled ? null : "none");
         queryClient.setQueryData(userPreferencesKeys.wizardSetupProfile, getWizardSetupProfile());
         emitUserPreferencesUpdate();
       }

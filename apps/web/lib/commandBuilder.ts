@@ -2520,26 +2520,29 @@ export function formatHandoffRunbookMarkdown(runbook: HandoffRunbook): string {
  */
 export function buildShareURL(inputs: CommandBuilderInputs): string {
   if (typeof window === "undefined") return "";
+  const selection = inputs.moduleSelection === undefined ? {} : inputs.moduleSelection;
+  if (!resolveModuleSelection(selection).ok) {
+    throw new Error("Cannot share an invalid module selection.");
+  }
+  const profile = selection.profile ?? "full";
+  if (
+    !manifestSelectionProfiles.some((entry) => entry.id === profile && !entry.mode) ||
+    selection.noDeps === true ||
+    (["onlyModules", "onlyPhases", "skipModules", "skipTags", "skipCategories"] as const)
+      .some((key) => (selection[key]?.length ?? 0) > 0)
+  ) {
+    throw new Error("Custom module selections require the exact command or a reviewed team profile.");
+  }
   const url = new URL(window.location.pathname, window.location.origin);
-  const safeUsername = normalizeCommandUsername(inputs.username);
+  // Missing values would import the recipient's saved account, profile or pin.
+  // Include defaults too; the existing empty ref sentinel explicitly clears a pin.
   url.searchParams.set("os", inputs.os);
-  if (safeUsername !== "ubuntu") {
-    url.searchParams.set("user", safeUsername);
-  } else {
-    url.searchParams.delete("user");
-  }
+  url.searchParams.set("user", normalizeCommandUsername(inputs.username));
   url.searchParams.set("mode", inputs.mode);
-  const profile = inputs.moduleSelection?.profile;
-  if (profile && profile !== "full") {
-    url.searchParams.set("profile", profile);
-  } else {
-    url.searchParams.delete("profile");
-  }
-  const safeRef = normalizeGitRef(inputs.ref);
-  if (safeRef) {
-    url.searchParams.set("ref", safeRef);
-  } else {
-    url.searchParams.delete("ref");
-  }
+  url.searchParams.set("profile", profile);
+  url.searchParams.set("ref", normalizeGitRef(inputs.ref) ?? "");
+  // A shared bare profile must not inherit a recipient's private setup opt-in.
+  // This reset-only marker grants no extra modules and never writes preferences.
+  url.searchParams.set("setup", "none");
   return url.toString();
 }
