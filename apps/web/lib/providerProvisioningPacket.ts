@@ -634,12 +634,15 @@ function evaluatedSelectedPlan(
 function buildVerificationCommands(
   installCommand: string,
   installAllowed: boolean,
+  hasDoctor: boolean,
 ): ProviderProvisioningPacketVerificationCommand[] {
-  return PROVIDER_PACKET_BASE_VERIFICATION_COMMANDS.map((command) => ({
-    ...command,
-    command: command.id === "installer" ? installCommand : command.command,
-    expectedStatus: command.id === "installer" && !installAllowed ? "fail" : command.expectedStatus,
-  }));
+  return PROVIDER_PACKET_BASE_VERIFICATION_COMMANDS
+    .filter((command) => hasDoctor || (command.id !== "doctor" && command.id !== "support-bundle"))
+    .map((command) => ({
+      ...command,
+      command: command.id === "installer" ? installCommand : command.command,
+      expectedStatus: command.id === "installer" && !installAllowed ? "fail" : command.expectedStatus,
+    }));
 }
 
 function buildCloudInit(
@@ -734,6 +737,12 @@ export function buildProviderProvisioningPacket(
   const selectedPlan = evaluatedSelectedPlan(readiness.plan, input.workloadId, targetAgents);
   const sourceRef = normalizeGitRef(input.sourceRef) ?? "main";
   const moduleSelection = safePacketModuleSelection(input.moduleSelection);
+  // The public acfs CLI, including support-bundle, is supplied by acfs.doctor.
+  // Derive availability from the validated plan, including explicit skips and
+  // guided setup prerequisites, without broadening the requested installation.
+  const hasDoctor = resolveModuleSelection(moduleSelection).included.some(
+    (entry) => entry.id === "acfs.doctor",
+  );
   const regionReadiness = readinessCheckStatus(readiness.checks, "region");
   const osReadiness = readinessCheckStatus(readiness.checks, "os");
   const installAllowed = readiness.status !== "unsupported" && osReadiness === "supported";
@@ -837,8 +846,10 @@ export function buildProviderProvisioningPacket(
       readinessStatus: readiness.status,
       readinessChecks: readiness.checks,
     },
-    verificationCommands: buildVerificationCommands(installCommand, installAllowed),
-    expectedArtifacts: [...PROVIDER_PACKET_EXPECTED_ARTIFACTS],
+    verificationCommands: buildVerificationCommands(installCommand, installAllowed, hasDoctor),
+    expectedArtifacts: PROVIDER_PACKET_EXPECTED_ARTIFACTS.filter(
+      (artifact) => hasDoctor || (artifact.id !== "support-report" && artifact.id !== "support-manifest"),
+    ),
   };
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { buildInstallCommand } from "./commandBuilder";
-import { type ModuleSelectionInput, resolveModuleSelection } from "./moduleSelection";
+import { getGuidedModuleSelection, type ModuleSelectionInput, resolveModuleSelection } from "./moduleSelection";
 import {
   buildProviderProvisioningPacket,
   manualStepsForProvider,
@@ -453,6 +453,81 @@ describe("buildProviderProvisioningPacket", () => {
     expect(packet.install.command).not.toContain('--only "cloud.wrangler"');
     expect(packet.install.command).not.toContain('--only "cloud.supabase"');
     expect(packet.install.command).not.toContain('--only "cloud.vercel"');
+  });
+
+
+  const diagnosticSelections: Array<{
+    name: string;
+    selection: ModuleSelectionInput | undefined;
+    hasDoctor: boolean;
+  }> = [
+    { name: "default", selection: undefined, hasDoctor: true },
+    { name: "full", selection: { profile: "full" }, hasDoctor: true },
+    { name: "minimal", selection: { profile: "minimal" }, hasDoctor: true },
+    { name: "agents", selection: { profile: "agents-only" }, hasDoctor: false },
+    { name: "cloud", selection: { profile: "cloud-only" }, hasDoctor: false },
+    { name: "stack", selection: { profile: "stack-only" }, hasDoctor: false },
+    { name: "single agent", selection: { onlyModules: ["agents.codex"] }, hasDoctor: false },
+    { name: "single runtime", selection: { onlyModules: ["lang.go"] }, hasDoctor: false },
+    { name: "explicit Doctor skip", selection: { skipModules: ["acfs.doctor"] }, hasDoctor: false },
+    { name: "onboard only", selection: { onlyModules: ["acfs.onboard"] }, hasDoctor: false },
+    { name: "Doctor only", selection: { onlyModules: ["acfs.doctor"] }, hasDoctor: true },
+    {
+      name: "Doctor and agent phase",
+      selection: { onlyModules: ["acfs.doctor"], onlyPhases: ["agents"] },
+      hasDoctor: true,
+    },
+    {
+      name: "guided cloud setup",
+      selection: getGuidedModuleSelection("cloud-only", true),
+      hasDoctor: true,
+    },
+  ];
+  for (const { name, selection, hasDoctor } of diagnosticSelections) {
+    test(`exports only diagnostics and support artifacts available to ${name}`, () => {
+      const packet = buildProviderProvisioningPacket({ ...baseInput, moduleSelection: selection });
+      const exported = JSON.parse(serializeProviderProvisioningPacketJson(packet));
+      const commands = hasDoctor
+        ? ["ssh-root", "installer", "doctor", "support-bundle"]
+        : ["ssh-root", "installer"];
+      const artifacts = hasDoctor
+        ? ["provider-order-confirmation", "installer-log", "support-report", "support-manifest"]
+        : ["provider-order-confirmation", "installer-log"];
+      expect(packet.verificationCommands.map((entry) => entry.id)).toEqual(commands);
+      expect(packet.expectedArtifacts.map((entry) => entry.id)).toEqual(artifacts);
+      expect(exported.verificationCommands.map((entry: { id: string }) => entry.id)).toEqual(commands);
+      expect(exported.expectedArtifacts.map((entry: { id: string }) => entry.id)).toEqual(artifacts);
+      expect(packet.install.command).toBe(buildInstallCommand("vibe", null, "ubuntu", selection));
+      expect(packet.verificationCommands[1]?.command).toBe(packet.install.command);
+      expect(packet.verificationCommands[1]?.expectedStatus).toBe("pass");
+      expect(packet.verificationCommands[0]).toEqual(PROVIDER_PACKET_BASE_VERIFICATION_COMMANDS[0]);
+      expect(packet.expectedArtifacts.slice(0, 2)).toEqual(PROVIDER_PACKET_EXPECTED_ARTIFACTS.slice(0, 2));
+      expect(packet.verificationCommands.slice(2)).toEqual(
+        hasDoctor ? PROVIDER_PACKET_BASE_VERIFICATION_COMMANDS.slice(2) : [],
+      );
+      expect(packet.expectedArtifacts.slice(2)).toEqual(
+        hasDoctor ? PROVIDER_PACKET_EXPECTED_ARTIFACTS.slice(2) : [],
+      );
+    });
+  }
+
+  test("omitting diagnostics cannot unblock an unsupported provisioning packet", () => {
+    const packet = buildProviderProvisioningPacket({
+      ...baseInput,
+      providerId: "hetzner",
+      ubuntuVersion: "20.04",
+      moduleSelection: { profile: "cloud-only" },
+    });
+    expect(packet.stage).toBe("blocked");
+    expect(packet.verificationCommands.map((entry) => entry.id)).toEqual(["ssh-root", "installer"]);
+    expect(packet.verificationCommands[1]?.expectedStatus).toBe("fail");
+    expect(packet.verificationCommands[1]?.command).toBe(packet.install.command);
+    expect(packet.install.command).toContain("ACFS install blocked");
+    expect(packet.install.command).not.toContain("curl");
+    expect(packet.cloudInit.mode).toBe("none");
+    expect(packet.cloudInit.userDataIncluded).toBe(false);
+    expect(packet.expectedArtifacts.map((entry) => entry.id))
+      .toEqual(["provider-order-confirmation", "installer-log"]);
   });
 
   test("stores only known module selection fields in support-safe packets", () => {

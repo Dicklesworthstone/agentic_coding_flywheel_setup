@@ -175,17 +175,26 @@ setup requires copy-paste fidelity:
 }
 ```
 
-The base verification commands are:
+Verification commands follow the resolved installation selection:
 
-| Id | Run on | Support-safe | Purpose |
-| --- | --- | --- | --- |
-| `ssh-root` | local | no | Confirms the new VPS is reachable. |
-| `installer` | VPS | yes | Confirms the exact installer command ran. |
-| `doctor` | VPS | yes | Confirms `acfs doctor` health. |
-| `support-bundle` | VPS | yes | Confirms redacted diagnostics can be produced. |
+| Id | Included when | Run on | Support-safe | Purpose |
+| --- | --- | --- | --- | --- |
+| `ssh-root` | Always | local | no | Confirms the new VPS is reachable. |
+| `installer` | Always | VPS | yes | Confirms the exact installer command ran. |
+| `doctor` | `acfs.doctor` selected | VPS | yes | Confirms `acfs doctor` health. |
+| `support-bundle` | `acfs.doctor` selected | VPS | yes | Confirms redacted diagnostics can be produced. |
 
-Provider adapters may add provider-specific checks, but they must not remove
-the base checks.
+The `acfs.doctor` module supplies the public `acfs` CLI, including
+`support-bundle`. Packets omit both diagnostic commands and the
+`support-report` / `support-manifest` expected artifacts when that module is
+absent from the resolved plan. Explicit skips and guided setup prerequisites
+participate in this decision. The provider order and installer log artifacts
+remain present for every selection.
+
+Provider adapters may add provider-specific checks. They must retain the SSH
+and installer checks, plus the diagnostic checks applicable to the selection.
+A blocked packet still contains the refusing installer command with expected
+status `fail`; omitting unselected diagnostics never makes it ready.
 
 ## Support-Bundle Projection
 
