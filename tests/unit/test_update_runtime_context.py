@@ -1843,6 +1843,162 @@ update_stack
         self.assertEqual(self.maintenance_env()[0]["CLAUDE_CONFIG_DIR"], str(self.home / "custom claude"))
         self.assertTrue((self.home / "custom claude/maintenance-dcg").is_file())
 
+    def write_service_fixture(self):
+        path = self.home / ".acfs/scripts/lib/acfs-services.sh"
+        self.owned_dir(path.parent)
+        environment = self.base / "service-env.tsv"
+        self.write_input(environment, "")
+        script = "#!/bin/bash\nset -euo pipefail\nfixture=" + shlex.quote(str(self.base)) + "\n"
+        script += r'''
+printf 'services\t%s\t%s\t%s\t%s\n' "$EUID" "$HOME" "$PWD" "$*" >> "$fixture/events.tsv"
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "${XDG_RUNTIME_DIR-<unset>}" \
+    "${DBUS_SESSION_BUS_ADDRESS-<unset>}" "${TMUX-<unset>}" "${TMUX_PANE-<unset>}" \
+    "${TMUX_TMPDIR-<unset>}" "${BASH_ENV-<unset>}" "$PATH" "${ACFS_BIN_DIR-<unset>}" >> "$fixture/service-env.tsv"
+case "$1" in
+    drift)
+        if [[ -f "$fixture/service-drift-hang" ]]; then /bin/sleep 10; fi
+        if [[ -f "$HOME/.service-restarted-cm" ]]; then
+            printf 'cm|ok|installed executable\n'
+        else
+            printf 'cm|stale|previous executable\n'
+        fi
+        printf 'cass|stale|previous executable\n'
+        exit 1
+        ;;
+    restart)
+        [[ "$2" == cm ]] || exit 64
+        [[ ! -f "$fixture/service-restart-failure" ]] || exit 19
+        printf '%s\n' "$EUID" > "$HOME/.service-restarted-cm"
+        ;;
+    *) exit 64 ;;
+esac
+'''
+        self.write_input(path, script)
+        path.chmod(0o755)
+        return path
+
+    def service_environment_overrides(self):
+        return {
+            "XDG_RUNTIME_DIR": str(self.caller / "runtime"),
+            "DBUS_SESSION_BUS_ADDRESS": "unix:path=" + str(self.caller / "runtime/bus"),
+            "TMUX": str(self.caller / "tmux-socket") + ",123,0",
+            "TMUX_PANE": "%7",
+            "TMUX_TMPDIR": str(self.caller / "tmux"),
+            "ACFS_BIN_DIR": str(self.caller / ".local/bin"),
+        }
+
+    def assert_service_environment(self):
+        runtime = Path(f"/run/user/{self.account.pw_uid}")
+        runtime_safe = runtime.is_dir() and not runtime.is_symlink() and runtime.stat().st_uid == self.account.pw_uid
+        bus = runtime / "bus"
+        bus_safe = runtime_safe and bus.is_socket() and not bus.is_symlink() and bus.stat().st_uid == self.account.pw_uid
+        expected = [str(runtime) if runtime_safe else "<unset>",
+                    f"unix:path={bus}" if bus_safe else "<unset>",
+                    "<unset>", "<unset>", "<unset>", "<unset>"]
+        rows = (self.base / "service-env.tsv").read_text().splitlines()
+        self.assertTrue(rows)
+        for row in rows:
+            values = row.split("\t")
+            self.assertEqual(values[:6], expected)
+            self.assertTrue(values[6].startswith(str(self.home / ".local/bin") + ":"))
+            self.assertNotIn(str(self.caller), values[6])
+            self.assertNotIn(str(self.work), values[6])
+            self.assertEqual(values[7], str(self.home / ".local/bin"))
+
+    def test_service_drift_report_uses_target_context_without_automatic_restart(self):
+        self.write_service_fixture()
+        output = self.run_update(command="update_report_service_binary_drift",
+                                 overrides=self.service_environment_overrides())
+        self.assert_target_events(self.events())
+        self.assert_service_environment()
+        self.assertEqual([event[-1] for event in self.events()], ["drift --robot"])
+        self.assertIn("cm: previous executable", output)
+        self.assertFalse((self.home / ".service-restarted-cm").exists())
+        self.assertEqual(list(self.caller.iterdir()), [])
+
+    def test_service_drift_ignores_caller_bash_and_shell_startup(self):
+        self.write_service_fixture()
+        caller_bin = self.work / "caller-bin"
+        self.owned_dir(caller_bin)
+        self.write_input(caller_bin / "bash",
+                         '#!/bin/sh\nprintf called > "$TEST_ROOT/caller-bash-executed"\nexit 97\n')
+        (caller_bin / "bash").chmod(0o755)
+        self.write_input(self.base / "caller-bash-env",
+                         'printf called > "$TEST_ROOT/caller-startup-executed"\n')
+        command = r'''
+export BASH_ENV="$TEST_ROOT/caller-bash-env"
+export PATH="$TEST_ROOT/working directory/caller-bin:$PATH"
+update_report_service_binary_drift
+'''
+        self.run_update(command=command, overrides=self.service_environment_overrides())
+        self.assert_target_events(self.events())
+        self.assert_service_environment()
+        self.assertFalse((self.base / "caller-bash-executed").exists())
+        self.assertFalse((self.base / "caller-startup-executed").exists())
+
+    def test_service_command_enforces_deadline_in_target_account(self):
+        self.write_service_fixture()
+        self.write_input(self.base / "service-drift-hang", "fixture\n")
+        self.run_update(command='update_run_service_command 0.2 "$TEST_HOME/.acfs/scripts/lib/acfs-services.sh" drift --robot',
+                        expected=124)
+        self.assert_target_events(self.events())
+        self.assert_service_environment()
+        self.assertEqual([event[-1] for event in self.events()], ["drift --robot"])
+
+    def test_service_drift_opt_in_restart_and_confirmation_share_target_context(self):
+        self.write_service_fixture()
+        output = self.run_update(command="update_report_service_binary_drift",
+                                 overrides=self.service_environment_overrides() | {
+                                     "ACFS_UPDATE_RESTART_SERVICES": "cm,cm",
+                                 })
+        self.assert_target_events(self.events())
+        self.assert_service_environment()
+        self.assertEqual([event[-1] for event in self.events()],
+                         ["drift --robot", "restart cm", "drift --robot"])
+        self.assertIn("Restarted cm; it now runs the installed binary", output)
+        self.assertEqual((self.home / ".service-restarted-cm").stat().st_uid, self.account.pw_uid)
+        self.assertEqual(list(self.caller.iterdir()), [])
+
+    def test_cross_account_service_drift_never_executes_as_privileged_caller(self):
+        self.write_service_fixture()
+        output = self.run_update(cross=True, transport="runuser", command="update_report_service_binary_drift",
+                                 overrides=self.service_environment_overrides() | {
+                                     "ACFS_UPDATE_RESTART_SERVICES": "cm",
+                                 })
+        self.assert_target_events(self.events())
+        self.assert_service_environment()
+        self.assertEqual([event[-1] for event in self.events()],
+                         ["drift --robot", "restart cm", "drift --robot"])
+        self.assertIn("Restarted cm; it now runs the installed binary", output)
+        self.assertEqual((self.home / ".service-restarted-cm").stat().st_uid, self.account.pw_uid)
+        self.assertEqual(list(self.caller.iterdir()), [])
+
+    def test_service_drift_transport_refusal_never_falls_back_to_caller(self):
+        self.write_service_fixture()
+        self.run_update(cross=True, transport="none", command="update_report_service_binary_drift",
+                        overrides={"ACFS_UPDATE_RESTART_SERVICES": "cm"})
+        self.assertEqual(self.events(), [])
+        self.assertFalse((self.home / ".service-restarted-cm").exists())
+        self.assertEqual(list(self.caller.iterdir()), [])
+
+    def test_service_drift_dry_run_never_executes_service_script(self):
+        self.write_service_fixture()
+        self.run_update(dry_run=True, command="update_report_service_binary_drift",
+                        overrides={"ACFS_UPDATE_RESTART_SERVICES": "cm"})
+        self.assertEqual(self.events(), [])
+        self.assertFalse((self.home / ".service-restarted-cm").exists())
+
+    def test_service_drift_restart_failure_is_reported_without_confirmation(self):
+        self.write_service_fixture()
+        self.write_input(self.base / "service-restart-failure", "fixture\n")
+        output = self.run_update(command="update_report_service_binary_drift",
+                                 overrides={"ACFS_UPDATE_RESTART_SERVICES": "cm"})
+        self.assert_target_events(self.events())
+        self.assertEqual([event[-1] for event in self.events()], ["drift --robot", "restart cm"])
+        self.assertIn("Restart of cm failed (exit 19)", output)
+        self.assertNotIn("Restarted cm;", output)
+        self.assertFalse((self.home / ".service-restarted-cm").exists())
+
     def test_guide_and_hook_refuse_missing_account_transport(self):
         self.write_maintenance_tool("flywheel-update-agents-md")
         self.write_maintenance_tool("dcg")

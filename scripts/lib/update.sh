@@ -8507,6 +8507,15 @@ update_install_missing_runtime() {
     fi
 }
 
+# A forced dry run previews prerequisite installation without creating its
+# binary. Dependent tools may preview their next step only when that repair is
+# actually within this invocation's category, saved scope, and hold policy.
+update_missing_runtime_install_is_previewed() {
+    local module="$1" tool="$2"
+    [[ "$DRY_RUN" == true && "$FORCE_MODE" == true && "$UPDATE_RUNTIME" == true ]] || return 1
+    update_module_is_selected "$module" && ! update_tool_hold_details "$tool"
+}
+
 # nvm is a shell function, so binary discovery cannot find its installation.
 # Keep explicit same-account locations, but never use the caller's nvm tree
 # when maintaining another account. Do not source a profile to discover it.
@@ -9134,7 +9143,10 @@ update_agents() {
         # One line for one cause: a missing Bun only matters through Codex, so
         # it is reported once, against Codex (it used to be a Bun line plus a
         # Codex line). Not a failure when there is no Codex to update.
-        if update_binary_exists codex || [[ "$FORCE_MODE" == "true" ]]; then
+        if update_missing_runtime_install_is_previewed lang.bun bun; then
+            run_cmd "Codex CLI (after Bun installation)" update_run_bounded_in_target_context \
+                bun install -g --trust @openai/codex@latest
+        elif update_binary_exists codex || [[ "$FORCE_MODE" == "true" ]]; then
             log_item "fail" "Codex CLI" "Bun not installed (required for Codex updates)"
         else
             log_item "skip" "Codex CLI" "not installed; Bun not installed either"
@@ -9645,6 +9657,9 @@ update_cloud() {
     elif update_binary_exists wrangler || [[ "$FORCE_MODE" == "true" ]]; then
         if [[ "$has_bun" == "true" ]]; then
             run_cmd_bun_with_retry "Wrangler (Cloudflare)" update_run_bounded_in_target_context "$bun_bin" install -g --trust wrangler@latest
+        elif update_missing_runtime_install_is_previewed lang.bun bun; then
+            run_cmd "Wrangler (Cloudflare, after Bun installation)" update_run_bounded_in_target_context \
+                bun install -g --trust wrangler@latest
         else
             log_item "fail" "Wrangler (Cloudflare)" "bun not installed (required)"
         fi
@@ -9683,6 +9698,9 @@ update_cloud() {
     elif update_binary_exists vercel || [[ "$FORCE_MODE" == "true" ]]; then
         if [[ "$has_bun" == "true" ]]; then
             run_cmd_bun_with_retry "Vercel CLI" update_run_bounded_in_target_context "$bun_bin" install -g --trust vercel@latest
+        elif update_missing_runtime_install_is_previewed lang.bun bun; then
+            run_cmd "Vercel CLI (after Bun installation)" update_run_bounded_in_target_context \
+                bun install -g --trust vercel@latest
         else
             log_item "fail" "Vercel CLI" "bun not installed (required)"
         fi
@@ -9822,8 +9840,7 @@ update_cargo_tools() {
     if [[ -z "$cargo_bin" ]]; then
         if [[ "$FORCE_MODE" == "true" ]] && update_module_is_selected tools.ast_grep; then
             update_skip_held_tool ast-grep "ast-grep" && return 0
-            if [[ "$DRY_RUN" == "true" ]] && update_module_is_selected lang.rust \
-                && ! update_tool_hold_details rust; then
+            if update_missing_runtime_install_is_previewed lang.rust rust; then
                 # update_rust previews the prerequisite without creating Cargo.
                 run_cmd "Update ast-grep (after Rust installation)" \
                     update_run_rust_in_target_context cargo install ast-grep --locked --force
@@ -11622,11 +11639,48 @@ update_shell() {
 # restarted when, and only when, this report finds them stale. Unset keeps the
 # report-only default. Set it in a drop-in for acfs-nightly-update.service to
 # limit it to the nightly run.
+update_run_service_command() {
+    local duration="$1" services_script="$2"
+    shift 2
+    local bash_bin="" env_bin="" timeout_bin=""
+    local target_user="" target_home="" target_bin="" target_path=""
+    bash_bin="$(update_system_binary_path bash)" || return 1
+    env_bin="$(update_system_binary_path env)" || return 1
+    timeout_bin="$(update_system_binary_path timeout)" || return 1
+    [[ -n "$bash_bin" && -n "$env_bin" && -n "$timeout_bin" ]] || return 1
+    target_user="$(update_target_user)" || return 1
+    target_home="$(update_target_home "$target_user")" || return 1
+    target_bin="$(update_runtime_primary_bin_dir)" || return 1
+    target_path="$(PATH="$UPDATE_PRIVILEGED_PATH" ACFS_BIN_DIR="$target_bin" update_target_path "$target_home")" || return 1
+
+    # Reuse the account runner and its XDG storage normalization, but never
+    # borrow the caller's service manager or tmux socket. Derive the runtime
+    # directory after dropping privileges, using the actual target UID. An
+    # absent user bus must stay absent rather than falling back to root's bus.
+    local UPDATE_CMD_TIMEOUT="$duration"
+    update_run_maintenance_in_target_context guide "$env_bin" \
+        -u BASH_ENV -u ENV -u XDG_RUNTIME_DIR -u DBUS_SESSION_BUS_ADDRESS \
+        -u DBUS_SESSION_BUS_PID -u DBUS_SYSTEM_BUS_ADDRESS -u DBUS_STARTER_ADDRESS \
+        -u DBUS_STARTER_BUS_TYPE -u SYSTEMD_BUS_ADDRESS -u SYSTEMD_HOST -u SYSTEMD_MACHINE \
+        -u TMUX -u TMUX_PANE -u TMUX_TMPDIR \
+        "PATH=$target_path" "ACFS_BIN_DIR=$target_bin" \
+        "$bash_bin" --noprofile --norc -c '
+            runtime_dir="/run/user/$EUID"
+            if [[ -d "$runtime_dir" && ! -L "$runtime_dir" && -O "$runtime_dir" ]]; then
+                export XDG_RUNTIME_DIR="$runtime_dir"
+                if [[ -S "$runtime_dir/bus" && ! -L "$runtime_dir/bus" && -O "$runtime_dir/bus" ]]; then
+                    export DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus"
+                fi
+            fi
+            exec "$@"
+        ' acfs-service-context "$bash_bin" --noprofile --norc "$services_script" "$@"
+}
+
 update_report_service_binary_drift() {
     local services_script=""
     local drift_output=""
     local service="" state="" detail=""
-    local timeout_bin=""
+    local drift_rc=0
     local -a drift_cmd=()
     local -a restart_cmd=()
     local -a known_services=()
@@ -11641,13 +11695,15 @@ update_report_service_binary_drift() {
     services_script="$(update_runtime_acfs_home 2>/dev/null || true)/scripts/lib/acfs-services.sh"
     [[ -r "$services_script" ]] || return 0
 
-    drift_cmd=(bash "$services_script" drift --robot)
-    timeout_bin="$(update_system_binary_path timeout 2>/dev/null || true)"
-    if [[ -n "$timeout_bin" ]]; then
-        drift_cmd=("$timeout_bin" 30 "${drift_cmd[@]}")
+    drift_cmd=(update_run_service_command 30 "$services_script" drift --robot)
+    drift_output="$("${drift_cmd[@]}" 2>/dev/null)" || drift_rc=$?
+    # The robot protocol returns 1 when any managed service is stale. This is
+    # still a complete observation, including when another service stays stale
+    # after an opted-in restart. Transport failures and timeouts are not.
+    if [[ "$drift_rc" -ne 0 && "$drift_rc" -ne 1 ]]; then
+        log_to_file "Service drift inspection failed in the target account (exit $drift_rc); no service restarts were run"
+        return 0
     fi
-
-    drift_output="$("${drift_cmd[@]}" 2>/dev/null || true)"
     [[ -n "$drift_output" ]] || return 0
 
     while IFS='|' read -r service state detail; do
@@ -11703,8 +11759,7 @@ update_report_service_binary_drift() {
     done
 
     for service in "${restart_services[@]+"${restart_services[@]}"}"; do
-        restart_cmd=(bash "$services_script" restart "$service")
-        [[ -z "$timeout_bin" ]] || restart_cmd=("$timeout_bin" 300 "${restart_cmd[@]}")
+        restart_cmd=(update_run_service_command 300 "$services_script" restart "$service")
         restart_rc=0
         output="$("${restart_cmd[@]}" 2>&1)" || restart_rc=$?
         log_to_file "ACFS_UPDATE_RESTART_SERVICES: acfs services restart $service exited $restart_rc: $output"
@@ -11713,7 +11768,12 @@ update_report_service_binary_drift() {
             continue
         fi
         # Confirm with the same check that found the drift.
-        state="$("${drift_cmd[@]}" 2>/dev/null | awk -F'|' -v s="$service" '$1 == s { print $2 "|" $3; exit }' || true)"
+        drift_rc=0
+        drift_output="$("${drift_cmd[@]}" 2>/dev/null)" || drift_rc=$?
+        state=""
+        if [[ "$drift_rc" -eq 0 || "$drift_rc" -eq 1 ]]; then
+            state="$(printf '%s\n' "$drift_output" | awk -F'|' -v s="$service" '$1 == s { print $2 "|" $3; exit }')"
+        fi
         if [[ "${state%%|*}" == "ok" ]]; then
             printf "${GREEN}  Restarted %s; it now runs the installed binary (ACFS_UPDATE_RESTART_SERVICES)${NC}\n" "$service"
             log_to_file "ACFS_UPDATE_RESTART_SERVICES: $service restarted and verified"

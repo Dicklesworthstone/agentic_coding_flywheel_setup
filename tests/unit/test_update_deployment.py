@@ -1622,6 +1622,68 @@ printf 'checkpoint-accepted\n' >> "$TEST_EVENTS"
         self.assertIn("FAILURES:0", result.stdout)
         self.assertEqual(self.events(), [])
 
+    def test_force_dry_run_previews_bun_dependents_after_selected_runtime_repair(self):
+        self.selection("lang.bun", "agents.codex", "cloud.wrangler", "cloud.vercel")
+        checkpoint = self.state.read_bytes()
+        result = self.shell(
+            'QUIET=false\nupdate_bun\nupdate_agents\nupdate_cloud\n'
+            'printf "COUNTS:%s:%s\\n" "$SUCCESS_COUNT" "$FAIL_COUNT"\n',
+            TEST_FORCE="true", TEST_DRY_RUN="true",
+        )
+        for step in ("Bun (install)", "Codex CLI (after Bun installation)",
+                     "Wrangler (Cloudflare, after Bun installation)",
+                     "Vercel CLI (after Bun installation)"):
+            self.assertIn(step, result.stdout)
+        for package in ("@openai/codex@latest", "wrangler@latest", "vercel@latest"):
+            self.assertIn(package, result.stdout)
+        self.assertIn("COUNTS:0:0", result.stdout)
+        self.assertEqual(self.events(), [])
+        self.assertEqual(self.state.read_bytes(), checkpoint)
+
+    def test_force_dry_run_does_not_assume_unselected_disabled_or_held_bun_repair(self):
+        for case in ("omitted", "runtime-disabled", "held"):
+            with self.subTest(case=case):
+                modules = ["agents.codex", "cloud.wrangler", "cloud.vercel"]
+                if case != "omitted":
+                    modules.append("lang.bun")
+                self.selection(*modules)
+                holds = self.write(self.base, f"{case}-holds.yaml",
+                                   'holds:\n  bun:\n    held_version: "current"\n'
+                                   '    owner: "operator"\n    reason: "retain working version"\n'
+                                   '    expiry: "2999-12-31"\n' if case == "held" else "holds: {}\n")
+                result = self.shell(
+                    'QUIET=false\n' + ('UPDATE_RUNTIME=false\n' if case == "runtime-disabled" else '') +
+                    'update_bun\nupdate_agents\nupdate_cloud\n'
+                    'printf "COUNTS:%s:%s\\n" "$SUCCESS_COUNT" "$FAIL_COUNT"\n',
+                    TEST_FORCE="true", TEST_DRY_RUN="true", ACFS_HOLDS_FILE=str(holds),
+                )
+                self.assertIn("COUNTS:0:3", result.stdout)
+                self.assertNotIn("after Bun installation", result.stdout)
+                self.assertEqual(self.events(), [])
+
+    def test_category_only_dry_run_does_not_expand_to_bun_repair(self):
+        self.selection("lang.bun", "agents.codex", "cloud.wrangler", "cloud.vercel")
+        for category in ("--agents-only", "--cloud-only"):
+            with self.subTest(category=category):
+                result = self.shell(
+                    f"QUIET=false\nmain --yes --force --dry-run --no-self-update {category}\n", code=1,
+                )
+                self.assertIn("Bun not installed" if category == "--agents-only" else "bun not installed",
+                              result.stdout)
+                self.assertNotIn("after Bun installation", result.stdout)
+                self.assertEqual(self.events(), [])
+
+    def test_missing_bun_still_fails_real_repairs_without_inventing_a_runtime(self):
+        self.selection("lang.bun", "agents.codex", "cloud.wrangler", "cloud.vercel")
+        result = self.shell(
+            'QUIET=false\nupdate_agents\nupdate_cloud\n'
+            'printf "COUNTS:%s:%s\\n" "$SUCCESS_COUNT" "$FAIL_COUNT"\n',
+            TEST_FORCE="true",
+        )
+        self.assertIn("COUNTS:0:3", result.stdout)
+        self.assertNotIn("after Bun installation", result.stdout)
+        self.assertEqual(self.events(), [])
+
     def test_force_without_selected_cargo_tools_does_not_require_cargo(self):
         for module in ("acfs.update", "cli.modern", "lang.rust"):
             with self.subTest(module=module):
