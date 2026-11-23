@@ -2,6 +2,7 @@
 import {
   buildTeamProfileImportDiff,
   type TeamProfile,
+  type TeamProfileCompatibilityTargets,
   type TeamProfileImportCurrentState,
   type TeamProfileImportDiff,
 } from "./commandBuilder";
@@ -289,6 +290,8 @@ export interface ApprovedTeamProfileInstallation extends ApprovedTeamProfileComm
   readonly architecture: NonNullable<TeamProfileImportCurrentState["architecture"]>;
   /** The operator-confirmed starting image, never the profile author's host claim. */
   readonly ubuntuVersion: string;
+  /** Re-export retains the reviewed allowlists instead of broadening this target's policy. */
+  readonly compatibilityTargets: TeamProfileCompatibilityTargets;
 }
 const installations = new WeakMap<ApprovedTeamProfileInstallation, TeamProfileFileReview>();
 export const TEAM_PROFILE_SESSION_KEY = "acfs-reviewed-installation-pending-v1";
@@ -345,6 +348,10 @@ export function activateTeamProfileInstallation(
     },
     architecture: context.current.architecture!,
     ubuntuVersion: context.current.ubuntuVersion!,
+    compatibilityTargets: {
+      architectures: [...source.compatibility.architectures],
+      targetUbuntuVersions: [...source.compatibility.targetUbuntuVersions],
+    },
   });
   try {
     storage.setItem(TEAM_PROFILE_SESSION_KEY, "review-required");

@@ -555,6 +555,10 @@ function fixture(sessionEntries = new Map(), initialPath = "/wizard/run-installe
   const profile = {
     profileId: "team-example",
     displayName: "Team Example",
+    compatibility: {
+      architectures: ["aarch64"],
+      targetUbuntuVersions: ["24.04", "26.04"],
+    },
     providerDefaults: { sshUser: "team-user" },
     install: {
       mode: "safe",
@@ -711,6 +715,10 @@ test("review activation atomically changes every install preference without save
   });
   assert.equal(values.user[2], true);
   assert.equal(values.selection[1], true);
+  assert.deepEqual(plain(f.session().installation.compatibilityTargets), {
+    architectures: ["aarch64"],
+    targetUbuntuVersions: ["24.04", "26.04"],
+  });
   assert.deepEqual([...f.local], localBefore);
   assert.deepEqual(f.queryWrites, queriesBefore);
   assert.deepEqual(f.storageWrites, [[key, "review-required"]]);

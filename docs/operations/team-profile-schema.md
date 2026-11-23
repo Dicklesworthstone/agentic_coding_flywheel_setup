@@ -157,6 +157,14 @@ Unknown top-level fields are allowed only under `extensions`. Unknown fields in
 `providerDefaults`, `install`, `serviceAccounts`, or `redaction` must be ignored
 by older consumers but must not weaken validation decisions.
 
+`install.offlinePack` is optional in v1. The web import supports it only when
+it is exactly `{"required": false, "pathHint": null}`. A required pack, a
+selected cache path, missing policy fields, or additional cache-policy fields
+blocks command approval with `team_profile_offline_unsupported`. The browser's
+ordinary network command cannot silently satisfy those constraints. Cache use
+requires its separate review and command flow; the current verified installer
+entrypoint cache can still download packages and release payloads.
+
 ## Safe Field Rules
 
 Allowed values are defaults, choices, and identifiers:
@@ -282,6 +290,9 @@ When exporting from the wizard or installer state:
 - convert credential requirements into `secretSlot` entries
 - prefer pinned refs for repeatable installs
 - record `manifestSha256` and `checksumsYamlSha256`
+- retain an adopted profile's architecture and Ubuntu compatibility allowlists;
+  the operator's current target must belong to both lists and never authorizes
+  widening them on re-export
 - sort module arrays deterministically
 - include a warning if selected modules require live provider interaction
 
@@ -304,6 +315,7 @@ Future validators and import commands should use stable reason codes:
 | `team_profile_checksums_mismatch` | Profile checksum hash differs from current checksum metadata. |
 | `team_profile_arch_unsupported` | Target architecture is not listed. |
 | `team_profile_ubuntu_unsupported` | Target Ubuntu version is not listed. |
+| `team_profile_offline_unsupported` | The web network handoff cannot satisfy the profile's explicit cache/offline policy. |
 | `team_profile_no_tty_confirmation_required` | Import needs confirmation but no TTY is available. |
 
 ## Test Plan

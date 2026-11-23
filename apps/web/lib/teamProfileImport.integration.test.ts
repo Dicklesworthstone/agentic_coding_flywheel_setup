@@ -4,16 +4,28 @@ import { test } from "node:test";
 import {
   buildInstallCommand,
   buildTeamProfile,
+  buildTeamProfileImportDiff,
+  formatTeamProfileReviewMarkdown,
   serializeTeamProfileJson,
   type TeamProfileInputs,
 } from "./commandBuilder";
 import { resolveModuleSelection } from "./moduleSelection";
 import {
+  activateTeamProfileInstallation,
   approveTeamProfileReview,
   reviewTeamProfileFile,
   TeamProfileImportError,
   type TeamProfileReviewContext,
 } from "./teamProfileImport";
+
+function sessionStorage() {
+  const entries = new Map<string, string>();
+  return {
+    getItem: (key: string) => entries.get(key) ?? null,
+    setItem: (key: string, value: string) => { entries.set(key, value); },
+    removeItem: (key: string) => { entries.delete(key); },
+  };
+}
 
 function inputs(): TeamProfileInputs {
   return {
@@ -128,3 +140,122 @@ test("a real canonical review is not transferable to another VPS or deserialized
       error instanceof TeamProfileImportError && error.code === "team_profile_review_changed",
   );
 });
+
+for (const architecture of ["x86_64", "aarch64"] as const) {
+  test(`review, adoption, and export retain the approved ${architecture}-only target policy`, async () => {
+    const requested = inputs();
+    const source = buildTeamProfile({ ...requested, architecture });
+    source.compatibility.architectures = [architecture];
+    source.compatibility.targetUbuntuVersions = ["24.04", "26.04"];
+    const before = serializeTeamProfileJson(source);
+    const current = context();
+    current.current.architecture = architecture;
+    current.current.ubuntuVersion = "24.04";
+    const review = await reviewTeamProfileFile(new Blob([before]), current);
+    const installation = activateTeamProfileInstallation(review, current, true, sessionStorage());
+    const exported = buildTeamProfile({
+      ...requested,
+      mode: installation.mode,
+      ref: installation.ref,
+      username: installation.username,
+      architecture: installation.architecture,
+      moduleSelection: installation.moduleSelection,
+      compatibilityTargets: installation.compatibilityTargets,
+      providerSelection: {
+        providerId: "other", planName: "custom plan", region: "not-listed",
+        targetAgents: 10, workloadId: "standard", ubuntuVersion: installation.ubuntuVersion,
+      },
+    });
+    assert.deepEqual(exported.compatibility.architectures, [architecture]);
+    assert.deepEqual(exported.compatibility.targetUbuntuVersions, ["24.04", "26.04"]);
+    assert.equal(exported.providerDefaults.operatingSystem, "ubuntu-24.04");
+    assert.equal(expectedCommand(exported), installation.command);
+    assert.deepEqual(exported.install.modulePlan.included, source.install.modulePlan.included);
+    assert.equal(serializeTeamProfileJson(source), before);
+    assert.throws(() => {
+      (installation.compatibilityTargets.architectures as string[]).push("other");
+    }, TypeError);
+    const retained = await reviewTeamProfileFile(new Blob([serializeTeamProfileJson(exported)]), current);
+    assert.equal(approveTeamProfileReview(retained, current, true).command, installation.command);
+    const otherArchitecture = architecture === "x86_64" ? "aarch64" : "x86_64";
+    await assert.rejects(
+      reviewTeamProfileFile(new Blob([serializeTeamProfileJson(exported)]), {
+        ...current,
+        current: { ...current.current, architecture: otherArchitecture },
+      }),
+      (error: unknown) => error instanceof TeamProfileImportError &&
+        error.findingCodes.includes("team_profile_arch_unsupported"),
+    );
+    await assert.rejects(
+      reviewTeamProfileFile(new Blob([serializeTeamProfileJson(exported)]), {
+        ...current,
+        current: { ...current.current, ubuntuVersion: "22.04" },
+      }),
+      (error: unknown) => error instanceof TeamProfileImportError &&
+        error.findingCodes.includes("team_profile_ubuntu_unsupported"),
+    );
+  });
+}
+
+for (const [name, offlinePack] of [
+  ["required cache", { required: true, pathHint: null }],
+  ["cache path", { required: false, pathHint: "acfs-installer-cache" }],
+  ["missing required policy", { pathHint: null }],
+  ["nonboolean required policy", { required: "false", pathHint: null }],
+  ["missing path policy", { required: false }],
+  ["unknown cache policy", { required: false, pathHint: null, offline: true }],
+  ["null cache policy", null],
+  ["array cache policy", []],
+] as const) {
+  test(`a profile with ${name} cannot be approved as an ordinary network install`, async () => {
+    const source = buildTeamProfile(inputs());
+    Object.assign(source.install, { offlinePack });
+    const before = serializeTeamProfileJson(source);
+    const diff = buildTeamProfileImportDiff(source, context().current);
+    assert.equal(diff.ok, false);
+    assert.equal(diff.installerCommand.command, null);
+    assert.ok(diff.findings.some((finding) => finding.code === "team_profile_offline_unsupported"));
+    assert.ok(!formatTeamProfileReviewMarkdown(source).includes("curl -fsSL"));
+    await assert.rejects(
+      reviewTeamProfileFile(new Blob([before]), context()),
+      (error: unknown) => error instanceof TeamProfileImportError &&
+        error.code === "team_profile_review_blocked" &&
+        error.findingCodes.includes("team_profile_offline_unsupported"),
+    );
+    assert.equal(serializeTeamProfileJson(source), before);
+  });
+}
+
+test("absent and explicit optional-cache metadata keep the supported network handoff", async () => {
+  const exported = buildTeamProfile(inputs());
+  const { offlinePack, ...withoutCache } = exported.install;
+  assert.deepEqual(offlinePack, { required: false, pathHint: null });
+  for (const install of [exported.install, withoutCache]) {
+    const source = { ...exported, install };
+    const current = context();
+    const review = await reviewTeamProfileFile(new Blob([JSON.stringify(source)]), current);
+    assert.equal(approveTeamProfileReview(review, current, true).command, expectedCommand(exported));
+  }
+});
+
+for (const [name, compatibilityTargets] of [
+  ["null policy", null],
+  ["missing architecture list", { targetUbuntuVersions: ["26.04"] }],
+  ["empty architecture list", { architectures: [], targetUbuntuVersions: ["26.04"] }],
+  ["unknown architecture", { architectures: ["other"], targetUbuntuVersions: ["26.04"] }],
+  ["excluded architecture", { architectures: ["aarch64"], targetUbuntuVersions: ["26.04"] }],
+  ["missing image list", { architectures: ["x86_64"] }],
+  ["empty image list", { architectures: ["x86_64"], targetUbuntuVersions: [] }],
+  ["unsupported image", { architectures: ["x86_64"], targetUbuntuVersions: ["99.99"] }],
+  ["excluded image", { architectures: ["x86_64"], targetUbuntuVersions: ["24.04"] }],
+] as const) {
+  test(`re-export cannot replace a ${name} with broader target defaults`, () => {
+    assert.throws(
+      () => buildTeamProfile({
+        ...inputs(),
+        compatibilityTargets: compatibilityTargets as unknown as TeamProfileInputs["compatibilityTargets"],
+      }),
+      /approved profile's compatibility targets/,
+    );
+  });
+}

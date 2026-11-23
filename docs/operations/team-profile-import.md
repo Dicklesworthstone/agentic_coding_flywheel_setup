@@ -38,6 +38,13 @@ apply. In particular, the package's manifest/checksum provenance, Ubuntu image,
 architecture, ref policy, known selectors and dependency closure must validate.
 There is no bypass or "approve anyway" action for rejected profiles.
 
+An omitted `install.offlinePack` field or the exported
+`{"required": false, "pathHint": null}` remains supported. A required pack,
+cache path, or other explicit cache policy is refused before a network installer
+command becomes available. Use the separately reviewed installer-cache flow
+when you need a cache; its entrypoints may still download packages and release
+payloads, so it is not a complete network-free installation.
+
 ## Use the reviewed installation throughout the wizard
 
 To use the reviewed choices in the normal wizard instead of a separate command,
@@ -54,6 +61,12 @@ alone cannot replace a narrower reviewed selection. Cache preparation uses the
 operator-confirmed architecture and the installer's upgrade destination; the
 starting image remains a separate declared fact in handoff exports. Imported
 provider claims do not overwrite the actual saved provider selection.
+
+The approved architecture and Ubuntu compatibility allowlists also remain in
+memory and are copied into subsequent team-profile exports. For example, an
+x86_64-only profile stays x86_64-only after review, adoption and export. Choosing
+one permitted target never broadens the profile's compatibility policy or
+discards its other permitted starting images.
 
 Settings controls cannot partially edit an active installation. The command
 panel becomes read-only, and a regenerated installer that differs from the

@@ -26,6 +26,10 @@ function fixture() {
   const profile = {
     profileId: "team-example",
     displayName: "Team Example",
+    compatibility: {
+      architectures: ["aarch64"],
+      targetUbuntuVersions: ["24.04", "26.04"],
+    },
     providerDefaults: {
       sshUser: "team-user",
       architecture: "aarch64",
@@ -137,6 +141,11 @@ test("activation uses one immutable source-derived settings snapshot without imp
   assert.equal(active.ref, "v1.2.3");
   assert.equal(active.architecture, "aarch64");
   assert.equal(active.ubuntuVersion, "24.04");
+  assert.deepEqual(clone(active.compatibilityTargets), f.profile.compatibility);
+  assert.throws(
+    () => active.compatibilityTargets.architectures.push("x86_64"),
+    (error) => error.name === "TypeError",
+  );
   assert.deepEqual(clone(active.moduleSelection), {
     profile: "full",
     onlyModules: ["agents.claude"],

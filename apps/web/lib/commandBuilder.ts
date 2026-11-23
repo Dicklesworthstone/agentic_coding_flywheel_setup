@@ -131,6 +131,11 @@ export const TEAM_PROFILE_SCHEMA_VERSION = 1;
 export type TeamProfileRefType = "branch" | "tag" | "commit";
 export type TeamProfileArchitecture = "x86_64" | "aarch64";
 
+export interface TeamProfileCompatibilityTargets {
+  readonly architectures: readonly TeamProfileArchitecture[];
+  readonly targetUbuntuVersions: readonly string[];
+}
+
 export interface TeamProfileInputs extends CommandBuilderInputs {
   providerSelection?: VPSReadinessSelection | null;
   generatedAt?: string;
@@ -138,6 +143,8 @@ export interface TeamProfileInputs extends CommandBuilderInputs {
   displayName?: string;
   description?: string;
   architecture?: TeamProfileArchitecture;
+  /** Preserve the approved target policy when re-exporting an adopted installation. */
+  compatibilityTargets?: TeamProfileCompatibilityTargets;
 }
 
 export interface TeamProfileServiceAccount {
@@ -244,6 +251,7 @@ export type TeamProfileImportCode =
   | "team_profile_checksums_mismatch"
   | "team_profile_arch_unsupported"
   | "team_profile_ubuntu_unsupported"
+  | "team_profile_offline_unsupported"
   | "team_profile_no_deps_refused"
   | "team_profile_ref_policy_mismatch"
   | "team_profile_unknown_top_level_field";
@@ -1017,6 +1025,29 @@ export function buildTeamProfile(inputs: TeamProfileInputs): TeamProfile {
   const ubuntuVersion = safeUbuntuVersion(providerSelection.ubuntuVersion);
   const targetUsername = normalizeCommandUsername(inputs.username);
   const architecture = inputs.architecture ?? "x86_64";
+  const compatibilityTargets = inputs.compatibilityTargets;
+  // The operator's current target does not replace the profile author's
+  // allowlist. Never turn a missing/malformed adopted policy into new defaults.
+  if (
+    compatibilityTargets !== undefined &&
+    (!compatibilityTargets ||
+      !Array.isArray(compatibilityTargets.architectures) ||
+      compatibilityTargets.architectures.length === 0 ||
+      Array.from(compatibilityTargets.architectures).some(
+        (value) => !isTeamProfileArchitecture(value),
+      ) ||
+      !compatibilityTargets.architectures.includes(architecture) ||
+      !Array.isArray(compatibilityTargets.targetUbuntuVersions) ||
+      compatibilityTargets.targetUbuntuVersions.length === 0 ||
+      Array.from(compatibilityTargets.targetUbuntuVersions).some(
+        (value) => !isSupportedTeamUbuntuVersion(value),
+      ) ||
+      !compatibilityTargets.targetUbuntuVersions.includes(ubuntuVersion))
+  ) {
+    throw new Error(
+      "The approved profile's compatibility targets must be valid and include the current architecture and Ubuntu image.",
+    );
+  }
   const moduleSelection = normalizeTeamModuleSelection(inputs.moduleSelection);
   const modulePlan = buildTeamProfileModulePlan(moduleSelection);
   if (!isSupportedTeamUbuntuVersion(ubuntuVersion)) {
@@ -1060,8 +1091,12 @@ export function buildTeamProfile(inputs: TeamProfileInputs): TeamProfile {
     compatibility: {
       minAcfsVersion: manifestProvenance.acfsVersion,
       schemaVersions: [TEAM_PROFILE_SCHEMA_VERSION],
-      targetUbuntuVersions: [ubuntuVersion],
-      architectures: ["x86_64", "aarch64"],
+      targetUbuntuVersions: compatibilityTargets
+        ? [...compatibilityTargets.targetUbuntuVersions]
+        : [ubuntuVersion],
+      architectures: compatibilityTargets
+        ? [...compatibilityTargets.architectures]
+        : ["x86_64", "aarch64"],
       installerRefPolicy: "prefer_pinned_ref",
       checksumsRefPolicy: "current_acfs_default",
     },
@@ -1734,6 +1769,23 @@ function validateTeamProfileForImport(
   }
 
   const install = isRecord(input.install) ? input.install : {};
+  if (Object.hasOwn(install, "offlinePack")) {
+    const offlinePack = install.offlinePack;
+    if (
+      !isRecord(offlinePack) ||
+      offlinePack.required !== false ||
+      offlinePack.pathHint !== null ||
+      Object.keys(offlinePack).some((key) => key !== "required" && key !== "pathHint")
+    ) {
+      findings.push(
+        importFinding(
+          "team_profile_offline_unsupported",
+          "install.offlinePack",
+          "The web profile command cannot require or select an installer cache. Review cache use separately; cached installer entrypoints may still download packages and release payloads.",
+        ),
+      );
+    }
+  }
   if (install.mode !== undefined && !isInstallMode(install.mode)) {
     findings.push(
       importFinding(

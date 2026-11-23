@@ -201,6 +201,7 @@ function fixture(initial = {}) {
       (ref ? ` --ref "${ref}"` : "") +
       (selection?.profile ? ` --profile "${selection.profile}"` : "") +
       (selection?.onlyModules ?? []).map((id) => ` --only "${id}"`).join("") +
+      (selection?.onlyPhases ?? []).map((phase) => ` --only-phase "${phase}"`).join("") +
       (selection?.skipModules ?? []).map((id) => ` --skip "${id}"`).join("")
     );
   };
@@ -540,6 +541,10 @@ function fixture(initial = {}) {
         username: "team-user",
         architecture: "aarch64",
         ubuntuVersion: "22.04",
+        compatibilityTargets: {
+          architectures: ["aarch64"],
+          targetUbuntuVersions: ["22.04", "26.04"],
+        },
         moduleSelection: {
           profile: "full",
           onlyModules: ["agents.claude"],
@@ -1001,6 +1006,10 @@ test("cache architecture and export source image use operator-confirmed reviewed
   assert.match(cacheBuilder.props.command, /--ubuntu-version 26.04/);
   assert.equal(item.calls.profile.at(-1).architecture, "aarch64");
   assert.equal(item.calls.profile.at(-1).providerSelection.ubuntuVersion, "22.04");
+  assert.deepEqual(plain(item.calls.profile.at(-1).compatibilityTargets), {
+    architectures: ["aarch64"],
+    targetUbuntuVersions: ["22.04", "26.04"],
+  });
   assert.equal(item.calls.provider.at(-1).ubuntuVersion, "22.04");
   assert.equal(item.prefs.provider.ubuntuVersion, "24.04");
 });
@@ -1136,7 +1145,32 @@ for (const profile of ["agents-only", "cloud-only", "stack-only"]) {
       ...productionPlan({ profile }).included.map((entry) => entry.id),
       ...wizardModules,
     ]);
-    assert.deepEqual(new Set(selection.onlyModules), expected);
+    const source = selectionCatalogue.manifestSelectionProfiles.find((entry) => entry.id === profile);
+    const expectedRoots = new Set([...source.onlyModules, ...wizardModules]);
+    const expectedPhases = [...source.onlyPhases];
+    const assertGuidedSelection = (candidate) => {
+      assert.equal(candidate.profile, undefined);
+      assert.deepEqual(new Set(candidate.onlyModules), expectedRoots);
+      assert.deepEqual(candidate.onlyPhases ?? [], expectedPhases);
+      const plan = productionPlan(candidate);
+      assert.equal(plan.ok, true);
+      assert.deepEqual(new Set(plan.included.map((entry) => entry.id)), expected);
+    };
+    assertGuidedSelection(selection);
+    // Equal installed closures are not enough: flattening phases/dependencies
+    // into explicit roots changes which tool failures the installer tolerates.
+    assert.throws(
+      () => assertGuidedSelection({ ...selection, onlyModules: [...expected] }),
+      { code: "ERR_ASSERTION" },
+    );
+    if (expectedPhases.length > 0) {
+      assert.throws(
+        () => assertGuidedSelection({ ...selection, onlyPhases: [] }),
+        { code: "ERR_ASSERTION" },
+      );
+      for (const phase of expectedPhases)
+        assert.ok(view.main().props.command.includes(`--only-phase "${phase}"`));
+    }
     item.setAcknowledged(true);
     assert.equal(item.render().navigation().disabled, false);
 

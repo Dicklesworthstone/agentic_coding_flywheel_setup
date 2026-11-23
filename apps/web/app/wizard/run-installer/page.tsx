@@ -408,6 +408,7 @@ export default function RunInstallerPage() {
             ref: effectiveRef,
             providerSelection: effectiveProviderSelection,
             architecture: reviewedInstallation?.architecture,
+            compatibilityTargets: reviewedInstallation?.compatibilityTargets,
             moduleSelection,
           })
         : null,
