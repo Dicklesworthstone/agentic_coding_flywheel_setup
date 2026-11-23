@@ -2749,6 +2749,50 @@ if update_bun; then printf 'UNEXPECTED-ACCEPT\n'; else printf 'PLATFORM-REFUSED\
         self.assertNotIn("UNEXPECTED-ACCEPT", output)
         self.assertFalse((self.work / "SHOULD-NOT-EXECUTE").exists())
 
+    def test_agy_launcher_priming_transports_validated_mode_and_custom_checkpoint(self):
+        source_dir = self.home / ".acfs/scripts/lib"
+        self.owned_dir(source_dir)
+        self.write_input(source_dir / "agy_locked.py",
+                         (ROOT / "scripts/lib/agy_locked.py").read_text())
+        self.write_native_tool("agy-real")
+        settings = self.home / ".gemini/antigravity-cli/settings.json"
+        # MODE is deliberately not exported and there is no default state.
+        self.run_update(command=r'''
+MODE=safe
+export -n MODE
+update_install_agy_locked_launchers
+''')
+        self.assertEqual(json.loads(settings.read_text())["toolPermission"], "request-review")
+        custom = self.home / "custom checkpoint.json"
+        self.write_input(custom, json.dumps({"mode": "safe", "target_home": str(self.home),
+                                            "target_user": self.account.pw_name}))
+        self.write_input(self.home / ".acfs/state.json", json.dumps({"mode": "vibe"}))
+        # An unexported explicit checkpoint must survive the target runner.
+        self.run_update(command=r'''
+unset MODE
+ACFS_STATE_FILE="$TEST_HOME/custom checkpoint.json"
+export -n ACFS_STATE_FILE
+update_install_agy_locked_launchers
+''')
+        self.assertEqual(json.loads(settings.read_text())["toolPermission"], "request-review")
+        self.assertTrue((self.home / ".gemini/config/hooks/dcg-antigravity-hook.py").is_file())
+        self.assertEqual(self.events(), [])  # Priming never starts an agent session.
+
+    def test_agy_launcher_priming_rejects_invalid_context_before_installing(self):
+        for assignment in ("MODE=unsupported", "MODE=safe ACFS_STATE_FILE=relative.json"):
+            with self.subTest(assignment=assignment):
+                output = self.run_update(command=assignment + r'''
+if update_install_agy_locked_launchers; then
+    printf 'UNEXPECTED-PRIME\n'
+else
+    printf 'PRIME-REFUSED\n'
+fi
+''')
+                self.assertIn("PRIME-REFUSED", output)
+                self.assertNotIn("UNEXPECTED-PRIME", output)
+                self.assertFalse((self.home / ".local/bin/agy-locked").exists())
+                self.assertFalse((self.home / ".gemini").exists())
+
     def test_agent_native_updates_keep_deadlines_and_continue(self):
         for tool in ("agy", "agy-real", "omp", "opencode"):
             self.write_native_tool(tool)

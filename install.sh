@@ -5760,6 +5760,23 @@ run_as_target() {
     local su_bin=""
     local -a command_argv=()
 
+    # Authored target commands need the accepted policy even when sudo or
+    # runuser clears the parent environment. Upstream installers remain
+    # isolated from these ACFS runtime controls.
+    if [[ "$clean_environment" != true ]]; then
+        case "${MODE:-}" in
+            ""|safe|vibe) ;;
+            *)
+                log_error "Invalid installation mode for target-user command"
+                return 1
+                ;;
+        esac
+        if [[ -n "${ACFS_STATE_FILE:-}" && ( "$ACFS_STATE_FILE" != /* || "$ACFS_STATE_FILE" == / ) ]]; then
+            log_error "ACFS_STATE_FILE must be an absolute file path for target-user commands"
+            return 1
+        fi
+    fi
+
     if [[ -z "$user" ]] || [[ ! "$user" =~ ^[a-z_][a-z0-9._-]*$ ]]; then
         log_error "Invalid TARGET_USER '${user:-<empty>}' (expected: lowercase user name like 'ubuntu')"
         return 1
@@ -5887,6 +5904,8 @@ run_as_target() {
 
     # Verified upstream code receives no ambient ACFS path/source overrides.
     if [[ "$clean_environment" != "true" ]]; then
+        [[ -n "${MODE:-}" ]] && env_args+=("MODE=$MODE")
+        [[ -n "${ACFS_STATE_FILE:-}" ]] && env_args+=("ACFS_STATE_FILE=$ACFS_STATE_FILE")
         if [[ -n "$acfs_home_for_target" ]]; then env_args+=("ACFS_HOME=$acfs_home_for_target"); fi
         if [[ -n "${ACFS_BIN_DIR:-}" ]]; then env_args+=("ACFS_BIN_DIR=$primary_bin_dir"); fi
         if [[ -n "${ACFS_BOOTSTRAP_DIR:-}" ]]; then env_args+=("ACFS_BOOTSTRAP_DIR=$ACFS_BOOTSTRAP_DIR"); fi

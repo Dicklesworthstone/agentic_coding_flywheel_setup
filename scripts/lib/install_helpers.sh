@@ -1189,6 +1189,23 @@ if [[ "${ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE:-0}" == "1" ]] || ! declar
         local su_bin=""
         local -a command_argv=()
 
+        # Only ACFS-authored target commands receive installation policy.
+        # Validate before dispatch; verified upstream installers keep their
+        # clean environment and never receive these runtime controls.
+        if [[ "$clean_environment" != true ]]; then
+            case "${MODE:-}" in
+                ""|safe|vibe) ;;
+                *)
+                    log_error "Invalid installation mode for target-user command"
+                    return 1
+                    ;;
+            esac
+            if [[ -n "${ACFS_STATE_FILE:-}" && ( "$ACFS_STATE_FILE" != /* || "$ACFS_STATE_FILE" == / ) ]]; then
+                log_error "ACFS_STATE_FILE must be an absolute file path for target-user commands"
+                return 1
+            fi
+        fi
+
         _acfs_validate_target_user "$user" "TARGET_USER" || return 1
         env_bin="$(_acfs_system_binary_path env 2>/dev/null || true)"
         [[ -n "$env_bin" ]] || {
@@ -1302,6 +1319,8 @@ if [[ "${ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE:-0}" == "1" ]] || ! declar
         fi
         # Verified upstream code receives no ambient ACFS path/source overrides.
         if [[ "$clean_environment" != "true" ]]; then
+            [[ -n "${MODE:-}" ]] && env_args+=("MODE=$MODE")
+            [[ -n "${ACFS_STATE_FILE:-}" ]] && env_args+=("ACFS_STATE_FILE=$ACFS_STATE_FILE")
             [[ -n "$acfs_home_for_target" ]] && env_args+=("ACFS_HOME=$acfs_home_for_target")
             [[ -n "${ACFS_BIN_DIR:-}" ]] && env_args+=("ACFS_BIN_DIR=$primary_bin_dir")
             [[ -n "${ACFS_BOOTSTRAP_DIR:-}" ]] && env_args+=("ACFS_BOOTSTRAP_DIR=$ACFS_BOOTSTRAP_DIR")

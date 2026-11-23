@@ -6,7 +6,7 @@
 # ============================================================
 # Data-only manifest index. Safe to source.
 
-ACFS_MANIFEST_SHA256="274653a83fc50e778db8125a0b66f7dd3b71d5d94aaef9368b058e5805210913"
+ACFS_MANIFEST_SHA256="6bf0c2d879ab436508983d28a94fadc8ba29d997d98d0184b6a1d2a9963074a6"
 
 ACFS_MODULES_IN_ORDER=(
   "base.system"
@@ -1350,6 +1350,7 @@ test -x "$target_bin/agy-real"
 test -x "$target_bin/gmi"
 /usr/bin/python3 - <<'\''PY'\''
 import json
+import os
 import pathlib
 import sys
 
@@ -1380,6 +1381,14 @@ expected = {
     "editor": "auto",
     "altScreenMode": "never",
 }
+if os.environ.get("MODE") == "safe":
+    expected.update({
+        "agentMode": "",
+        "toolPermission": "request-review",
+        "artifactReviewPolicy": "asks-for-review",
+        "enableTerminalSandbox": True,
+        "allowNonWorkspaceAccess": False,
+    })
 for key, value in expected.items():
     if settings.get(key) != value:
         print(f"Antigravity setting {key} is {settings.get(key)!r}, expected {value!r}", file=sys.stderr)

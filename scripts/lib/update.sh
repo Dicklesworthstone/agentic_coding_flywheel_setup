@@ -8824,6 +8824,24 @@ update_install_agy_locked_launchers() {
     local install_bin=""
     local mkdir_bin=""
     local mv_bin=""
+    local env_bin=""
+    local -a prime_env=()
+
+    case "${MODE:-}" in
+        safe|vibe) prime_env+=("MODE=$MODE") ;;
+        "") ;;
+        *)
+            log_item "warn" "agy locked launchers" "invalid installation mode"
+            return 1
+            ;;
+    esac
+    if [[ -n "${ACFS_STATE_FILE:-}" ]]; then
+        if [[ "$ACFS_STATE_FILE" != /* || "$ACFS_STATE_FILE" == / ]]; then
+            log_item "warn" "agy locked launchers" "checkpoint path must be absolute"
+            return 1
+        fi
+        prime_env+=("ACFS_STATE_FILE=$ACFS_STATE_FILE")
+    fi
 
     target_user="$(update_target_user)"
     target_home="$(update_target_home "$target_user" 2>/dev/null || true)"
@@ -8840,7 +8858,8 @@ update_install_agy_locked_launchers() {
     install_bin="$(update_system_binary_path install 2>/dev/null || true)"
     mkdir_bin="$(update_system_binary_path mkdir 2>/dev/null || true)"
     mv_bin="$(update_system_binary_path mv 2>/dev/null || true)"
-    if [[ -z "$grep_bin" || -z "$install_bin" || -z "$mkdir_bin" || -z "$mv_bin" ]]; then
+    env_bin="$(update_system_binary_path env 2>/dev/null || true)"
+    if [[ -z "$grep_bin" || -z "$install_bin" || -z "$mkdir_bin" || -z "$mv_bin" || -z "$env_bin" ]]; then
         log_item "warn" "agy locked launchers" "required trusted system tool is unavailable"
         return 1
     fi
@@ -8898,7 +8917,7 @@ update_install_agy_locked_launchers() {
         update_run_in_target_context "" "$install_bin" -m 0755 "$source_file" "$target_bin/agy-locked" || return 1
         update_run_in_target_context "" "$install_bin" -m 0755 "$source_file" "$target_bin/agy" || return 1
         update_run_in_target_context "" "$install_bin" -m 0755 "$source_file" "$target_bin/gmi" || return 1
-        if update_run_bounded_in_target_context "$target_bin/agy-locked" --acfs-prime-settings; then
+        if update_run_bounded_in_target_context "$env_bin" "${prime_env[@]}" "$target_bin/agy-locked" --acfs-prime-settings; then
             log_item "info" "Antigravity locked settings" "model, permissions, and dcg hook primed"
         else
             log_item "warn" "Antigravity locked settings" "model, permissions, or dcg hook could not be primed"

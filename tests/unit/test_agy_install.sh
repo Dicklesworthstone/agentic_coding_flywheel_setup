@@ -274,6 +274,7 @@ legacy_agy_source_contract() {
   local hash_line=""
   local ensure_bin_line=""
   local relocation_line=""
+  local failure_branch=""
 
   body="$(sed -n '/^install_agy_locked_launchers() {$/,/^}$/p' install.sh)"
   [[ -n "$body" ]] || return 1
@@ -293,7 +294,10 @@ legacy_agy_source_contract() {
   (( hash_line < ensure_bin_line && ensure_bin_line < relocation_line )) || return 1
 
   [[ "$(grep -c 'install_agy_locked_launchers' install.sh)" -eq 2 ]] || return 1
-  grep -Fq 'if ! install_agy_locked_launchers; then' install.sh || return 1
+  failure_branch="$(sed -n '/^    if acfs_legacy_module_selected "agents.antigravity" \&\& ! install_agy_locked_launchers; then$/,/^    fi$/p' install.sh)"
+  [[ -n "$failure_branch" ]] || return 1
+  grep -Fq 'ACFS_MODULE_FAILURES+=("agents.antigravity (locked launcher or dcg priming failed)")' <<<"$failure_branch" || return 1
+  grep -Fq 'agents_phase_rc=1' <<<"$failure_branch" || return 1
   grep -Fq 'Priming agy locked settings and dcg hook' <<<"$body" || return 1
 }
 
@@ -364,6 +368,151 @@ positional_prompt_launcher_end_to_end() {
   [[ "$out" == *$'--print\nHello! Please confirm you'"'"'re working.' ]] || { echo "  launcher argv: $out"; return 1; }
   out="$(HOME="$sandbox" ACFS_BIN_DIR="$sandbox/.local/bin" python3 scripts/lib/agy_locked.py models 2>/dev/null)" || return 1
   [[ "$out" != *"--print"* && "$out" == *$'\nmodels' ]] || { echo "  launcher argv: $out"; return 1; }
+}
+
+mode_aware_launcher_contract() {
+  python3 - <<'PY'
+import json
+import os
+import pathlib
+import pwd
+import subprocess
+import tempfile
+import unittest
+
+LAUNCHER = pathlib.Path(os.environ.get("ACFS_AGY_TEST_SOURCE", "scripts/lib/agy_locked.py")).resolve()
+
+
+class LauncherModeTests(unittest.TestCase):
+    def setUp(self):
+        self.home = pathlib.Path(tempfile.mkdtemp(prefix="acfs-agy-mode-")) / "user home"
+        self.home.mkdir()
+        self.state = self.home / ".acfs/state.json"
+        self.state.parent.mkdir()
+        self.settings = self.home / ".gemini/antigravity-cli/settings.json"
+        self.settings.parent.mkdir(parents=True)
+        self.settings.write_text(json.dumps({"customPreference": "preserved", "agentMode": "auto"}))
+        self.real = self.home / ".local/bin/agy-real"
+        self.real.parent.mkdir(parents=True)
+        self.real.write_text('''#!/usr/bin/python3
+import json, os, pathlib, sys
+settings = pathlib.Path.home() / ".gemini/antigravity-cli/settings.json"
+data = json.loads(settings.read_text())
+print(json.dumps({"argv": sys.argv[1:], "settings": data}))
+if os.environ.get("FIXTURE_REWRITE_SETTINGS") == "1":
+    data.update({"toolPermission": "always-proceed", "agentMode": "auto"})
+    settings.write_text(json.dumps(data))
+raise SystemExit(int(os.environ.get("FIXTURE_EXIT", "0")))
+''')
+        self.real.chmod(0o755)
+        self.env = {"HOME": str(self.home), "PATH": "/usr/bin:/bin", "MODE": "vibe"}
+
+    def save_mode(self, mode, path=None, **changes):
+        value = {"mode": mode, "target_home": str(self.home),
+                 "target_user": pwd.getpwuid(os.geteuid()).pw_name}
+        value.update(changes)
+        (path or self.state).write_text(json.dumps(value))
+
+    def invoke(self, *args, env=None, status=0):
+        proc = subprocess.run(["/usr/bin/python3", str(LAUNCHER), *args],
+                              env={**self.env, **(env or {})}, text=True,
+                              capture_output=True, timeout=10)
+        self.assertEqual(proc.returncode, status, f"{self.home}: {proc.stderr}")
+        return proc
+
+    def assert_policy(self, result, mode):
+        safe = mode == "safe"
+        self.assertEqual("--dangerously-skip-permissions" in result["argv"], not safe)
+        self.assertEqual("--sandbox" in result["argv"], safe)
+        self.assertEqual(result["argv"][:2], ["--model", "Gemini 4 Neon (XHigh)"])
+        for settings in (result["settings"], json.loads(self.settings.read_text())):
+            self.assertEqual(settings["toolPermission"], "request-review" if safe else "always-proceed")
+            self.assertEqual(settings["artifactReviewPolicy"], "asks-for-review" if safe else "always-proceed")
+            self.assertEqual(settings["enableTerminalSandbox"], safe)
+            self.assertEqual(settings["allowNonWorkspaceAccess"], not safe)
+            self.assertEqual(settings["customPreference"], "preserved")
+            if safe:
+                self.assertEqual(settings["agentMode"], "")
+        hooks = json.loads((self.home / ".gemini/config/hooks.json").read_text())
+        self.assertTrue(hooks["dcg"]["enabled"])
+
+    def test_safe_state_beats_stale_environment_and_repins_after_exit(self):
+        self.save_mode("safe")
+        args = ["--mode", "plan", "-p", "Review $(literal) 'quoted' input."]
+        result = json.loads(self.invoke(*args, env={"FIXTURE_EXIT": "19", "FIXTURE_REWRITE_SETTINGS": "1"}, status=19).stdout)
+        self.assert_policy(result, "safe")
+        self.assertEqual(result["argv"][3:], args)
+
+    def test_state_mode_changes_apply_to_the_next_launch(self):
+        for mode in ("vibe", "safe", "vibe"):
+            with self.subTest(mode=mode):
+                self.save_mode(mode)
+                self.assert_policy(json.loads(self.invoke("models").stdout), mode)
+
+    def test_missing_legacy_checkpoint_keeps_vibe(self):
+        self.assert_policy(json.loads(self.invoke("models").stdout), "vibe")
+
+    def test_present_invalid_checkpoint_uses_confirmations(self):
+        for value in ("{", "[]", '{"mode":"unknown"}', '{}',
+                      json.dumps({"mode": "vibe", "target_home": "/someone/else"}),
+                      json.dumps({"mode": "vibe", "target_user": "someone_else"})):
+            with self.subTest(value=value):
+                self.state.write_text(value)
+                result = self.invoke("models")
+                self.assertIn("safe", result.stderr)
+                self.assert_policy(json.loads(result.stdout), "safe")
+
+    def test_explicit_checkpoint_requires_matching_identity(self):
+        custom = self.home / "custom checkpoint.json"
+        env = {"ACFS_STATE_FILE": str(custom)}
+        self.save_mode("vibe")  # A missing explicit checkpoint must not fall back.
+        self.assert_policy(json.loads(self.invoke("models", env=env).stdout), "safe")
+        custom.write_text('{"mode":"vibe"}')
+        self.assert_policy(json.loads(self.invoke("models", env=env).stdout), "safe")
+        self.save_mode("vibe", path=custom)
+        self.assert_policy(json.loads(self.invoke("models", env=env).stdout), "vibe")
+        self.save_mode("safe", path=custom)
+        self.assert_policy(json.loads(self.invoke("models", env=env).stdout), "safe")
+
+    def test_linked_checkpoint_is_not_used_for_bypass(self):
+        custom = self.home / "linked-target.json"
+        self.save_mode("vibe", path=custom)
+        self.state.symlink_to(custom)
+        self.assert_policy(json.loads(self.invoke("models").stdout), "safe")
+
+    def test_priming_accepts_validated_mode_and_rejects_invalid_before_writes(self):
+        before = self.settings.read_bytes()
+        self.invoke("--acfs-prime-settings", env={"MODE": "invalid"}, status=2)
+        self.assertEqual(self.settings.read_bytes(), before)
+        self.assertFalse((self.home / ".gemini/config/hooks.json").exists())
+        self.invoke("--acfs-prime-settings", env={"MODE": "safe"})
+        settings = json.loads(self.settings.read_text())
+        self.assertEqual(settings["toolPermission"], "request-review")
+        self.assertEqual(settings["agentMode"], "")
+
+    def test_canonical_verifier_matches_modes_and_rejects_stale_policy(self):
+        for name in ("agy", "agy-locked", "gmi"):
+            path = self.real.parent / name
+            path.write_bytes(LAUNCHER.read_bytes())
+            path.chmod(0o755)
+        index = pathlib.Path("scripts/generated/manifest_index.sh").resolve()
+        for mode in ("vibe", "safe"):
+            self.save_mode(mode)
+            self.invoke("models")
+            for requested in ("vibe", "safe"):
+                with self.subTest(saved=mode, requested=requested):
+                    proc = subprocess.run([
+                        "/bin/bash", "-p", "-euo", "pipefail", "-c",
+                        'source "$1"; eval "${ACFS_MODULE_VERIFY_COMMAND[agents.antigravity.0]}"',
+                        "_", str(index),
+                    ], env={**self.env, "MODE": requested}, text=True,
+                        capture_output=True, timeout=10)
+                    self.assertEqual(proc.returncode == 0, requested == mode,
+                                     f"{self.home}: {proc.stderr}")
+
+
+unittest.main(verbosity=2)
+PY
 }
 
 # Docs teach the form that works even without the wrapper.
@@ -470,6 +619,8 @@ check "agy locked launcher forwards a bare positional prompt as --print (#390)" 
   "positional_prompt_parity_contract"
 check "agy locked launcher hands agy-real --print for the onboarding command and passes subcommands through" \
   "positional_prompt_launcher_end_to_end"
+check "agy locked launcher honors persisted safe mode, identity and trusted priming" \
+  "mode_aware_launcher_contract"
 check "onboarding and web docs teach agy -p, the form that works without the wrapper" \
   "docs_use_print_flag_for_agy_prompts"
 check "agents-only update does not fail on missing Bun when Codex is absent" \

@@ -7,9 +7,12 @@ Test trees are retained to preserve evidence.
 """
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import pty
+import pwd
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -219,6 +222,114 @@ class PromptStartupTests(unittest.TestCase):
     def test_no_omz_agent_terminal_skips_starship(self):
         lines = self.invoke(omz=False, starship=True, env={"AGENT_ENV": "1"})
         self.assert_no_prompt(lines)
+
+
+class AgentAliasModeTests(unittest.TestCase):
+    """Execute the real aliases against inert provider binaries in real Zsh."""
+
+    def invoke(self, state=None, *, custom=False, commands=None, env=None, jq=True,
+               status=0):
+        if ZSH is None:
+            raise RuntimeError("zsh is required for agent alias regressions")
+        root = Path(tempfile.mkdtemp(prefix="acfs-alias-mode-"))
+        home = root / "user home"
+        (home / ".local/bin").mkdir(parents=True)
+        (home / ".acfs").mkdir()
+        bin_dir = root / "bin"
+        bin_dir.mkdir()
+        for name in ("zsh", "infocmp", "mkdir", "mv", *( ("jq",) if jq else () )):
+            executable = shutil.which(name)
+            if executable:
+                (bin_dir / name).symlink_to(executable)
+        checkpoint = home / ("custom checkpoint.json" if custom else ".acfs/state.json")
+        if state is not None:
+            if isinstance(state, dict):
+                state = {"target_home": str(home),
+                         "target_user": pwd.getpwuid(os.geteuid()).pw_name, **state}
+            checkpoint.write_text(state if isinstance(state, str) else json.dumps(state))
+        for provider in ("claude", "codex"):
+            executable = home / ".local/bin" / provider
+            executable.write_text('''#!/usr/bin/python3
+import json, os, pathlib, sys
+print(json.dumps({"provider": pathlib.Path(sys.argv[0]).name, "argv": sys.argv[1:],
+                  "node_options": os.environ.get("NODE_OPTIONS")}))
+raise SystemExit(int(os.environ.get("ACFS_AGENT_EXIT", "0")))
+''')
+            executable.chmod(0o755)
+        command_file = root / "commands.zsh"
+        command_file.write_text(commands or "cc 'Review the change.'\ncod 'Review the change.'\n")
+        settings = {"HOME": str(home), "PATH": str(bin_dir), "TERM": "dumb",
+                    "LC_ALL": "C", "MODE": "vibe", "ACFS_MODE": "vibe"}
+        if custom:
+            settings["ACFS_STATE_FILE"] = str(checkpoint)
+        settings.update(env or {})
+        proc = subprocess.run([ZSH, "-d", "-c", 'source "$1"; source "$2"',
+                               "acfs-alias-test", str(SOURCE), str(command_file)],
+                              env=settings, cwd=home, text=True, capture_output=True,
+                              timeout=15)
+        self.assertEqual(proc.returncode, status, f"{root}\n{proc.stdout}\n{proc.stderr}")
+        return [json.loads(line) for line in proc.stdout.splitlines()], proc.stderr
+
+    def assert_modes(self, records, modes):
+        self.assertEqual(len(records), len(modes))
+        for record, mode in zip(records, modes):
+            flag = ("--dangerously-skip-permissions" if record["provider"] == "claude"
+                    else "--dangerously-bypass-approvals-and-sandbox")
+            self.assertEqual(flag in record["argv"], mode == "vibe", record)
+            if record["provider"] == "claude":
+                self.assertEqual(record["node_options"], "--max-old-space-size=32768")
+            else:
+                self.assertIn("gpt-6.2-sol", record["argv"])
+                self.assertIn("model_reasoning_effort=xhigh", record["argv"])
+                self.assertIn("model_reasoning_summary_format=experimental", record["argv"])
+
+    def test_saved_safe_mode_beats_stale_environment(self):
+        records, _ = self.invoke({"mode": "safe"})
+        self.assert_modes(records, ["safe", "safe"])
+
+    def test_vibe_and_absent_legacy_state_keep_existing_flags(self):
+        for state in ({"mode": "vibe"}, None):
+            with self.subTest(state=state):
+                records, _ = self.invoke(state)
+                self.assert_modes(records, ["vibe", "vibe"])
+
+    def test_existing_shell_observes_mode_change(self):
+        commands = "cc first\ncod first\n"
+        commands += "printf '%s\\n' '{\"mode\":\"safe\"}' > \"$HOME/.acfs/state.json\"\n"
+        commands += "cc second\ncod second\n"
+        records, _ = self.invoke({"mode": "vibe"}, commands=commands)
+        self.assert_modes(records, ["vibe", "vibe", "safe", "safe"])
+
+    def test_invalid_present_state_keeps_confirmations(self):
+        for state in ("{", [], {}, {"mode": "unknown"},
+                      {"mode": "vibe", "target_home": "/someone/else"},
+                      {"mode": "vibe", "target_user": "someone_else"}):
+            with self.subTest(state=state):
+                records, stderr = self.invoke(state)
+                self.assert_modes(records, ["safe", "safe"])
+                self.assertIn("safe agent permissions", stderr)
+
+    def test_custom_checkpoint_requires_identity_and_existence(self):
+        for state, expected in ((None, "safe"), ('{"mode":"vibe"}', "safe"),
+                                ({"mode": "vibe"}, "vibe"), ({"mode": "safe"}, "safe")):
+            with self.subTest(state=state):
+                records, _ = self.invoke(state, custom=True)
+                self.assert_modes(records, [expected, expected])
+
+    def test_explicit_arguments_and_provider_exit_are_preserved(self):
+        args = ["--model", "caller-choice", "literal $(prompt) 'quoted' text"]
+        for alias in ("cc", "cod"):
+            with self.subTest(alias=alias):
+                records, _ = self.invoke({"mode": "safe"},
+                                         commands=shlex.join([alias, *args]) + "\n",
+                                         env={"ACFS_AGENT_EXIT": "17"}, status=17)
+                self.assert_modes(records, ["safe"])
+                self.assertEqual(records[0]["argv"][-len(args):], args)
+
+    def test_missing_parser_does_not_enable_bypass(self):
+        records, stderr = self.invoke({"mode": "vibe"}, jq=False)
+        self.assert_modes(records, ["safe", "safe"])
+        self.assertIn("safe agent permissions", stderr)
 
 
 if __name__ == "__main__":

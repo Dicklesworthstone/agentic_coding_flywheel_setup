@@ -852,6 +852,87 @@ EOF
     [[ "$captured" == *"ACFS_REF=main"* ]] || fail "Missing ACFS_REF: $captured"
 }
 
+@test "run_as_target: primes safe agent settings with unexported validated policy" {
+    [[ "$EUID" -ne 0 ]] || skip "isolated same-account fixture requires a nonroot account"
+    TARGET_USER="$(/usr/bin/id -un)"
+    TARGET_HOME="$BATS_TEST_TMPDIR/agent home"
+    ACFS_STATE_FILE="$TARGET_HOME/custom checkpoint.json"
+    MODE=safe
+    export -n MODE ACFS_STATE_FILE
+    mkdir -p "$TARGET_HOME"
+    _acfs_getent_passwd_entry() {
+        printf '%s:x:%s:%s::%s:/bin/bash\n' "$TARGET_USER" "$EUID" "$(/usr/bin/id -g)" "$TARGET_HOME"
+    }
+
+    run run_as_target /usr/bin/python3 "$PROJECT_ROOT/scripts/lib/agy_locked.py" --acfs-prime-settings
+    assert_success
+    run /usr/bin/jq -e '.toolPermission == "request-review" and .agentMode == "" and .enableTerminalSandbox == true' \
+        "$TARGET_HOME/.gemini/antigravity-cli/settings.json"
+    assert_success
+    [[ -f "$TARGET_HOME/.gemini/config/hooks/dcg-antigravity-hook.py" ]]
+
+    # The explicit checkpoint is transported independently of the mode.
+    run run_as_target /bin/bash -p -c 'printf "%s\n" "$ACFS_STATE_FILE"'
+    assert_success
+    assert_output "$ACFS_STATE_FILE"
+}
+
+@test "run_as_target: invalid agent priming context stops before executing a command" {
+    local marker="$BATS_TEST_TMPDIR/invalid-agent-policy-command"
+    MODE=unsupported
+    run run_as_target /usr/bin/touch "$marker"
+    assert_failure
+    [[ ! -e "$marker" ]]
+
+    MODE=safe
+    ACFS_STATE_FILE=relative-checkpoint.json
+    run run_as_target /usr/bin/touch "$marker"
+    assert_failure
+    [[ ! -e "$marker" ]]
+}
+
+@test "install.sh run_as_target: actual installer runner preserves safe priming policy" {
+    [[ "$EUID" -ne 0 ]] || skip "isolated same-account fixture requires a nonroot account"
+    local source_file="${ACFS_INSTALLER_POLICY_TEST_SOURCE:-$PROJECT_ROOT/install.sh}"
+    local runner
+    runner="$(sed -n '/^run_as_target() {$/,/^}$/p' "$source_file")"
+    [[ -n "$runner" ]] || fail "Installer runner was not extracted"
+    eval "$runner"
+    TARGET_USER="$(/usr/bin/id -un)"
+    TARGET_HOME="$BATS_TEST_TMPDIR/installer agent home"
+    MODE=safe
+    ACFS_STATE_FILE="$TARGET_HOME/custom checkpoint.json"
+    export -n MODE ACFS_STATE_FILE
+    mkdir -p "$TARGET_HOME"
+    # Account-home metadata is inert; the installer-owned runner, env argv,
+    # and real launcher execute unchanged. No helper runner is substituted.
+    acfs_early_system_binary_path() { _acfs_system_binary_path "$@"; }
+    acfs_early_getent_passwd_entry() {
+        printf '%s:x:%s:%s::%s:/bin/bash\n' "$TARGET_USER" "$EUID" "$(/usr/bin/id -g)" "$TARGET_HOME"
+    }
+    acfs_early_resolve_current_user() { /usr/bin/id -un; }
+
+    run run_as_target /usr/bin/python3 "$PROJECT_ROOT/scripts/lib/agy_locked.py" --acfs-prime-settings
+    assert_success
+    run /usr/bin/jq -e '.toolPermission == "request-review" and .agentMode == ""' \
+        "$TARGET_HOME/.gemini/antigravity-cli/settings.json"
+    assert_success
+    run run_as_target /bin/bash -p -c 'printf "%s\n" "$ACFS_STATE_FILE"'
+    assert_success
+    assert_output "$ACFS_STATE_FILE"
+
+    local marker="$BATS_TEST_TMPDIR/invalid-installer-policy-command"
+    MODE=unsupported
+    run run_as_target /usr/bin/touch "$marker"
+    assert_failure
+    [[ ! -e "$marker" ]]
+    MODE=safe
+    ACFS_STATE_FILE=relative-checkpoint.json
+    run run_as_target /usr/bin/touch "$marker"
+    assert_failure
+    [[ ! -e "$marker" ]]
+}
+
 @test "_acfs_resolve_target_home: fails closed when NSS cannot resolve another user" {
     stub_command "getent" "" 2
     export HOME="$BATS_TEST_TMPDIR/current-home"

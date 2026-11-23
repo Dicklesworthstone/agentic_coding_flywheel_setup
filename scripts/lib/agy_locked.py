@@ -4,6 +4,7 @@
 import json
 import os
 import pathlib
+import pwd
 import re
 import signal
 import shlex
@@ -73,6 +74,15 @@ PINNED_SETTINGS = {
     "toolPermission": "always-proceed",
     "useG1Credits": False,
     "verbosity": "high",
+}
+
+SAFE_SETTINGS = {
+    # New CLI releases can default to auto mode; explicitly retain review.
+    "agentMode": "",
+    "allowNonWorkspaceAccess": False,
+    "artifactReviewPolicy": "asks-for-review",
+    "enableTerminalSandbox": True,
+    "toolPermission": "request-review",
 }
 
 DCG_HOOK_SOURCE = r'''#!/usr/bin/env python3
@@ -214,6 +224,43 @@ def fail_config(message):
     raise SystemExit(2)
 
 
+def installation_mode(*, priming=False):
+    # Only installer/update priming accepts the explicitly transported mode.
+    # Normal launches must observe a later saved change even in an old pane
+    # whose environment still contains MODE=vibe.
+    if priming and "MODE" in os.environ:
+        mode = os.environ["MODE"]
+        if mode not in ("safe", "vibe"):
+            fail_config("invalid installation mode for settings priming")
+        return mode
+
+    default_state = HOME / ".acfs" / "state.json"
+    acfs_home = pathlib.Path(os.environ.get("ACFS_HOME") or str(HOME / ".acfs"))
+    state_path = pathlib.Path(os.environ.get("ACFS_STATE_FILE") or str(acfs_home / "state.json"))
+    try:
+        if not state_path.is_absolute() or state_path.is_symlink():
+            raise ValueError("checkpoint must be an absolute, non-symlink file")
+        if not state_path.exists():
+            if state_path == default_state:
+                return "vibe"  # Pre-checkpoint installations used vibe mode.
+            raise ValueError("explicit checkpoint is missing")
+        if not state_path.is_file():
+            raise ValueError("checkpoint is not a regular file")
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        if not isinstance(state, dict):
+            raise ValueError("checkpoint is not an object")
+        user = pwd.getpwuid(os.geteuid()).pw_name
+        for key, expected in (("target_home", str(HOME)), ("target_user", user)):
+            if (key in state or state_path != default_state) and state.get(key) != expected:
+                raise ValueError("checkpoint does not belong to this account")
+        if state.get("mode") not in ("safe", "vibe"):
+            raise ValueError("checkpoint has no valid installation mode")
+        return state["mode"]
+    except (OSError, ValueError, KeyError) as exc:
+        print(f"agy-locked: cannot use {state_path}: {exc}; using safe agent permissions", file=sys.stderr)
+        return "safe"
+
+
 def read_json(path, description):
     try:
         text = path.read_text(encoding="utf-8")
@@ -298,9 +345,13 @@ def write_json_if_changed(path, value):
     write_text_if_changed(path, rendered)
 
 
-def ensure_settings():
+def ensure_settings(mode=None):
+    if mode is None:
+        mode = installation_mode()
     settings = read_json(SETTINGS_PATH, "Antigravity settings")
     settings.update(PINNED_SETTINGS)
+    if mode == "safe":
+        settings.update(SAFE_SETTINGS)
     write_json_if_changed(SETTINGS_PATH, settings)
 
 
@@ -622,7 +673,7 @@ def run_real_agy(args):
 
 def main():
     if sys.argv[1:] == [PRIME_SETTINGS_FLAG]:
-        ensure_settings()
+        ensure_settings(installation_mode(priming=True))
         ensure_dcg_hook()
         return 0
 
@@ -631,20 +682,22 @@ def main():
         print(f"agy-locked: real agy binary is missing or unsafe: {real_agy}", file=sys.stderr)
         return 127
 
-    ensure_settings()
+    mode = installation_mode()
+    ensure_settings(mode)
     ensure_dcg_hook()
 
+    permission_args = ["--sandbox"] if mode == "safe" else ["--dangerously-skip-permissions"]
     args = [
         str(real_agy),
         "--model",
         MODEL,
-        "--dangerously-skip-permissions",
+        *permission_args,
         *promote_positional_prompt(filtered_args(sys.argv[1:])),
     ]
     try:
         return run_real_agy(args)
     finally:
-        ensure_settings()
+        ensure_settings(installation_mode())
         ensure_dcg_hook()
 
 

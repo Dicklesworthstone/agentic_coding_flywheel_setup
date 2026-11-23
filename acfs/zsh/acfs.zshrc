@@ -675,12 +675,49 @@ acfs() {
   esac
 }
 
-# --- Agent aliases (dangerously enabled by design) ---
-alias cc='NODE_OPTIONS="--max-old-space-size=32768" ~/.local/bin/claude --dangerously-skip-permissions'
+# --- Agent aliases (permissions follow the saved installation mode) ---
+# Read on each launch so an existing tmux pane observes a later mode change.
+# An ambient MODE from an older installer must never override saved policy.
+_acfs_agent_installation_mode() {
+  local default_state="$HOME/.acfs/state.json"
+  local state_file="${ACFS_STATE_FILE:-${ACFS_HOME:-$HOME/.acfs}/state.json}"
+  local install_mode="" current_user=""
+  if [[ "$state_file" == "$default_state" && ! -e "$state_file" && ! -L "$state_file" ]]; then
+    printf 'vibe\n'  # Legacy installations predate the checkpoint.
+    return 0
+  fi
+  if [[ "$state_file" == /* && -f "$state_file" && ! -L "$state_file" && -r "$state_file" ]] \
+      && command -v jq >/dev/null 2>&1 \
+      && current_user="$(/usr/bin/id -un 2>/dev/null)" \
+      && install_mode="$(command jq -er --arg home "$HOME" --arg user "$current_user" \
+          --arg file "$state_file" --arg default "$default_state" '
+          if type != "object" then error("invalid checkpoint")
+          elif (has("target_home") or $file != $default) and .target_home != $home then error("wrong home")
+          elif (has("target_user") or $file != $default) and .target_user != $user then error("wrong user")
+          elif .mode == "safe" or .mode == "vibe" then .mode
+          else error("invalid installation mode") end' -- "$state_file" 2>/dev/null)"; then
+    printf '%s\n' "$install_mode"
+    return 0
+  fi
+  printf 'ACFS: cannot validate %s; using safe agent permissions.\n' "$state_file" >&2
+  printf 'safe\n'
+}
+
+_acfs_launch_claude() {
+  local -a permission_args=()
+  [[ "$(_acfs_agent_installation_mode)" != vibe ]] || permission_args=(--dangerously-skip-permissions)
+  NODE_OPTIONS="--max-old-space-size=32768" "$HOME/.local/bin/claude" "${permission_args[@]}" "$@"
+}
+alias cc='_acfs_launch_claude'
 # cod pins model + effort on the command line: the Codex CLI rewrites
 # ~/.codex/config.toml from its own model picker, so a bare alias silently
 # drifts to whatever effort was last selected. Flags beat config.toml.
-alias cod='codex --dangerously-bypass-approvals-and-sandbox --search -m gpt-6.2-sol -c model_reasoning_effort=xhigh -c model_reasoning_summary_format=experimental'
+_acfs_launch_codex() {
+  local -a permission_args=()
+  [[ "$(_acfs_agent_installation_mode)" != vibe ]] || permission_args=(--dangerously-bypass-approvals-and-sandbox)
+  command codex "${permission_args[@]}" --search -m gpt-6.2-sol -c model_reasoning_effort=xhigh -c model_reasoning_summary_format=experimental "$@"
+}
+alias cod='_acfs_launch_codex'
 
 # agy/gmi: Antigravity CLI (Google), locked to ACFS policy.
 alias agy='$HOME/.local/bin/agy-locked'
