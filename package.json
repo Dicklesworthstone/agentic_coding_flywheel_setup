@@ -16,6 +16,9 @@
   "devDependencies": {
     "typescript": "^5.9.3"
   },
+  "overrides": {
+    "csstype": "3.2.3"
+  },
   "trustedDependencies": [
     "sharp",
     "unrs-resolver"
