@@ -721,6 +721,163 @@ run_doctor_wrapper_checkpoint() {
     doctor_selection_json | jq -e '.[1].status == "fail" and .[1].fix == "install bun"' >/dev/null
 }
 
+@test "doctor selection: broken selected agent launchers fail despite executable files and plausible banners" {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["agents.codex","agents.claude","lang.bun"]}}'
+    doctor_selection_binary bun
+    doctor_selection_binary agy
+    cat > "$DOCTOR_TEST_BIN/codex" <<'EOF'
+#!/bin/bash
+exec /nonexistent-acfs-fixture-runtime "$@"
+EOF
+    cat > "$DOCTOR_TEST_BIN/claude" <<'EOF'
+#!/bin/bash
+printf 'claude fixture 99.0\n'
+exit 42
+EOF
+    chmod +x "$DOCTOR_TEST_BIN/codex" "$DOCTOR_TEST_BIN/claude"
+    FIX_MODE=true
+    DOCTOR_FIX_SCOPED=true
+
+    # These checks replace the manifest probes, so they must establish actual
+    # launcher readiness before a selected installation can be certified.
+    _is_bespoke_covered agents.codex
+    _is_bespoke_covered agents.claude
+    check_command agent.codex Codex codex "repair codex"
+    check_command agent.claude Claude claude "repair claude"
+    check_command tool.bun Bun bun "repair bun"
+    check_command agent.antigravity Antigravity agy "repair agy"
+
+    [ "$FAIL_COUNT:$PASS_COUNT:$SKIP_COUNT" = 2:1:1 ]
+    [ "${DOCTOR_FIX_PENDING_IDS[*]}" = 'agent.codex agent.claude' ]
+    [ "$(cat "$DOCTOR_TEST_PROBES")" = bun ]
+    doctor_selection_json | jq -e '
+        .[0].status == "fail" and .[0].fix == "repair codex" and
+        .[1].status == "fail" and .[1].fix == "repair claude" and
+        .[2].status == "pass" and .[3].status == "skip"' >/dev/null
+}
+
+@test "doctor selection: broken optional utilities honor requested severity and excluded tools stay untouched" {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["utils.toon_rust","utils.rano"],"requested_modules":["utils.toon_rust"]}}'
+    local binary=""
+    for binary in toon rano xf; do
+        cat > "$DOCTOR_TEST_BIN/$binary" <<'EOF'
+#!/bin/bash
+printf '%s\n' "${0##*/}" >> "$DOCTOR_TEST_PROBES"
+printf 'plausible version 1.0\n'
+exit 42
+EOF
+        chmod +x "$DOCTOR_TEST_BIN/$binary"
+    done
+    FIX_MODE=true
+    DOCTOR_FIX_SCOPED=true
+
+    check_utilities
+
+    [ "$FAIL_COUNT:$WARN_COUNT:$SKIP_COUNT" = 1:1:7 ]
+    [ "${DOCTOR_FIX_PENDING_IDS[*]}" = 'util.tru util.rano' ]
+    run grep -q xf "$DOCTOR_TEST_PROBES"
+    assert_failure 1
+    doctor_selection_json | jq -e '
+        ([.[] | select(.status == "fail") | .id] == ["util.tru"]) and
+        ([.[] | select(.status == "warn") | .id] == ["util.rano"]) and
+        all(.[] | select(.status == "fail" or .status == "warn");
+            (.details | contains("verification failed")) and (.fix | contains("--only")))' >/dev/null
+}
+
+@test "doctor selection: Antigravity runs its generated locked-settings and hook verification" {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["agents.antigravity"]}}'
+    export ACFS_BIN_DIR="$TARGET_HOME/.local/bin"
+    mkdir -p "$ACFS_BIN_DIR"
+    local binary="" entry="" agy_check=""
+    for binary in agy agy-locked agy-real gmi; do
+        printf '#!/bin/bash\nprintf "agy fixture 1.0\\n"\n' > "$ACFS_BIN_DIR/$binary"
+        chmod +x "$ACFS_BIN_DIR/$binary"
+    done
+    # Resolve the target account to this isolated home while retaining the
+    # real target-user transport and the unmodified generated verification.
+    _acfs_doctor_getent_passwd_entry() {
+        printf '%s:x:%s:%s::%s:/bin/bash\n' "$TARGET_USER" "$UID" "$(id -g)" "$TARGET_HOME"
+    }
+    for entry in "${MANIFEST_CHECKS[@]}"; do
+        if [[ "$entry" == agents.antigravity$'\t'* ]]; then
+            agy_check="$entry"
+            break
+        fi
+    done
+    [[ -n "$agy_check" ]] || fail "generated Antigravity verification was not found"
+    MANIFEST_CHECKS=("$agy_check")
+    FIX_MODE=true
+    DOCTOR_FIX_SCOPED=true
+
+    # The actual shipped launcher establishes the expected settings and hook.
+    HOME="$TARGET_HOME" /usr/bin/python3 "$PROJECT_ROOT/scripts/lib/agy_locked.py" --acfs-prime-settings
+    check_manifest_supplemental
+    [ "$PASS_COUNT:$FAIL_COUNT" = 1:0 ]
+    [ "${#DOCTOR_FIX_PENDING_IDS[@]}" -eq 0 ]
+
+    # A working --version is insufficient after hook registration is lost.
+    printf '{}\n' > "$TARGET_HOME/.gemini/config/hooks.json"
+    check_manifest_supplemental
+    [ "$PASS_COUNT:$FAIL_COUNT" = 1:1 ]
+    [ "${DOCTOR_FIX_PENDING_IDS[*]}" = agents.antigravity ]
+    doctor_selection_json | jq -e '
+        .[0].id == "agents.antigravity" and .[0].status == "pass" and
+        .[1].id == "agents.antigravity" and .[1].status == "fail" and
+        (.[1].fix | contains("--only agents.antigravity"))' >/dev/null
+}
+
+@test "doctor selection: bespoke stack checks reject broken launchers before service and hook checks" {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["stack.dcg","stack.beads_viewer","stack.mcp_agent_mail","stack.rch"],"requested_modules":["stack.dcg","stack.mcp_agent_mail","stack.rch"]}}'
+    local binary=""
+    for binary in dcg bv am rch; do
+        cat > "$DOCTOR_TEST_BIN/$binary" <<'EOF'
+#!/bin/bash
+printf 'plausible version 1.0\n'
+exit 42
+EOF
+        chmod +x "$DOCTOR_TEST_BIN/$binary"
+    done
+    FIX_MODE=true
+    DOCTOR_FIX_SCOPED=true
+
+    check_stack
+
+    [ "$FAIL_COUNT:$WARN_COUNT:$PASS_COUNT" = 4:0:0 ]
+    doctor_selection_json | jq -e '
+        ([.[] | select(.status == "fail") | .id] | sort) ==
+            ["stack.bv","stack.dcg","stack.mcp_agent_mail","stack.rch"] and
+        all(.[] | select(.status == "fail"); .details | contains("verification failed"))' >/dev/null
+}
+
+@test "doctor selection: inconclusive launcher probes never queue or dispatch reinstallations" {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["agents.codex","lang.bun"]}}'
+    doctor_selection_binary bun
+    cat > "$DOCTOR_TEST_BIN/codex" <<'EOF'
+#!/bin/bash
+printf 'credible version 1.0\n'
+sleep 30
+EOF
+    chmod +x "$DOCTOR_TEST_BIN/codex"
+    FIX_MODE=true
+    DOCTOR_FIX_SCOPED=true
+    DOCTOR_VERSION_TIMEOUT=0.1
+    check_command agent.codex Codex codex "repair codex"
+    DOCTOR_VERSION_TIMEOUT=0
+    check_command tool.bun Bun bun "repair bun"
+
+    [ "$WARN_COUNT:$PASS_COUNT:$FAIL_COUNT" = 2:0:0 ]
+    [ "${#DOCTOR_FIX_PENDING_IDS[@]}" -eq 0 ]
+    [ "${DOCTOR_FIX_OBSERVED_IDS[*]}" = 'agent.codex tool.bun' ]
+    [ ! -e "$DOCTOR_TEST_PROBES" ]
+    doctor_selection_json | jq -e '
+        .[0].status == "timeout" and .[1].status == "warn" and .[1].fix == null' >/dev/null
+
+    DOCTOR_FIX_SCOPED=false
+    dispatch_fix() { printf 'unexpected repair\n' >> "$DOCTOR_TEST_PROBES"; }
+    check_command tool.bun Bun bun "repair bun"
+    [ ! -e "$DOCTOR_TEST_PROBES" ]
+}
+
 @test "doctor selection: missing selected utilities and optional stack tools retain installation intent" {
     doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["utils.toon_rust","utils.rust_proxy","utils.rano","utils.xf","utils.mdwb","stack.process_triage","utils.aadc","utils.s2p","utils.caut","stack.wezterm_automata","stack.brenner_bot"],"requested_modules":["utils.toon_rust","stack.process_triage","stack.wezterm_automata"]},"skipped_tools":["utils.toon_rust","utils.rano"]}'
     FIX_MODE=true

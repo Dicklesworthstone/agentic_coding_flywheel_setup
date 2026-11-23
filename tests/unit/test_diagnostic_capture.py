@@ -125,6 +125,193 @@ class DiagnosticCaptureTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(result.stdout.strip(), expected)
 
+    def test_version_probe_preserves_failure_without_caller_pipefail(self):
+        code = doctor_definitions("doctor_version_probe") + \
+            "\ndoctor_version_probe /usr/bin/timeout 1 merge /bin/bash -c " + \
+            shlex.quote("printf 'credible version 1.0\\n'; exit 42")
+        result = subprocess.run(["/bin/bash", "-c", code], capture_output=True,
+                                text=True, timeout=3)
+        self.assertEqual(result.returncode, 42, result.stderr)
+        self.assertEqual(result.stdout, "credible version 1.0\n")
+
+    def version_check_code(self, body: str, *, name="codex", optional=False,
+                           interpreter="/bin/bash", deadline="0.5",
+                           missing_timeout=False, missing_system_binary=None):
+        """Keep the shipped version/check pipeline; fixture discovery/output only."""
+        tool = self.root / name
+        tool.write_text(f"#!{interpreter}\n" + body + "\n")
+        tool.chmod(0o755)
+        source = ROOT / "scripts/lib/doctor.sh"
+        definitions = [doctor_definitions("doctor_version_probe")]
+        for function in ("get_version_line", "doctor_report_version_failure",
+                         "check_command", "check_optional_command"):
+            # This also runs against the pre-fix production source to prove the
+            # regressions; the reporting helper did not exist there.
+            if re.search(r"^" + function + r"\(\)", source.read_text(), re.M):
+                definitions.append(definition(source, function))
+        command = "check_optional_command" if optional else "check_command"
+        missing_system_binary = "timeout" if missing_timeout else missing_system_binary
+        system_lookup = ":"
+        if missing_system_binary:
+            system_lookup = (
+                "_acfs_doctor_system_binary_path() { "
+                '[[ "$1" != ' + shlex.quote(missing_system_binary) + " ]] || return 1; "
+                'local candidate; for candidate in "/usr/bin/$1" "/bin/$1" '
+                '"/usr/sbin/$1" "/sbin/$1"; do '
+                '[[ -x "$candidate" ]] || continue; printf \'%s\\n\' "$candidate"; '
+                "return 0; done; return 1; }"
+            )
+        return "\n".join([
+            *definitions,
+            "doctor_skip_unselected_check() { return 1; }",
+            "doctor_optional_failure_status() { printf '%s\\n' warn; }",
+            "doctor_binary_path() { printf '%s\\n' " + shlex.quote(str(tool)) + "; }",
+            "check() { printf '%s|%s|%s|%s|%s\\n' \"$1\" \"$2\" \"$3\" \"${4:-}\" \"${5:-}\"; }",
+            'check_with_timeout_status() { check "$@"; }',
+            "DOCTOR_VERSION_TIMEOUT=" + shlex.quote(deadline),
+            system_lookup,
+            f"{command} agent.codex Codex {shlex.quote(name)} repair-codex",
+        ])
+
+    def test_command_check_rejects_failed_or_empty_launchers(self):
+        cases = (
+            ("exit 127", "/bin/bash"),
+            ("printf 'credible version 99.0\\n'; exit 42", "/bin/bash"),
+            ("exit 0", "/bin/bash"),
+            ("printf '  \\n\\t\\n'", "/bin/bash"),
+            ("printf 'unreachable\\n'", "/nonexistent-acfs-fixture-interpreter"),
+        )
+        for body, interpreter in cases:
+            with self.subTest(body=body, interpreter=interpreter):
+                code = self.version_check_code(body, interpreter=interpreter)
+                result = subprocess.run(["/bin/bash", "-c", code], capture_output=True,
+                                        text=True, timeout=5)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                row = result.stdout.strip().split("|")
+                self.assertEqual(row[2], "fail", result.stdout)
+                self.assertIn("verification failed", row[3])
+                self.assertEqual(row[4], "repair-codex")
+
+    def test_command_check_preserves_tool_specific_version_conventions(self):
+        cases = (("lsof", "-v"), ("minisign", "-v"), ("dig", "-v"),
+                 ("tmux", "-V"), ("go", "version"), ("nc", "-h"),
+                 ("codex", "--help"), ("bun", "--version"),
+                 ("legacy", "-V"), ("subcommand", "version"))
+        for name, argument in cases:
+            with self.subTest(name=name, argument=argument):
+                body = '[[ "$1" == ' + shlex.quote(argument) + " ]] || exit 2\n" + \
+                    "printf '%s\\n' " + shlex.quote(name + " fixture 1.0") + " >&2"
+                code = self.version_check_code(body, name=name)
+                result = subprocess.run(["/bin/bash", "-c", code], capture_output=True,
+                                        text=True, timeout=5)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.strip(),
+                                 f"agent.codex|Codex ({name} fixture 1.0)|pass|installed|")
+
+    def test_command_check_drains_large_help_without_sigpipe(self):
+        producer = "import sys; print('Usage: fixture'); sys.stdout.write('detail\\n' * 300000)"
+        body = '[[ "$1" == --help ]] || exit 2\nexec /usr/bin/python3 -c ' + shlex.quote(producer)
+        code = self.version_check_code(body, deadline="2")
+        result = subprocess.run(["/bin/bash", "-c", code], capture_output=True,
+                                text=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "agent.codex|Codex (Usage: fixture)|pass|installed|\n")
+
+    def test_command_check_timeout_stops_fallbacks_and_rejects_early_banner(self):
+        calls = self.root / "version-arguments"
+        body = "printf '%s\\n' \"$1\" >> " + shlex.quote(str(calls)) + \
+            "\nprintf 'credible version 1.0\\n'\nsleep 30"
+        code = self.version_check_code(body, deadline="0.1")
+        result = subprocess.run(["/bin/bash", "-c", code], capture_output=True,
+                                text=True, timeout=8)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip().split("|")[2], "timeout", result.stdout)
+        self.assertEqual(calls.read_text().splitlines(), ["--version"])
+
+    def test_interrupted_version_probe_never_falls_back_or_queues_repair(self):
+        source = ROOT / "scripts/lib/doctor.sh"
+        for status in (124, 137, 143):
+            for fallback_succeeds in (False, True):
+                with self.subTest(status=status, fallback_succeeds=fallback_succeeds):
+                    calls = self.root / f"interrupted-version-{status}-{fallback_succeeds}"
+                    body = "printf '%s\\n' \"$1\" >> " + shlex.quote(str(calls)) + "\n"
+                    if fallback_succeeds:
+                        body += 'if [[ "$1" != --version ]]; then printf "fallback version 1.0\\n"; exit 0; fi\n'
+                    body += f"printf 'unverified version 99.0\\n'; exit {status}"
+                    before, call = self.version_check_code(body).rsplit("\n", 1)
+                    # Use the real JSON/counter/repair path, including when a
+                    # fallback would otherwise hide the interrupted command.
+                    code = "\n".join([
+                        before,
+                        *(definition(source, name) for name in
+                          ("json_escape", "check", "check_with_timeout_status")),
+                        "JSON_MODE=true; HAS_GUM=false; FIX_MODE=true; DOCTOR_FIX_SCOPED=true",
+                        "PASS_COUNT=0; WARN_COUNT=0; FAIL_COUNT=0; SKIP_COUNT=0",
+                        "JSON_CHECKS=(); DOCTOR_FIX_OBSERVED_IDS=(); DOCTOR_FIX_PENDING_IDS=()",
+                        "DOCTOR_FIX_PENDING_STATUSES=(); DOCTOR_FIX_PENDING_HINTS=()",
+                        call,
+                        'printf \'[%s]\\n\' "$(IFS=,; echo "${JSON_CHECKS[*]}")"',
+                        'printf \'%s\\n\' "${#DOCTOR_FIX_PENDING_IDS[@]}"',
+                    ])
+                    result = subprocess.run(["/bin/bash", "-c", code], capture_output=True,
+                                            text=True, timeout=3)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    lines = result.stdout.splitlines()
+                    self.assertEqual(len(lines), 2, result.stdout)
+                    checks = json.loads(lines[0])
+                    self.assertEqual(len(checks), 1, checks)
+                    self.assertEqual(checks[0]["status"], "timeout", checks)
+                    self.assertEqual(int(lines[1]), 0)
+                    self.assertEqual(calls.read_text().splitlines(), ["--version"])
+
+    def test_command_check_missing_timeout_never_executes_unbounded_launcher(self):
+        marker = self.root / "unbounded-version-ran"
+        body = "touch " + shlex.quote(str(marker)) + "; printf 'version 1.0\\n'"
+        code = self.version_check_code(body, missing_timeout=True)
+        result = subprocess.run(["/bin/bash", "-c", code], capture_output=True,
+                                text=True, timeout=3)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        row = result.stdout.strip().split("|")
+        self.assertEqual(row[2], "warn", result.stdout)
+        self.assertIn("verification unavailable", row[3])
+        self.assertEqual(row[4], "")
+        self.assertFalse(marker.exists())
+
+    def test_command_check_invalid_timeout_never_executes_launcher(self):
+        for index, deadline in enumerate(("0", "0.00", "-1", "--help", "NaN", "1h")):
+            with self.subTest(deadline=deadline):
+                marker = self.root / f"invalid-version-deadline-{index}"
+                body = "touch " + shlex.quote(str(marker)) + "; printf 'version 1.0\\n'"
+                code = self.version_check_code(body, deadline=deadline)
+                result = subprocess.run(["/bin/bash", "-c", code], capture_output=True,
+                                        text=True, timeout=3)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.strip().split("|")[2], "warn", result.stdout)
+                self.assertFalse(marker.exists())
+
+    def test_command_check_missing_probe_dependency_is_not_a_broken_launcher(self):
+        for dependency in ("bash", "head", "cat", "sleep"):
+            with self.subTest(dependency=dependency):
+                marker = self.root / f"missing-{dependency}-launcher-ran"
+                body = "touch " + shlex.quote(str(marker)) + "; printf 'version 1.0\\n'"
+                code = self.version_check_code(body, missing_system_binary=dependency)
+                result = subprocess.run(["/bin/bash", "-c", code], capture_output=True,
+                                        text=True, timeout=3)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                row = result.stdout.strip().split("|")
+                self.assertEqual(row[2], "warn", result.stdout)
+                self.assertIn("verification unavailable", row[3])
+                self.assertEqual(row[4], "")
+                self.assertFalse(marker.exists())
+
+    def test_optional_command_check_warns_for_broken_installed_launcher(self):
+        code = self.version_check_code("printf 'version 1.0\\n'; exit 42", optional=True)
+        result = subprocess.run(["/bin/bash", "-c", code], capture_output=True,
+                                text=True, timeout=3)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip().split("|")[2], "warn", result.stdout)
+        self.assertEqual(result.stdout.strip().split("|")[4], "repair-codex")
+
     def command_check_code(self, kind: str, body: str, *, dpkg_body="exit 1\n",
                            missing_timeout=False, stranded=""):
         """Run the real quick check; fixture only tool discovery and rendering."""
@@ -261,7 +448,7 @@ class DiagnosticCaptureTests(unittest.TestCase):
                     pass
                 process.communicate(timeout=3)
 
-    def wrapper_with_resistant_grandchild(self):
+    def wrapper_with_resistant_grandchild(self, *, parent_waits=True):
         fixture = self.root / "wrapper with child.py"
         stop = self.root / "stop-child"
         identity = self.root / "child-identity.json"
@@ -279,7 +466,11 @@ class DiagnosticCaptureTests(unittest.TestCase):
             "        time.sleep(0.02)\n"
             "else:\n"
             "    child=subprocess.Popen([sys.executable, __file__, 'child'])\n"
-            "    child.wait()\n"
+            + ("    child.wait()\n" if parent_waits else
+               "    deadline=time.monotonic()+3\n"
+               "    while not identity.exists() and time.monotonic()<deadline:\n"
+               "        time.sleep(0.01)\n"
+               "    print('wrapper version 1.0', flush=True)\n")
         )
         return fixture, stop, identity
 
@@ -353,6 +544,20 @@ class DiagnosticCaptureTests(unittest.TestCase):
 
     def test_version_probe_bounds_wrapper_exit_with_live_grandchild(self):
         self.check_wrapper_timeout("version")
+
+    def test_version_probe_bounds_capture_after_wrapper_exits_successfully(self):
+        fixture, stop, identity = self.wrapper_with_resistant_grandchild(parent_waits=False)
+        code = self.bounded_probe("version", ["/usr/bin/python3", str(fixture)])
+        process = subprocess.Popen(["/bin/bash", "-c", code], stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, text=True)
+        try:
+            stdout, stderr = process.communicate(timeout=9)
+            self.assertIn(process.returncode, (124, 137), (stdout, stderr))
+            self.assertEqual(stdout, "wrapper version 1.0\n")
+            self.assert_child_stopped(identity)
+        finally:
+            stop.touch()
+            process.communicate(timeout=3)
 
     def test_deep_probe_bounds_wrapper_exit_with_live_grandchild(self):
         self.check_wrapper_timeout("deep")

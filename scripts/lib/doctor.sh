@@ -2266,6 +2266,7 @@ check() {
     local status="$3"
     local details="${4:-}"
     local fix="${5:-}"
+    local repair_allowed="${6:-true}"
 
     doctor_skip_unselected_check "$id" "$label" && return 0
 
@@ -2339,7 +2340,7 @@ check() {
     # already healthy check is a valid no-op.
     if [[ "$FIX_MODE" == "true" && "$DOCTOR_FIX_SCOPED" == "true" ]]; then
         DOCTOR_FIX_OBSERVED_IDS+=("$id")
-        if [[ "$status" != "pass" && "$status" != "skip" ]]; then
+        if [[ "$status" != "pass" && "$status" != "skip" && "$repair_allowed" == "true" ]]; then
             DOCTOR_FIX_PENDING_IDS+=("$id")
             DOCTOR_FIX_PENDING_STATUSES+=("$status")
             DOCTOR_FIX_PENDING_HINTS+=("$fix")
@@ -2348,7 +2349,7 @@ check() {
     fi
 
     # Dispatch fix if --fix mode is enabled
-    if [[ "$FIX_MODE" == "true" ]] && [[ "$status" != "pass" ]]; then
+    if [[ "$FIX_MODE" == "true" && "$status" != "pass" && "$repair_allowed" == "true" ]]; then
         doctor_dispatch_fix "$id" "$status" "$fix"
     fi
     # A failed repair is reported in FIX_FAILED; continue diagnostics and
@@ -2514,20 +2515,41 @@ doctor_version_probe() {
         return 1
     fi
 
-    local head_bin="/usr/bin/head"
+    local head_bin="" cat_bin="" bash_bin=""
     local timeout_bin="$1"
     local timeout_secs="$2"
     local stderr_mode="${3:-discard}"
     shift 3
 
-    [[ -x "$head_bin" ]] || head_bin="/bin/head"
-    [[ -x "$head_bin" ]] || return 1
+    [[ -n "$timeout_bin" && -x "$timeout_bin" ]] || return 125
+    [[ "$timeout_secs" =~ ^[0-9]+([.][0-9]+)?$ && "$timeout_secs" =~ [1-9] ]] || return 125
+    head_bin="$(_acfs_doctor_system_binary_path head 2>/dev/null)" || return 125
+    cat_bin="$(_acfs_doctor_system_binary_path cat 2>/dev/null)" || return 125
+    bash_bin="$(_acfs_doctor_system_binary_path bash 2>/dev/null)" || return 125
+    _acfs_doctor_system_binary_path sleep >/dev/null 2>&1 || return 125
 
-    if [[ "$stderr_mode" == "merge" ]]; then
-        _acfs_doctor_run_bounded "$timeout_bin" "$timeout_secs" "$@" 2>&1 | "$head_bin" -n 1
-    else
-        _acfs_doctor_run_bounded "$timeout_bin" "$timeout_secs" "$@" 2>/dev/null | "$head_bin" -n 1
-    fi
+    # Preserve the producer's status independently of the caller's pipefail
+    # setting. Drain the rest of its output so successful multiline help does
+    # not fail with SIGPIPE after head has its first line. Keep the entire
+    # pipeline inside the deadline: a wrapper may exit while its descendants
+    # still hold the output pipe open.
+    _acfs_doctor_run_bounded "$timeout_bin" "$timeout_secs" \
+        "$bash_bin" --noprofile --norc -p -c '
+            set +e
+            head_bin=$1
+            cat_bin=$2
+            stderr_mode=$3
+            shift 3
+            if [[ "$stderr_mode" == merge ]]; then
+                "$@" 2>&1 | { "$head_bin" -n 1 || exit $?; "$cat_bin" >/dev/null; }
+                probe_status=("${PIPESTATUS[@]}")
+            else
+                "$@" 2>/dev/null | { "$head_bin" -n 1 || exit $?; "$cat_bin" >/dev/null; }
+                probe_status=("${PIPESTATUS[@]}")
+            fi
+            (( probe_status[0] == 0 )) || exit "${probe_status[0]}"
+            exit "${probe_status[1]}"
+        ' _ "$head_bin" "$cat_bin" "$stderr_mode" "$@" 2>/dev/null
 }
 
 get_version_line() {
@@ -2539,51 +2561,87 @@ get_version_line() {
         [[ -n "$exec_path" ]] || exec_path="$cmd"
     fi
 
-    local version=""
-    local timeout_bin=""
-    timeout_bin="$(_acfs_doctor_system_binary_path timeout 2>/dev/null || true)"
-    # UBS has a directory size check that can block --version; bypass it
-    if [[ "$cmd" == "ubs" ]] || [[ "$exec_path" == */ubs ]]; then
-        version=$(UBS_MAX_DIR_SIZE_MB=10000 doctor_version_probe "$timeout_bin" "$DOCTOR_VERSION_TIMEOUT" discard "$exec_path" --version) || true
-    elif [[ "$cmd" == "lsof" ]] || [[ "$exec_path" == */lsof ]]; then
-        version=$(doctor_version_probe "$timeout_bin" "$DOCTOR_VERSION_TIMEOUT" merge "$exec_path" -v) || true
-    elif [[ "$cmd" == "minisign" ]] || [[ "$exec_path" == */minisign ]]; then
-        # minisign only knows -v; --version prints its usage text to stdout.
-        version=$(doctor_version_probe "$timeout_bin" "$DOCTOR_VERSION_TIMEOUT" discard "$exec_path" -v) || true
-    else
-        version=$(doctor_version_probe "$timeout_bin" "$DOCTOR_VERSION_TIMEOUT" discard "$exec_path" --version) || true
-    fi
-    if [[ -z "$version" ]]; then
-        version=$(doctor_version_probe "$timeout_bin" "$DOCTOR_VERSION_TIMEOUT" discard "$exec_path" -V) || true
-    fi
-    if [[ -z "$version" ]]; then
-        version=$(doctor_version_probe "$timeout_bin" "$DOCTOR_VERSION_TIMEOUT" discard "$exec_path" version) || true
-    fi
+    local version="" timeout_bin="" argument="" probe_status=1
+    local -a version_args=(--version -V version --help)
+    timeout_bin="$(_acfs_doctor_system_binary_path timeout 2>/dev/null)" || return 125
+    case "${exec_path##*/}" in
+        # Use each tool's read-only version convention. In particular, nc's
+        # positional arguments are network destinations, not subcommands.
+        lsof|minisign|dig) version_args=(-v) ;;
+        nc) version_args=(-h) ;;
+        tmux) version_args=(-V) ;;
+        go) version_args=(version) ;;
+    esac
 
-    if [[ -z "$version" ]]; then
-        version="available"
-    fi
-
-    printf '%s' "$version"
+    for argument in "${version_args[@]}"; do
+        probe_status=0
+        # UBS has a directory size check that can block --version; bypass it.
+        if [[ "${exec_path##*/}" == ubs ]]; then
+            version=$(UBS_MAX_DIR_SIZE_MB=10000 doctor_version_probe "$timeout_bin" "$DOCTOR_VERSION_TIMEOUT" merge "$exec_path" "$argument") || probe_status=$?
+        else
+            version=$(doctor_version_probe "$timeout_bin" "$DOCTOR_VERSION_TIMEOUT" merge "$exec_path" "$argument") || probe_status=$?
+        fi
+        if [[ "$probe_status" -eq 0 && "$version" == *[![:space:]]* ]]; then
+            printf '%s' "$version"
+            return 0
+        fi
+        # Do not multiply a hung probe's deadline by trying every fallback,
+        # or execute further probes when their transport/runtime is missing.
+        case "$probe_status" in
+            124|125|126|127|137|143) return "$probe_status" ;;
+            0) probe_status=1 ;;
+        esac
+    done
+    return "$probe_status"
 }
 
-# Check if command exists
+# A banner alone is not evidence that the command completed. Keep timeouts
+# and verification infrastructure failures out of the automatic repair queue.
+doctor_report_version_failure() {
+    local id="$1" label="$2" probe_status="$3"
+    local fix="${4:-}" failure_status="${5:-fail}"
+    case "$probe_status" in
+        124|137|143)
+            check_with_timeout_status "$id" "$label" timeout \
+                "version/help check exceeded its ${DOCTOR_VERSION_TIMEOUT}s deadline or was terminated" "$fix"
+            ;;
+        125)
+            check "$id" "$label" warn \
+                "version/help verification unavailable (a positive timeout and system bash/head/cat/sleep are required)" "" false
+            ;;
+        *)
+            check "$id" "$label" "$failure_status" \
+                "installed but version/help verification failed (exit $probe_status)" "$fix"
+            ;;
+    esac
+}
+
+# Check that the target user's command exists and actually starts.
 check_command() {
     local id="$1"
     local label="$2"
     local cmd="$3"
     local fix="${4:-}"
+    local failure_status="${5:-fail}"
     local cmd_path=""
 
     doctor_skip_unselected_check "$id" "$label" && return 0
 
-    cmd_path="$(doctor_binary_path "$cmd" 2>/dev/null || true)"
-    if [[ -n "$cmd_path" ]]; then
-        local version
-        version=$(get_version_line "$cmd_path")
-        check "$id" "$label ($version)" "pass" "installed"
+    if [[ "$cmd" == /* ]]; then
+        [[ -f "$cmd" && -x "$cmd" ]] && cmd_path="$cmd"
     else
-        check "$id" "$label" "fail" "not found" "$fix"
+        cmd_path="$(doctor_binary_path "$cmd" 2>/dev/null || true)"
+    fi
+    if [[ -n "$cmd_path" ]]; then
+        local version="" probe_status=0
+        version=$(get_version_line "$cmd_path") || probe_status=$?
+        if [[ "$probe_status" -eq 0 ]]; then
+            check "$id" "$label ($version)" "pass" "installed"
+        else
+            doctor_report_version_failure "$id" "$label" "$probe_status" "$fix" "$failure_status"
+        fi
+    else
+        check "$id" "$label" "$failure_status" "not found" "$fix"
     fi
 }
 
@@ -2593,18 +2651,7 @@ check_optional_command() {
     local label="$2"
     local cmd="$3"
     local fix="${4:-}"
-    local cmd_path=""
-
-    doctor_skip_unselected_check "$id" "$label" && return 0
-
-    cmd_path="$(doctor_binary_path "$cmd" 2>/dev/null || true)"
-    if [[ -n "$cmd_path" ]]; then
-        local version
-        version=$(get_version_line "$cmd_path")
-        check "$id" "$label ($version)" "pass" "installed"
-    else
-        check "$id" "$label" "$(doctor_optional_failure_status "$id" warn)" "not found" "$fix"
-    fi
+    check_command "$id" "$label" "$cmd" "$fix" "$(doctor_optional_failure_status "$id" warn)"
 }
 
 # Does the invoking user hold any sudo entitlement? (#384)
@@ -3500,8 +3547,13 @@ check_dcg_hook_status() {
         return
     fi
 
-    local version
-    version=$(get_version_line "dcg")
+    local version="" probe_status=0
+    version=$(get_version_line "dcg") || probe_status=$?
+    if [[ "$probe_status" -ne 0 ]]; then
+        doctor_report_version_failure "stack.dcg" "DCG" "$probe_status" \
+            "Re-run: $(fix_for_module stack.dcg)" "$(doctor_optional_failure_status stack.dcg warn)"
+        return 0
+    fi
 
     if ! doctor_binary_exists "claude"; then
         check "stack.dcg" "DCG ($version)" "warn" "Claude Code not found for hook registration" \
@@ -3742,9 +3794,8 @@ check_stack() {
     if doctor_skip_unselected_check "stack.ubs" "UBS"; then
         :
     elif ubs_bin="$(doctor_binary_path ubs 2>/dev/null || true)" && [[ -n "$ubs_bin" ]]; then
-        local version
-        version=$(get_version_line "$ubs_bin")
-        check "stack.ubs" "UBS ($version)" "pass" "installed"
+        check_command "stack.ubs" "UBS" "$ubs_bin" \
+            "Re-run: $(fix_for_module stack.ultimate_bug_scanner)"
     else
         check "stack.ubs" "UBS" "fail" "not found" \
             "Re-run: $(fix_for_module stack.ultimate_bug_scanner)"
@@ -3759,8 +3810,7 @@ check_stack() {
         if [[ "$bv_path" == *"google-cloud-sdk"* ]]; then
             check "stack.bv" "Beads Viewer" "fail" "SHADOWED by gcloud bv at $bv_path" \
                 "gcloud's 'bv' (BigQuery) is masking beads_viewer. Fix: Ensure ~/.local/bin is before gcloud in PATH, or re-run installer."
-        else
-            version=$(get_version_line "$bv_path")
+        elif version=$(get_version_line "$bv_path"); then
             # Also warn if gcloud's bv exists anywhere in PATH
             local gcloud_bv
             gcloud_bv=$(type -ap bv 2>/dev/null | grep "google-cloud-sdk" | head -1 || true)
@@ -3770,6 +3820,10 @@ check_stack() {
             else
                 check "stack.bv" "Beads Viewer ($version)" "pass" "installed"
             fi
+        else
+            local bv_probe_status=$?
+            doctor_report_version_failure "stack.bv" "Beads Viewer" "$bv_probe_status" \
+                "Re-run: $(fix_for_module stack.beads_viewer)"
         fi
     else
         check "stack.bv" "Beads Viewer" "fail" "not found" \
@@ -3780,9 +3834,7 @@ check_stack() {
     if doctor_skip_unselected_check "stack.cass" "CASS"; then
         :
     elif doctor_binary_exists "cass"; then
-        local version
-        version=$(get_version_line "$(doctor_binary_path cass 2>/dev/null || echo cass)")
-        check "stack.cass" "CASS ($version)" "pass" "installed"
+        check_command "stack.cass" "CASS" cass "Re-run: $(fix_for_module stack.cass)"
     else
         check "stack.cass" "CASS" "fail" "not found" \
             "Re-run: $(fix_for_module stack.cass)"
@@ -3808,12 +3860,13 @@ check_stack() {
         local am_ready=false
         local am_readiness_body=""
         local am_readiness_url=""
+        local am_version_status=0
 
-        am_version=$(get_version_line "$am_bin")
+        am_version=$(get_version_line "$am_bin") || am_version_status=$?
         am_label="MCP Agent Mail ($am_version)"
         curl_bin="$(_acfs_doctor_system_binary_path curl 2>/dev/null || true)"
 
-        if [[ -n "$curl_bin" ]] && "$curl_bin" -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1; then
+        if [[ "$am_version_status" -eq 0 && -n "$curl_bin" ]] && "$curl_bin" -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1; then
             am_live=true
             for am_readiness_url in \
                 http://127.0.0.1:8765/health/readiness \
@@ -3827,7 +3880,10 @@ check_stack() {
             done
         fi
 
-        if [[ "$am_live" != "true" ]]; then
+        if [[ "$am_version_status" -ne 0 ]]; then
+            doctor_report_version_failure "stack.mcp_agent_mail" "MCP Agent Mail" "$am_version_status" \
+                "$am_install_fix" "$(doctor_optional_failure_status stack.mcp_agent_mail warn)"
+        elif [[ "$am_live" != "true" ]]; then
             check "stack.mcp_agent_mail" "$am_label" "warn" "installed but service is not running" "$am_install_fix"
         elif [[ "$am_ready" != "true" ]]; then
             check "stack.mcp_agent_mail" "$am_label" "warn" "service is running but not ready" "$am_install_fix"
@@ -3933,9 +3989,7 @@ check_stack() {
     if doctor_skip_unselected_check "stack.ru" "RU (Repo Updater)"; then
         :
     elif ru_bin="$(doctor_binary_path ru 2>/dev/null || true)" && [[ -n "$ru_bin" ]]; then
-        local version
-        version=$(get_version_line "$ru_bin")
-        check "stack.ru" "RU ($version)" "pass" "installed"
+        check_optional_command "stack.ru" "RU" "$ru_bin" "Re-run: $(fix_for_module stack.ru)"
     else
         check "stack.ru" "RU (Repo Updater)" "warn" "not installed" \
             "Re-run: $(fix_for_module stack.ru)"
@@ -3949,9 +4003,8 @@ check_stack() {
     if doctor_skip_unselected_check "stack.beads_rust" "beads_rust (br)"; then
         :
     elif [[ -n "$_br_bin" ]]; then
-        local version
-        version=$(get_version_line "$_br_bin")
-        check "stack.beads_rust" "beads_rust ($version)" "pass" "installed"
+        check_optional_command "stack.beads_rust" "beads_rust" "$_br_bin" \
+            "Re-run: $(fix_for_module stack.beads_rust)"
     else
         check "stack.beads_rust" "beads_rust (br)" "warn" "not installed" \
             "Re-run: $(fix_for_module stack.beads_rust)"
@@ -3963,9 +4016,8 @@ check_stack() {
     if doctor_skip_unselected_check "stack.meta_skill" "meta_skill"; then
         :
     elif [[ -n "$ms_bin" ]]; then
-        local version
-        version=$(get_version_line "$ms_bin")
-        check "stack.meta_skill" "meta_skill ($version)" "pass" "installed"
+        check_optional_command "stack.meta_skill" "meta_skill" "$ms_bin" \
+            "Re-run: $(fix_for_module stack.meta_skill)"
     else
         # Detect architecture to give the right install advice
         local _ms_arch _ms_os _ms_fix
@@ -3992,7 +4044,6 @@ check_stack() {
     # Check rch (Remote Compilation Helper)
     # RCH can be installed in several locations: PATH, ~/.local/bin, ~/.cargo/bin, or ~/remote_compilation_helper
     local rch_bin=""
-    local rch_version=""
     local runtime_home=""
     runtime_home="$(doctor_runtime_home)"
 
@@ -4004,11 +4055,7 @@ check_stack() {
     if doctor_skip_unselected_check "stack.rch" "Remote Compilation Helper"; then
         :
     elif [[ -n "$rch_bin" ]] && [[ -x "$rch_bin" ]]; then
-        # get_version_line runs the probe under a timeout so a wedged rch
-        # binary (e.g. blocked on remote config) can't hang doctor.
-        rch_version=$(get_version_line "$rch_bin") || rch_version="installed"
-        [[ "$rch_version" == "available" ]] && rch_version="installed"
-        check "stack.rch" "rch ($rch_version)" "pass" "installed"
+        check_optional_command "stack.rch" "rch" "$rch_bin" "Re-run: $(fix_for_module stack.rch)"
     else
         # Also check if RCH config exists (indicates partial/previous install)
         if [[ -f "$runtime_home/.config/rch/config.toml" ]] || [[ -d "$runtime_home/remote_compilation_helper" ]]; then
@@ -4026,9 +4073,8 @@ check_stack() {
     if doctor_skip_unselected_check "stack.wezterm_automata" "WezTerm Automata"; then
         :
     elif [[ -n "$wa_bin" ]]; then
-        local version
-        version=$(get_version_line "$wa_bin")
-        check "stack.wezterm_automata" "wezterm_automata ($version)" "pass" "installed"
+        check_optional_command "stack.wezterm_automata" "wezterm_automata" "$wa_bin" \
+            "$(fix_for_module stack.wezterm_automata)"
     else
         check_missing_optional_command "stack.wezterm_automata" "wezterm_automata (wa)"
     fi
@@ -4039,9 +4085,8 @@ check_stack() {
     if doctor_skip_unselected_check "stack.brenner_bot" "Brenner Bot"; then
         :
     elif [[ -n "$brenner_bin" ]]; then
-        local version
-        version=$(get_version_line "$brenner_bin")
-        check "stack.brenner_bot" "brenner_bot ($version)" "pass" "installed"
+        check_optional_command "stack.brenner_bot" "brenner_bot" "$brenner_bin" \
+            "$(fix_for_module stack.brenner_bot)"
     else
         check_missing_optional_command "stack.brenner_bot" "brenner_bot"
     fi
@@ -4183,9 +4228,7 @@ check_utilities() {
     if doctor_skip_unselected_check "util.tru" "toon (token notation)"; then
         :
     elif [[ -n "$util_bin" ]]; then
-        local version
-        version=$(get_version_line "$util_bin")
-        check "util.tru" "toon ($version)" "pass" "installed"
+        check_optional_command "util.tru" "toon" "$util_bin" "$(fix_for_module utils.toon_rust)"
     else
         check_missing_optional_command "util.tru" "toon (token notation)"
     fi
@@ -4195,9 +4238,7 @@ check_utilities() {
     if doctor_skip_unselected_check "util.rust_proxy" "rust_proxy"; then
         :
     elif [[ -n "$util_bin" ]]; then
-        local version
-        version=$(get_version_line "$util_bin")
-        check "util.rust_proxy" "rust_proxy ($version)" "pass" "installed"
+        check_optional_command "util.rust_proxy" "rust_proxy" "$util_bin" "$(fix_for_module utils.rust_proxy)"
     else
         check_missing_optional_command "util.rust_proxy" "rust_proxy (proxy routing)"
     fi
@@ -4207,9 +4248,7 @@ check_utilities() {
     if doctor_skip_unselected_check "util.rano" "rano"; then
         :
     elif [[ -n "$util_bin" ]]; then
-        local version
-        version=$(get_version_line "$util_bin")
-        check "util.rano" "rano ($version)" "pass" "installed"
+        check_optional_command "util.rano" "rano" "$util_bin" "$(fix_for_module utils.rano)"
     else
         check_missing_optional_command "util.rano" "rano (network observer)"
     fi
@@ -4219,9 +4258,7 @@ check_utilities() {
     if doctor_skip_unselected_check "util.xf" "xf"; then
         :
     elif [[ -n "$util_bin" ]]; then
-        local version
-        version=$(get_version_line "$util_bin")
-        check "util.xf" "xf ($version)" "pass" "installed"
+        check_optional_command "util.xf" "xf" "$util_bin" "$(fix_for_module utils.xf)"
     else
         check_missing_optional_command "util.xf" "xf (X archive search)"
     fi
@@ -4231,9 +4268,7 @@ check_utilities() {
     if doctor_skip_unselected_check "util.mdwb" "mdwb"; then
         :
     elif [[ -n "$util_bin" ]]; then
-        local version
-        version=$(get_version_line "$util_bin")
-        check "util.mdwb" "mdwb ($version)" "pass" "installed"
+        check_optional_command "util.mdwb" "mdwb" "$util_bin" "$(fix_for_module utils.mdwb)"
     else
         check_missing_optional_command "util.mdwb" "mdwb (markdown browser)"
     fi
@@ -4243,9 +4278,7 @@ check_utilities() {
     if doctor_skip_unselected_check "util.pt" "Process Triage"; then
         :
     elif [[ -n "$util_bin" ]]; then
-        local version
-        version=$(get_version_line "$util_bin")
-        check "util.pt" "pt ($version)" "pass" "installed"
+        check_optional_command "util.pt" "pt" "$util_bin" "$(fix_for_module stack.process_triage)"
     else
         check_missing_optional_command "util.pt" "pt (process triage)"
     fi
@@ -4255,9 +4288,7 @@ check_utilities() {
     if doctor_skip_unselected_check "util.aadc" "ASCII Diagram Corrector"; then
         :
     elif [[ -n "$util_bin" ]]; then
-        local version
-        version=$(get_version_line "$util_bin")
-        check "util.aadc" "aadc ($version)" "pass" "installed"
+        check_optional_command "util.aadc" "aadc" "$util_bin" "$(fix_for_module utils.aadc)"
     else
         check_missing_optional_command "util.aadc" "aadc (ASCII diagram corrector)"
     fi
@@ -4267,9 +4298,7 @@ check_utilities() {
     if doctor_skip_unselected_check "util.s2p" "Source to Prompt"; then
         :
     elif [[ -n "$util_bin" ]]; then
-        local version
-        version=$(get_version_line "$util_bin")
-        check "util.s2p" "s2p ($version)" "pass" "installed"
+        check_optional_command "util.s2p" "s2p" "$util_bin" "$(fix_for_module utils.s2p)"
     else
         check_missing_optional_command "util.s2p" "s2p (source to prompt)"
     fi
@@ -4279,9 +4308,7 @@ check_utilities() {
     if doctor_skip_unselected_check "util.caut" "Coding Agent Usage Tracker"; then
         :
     elif [[ -n "$util_bin" ]]; then
-        local version
-        version=$(get_version_line "$util_bin")
-        check "util.caut" "caut ($version)" "pass" "installed"
+        check_optional_command "util.caut" "caut" "$util_bin" "$(fix_for_module utils.caut)"
     else
         check_missing_optional_command "util.caut" "caut (usage tracker)"
     fi
@@ -4326,9 +4353,11 @@ _is_bespoke_covered() {
         lang.bun|lang.uv|lang.rust|lang.rust.*|lang.go) return 0 ;;
         # check_shell / check_core_tools  (individual tools)
         tools.atuin|tools.zoxide|tools.ast_grep|tools.vault) return 0 ;;
-        # check_agents covers these three agents only. Opt-in agents such as
-        # OpenCode, OMP, Grok, and legacy Gemini need their manifest probes.
-        agents.claude|agents.claude.*|agents.codex|agents.codex.*|agents.antigravity|agents.antigravity.*) return 0 ;;
+        # The Claude/Codex manifest probes verify the same version/help
+        # readiness as check_agents. Antigravity additionally verifies locked
+        # settings, launchers and DCG hooks, so keep its manifest check active.
+        # Opt-in agents also rely on their authored manifest probes.
+        agents.claude|agents.claude.*|agents.codex|agents.codex.*) return 0 ;;
         # check_cloud / check_ssh
         cloud.wrangler|cloud.supabase|cloud.vercel) return 0 ;;
         network.tailscale|network.tailscale.*|network.ssh_keepalive|network.ssh_keepalive.*) return 0 ;;

@@ -14181,6 +14181,8 @@ EOF
     # shellcheck disable=SC1090
     eval "$(sed -n '/^_acfs_doctor_system_binary_path()/,/^}$/p' "$doctor_lib")"
     # shellcheck disable=SC1090
+    eval "$(sed -n '/^_acfs_doctor_run_bounded()/,/^}$/p' "$doctor_lib")"
+    # shellcheck disable=SC1090
     eval "$(sed -n '/^_acfs_doctor_passwd_home_from_entry()/,/^}$/p' "$doctor_lib")"
     # shellcheck disable=SC1090
     eval "$(sed -n '/^_doctor_run_manifest_check()/,/^}$/p' "$doctor_lib")"
@@ -14209,6 +14211,7 @@ EOF
     TARGET_USER="tester"
     TARGET_HOME="$target_home"
     ACFS_BIN_DIR=""
+    DEEP_CHECK_TIMEOUT=15
 
     run _doctor_run_manifest_check target_user "printf '%s\n' \"\$TARGET_USER:\$TARGET_HOME\" > $output_q"
     assert_success
@@ -14870,6 +14873,10 @@ EOF
     init_stub_dir
 
     # shellcheck disable=SC1090
+    eval "$(sed -n '/^_acfs_doctor_system_binary_path()/,/^}$/p' "$doctor_lib")"
+    # shellcheck disable=SC1090
+    eval "$(sed -n '/^_acfs_doctor_run_bounded()/,/^}$/p' "$doctor_lib")"
+    # shellcheck disable=SC1090
     eval "$(sed -n '/^doctor_binary_path()/,/^}$/p' "$doctor_lib")"
     # shellcheck disable=SC1090
     eval "$(sed -n '/^doctor_binary_exists()/,/^}$/p' "$doctor_lib")"
@@ -14877,6 +14884,10 @@ EOF
     eval "$(sed -n '/^doctor_version_probe()/,/^}$/p' "$doctor_lib")"
     # shellcheck disable=SC1090
     eval "$(sed -n '/^get_version_line()/,/^}$/p' "$doctor_lib")"
+    # shellcheck disable=SC1090
+    eval "$(sed -n '/^doctor_report_version_failure()/,/^}$/p' "$doctor_lib")"
+    # shellcheck disable=SC1090
+    eval "$(sed -n '/^doctor_skip_unselected_check()/,/^}$/p' "$doctor_lib")"
     # shellcheck disable=SC1090
     eval "$(sed -n '/^check_command()/,/^}$/p' "$doctor_lib")"
 
@@ -14890,6 +14901,7 @@ EOF
 
     export TARGET_HOME="$HOME/target-home"
     export ACFS_BIN_DIR="$TARGET_HOME/.local/bin"
+    ACFS_STATE_SELECTION_MODE=legacy
     DOCTOR_VERSION_TIMEOUT=2
     mkdir -p "$ACFS_BIN_DIR"
 

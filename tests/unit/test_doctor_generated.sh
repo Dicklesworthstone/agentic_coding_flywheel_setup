@@ -98,7 +98,7 @@ test_doctor_lsof_version_probe_captures_stderr() {
     local doctor_file="$REPO_ROOT/scripts/lib/doctor.sh"
     local probe_def=""
     probe_def="$(awk '
-        /^(_acfs_doctor_system_binary_path|_acfs_doctor_run_bounded|doctor_version_probe)\(\)[[:space:]]*\{/ { in_function = 1 }
+        /^(_acfs_doctor_system_binary_path|_acfs_doctor_run_bounded|doctor_version_probe|get_version_line)\(\)[[:space:]]*\{/ { in_function = 1 }
         in_function { print }
         in_function && /^}[[:space:]]*$/ { in_function = 0 }
     ' "$doctor_file")"
@@ -108,8 +108,19 @@ test_doctor_lsof_version_probe_captures_stderr() {
         return 1
     fi
 
-    if ! grep -Fq 'merge "$exec_path" -v' "$doctor_file"; then
-        harness_fail "lsof version path does not request stderr capture"
+    local fixture_dir="" fixture_output=""
+    fixture_dir="$(mktemp -d)" || return 1
+    cat > "$fixture_dir/lsof" <<'EOF'
+#!/bin/bash
+[[ "$1" == -v ]] || exit 2
+printf '%s\n' 'lsof version information:' >&2
+EOF
+    chmod +x "$fixture_dir/lsof"
+    fixture_output="$(bash -c "$probe_def"$'\n''DOCTOR_VERSION_TIMEOUT=2; get_version_line "$1"' _ "$fixture_dir/lsof" 2>&1)" || true
+    if [[ "$fixture_output" == 'lsof version information:' ]]; then
+        harness_pass "lsof uses -v and captures its stderr banner"
+    else
+        harness_fail "lsof version path did not capture its -v stderr banner" "$fixture_output"
         return 1
     fi
 
@@ -121,7 +132,7 @@ test_doctor_lsof_version_probe_captures_stderr() {
     fi
 
     local shadow_output=""
-    shadow_output="$(bash -c "$probe_def"$'\n''head() { printf "%s\n" "shadowed-head"; }'$'\n''doctor_version_probe "" 2 merge /usr/bin/printf "%s\n%s\n" "real" "ignored"' 2>&1 || true)"
+    shadow_output="$(bash -c "$probe_def"$'\n''head() { printf "%s\n" "shadowed-head"; }'$'\n''doctor_version_probe /usr/bin/timeout 2 merge /usr/bin/printf "%s\n%s\n" "real" "ignored"' 2>&1 || true)"
     if [[ "$shadow_output" == "real" ]]; then
         harness_pass "doctor_version_probe ignores shadowed head functions"
     else
@@ -486,8 +497,21 @@ EOF
     chmod +x "$fake_bin/sudo"
 
     local root_output=""
-    root_output=$(HOME="$fake_home" PATH="$fake_bin:/usr/bin:/bin" TARGET_USER=customuser "$ACFS_TEST_BASH_BIN" -c '
+    root_output=$(HOME="$fake_home" PATH="$fake_bin:/usr/bin:/bin" TARGET_USER=customuser ACFS_TEST_FAKE_BIN="$fake_bin" "$ACFS_TEST_BASH_BIN" -c '
         source "'"$checks_file"'"
+        # The generated runner uses trusted absolute binaries, so inject the
+        # fixture at its discovery boundary rather than relying on PATH.
+        # Keep this unresolved-account test independent of host sudo policy
+        # and exported logging functions from the invoking test runner.
+        TARGET_HOME=""
+        _acfs_resolve_target_home() { return 1; }
+        log_error() { printf "%s\n" "$*" >&2; }
+        acfs_generated_system_binary_path() {
+            case "$1" in
+                sudo) printf "%s/sudo\n" "$ACFS_TEST_FAKE_BIN" ;;
+                *) [[ -x "/usr/bin/$1" ]] && printf "/usr/bin/%s\n" "$1" ;;
+            esac
+        }
         run_manifest_check_command root "printf \"%s\\n\" root-check-ran"
     ' 2>&1 || true)
 
@@ -498,8 +522,17 @@ EOF
     fi
 
     local target_user_output=""
-    target_user_output=$(HOME="$fake_home" PATH="$fake_bin:/usr/bin:/bin" TARGET_USER=customuser "$ACFS_TEST_BASH_BIN" -c '
+    target_user_output=$(HOME="$fake_home" PATH="$fake_bin:/usr/bin:/bin" TARGET_USER=customuser ACFS_TEST_FAKE_BIN="$fake_bin" "$ACFS_TEST_BASH_BIN" -c '
         source "'"$checks_file"'"
+        TARGET_HOME=""
+        _acfs_resolve_target_home() { return 1; }
+        log_error() { printf "%s\n" "$*" >&2; }
+        acfs_generated_system_binary_path() {
+            case "$1" in
+                sudo) printf "%s/sudo\n" "$ACFS_TEST_FAKE_BIN" ;;
+                *) [[ -x "/usr/bin/$1" ]] && printf "/usr/bin/%s\n" "$1" ;;
+            esac
+        }
         run_manifest_check_command target_user "printf target-user-check-ran\\n"
     ' 2>&1 || true)
 
