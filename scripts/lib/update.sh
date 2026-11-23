@@ -3192,9 +3192,29 @@ update_run_in_target_context() {
 
     local sanitized_acfs_home=""
     local env_assignment=""
+    local -a env_args=()
+    if [[ "$current_user" != "$target_user" ]]; then
+        # Direct library entrypoints retain the invoking UID until this call.
+        # HOME alone does not redirect agent configuration, Agent Mail state,
+        # or Bun's independently configurable global package/cache stores.
+        # The public wrapper applies the same policy before its earlier UID
+        # handoff; explicit target-owned assignments below remain supported.
+        env_args+=(
+            -u CARGO_HOME -u RUSTUP_HOME -u RUSTUP_TOOLCHAIN
+            -u NVM_DIR -u NVM_BIN -u NVM_INC -u NVM_CD_FLAGS
+            -u NVM_NODEJS_ORG_MIRROR -u NVM_IOJS_ORG_MIRROR -u NVM_AUTH_HEADER
+            -u XDG_CONFIG_HOME -u XDG_CACHE_HOME -u XDG_DATA_HOME -u XDG_STATE_HOME -u XDG_RUNTIME_DIR
+            -u BUN_INSTALL_GLOBAL_DIR -u BUN_INSTALL_BIN -u BUN_INSTALL_CACHE_DIR
+            -u CLAUDE_CONFIG_DIR -u CODEX_HOME -u DATABASE_URL -u STORAGE_ROOT
+            -u NPM_CONFIG_USERCONFIG -u npm_config_userconfig
+            -u NPM_CONFIG_GLOBALCONFIG -u npm_config_globalconfig
+            -u NPM_CONFIG_CACHE -u npm_config_cache -u NPM_CONFIG_PREFIX -u npm_config_prefix
+            -u PREFIX -u NODE_OPTIONS -u NODE_PATH -u BASH_ENV -u ENV
+        )
+    fi
     # BUN_INSTALL keeps `bun install -g` upgrades on the ~/.bun/bin ACFS puts on
     # PATH instead of bun's XDG_CACHE_HOME fallback (#388).
-    local -a env_args=("UV_NO_CONFIG=1" "HOME=$target_home" "PATH=$target_path" "BUN_INSTALL=$target_home/.bun")
+    env_args+=("UV_NO_CONFIG=1" "HOME=$target_home" "PATH=$target_path" "BUN_INSTALL=$target_home/.bun")
     [[ -n "$target_user" ]] && env_args+=("TARGET_USER=$target_user")
     [[ -n "$target_home" ]] && env_args+=("TARGET_HOME=$target_home")
     sanitized_acfs_home="$(update_sanitize_abs_nonroot_path "${ACFS_HOME:-}" 2>/dev/null || true)"

@@ -58,6 +58,12 @@ MAINTENANCE_ENV_NAMES = (
     "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT", "GIT_ASKPASS", "GIT_SSH", "GIT_SSH_COMMAND",
 )
 
+UPDATE_ACCOUNT_ENV_NAMES = (
+    "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_RUNTIME_DIR",
+    "BUN_INSTALL_GLOBAL_DIR", "BUN_INSTALL_BIN", "BUN_INSTALL_CACHE_DIR",
+    "CLAUDE_CONFIG_DIR", "CODEX_HOME", "DATABASE_URL", "STORAGE_ROOT",
+)
+
 COMMON = r'''
 set -euo pipefail
 source "$UPDATE_TEST_LIBRARY"
@@ -2229,7 +2235,7 @@ update_p10k
         self.assertTrue(any(row[2].startswith("60 ") for row in rows), rows)
         self.assertTrue(any(row[2].startswith("--kill-after=30s 5 ") for row in rows), rows)
 
-    def nvm_wrapper_handoff(self, *, foreign_caller):
+    def nvm_wrapper_handoff(self, *, foreign_caller, extra_selectors=()):
         wrapper = Path(os.environ.get("ACFS_UPDATE_TEST_WRAPPER", ROOT / "scripts/acfs-update")).read_text()
         entrypoint = 'main "$@"\n'
         self.assertTrue(wrapper.endswith(entrypoint))
@@ -2260,7 +2266,7 @@ exec "$@"
             "NPM_CONFIG_CACHE", "npm_config_cache", "NPM_CONFIG_PREFIX", "npm_config_prefix",
             "PREFIX", "NODE_OPTIONS", "NODE_PATH", "BASH_ENV", "ENV",
         )
-        configured = {name: str(self.caller / name) for name in selectors}
+        configured = {name: str(self.caller / name) for name in (*selectors, *extra_selectors)}
         env = configured | {
             "PATH": "/usr/bin:/bin", "HOME": str(self.home), "TARGET_HOME": str(self.home),
             "TEST_ROOT": str(self.base), "TEST_USER": self.account.pw_name,
@@ -2300,6 +2306,81 @@ exec_as_target_user "$TEST_USER" /usr/bin/env
     def test_nvm_public_handoff_preserves_same_account_selectors(self):
         configured, observed = self.nvm_wrapper_handoff(foreign_caller=False)
         for name, value in configured.items():
+            self.assertEqual(observed.get(name), value, name)
+
+    def test_public_handoff_discards_caller_agent_mail_and_bun_stores(self):
+        configured, observed = self.nvm_wrapper_handoff(
+            foreign_caller=True, extra_selectors=UPDATE_ACCOUNT_ENV_NAMES)
+        for name in configured:
+            self.assertNotIn(name, observed, name + " crossed the account boundary")
+
+    def test_public_handoff_preserves_own_agent_mail_and_bun_stores(self):
+        configured, observed = self.nvm_wrapper_handoff(
+            foreign_caller=False, extra_selectors=UPDATE_ACCOUNT_ENV_NAMES)
+        for name, value in configured.items():
+            self.assertEqual(observed.get(name), value, name)
+
+    def test_direct_target_runner_discards_caller_agent_mail_and_bun_stores(self):
+        # Exercise the production runner even on unprivileged CI hosts. Only
+        # account identity and runuser transport are fixtures; real env applies
+        # the handoff policy before an inert account-owned writer runs. This
+        # proves routing, not the OS's ability to change UID.
+        transport = self.base / "fixture-account-transport"
+        transport.write_text(r'''#!/bin/bash
+set -euo pipefail
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -n|-H|--) shift ;;
+        -u) [[ "$2" == "$TEST_USER" ]] || exit 64; shift 2 ;;
+        *) break ;;
+    esac
+done
+exec "$@"
+''')
+        transport.chmod(0o755)
+        probe = self.base / "account-store-probe.py"
+        probe.write_text(
+            "import json, os\nfrom pathlib import Path\n"
+            "home = Path(os.environ['HOME'])\n"
+            "defaults = {'BUN_INSTALL_GLOBAL_DIR': '.bun/install/global', "
+            "'CLAUDE_CONFIG_DIR': '.claude', 'CODEX_HOME': '.codex', "
+            "'STORAGE_ROOT': 'mcp_agent_mail/storage'}\n"
+            "for name, relative in defaults.items():\n"
+            "    destination = Path(os.environ.get(name, home / relative))\n"
+            "    destination.mkdir(parents=True, exist_ok=True)\n"
+            "    (destination / 'updated').write_text('target update\\n')\n"
+            "print(json.dumps(dict(os.environ)))\n")
+        overrides = {name: str(self.caller / name) for name in UPDATE_ACCOUNT_ENV_NAMES}
+        output = self.run_update(overrides=overrides, command=r'''
+update_current_user() { printf 'foreign-caller\n'; }
+update_system_binary_path() {
+    if [[ "$1" == sudo || "$1" == runuser ]]; then
+        printf '%s\n' "$TEST_ROOT/fixture-account-transport"
+        return 0
+    fi
+    local candidate
+    for candidate in "/usr/bin/$1" "/bin/$1" "/usr/sbin/$1" "/sbin/$1"; do
+        if [[ -x "$candidate" ]]; then printf '%s\n' "$candidate"; return 0; fi
+    done
+    return 1
+}
+update_run_in_target_context "" /usr/bin/python3 "$TEST_ROOT/account-store-probe.py"
+''')
+        observed = json.loads(output.splitlines()[0])
+        for name in UPDATE_ACCOUNT_ENV_NAMES:
+            self.assertNotIn(name, observed, name + " crossed the account boundary")
+        self.assertEqual(observed["BUN_INSTALL"], str(self.home / ".bun"))
+        self.assertEqual(list(self.caller.iterdir()), [])
+        for relative in (".bun/install/global", ".claude", ".codex", "mcp_agent_mail/storage"):
+            self.assertEqual((self.home / relative / "updated").read_text(), "target update\n")
+
+    def test_direct_target_runner_preserves_same_account_agent_mail_and_bun_stores(self):
+        overrides = {name: str(self.work / ("custom " + name)) for name in UPDATE_ACCOUNT_ENV_NAMES}
+        output = self.run_update(overrides=overrides, command=r'''
+update_run_in_target_context "" /usr/bin/python3 -c 'import json, os; print(json.dumps(dict(os.environ)))'
+''')
+        observed = json.loads(output.splitlines()[0])
+        for name, value in overrides.items():
             self.assertEqual(observed.get(name), value, name)
 
 class AgentPackageDeadlineTests(unittest.TestCase):
@@ -3304,6 +3385,15 @@ class PublicMaintenanceHandoffTests(unittest.TestCase):
 
     SELECTORS = ("CLAUDE_CONFIG_DIR", "DATABASE_URL", "STORAGE_ROOT",
                  "XDG_CONFIG_HOME", "XDG_DATA_HOME")
+    UPDATE_SELECTORS = UPDATE_ACCOUNT_ENV_NAMES + (
+        "CARGO_HOME", "RUSTUP_HOME", "RUSTUP_TOOLCHAIN",
+        "NVM_DIR", "NVM_BIN", "NVM_INC", "NVM_CD_FLAGS",
+        "NVM_NODEJS_ORG_MIRROR", "NVM_IOJS_ORG_MIRROR", "NVM_AUTH_HEADER",
+        "NPM_CONFIG_USERCONFIG", "npm_config_userconfig",
+        "NPM_CONFIG_GLOBALCONFIG", "npm_config_globalconfig",
+        "NPM_CONFIG_CACHE", "npm_config_cache", "NPM_CONFIG_PREFIX", "npm_config_prefix",
+        "PREFIX", "NODE_OPTIONS", "NODE_PATH", "BASH_ENV", "ENV",
+    )
 
     def setUp(self):
         self.base = Path(tempfile.mkdtemp(prefix="acfs-public-handoff-"))
@@ -3326,8 +3416,17 @@ class PublicMaintenanceHandoffTests(unittest.TestCase):
         (self.library / "doctor_fix.sh").write_text(capture_shell)
         self.doctor = self.library / "doctor.sh"
         self.doctor.write_text((ROOT / "scripts/lib/doctor.sh").read_text())
+        (self.library / "update.sh").write_text(capture_shell)
+        self.updater = self.acfs_home / "bin/acfs-update"
+        self.updater.write_text((ROOT / "scripts/acfs-update").read_text())
         entry = self.acfs_home / "bin/acfs"
-        entry.write_text("#!/bin/bash\nexec /bin/bash " + shlex.quote(str(self.doctor)) + ' "$@"\n')
+        # Capture each public boundary independently. The global wrapper has
+        # already changed identity before the separate updater wrapper starts;
+        # the latter cannot recover the original caller's ownership from UID.
+        entry.write_text("#!/bin/bash\n"
+                         'if [[ "${1:-}" == update ]]; then\n    shift\n    exec /usr/bin/python3 ' +
+                         shlex.quote(str(self.capture)) + ' "$@"\nfi\nexec /bin/bash ' +
+                         shlex.quote(str(self.doctor)) + ' "$@"\n')
         entry.chmod(0o755)
         self.wrapper = self.base / "acfs-global"
         self.wrapper.write_text((ROOT / "scripts/acfs-global").read_text())
@@ -3351,6 +3450,8 @@ exec "$env_binary" "${env_arguments[@]}" /usr/bin/python3 "$TEST_ROOT/capture.py
         self.transport.chmod(0o755)
 
     def run_public(self, entrypoint, *, cross):
+        updating = entrypoint in ("update", "global-update")
+        selector_names = self.UPDATE_SELECTORS if updating else self.SELECTORS
         account = "handoffowner" if cross else pwd.getpwuid(os.geteuid()).pw_name
         state_file = self.acfs_home / "state.json"
         state_file.write_text(json.dumps({
@@ -3358,7 +3459,7 @@ exec "$env_binary" "${env_arguments[@]}" /usr/bin/python3 "$TEST_ROOT/capture.py
             "bin_dir": str(self.home / ".local/bin"), "mode": "safe",
         }))
         selected_home = self.caller if cross else self.home
-        selectors = {name: str(selected_home / ("custom " + name.lower())) for name in self.SELECTORS}
+        selectors = {name: str(selected_home / ("custom " + name.lower())) for name in selector_names}
         selectors["DATABASE_URL"] = "sqlite:///" + str(selected_home / "mail.sqlite3").lstrip("/")
         env = {
             "PATH": "/usr/bin:/bin", "HOME": str(selected_home), "TEST_ROOT": str(self.base),
@@ -3367,9 +3468,14 @@ exec "$env_binary" "${env_arguments[@]}" /usr/bin/python3 "$TEST_ROOT/capture.py
             "ACFS_RAW": "https://example.invalid/acfs", "ACFS_OFFLINE": "1",
             "NO_COLOR": "1", **selectors,
         }
-        script = self.wrapper if entrypoint == "global" else self.doctor
-        args = ["doctor"] if entrypoint == "global" else []
-        command = ["/bin/bash", str(script), *args, "--fix", "--yes"]
+        if entrypoint in ("global", "global-update"):
+            script = self.wrapper
+            args = ["update" if updating else "doctor"]
+        else:
+            script = self.updater if updating else self.doctor
+            args = []
+        args.extend(["--stack-only", "--yes"] if updating else ["--fix", "--yes"])
+        command = ["/bin/bash", str(script), *args]
         if cross:
             unshare = shutil.which("unshare")
             runuser = shutil.which("runuser")
@@ -3401,7 +3507,7 @@ exec "$@"
             self.assertEqual(capture["env"]["HOME"], str(self.home))
             self.assertEqual(capture["env"]["TARGET_HOME"], str(self.home))
             self.assertEqual(capture["env"]["ACFS_BIN_DIR"], str(self.home / ".local/bin"))
-            for name in self.SELECTORS:
+            for name in selector_names:
                 self.assertNotIn(name, capture["env"], name + " crossed the account boundary")
         else:
             self.assertFalse((self.base / "transport-user").exists())
@@ -3419,6 +3525,18 @@ exec "$@"
 
     def test_direct_doctor_preserves_same_account_repair_selectors(self):
         self.run_public("doctor", cross=False)
+
+    def test_global_update_clears_foreign_agent_and_runtime_stores(self):
+        self.run_public("global-update", cross=True)
+
+    def test_update_wrapper_clears_foreign_agent_and_runtime_stores(self):
+        self.run_public("update", cross=True)
+
+    def test_global_update_preserves_same_account_agent_and_runtime_stores(self):
+        self.run_public("global-update", cross=False)
+
+    def test_update_wrapper_preserves_same_account_agent_and_runtime_stores(self):
+        self.run_public("update", cross=False)
 
 
 if __name__ == "__main__":

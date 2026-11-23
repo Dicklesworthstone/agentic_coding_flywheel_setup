@@ -900,6 +900,7 @@ main() {
     local original_home_candidate=""
     local current_home_from_valid_env=false
     local system_state_target_unresolved=false
+    local requested_command="${1:-}"
     local -a state_candidates=()
     local env_bin=""
     local system_state_home=""
@@ -1151,6 +1152,20 @@ main() {
         # after runuser/sudo changes identity. Same-account dispatch below keeps
         # its explicit configuration, and ACFS runtime selectors stay intact.
         unset CLAUDE_CONFIG_DIR DATABASE_URL STORAGE_ROOT XDG_CONFIG_HOME XDG_DATA_HOME
+        if [[ "$requested_command" == update ]]; then
+            # acfs-update will already be the target account after this exec.
+            # Apply its account-boundary policy here too, before caller-owned
+            # stores can be mistaken for deliberate same-account overrides.
+            unset CARGO_HOME RUSTUP_HOME RUSTUP_TOOLCHAIN \
+                NVM_DIR NVM_BIN NVM_INC NVM_CD_FLAGS \
+                NVM_NODEJS_ORG_MIRROR NVM_IOJS_ORG_MIRROR NVM_AUTH_HEADER \
+                XDG_CACHE_HOME XDG_STATE_HOME XDG_RUNTIME_DIR \
+                BUN_INSTALL_GLOBAL_DIR BUN_INSTALL_BIN BUN_INSTALL_CACHE_DIR CODEX_HOME \
+                NPM_CONFIG_USERCONFIG npm_config_userconfig \
+                NPM_CONFIG_GLOBALCONFIG npm_config_globalconfig \
+                NPM_CONFIG_CACHE npm_config_cache NPM_CONFIG_PREFIX npm_config_prefix \
+                PREFIX NODE_OPTIONS NODE_PATH BASH_ENV ENV
+        fi
 
         env_bin="$(system_binary_path env 2>/dev/null || true)"
         if [[ -n "$env_bin" && ${#env_args[@]} -gt 0 ]]; then

@@ -962,6 +962,8 @@ exec_as_target_user() {
       -u NVM_DIR -u NVM_BIN -u NVM_INC -u NVM_CD_FLAGS
       -u NVM_NODEJS_ORG_MIRROR -u NVM_IOJS_ORG_MIRROR -u NVM_AUTH_HEADER
       -u XDG_CONFIG_HOME -u XDG_CACHE_HOME -u XDG_DATA_HOME -u XDG_STATE_HOME -u XDG_RUNTIME_DIR
+      -u BUN_INSTALL_GLOBAL_DIR -u BUN_INSTALL_BIN -u BUN_INSTALL_CACHE_DIR
+      -u CLAUDE_CONFIG_DIR -u CODEX_HOME -u DATABASE_URL -u STORAGE_ROOT
       -u NPM_CONFIG_USERCONFIG -u npm_config_userconfig
       -u NPM_CONFIG_GLOBALCONFIG -u npm_config_globalconfig
       -u NPM_CONFIG_CACHE -u npm_config_cache -u NPM_CONFIG_PREFIX -u npm_config_prefix
