@@ -1060,6 +1060,140 @@ else
 fi
 
 # ------------------------------------------------------------
+# Generated install_stack.sh & install.sh port-holder pipefail regressions
+# ------------------------------------------------------------
+echo ""
+echo "=== Test: agent_mail_port_holder under set -euo pipefail (free port lsof rc=1 & multi-line SIGPIPE) ==="
+if command -v python3 >/dev/null 2>&1; then
+    if python3 - "$REPO_ROOT/scripts/generated/install_stack.sh" "$REPO_ROOT/install.sh" "$BASH" <<'PORT_HOLDER_TEST'
+import os
+import re
+import stat
+import subprocess
+import sys
+import tempfile
+
+install_stack_path, install_sh_path, bash_bin = sys.argv[1:4]
+
+def extract_funcs(path, expected_count):
+    text = open(path, encoding="utf-8").read()
+    lines = text.splitlines()
+    funcs = []
+    i = 0
+    while i < len(lines):
+        if re.match(r"^\s*agent_mail_port_holder\(\)\s*\{$", lines[i]):
+            indent = re.match(r"^(\s*)", lines[i]).group(1)
+            body = [lines[i][len(indent):]]
+            i += 1
+            while i < len(lines):
+                line = lines[i]
+                body.append(line[len(indent):] if line.startswith(indent) else line)
+                if line == f"{indent}}}":
+                    break
+                i += 1
+            funcs.append("\n".join(body))
+        i += 1
+    assert len(funcs) == expected_count, f"{path}: expected {expected_count} agent_mail_port_holder definitions, found {len(funcs)}"
+    return funcs
+
+stack_funcs = extract_funcs(install_stack_path, 2)
+install_funcs = extract_funcs(install_sh_path, 1)
+
+# Verify install.sh has no single quotes inside its target-user agent_mail_port_holder block
+assert "'" not in install_funcs[0], "install.sh target-user agent_mail_port_holder must not contain single quotes"
+
+# Verify neither file retains unguarded lsof/ss pipelines to head/tail
+for label, src_path in [("install_stack.sh", install_stack_path), ("install.sh", install_sh_path)]:
+    src = open(src_path, encoding="utf-8").read()
+    assert "lsof -nP -iTCP:8765 -sTCP:LISTEN 2>/dev/null | tail" not in src, f"{label} still has unguarded lsof pipeline"
+
+def write_exec(path, content):
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(content)
+    os.chmod(path, stat.S_IRWXU)
+
+with tempfile.TemporaryDirectory(prefix="acfs-port-holder-") as tmp:
+    awk_path = subprocess.check_output(["which", "awk"], text=True).strip()
+
+    cases = [
+        ("lsof_free_port_rc1", "lsof", f"#!{bash_bin}\nexit 1\n", ""),
+        (
+            "lsof_six_listeners_no_sigpipe",
+            "lsof",
+            f"#!{bash_bin}\n"
+            "printf 'COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME\\n'\n"
+            "for i in 1 2 3 4 5 6; do printf 'cm 10%d ubuntu 5u IPv4 1 0t0 TCP 127.0.0.1:8765 (LISTEN)\\n' \"$i\"; done\n",
+            "cm 101 ubuntu 5u IPv4 1 0t0 TCP 127.0.0.1:8765 (LISTEN)\n"
+            "cm 102 ubuntu 5u IPv4 1 0t0 TCP 127.0.0.1:8765 (LISTEN)\n"
+            "cm 103 ubuntu 5u IPv4 1 0t0 TCP 127.0.0.1:8765 (LISTEN)",
+        ),
+        ("ss_free_port_rc1", "ss", f"#!{bash_bin}\nexit 1\n", ""),
+        (
+            "ss_six_listeners_no_sigpipe",
+            "ss",
+            f"#!{bash_bin}\n"
+            "for i in 1 2 3 4 5 6; do printf 'LISTEN 0 128 127.0.0.1:8765 0.0.0.0:* users:((\"cm\",pid=20%d,fd=5))\\n' \"$i\"; done\n",
+            "LISTEN 0 128 127.0.0.1:8765 0.0.0.0:* users:((\"cm\",pid=201,fd=5))\n"
+            "LISTEN 0 128 127.0.0.1:8765 0.0.0.0:* users:((\"cm\",pid=202,fd=5))\n"
+            "LISTEN 0 128 127.0.0.1:8765 0.0.0.0:* users:((\"cm\",pid=203,fd=5))",
+        ),
+    ]
+
+    all_funcs = [
+        ("install_stack.sh#1", stack_funcs[0]),
+        ("install_stack.sh#2", stack_funcs[1]),
+        ("install.sh#1", install_funcs[0]),
+    ]
+
+    for case_name, tool_name, stub_body, expected_out in cases:
+        bin_dir = os.path.join(tmp, case_name)
+        os.makedirs(bin_dir, exist_ok=True)
+        write_exec(os.path.join(bin_dir, tool_name), stub_body)
+        os.symlink(awk_path, os.path.join(bin_dir, "awk"))
+        env = {"PATH": bin_dir, "HOME": tmp}
+        for func_label, func_src in all_funcs:
+            script = f"set -euo pipefail\n{func_src}\nholder=\"$(agent_mail_port_holder)\"\nprintf '%s' \"$holder\"\n"
+            proc = subprocess.run([bash_bin, "-c", script], env=env, capture_output=True, text=True)
+            assert proc.returncode == 0, f"{func_label} [{case_name}] failed rc={proc.returncode} stderr={proc.stderr!r}"
+            assert proc.stdout == expected_out, f"{func_label} [{case_name}] stdout mismatch:\n  got:  {proc.stdout!r}\n  want: {expected_out!r}"
+
+    # Verify _systemctl_user_ok fallback branch survives set -euo pipefail when systemctl fails
+    sys_dir = os.path.join(tmp, "systemctl_fail")
+    os.makedirs(sys_dir, exist_ok=True)
+    write_exec(os.path.join(sys_dir, "systemctl"), f"#!{bash_bin}\nexit 1\n")
+    sys_script = """
+set -euo pipefail
+_systemctl_user_ok=false
+XDG_RUNTIME_DIR="/nonexistent"
+if command -v systemctl >/dev/null 2>&1; then
+  if ! systemctl --user show-environment >/dev/null 2>&1; then
+    if [[ -n "${XDG_RUNTIME_DIR:-}" ]]; then
+      export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
+    fi
+    if systemctl --user show-environment >/dev/null 2>&1; then
+      _systemctl_user_ok=true
+    fi
+  else
+    _systemctl_user_ok=true
+  fi
+fi
+printf '%s' "$_systemctl_user_ok"
+"""
+    proc = subprocess.run([bash_bin, "-c", sys_script], env={"PATH": sys_dir, "HOME": tmp}, capture_output=True, text=True)
+    assert proc.returncode == 0 and proc.stdout == "false", f"systemctl fallback failed rc={proc.returncode} out={proc.stdout!r} err={proc.stderr!r}"
+
+print("PORT_HOLDER_PIPEFAIL_TESTS_PASS")
+PORT_HOLDER_TEST
+    then
+        say_pass "agent_mail_port_holder pipefail free-port and multi-line regressions"
+    else
+        say_fail "agent_mail_port_holder pipefail free-port and multi-line regressions"
+    fi
+else
+    echo '[SKIP] agent_mail_port_holder pipefail checks require Python 3'
+fi
+
+# ------------------------------------------------------------
 # Summary
 # ------------------------------------------------------------
 echo ""

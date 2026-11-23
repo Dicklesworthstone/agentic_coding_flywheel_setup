@@ -10,7 +10,7 @@
 ACFS_INTERNAL_CHECKSUMS_SCHEMA=1
 
 declare -gA ACFS_INTERNAL_CHECKSUMS=(
-  [install.sh]="c770c8305f71322f6fb9c89bb07c143c399f939704e9cd127c9461190d8502d7"
+  [install.sh]="a874c90d85f8e4d20087d2e0714e0a4c61eddcbb3f0d4466360b1056ea1800ca"
   [checksums.yaml]="c0102416f2914087cf7905beda02225957962e2d70eb547ef9339a584f37dbc9"
   [scripts/preflight.sh]="76e6768d16238317e67f7c0ba38abf5e7440b9d4f76bfd28b5c07b7f007d247e"
   [scripts/lib/security.sh]="2c3efe1b2dc83355710f0f59f0e182c3acbc022dabcb400e215d80c725c87f70"
@@ -55,7 +55,7 @@ declare -gA ACFS_INTERNAL_CHECKSUMS=(
   [scripts/templates/acfs-nightly-update.timer]="aa4fbad4fadabe0b61d202b4bf4311ce71c1132ad0ce8453099b593aa04988c3"
   [packages/onboard/onboard.sh]="1d237b4e26c49bd2a3fdbaad9356fc7d72a64f34acb2ca3c79fb518aa394d9f6"
   [VERSION]="4c912d677643bad1d13bf1f9e841532150697e820444b1244f15e3f5a4a09563"
-  [acfs.manifest.yaml]="070794f52e0c98063fee67d8c4868890e0ef55b81dbd5bd0d2bda2923a2bf8c2"
+  [acfs.manifest.yaml]="42cc288d592ee9c986367249f07133ad3b331e82f74b0a13c8cd42531f3f8602"
   [acfs/AGENTS.md]="a3cd0b401d0a55ed4bce4e89a3ed1855944bef57cc51801a7f863de5036da39b"
   [acfs/onboard/docs/ntm/command_palette.md]="32a60a206d8431c60f948016cc13b85baa6a9470f345e083783f5f4bf224bfee"
   [acfs/tmux/tmux.conf]="d5a8c0e6e8be67b34fb3fdddef0396cba9761318992107fe70c57c549b475b03"
@@ -115,7 +115,7 @@ declare -gA ACFS_INTERNAL_CHECKSUMS=(
   [packages/manifest/src/agent-readiness-audit.ts]="0dd8ee4291dbc3e0caf7ea870884ff97b09dd6e37f109a94f27fcfe1a9c06385"
   [packages/manifest/src/agent-profile-rehearsal.ts]="8858ed81e4a895d9dfd9be5b73648ee9a7b18f96930b4c47a8782bd4add0dfb4"
   [packages/manifest/src/binary-architecture.ts]="687bf55741faa7b3fd7c302ec828d49746f3694187e86ee2c8fb56215e5ecf68"
-  [scripts/generated/manifest_index.sh]="416193f2c977bd95da008fda5b2e272466156343509b0de136def43059c1251d"
+  [scripts/generated/manifest_index.sh]="e6aac91648fc6f17137214523228c6dc6ea31188fc03963ce99771842bb30869"
   [scripts/generated/doctor_checks.sh]="eeb89c291a8a9db42c7529aae0854c2207e4c0b840c06bf2f833c25eef89bcb3"
   [scripts/generated/install_all.sh]="8f2d0764822447b868373b1bd9e69ff6d964e74c4e8fce04c7e459448bd76995"
   [scripts/generated/install_base.sh]="1b4298256c799a509f14a7cc1c8757f1eb32fc8161eafacf2e893fd0305ada42"
@@ -129,7 +129,7 @@ declare -gA ACFS_INTERNAL_CHECKSUMS=(
   [scripts/generated/install_db.sh]="df69a8bada152baf98139efad9e4b20f0d7dcc4f7410ea8521ef16c5e5b464da"
   [scripts/generated/install_cloud.sh]="eca5d64f0e6bcdc546c70831b462e455d5de5a1d4368d1958b10c8e1a6c58db4"
   [scripts/generated/install_agents.sh]="470acef25b67531573e2e579d9adfe965f553fe22d37e1ec9dec3463d4af6df0"
-  [scripts/generated/install_stack.sh]="60bdb39209e8cbec17c7c5be097d390d25ea046ff7a7815b7812a0d2db391dbe"
+  [scripts/generated/install_stack.sh]="de7ac17df148f23c722f5bc7dcd3e42744b5adcb08c4a78d15b52efa74ec4ad9"
   [scripts/generated/install_acfs.sh]="4dcf07c126639499cf5b5cd9c3a2580ad343f675ce293c0157a800886b3d5925"
 )
 

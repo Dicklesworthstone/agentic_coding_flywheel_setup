@@ -1947,7 +1947,9 @@ modules:
               if [[ -n "${XDG_RUNTIME_DIR:-}" ]]; then
                 export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
               fi
-              systemctl --user show-environment >/dev/null 2>&1 && _systemctl_user_ok=true
+              if systemctl --user show-environment >/dev/null 2>&1; then
+                _systemctl_user_ok=true
+              fi
             else
               _systemctl_user_ok=true
             fi
@@ -2057,10 +2059,19 @@ modules:
           agent_mail_port_holder() {
             # Whatever is listening on 127.0.0.1:8765 right now (empty when nothing
             # is, or when no socket-inspection tool is available).
+            # Guard against lsof/ss returning exit 1 when nothing is listening and
+            # avoid early-closing pipes (SIGPIPE) under set -euo pipefail.
+            local raw=""
             if command -v ss >/dev/null 2>&1; then
-              ss -H -ltnp 'sport = :8765' 2>/dev/null | head -n 3
+              raw="$(ss -H -ltnp 'sport = :8765' 2>/dev/null || true)"
+              if [[ -n "$raw" ]]; then
+                printf '%s\n' "$raw" | awk 'NR <= 3'
+              fi
             elif command -v lsof >/dev/null 2>&1; then
-              lsof -nP -iTCP:8765 -sTCP:LISTEN 2>/dev/null | tail -n +2 | head -n 3
+              raw="$(lsof -nP -iTCP:8765 -sTCP:LISTEN 2>/dev/null || true)"
+              if [[ -n "$raw" ]]; then
+                printf '%s\n' "$raw" | awk 'NR > 1 && NR <= 4'
+              fi
             fi
           }
 
@@ -2069,7 +2080,7 @@ modules:
             if agent_mail_service_curl -fsS --max-time 5 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1; then
               return 0
             fi
-            holder="$(agent_mail_port_holder)"
+            holder="$(agent_mail_port_holder || true)"
             [[ -n "$holder" ]] || return 0
             echo "Agent Mail: 127.0.0.1:8765 is already held by another process that is not Agent Mail:" >&2
             printf '  %s\n' "$holder" >&2
@@ -2131,10 +2142,17 @@ modules:
           }
 
           agent_mail_port_holder() {
+            local raw=""
             if command -v ss >/dev/null 2>&1; then
-              ss -H -ltnp 'sport = :8765' 2>/dev/null | head -n 3
+              raw="$(ss -H -ltnp 'sport = :8765' 2>/dev/null || true)"
+              if [[ -n "$raw" ]]; then
+                printf '%s\n' "$raw" | awk 'NR <= 3'
+              fi
             elif command -v lsof >/dev/null 2>&1; then
-              lsof -nP -iTCP:8765 -sTCP:LISTEN 2>/dev/null | tail -n +2 | head -n 3
+              raw="$(lsof -nP -iTCP:8765 -sTCP:LISTEN 2>/dev/null || true)"
+              if [[ -n "$raw" ]]; then
+                printf '%s\n' "$raw" | awk 'NR > 1 && NR <= 4'
+              fi
             fi
           }
 
@@ -2144,7 +2162,7 @@ modules:
                 agent_mail_readiness_ready; do
             if [[ "$waited" -ge "$max_wait" ]]; then
               echo "Agent Mail service did not become ready on 127.0.0.1:8765 after ${max_wait}s" >&2
-              holder="$(agent_mail_port_holder)"
+              holder="$(agent_mail_port_holder || true)"
               if [[ -n "$holder" ]]; then
                 echo "Something else is listening on 127.0.0.1:8765, so Agent Mail cannot bind:" >&2
                 printf '  %s\n' "$holder" >&2

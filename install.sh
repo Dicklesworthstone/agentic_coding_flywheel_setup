@@ -10838,15 +10838,24 @@ UNIT_EOF
                         agent_mail_port_holder() {
                             # Whatever is listening on 127.0.0.1:8765 right now (empty when nothing
                             # is, or when no socket-inspection tool is available).
+                            # Guard against lsof/ss returning exit 1 when nothing is listening and
+                            # avoid early-closing pipes (SIGPIPE) under set -euo pipefail.
+                            local raw=""
                             if command -v ss >/dev/null 2>&1; then
-                                ss -H -ltnp "sport = :8765" 2>/dev/null | head -n 3
+                                raw="$(ss -H -ltnp "sport = :8765" 2>/dev/null || true)"
+                                if [[ -n "$raw" ]]; then
+                                    printf "%s\n" "$raw" | awk "NR <= 3"
+                                fi
                             elif command -v lsof >/dev/null 2>&1; then
-                                lsof -nP -iTCP:8765 -sTCP:LISTEN 2>/dev/null | tail -n +2 | head -n 3
+                                raw="$(lsof -nP -iTCP:8765 -sTCP:LISTEN 2>/dev/null || true)"
+                                if [[ -n "$raw" ]]; then
+                                    printf "%s\n" "$raw" | awk "NR > 1 && NR <= 4"
+                                fi
                             fi
                         }
                         am_port_holder=""
                         if ! agent_mail_service_curl -fsS --max-time 5 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1; then
-                            am_port_holder="$(agent_mail_port_holder)"
+                            am_port_holder="$(agent_mail_port_holder || true)"
                             if [[ -n "$am_port_holder" ]]; then
                                 echo "Agent Mail: 127.0.0.1:8765 is already held by another process that is not Agent Mail:" >&2
                                 printf "  %s\n" "$am_port_holder" >&2
@@ -10916,9 +10925,15 @@ UNIT_EOF
                                     log_error "MCP Agent Mail service did not become ready on http://127.0.0.1:8765 after ${am_max_wait}s"
                                     am_port_holder=""
                                     if command -v ss >/dev/null 2>&1; then
-                                        am_port_holder="$(ss -H -ltnp 'sport = :8765' 2>/dev/null | head -n 3)"
+                                        am_port_holder="$(ss -H -ltnp 'sport = :8765' 2>/dev/null || true)"
+                                        if [[ -n "$am_port_holder" ]]; then
+                                            am_port_holder="$(printf '%s\n' "$am_port_holder" | awk 'NR <= 3')"
+                                        fi
                                     elif command -v lsof >/dev/null 2>&1; then
-                                        am_port_holder="$(lsof -nP -iTCP:8765 -sTCP:LISTEN 2>/dev/null | tail -n +2 | head -n 3)"
+                                        am_port_holder="$(lsof -nP -iTCP:8765 -sTCP:LISTEN 2>/dev/null || true)"
+                                        if [[ -n "$am_port_holder" ]]; then
+                                            am_port_holder="$(printf '%s\n' "$am_port_holder" | awk 'NR > 1 && NR <= 4')"
+                                        fi
                                     fi
                                     if [[ -n "$am_port_holder" ]]; then
                                         log_error "Something else is listening on 127.0.0.1:8765, so Agent Mail cannot bind:"
