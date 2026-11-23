@@ -773,13 +773,26 @@ launch_agent_mail_fallback() {
     stop_agent_mail_fallback || return 1
   fi
 
-  nohup env \
-    RUST_LOG=info \
-    STORAGE_ROOT="$storage_root" \
-    DATABASE_URL="$db_url" \
-    HTTP_ALLOW_LOCALHOST_UNAUTHENTICATED=true \
-    "$am_bin" serve-http --no-tui --host 127.0.0.1 --port 8765 --path "$am_mcp_path" \
-    >>"$fallback_log_file" 2>&1 < /dev/null &
+  # Detach into its own session/process group when setsid is available
+  # so the verified bootstrap process-group quiescence check does not
+  # mistake the long-lived daemon for a stray installer descendant.
+  if command -v setsid >/dev/null 2>&1; then
+    setsid nohup env \
+      RUST_LOG=info \
+      STORAGE_ROOT="$storage_root" \
+      DATABASE_URL="$db_url" \
+      HTTP_ALLOW_LOCALHOST_UNAUTHENTICATED=true \
+      "$am_bin" serve-http --no-tui --host 127.0.0.1 --port 8765 --path "$am_mcp_path" \
+      >>"$fallback_log_file" 2>&1 < /dev/null &
+  else
+    nohup env \
+      RUST_LOG=info \
+      STORAGE_ROOT="$storage_root" \
+      DATABASE_URL="$db_url" \
+      HTTP_ALLOW_LOCALHOST_UNAUTHENTICATED=true \
+      "$am_bin" serve-http --no-tui --host 127.0.0.1 --port 8765 --path "$am_mcp_path" \
+      >>"$fallback_log_file" 2>&1 < /dev/null &
+  fi
   echo $! > "$fallback_pid_file"
 }
 
@@ -972,7 +985,17 @@ if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/d
   systemctl --user is-active --quiet agent-mail.service >/dev/null 2>&1 || exit 1
 fi
 agent_mail_service_curl -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null
-agent_mail_readiness_ready
+# Agent Mail caches readiness probes for a short TTL (6s) and refreshes
+# asynchronously on the first request after idle expiry (returning 503
+# database_probe_stale briefly). Retry briefly once liveness succeeds.
+verify_attempt=0
+until agent_mail_readiness_ready; do
+  verify_attempt=$((verify_attempt + 1))
+  if [[ "$verify_attempt" -ge 8 ]]; then
+    exit 1
+  fi
+  sleep 1
+done
 INSTALL_STACK_MCP_AGENT_MAIL
         then
             log_error "stack.mcp_agent_mail: verify failed: if [[ -d \"\$runtime_dir\" ]]; then"

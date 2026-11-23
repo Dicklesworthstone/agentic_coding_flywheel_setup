@@ -6,7 +6,7 @@
 # ============================================================
 # Data-only manifest index. Safe to source.
 
-ACFS_MANIFEST_SHA256="42cc288d592ee9c986367249f07133ad3b331e82f74b0a13c8cd42531f3f8602"
+ACFS_MANIFEST_SHA256="284fe6dd10b5cbb70430908f1ed2c6620db98691fa2e95e4aa823f6fb39d91bb"
 
 ACFS_MODULES_IN_ORDER=(
   "base.system"
@@ -1549,7 +1549,17 @@ if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/d
   systemctl --user is-active --quiet agent-mail.service >/dev/null 2>&1 || exit 1
 fi
 agent_mail_service_curl -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null
-agent_mail_readiness_ready'
+# Agent Mail caches readiness probes for a short TTL (6s) and refreshes
+# asynchronously on the first request after idle expiry (returning 503
+# database_probe_stale briefly). Retry briefly once liveness succeeds.
+verify_attempt=0
+until agent_mail_readiness_ready; do
+  verify_attempt=$((verify_attempt + 1))
+  if [[ "$verify_attempt" -ge 8 ]]; then
+    exit 1
+  fi
+  sleep 1
+done'
   ['stack.meta_skill.0']='ms --version'
   ['stack.automated_plan_reviser.0']='apr --help'
   ['stack.jeffreysprompts.0']='jfp --version'

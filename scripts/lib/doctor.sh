@@ -3893,15 +3893,19 @@ check_stack() {
 
         if [[ "$am_version_status" -eq 0 && -n "$curl_bin" ]] && "$curl_bin" -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1; then
             am_live=true
-            for am_readiness_url in \
-                http://127.0.0.1:8765/health/readiness \
-                http://127.0.0.1:8765/health
-            do
-                am_readiness_body="$("$curl_bin" -fsS --max-time 10 "$am_readiness_url" 2>/dev/null)" || continue
-                if printf '%s\n' "$am_readiness_body" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ready"([[:space:]]*[,}])'; then
-                    am_ready=true
-                    break
-                fi
+            local am_ready_attempt=0
+            for am_ready_attempt in 1 2 3 4; do
+                for am_readiness_url in \
+                    http://127.0.0.1:8765/health/readiness \
+                    http://127.0.0.1:8765/health
+                do
+                    am_readiness_body="$("$curl_bin" -fsS --max-time 10 "$am_readiness_url" 2>/dev/null)" || continue
+                    if printf '%s\n' "$am_readiness_body" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ready"([[:space:]]*[,}])'; then
+                        am_ready=true
+                        break 2
+                    fi
+                done
+                [[ "$am_ready_attempt" -lt 4 ]] && sleep 1
             done
         fi
 

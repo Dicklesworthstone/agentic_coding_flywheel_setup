@@ -1194,6 +1194,124 @@ else
 fi
 
 # ------------------------------------------------------------
+# Agent Mail setsid detach & transient readiness-refresh regressions
+# ------------------------------------------------------------
+echo ""
+echo "=== Test: Agent Mail fallback setsid detach & verify readiness lazy-refresh retry ==="
+if command -v python3 >/dev/null 2>&1; then
+    if python3 - "$REPO_ROOT/scripts/generated/install_stack.sh" "$REPO_ROOT/install.sh" "$REPO_ROOT/scripts/generated/manifest_index.sh" "$BASH" <<'SETSID_AND_RETRY_TEST'
+import subprocess
+import sys
+
+install_stack_path, install_sh_path, manifest_index_path, bash_bin = sys.argv[1:5]
+
+stack_src = open(install_stack_path, encoding="utf-8").read()
+install_src = open(install_sh_path, encoding="utf-8").read()
+index_src = open(manifest_index_path, encoding="utf-8").read()
+
+# 1. Both install_stack.sh and install.sh detach fallback daemon via setsid when available
+assert "setsid nohup env" in stack_src, "install_stack.sh missing setsid detach for Agent Mail fallback"
+assert "setsid nohup env" in install_src, "install.sh missing setsid detach for Agent Mail fallback"
+
+# 2. Live Linux setsid check: setsid nohup sleep detaches PGID while preserving $! == daemon PID
+if subprocess.run(["which", "setsid"], capture_output=True).returncode == 0:
+    proc = subprocess.run(
+        [
+            bash_bin,
+            "-c",
+            "set -euo pipefail; "
+            "setsid nohup sleep 5 >/dev/null 2>&1 </dev/null & "
+            "p=$!; sleep 0.1; "
+            "parent_pgid=$(ps -o pgid= -p $$ | tr -d ' '); "
+            "child_pgid=$(ps -o pgid= -p \"$p\" | tr -d ' '); "
+            "kill \"$p\" 2>/dev/null || true; "
+            "test -n \"$child_pgid\" && test \"$child_pgid\" != \"$parent_pgid\" && test \"$child_pgid\" = \"$p\"",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, f"setsid detach check failed rc={proc.returncode} err={proc.stderr!r}"
+
+# 3. Verify stack.mcp_agent_mail.1 retries past a transient 503 database_probe_stale to ready
+assert "verify_attempt" in index_src and "until agent_mail_readiness_ready" in index_src, (
+    "manifest_index.sh stack.mcp_agent_mail.1 missing readiness retry loop"
+)
+retry_probe_script = r"""
+set -euo pipefail
+source "$1"
+verify_cmd="${ACFS_MODULE_VERIFY_COMMAND[stack.mcp_agent_mail.1]}"
+# Override curl helper and systemctl after defining them via eval-wrapped test harness
+attempt_file="$(mktemp)"
+printf '0\n' > "$attempt_file"
+trap 'rm -f "$attempt_file"' EXIT
+patched_cmd="${verify_cmd/agent_mail_service_curl()/agent_mail_service_curl_orig()}"
+patched_cmd="
+systemctl() { return 1; }
+sleep() { :; }
+agent_mail_service_curl() {
+  local url=\"\${@: -1}\"
+  if [[ \"\$url\" == */health/liveness ]]; then
+    printf '{\"status\":\"alive\"}\n'
+    return 0
+  fi
+  local n
+  n=\$(cat \"$attempt_file\")
+  n=\$((n + 1))
+  printf '%s\n' \"\$n\" > \"$attempt_file\"
+  # First 2 calls simulate 503 database_probe_stale on both /health/readiness and /health
+  if [[ \"\$n\" -le 2 ]]; then
+    return 22
+  fi
+  printf '{\"status\":\"ready\"}\n'
+  return 0
+}
+$patched_cmd
+"
+bash -c "set -euo pipefail; $patched_cmd"
+calls="$(cat "$attempt_file")"
+test "$calls" -eq 3
+"""
+proc = subprocess.run([bash_bin, "-c", retry_probe_script, "_", manifest_index_path], capture_output=True, text=True)
+assert proc.returncode == 0, f"readiness retry probe failed rc={proc.returncode} out={proc.stdout!r} err={proc.stderr!r}"
+
+# 4. Also verify persistent failure still exits nonzero (fail-closed)
+fail_probe_script = r"""
+set -euo pipefail
+source "$1"
+verify_cmd="${ACFS_MODULE_VERIFY_COMMAND[stack.mcp_agent_mail.1]}"
+patched_cmd="${verify_cmd/agent_mail_service_curl()/agent_mail_service_curl_orig()}"
+patched_cmd="
+systemctl() { return 1; }
+sleep() { :; }
+agent_mail_service_curl() {
+  local url=\"\${@: -1}\"
+  if [[ \"\$url\" == */health/liveness ]]; then
+    printf '{\"status\":\"alive\"}\n'
+    return 0
+  fi
+  return 22
+}
+$patched_cmd
+"
+if bash -c "set -euo pipefail; $patched_cmd"; then
+  exit 1
+fi
+"""
+proc2 = subprocess.run([bash_bin, "-c", fail_probe_script, "_", manifest_index_path], capture_output=True, text=True)
+assert proc2.returncode == 0, f"readiness fail-closed probe failed rc={proc2.returncode} err={proc2.stderr!r}"
+
+print("SETSID_AND_RETRY_TESTS_PASS")
+SETSID_AND_RETRY_TEST
+    then
+        say_pass "Agent Mail fallback setsid detach and readiness lazy-refresh retry regressions"
+    else
+        say_fail "Agent Mail fallback setsid detach and readiness lazy-refresh retry regressions"
+    fi
+else
+    echo '[SKIP] Agent Mail setsid/retry checks require Python 3'
+fi
+
+# ------------------------------------------------------------
 # Summary
 # ------------------------------------------------------------
 echo ""

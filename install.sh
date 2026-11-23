@@ -10885,13 +10885,23 @@ UNIT_EOF
                                 if [[ -f "$fallback_pid_file" ]]; then
                                     stop_agent_mail_fallback || exit 1
                                 fi
-                                nohup env \
-                                    RUST_LOG=info \
-                                    STORAGE_ROOT="$storage_root" \
-                                    DATABASE_URL="$db_url" \
-                                    HTTP_ALLOW_LOCALHOST_UNAUTHENTICATED=true \
-                                    "$am_bin" serve-http --no-tui --host 127.0.0.1 --port 8765 --path "$am_mcp_path" \
-                                    >>"$fallback_log_file" 2>&1 < /dev/null &
+                                if command -v setsid >/dev/null 2>&1; then
+                                    setsid nohup env \
+                                        RUST_LOG=info \
+                                        STORAGE_ROOT="$storage_root" \
+                                        DATABASE_URL="$db_url" \
+                                        HTTP_ALLOW_LOCALHOST_UNAUTHENTICATED=true \
+                                        "$am_bin" serve-http --no-tui --host 127.0.0.1 --port 8765 --path "$am_mcp_path" \
+                                        >>"$fallback_log_file" 2>&1 < /dev/null &
+                                else
+                                    nohup env \
+                                        RUST_LOG=info \
+                                        STORAGE_ROOT="$storage_root" \
+                                        DATABASE_URL="$db_url" \
+                                        HTTP_ALLOW_LOCALHOST_UNAUTHENTICATED=true \
+                                        "$am_bin" serve-http --no-tui --host 127.0.0.1 --port 8765 --path "$am_mcp_path" \
+                                        >>"$fallback_log_file" 2>&1 < /dev/null &
+                                fi
                                 echo $! > "$fallback_pid_file"
                             fi
                         fi
