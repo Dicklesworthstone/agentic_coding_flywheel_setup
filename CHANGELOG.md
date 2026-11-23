@@ -8,11 +8,11 @@ Each version links to its GitHub Release (where one exists) or to the tag compar
 
 ---
 
-## [Unreleased](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/compare/v0.11.0...HEAD)
+## [Unreleased](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/compare/v0.11.1...HEAD)
 
-## [v0.11.0](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/compare/v0.10.0...v0.11.0) -- 2026-11-23
+## [v0.11.1](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/compare/v0.10.0...v0.11.1) -- 2026-11-23
 
-> Over 900 commits since v0.10.0. Source-only installer release, matching the existing ACFS publication venue (no uploaded binary assets).
+> Supersedes `v0.11.0` (which tagged `84d4ef23` before the release commit landed). Over 900 commits since v0.10.0. Source-only installer release, matching the existing ACFS publication venue (no uploaded binary assets).
 
 ### Installer, Scope & Reliability
 
