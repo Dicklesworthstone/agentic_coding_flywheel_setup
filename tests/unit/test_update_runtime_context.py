@@ -2756,9 +2756,12 @@ if update_bun; then printf 'UNEXPECTED-ACCEPT\n'; else printf 'PLATFORM-REFUSED\
             self.write_input(self.base / f"mode-{tool}", "hang\n")
         output = self.run_update(timeout="0.2", command="update_agents")
         self.assert_target_events(self.events())
-        self.assertIn("COUNTS=1,3,2", output)
+        # This minimal runtime snapshot omits agy_locked.py. Its independent
+        # launcher failure must be counted in addition to the native timeouts.
+        self.assertIn("COUNTS=1,3,3", output)
         log = (self.base / "update.log").read_text()
         self.assertIn("Failed: Antigravity CLI (exit code: 124)", log)
+        self.assertIn("Failed: Antigravity locked launchers (exit code: 1)", log)
         self.assertIn("Failed: oh-my-pi (omp) (exit code: 124)", log)
         for tool in ("agy-real", "omp"):
             self.assertFalse((self.home / f"{tool}-native-installed").exists())
@@ -2773,7 +2776,11 @@ if update_bun; then printf 'UNEXPECTED-ACCEPT\n'; else printf 'PLATFORM-REFUSED\
             self.write_native_tool(tool)
         output = self.run_update(command="update_agents")
         self.assert_target_events(self.events())
-        self.assertIn("COUNTS=3,3,0", output)
+        # All three native updaters succeeded, but the fixture has no launcher
+        # source. Native success cannot hide that incomplete Antigravity setup.
+        self.assertIn("COUNTS=3,3,1", output)
+        self.assertIn("Failed: Antigravity locked launchers (exit code: 1)",
+                      (self.base / "update.log").read_text())
         for tool in ("agy-real", "omp", "opencode"):
             self.assertEqual((self.home / f"{tool}-native-installed").stat().st_uid,
                              self.account.pw_uid)
@@ -2784,7 +2791,9 @@ if update_bun; then printf 'UNEXPECTED-ACCEPT\n'; else printf 'PLATFORM-REFUSED\
             self.write_native_tool(tool)
         output = self.run_update(dry_run=True, command="update_agents")
         self.assert_target_events(self.events())
-        self.assertIn("COUNTS=0,6,0", output)
+        self.assertIn("COUNTS=0,7,0", output)
+        self.assertIn("Running: update_install_agy_locked_launchers",
+                      (self.base / "update.log").read_text())
         self.assertEqual(set(e[-1] for e in self.events()), {"--version"})
         for tool in ("agy-real", "omp", "opencode"):
             self.assertFalse((self.home / f"{tool}-native-attempts").exists())

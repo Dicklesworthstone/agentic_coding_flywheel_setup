@@ -8898,12 +8898,15 @@ update_install_agy_locked_launchers() {
         update_run_in_target_context "" "$install_bin" -m 0755 "$source_file" "$target_bin/agy-locked" || return 1
         update_run_in_target_context "" "$install_bin" -m 0755 "$source_file" "$target_bin/agy" || return 1
         update_run_in_target_context "" "$install_bin" -m 0755 "$source_file" "$target_bin/gmi" || return 1
-        if update_run_in_target_context "" "$target_bin/agy-locked" --acfs-prime-settings; then
-            log_item "fix" "Antigravity locked settings" "model, permissions, and dcg hook primed"
+        if update_run_bounded_in_target_context "$target_bin/agy-locked" --acfs-prime-settings; then
+            log_item "info" "Antigravity locked settings" "model, permissions, and dcg hook primed"
         else
-            log_item "warn" "Antigravity locked settings" "will be primed on next agy launch"
+            log_item "warn" "Antigravity locked settings" "model, permissions, or dcg hook could not be primed"
+            return 1
         fi
-        log_item "fix" "agy locked launchers" "$target_bin/agy, $target_bin/agy-locked, $target_bin/gmi"
+        # The caller records one successful operation only after all launchers
+        # and their required settings have been established.
+        log_item "info" "agy locked launchers" "$target_bin/agy, $target_bin/agy-locked, $target_bin/gmi"
         return 0
     done
 
@@ -9281,7 +9284,7 @@ update_agents() {
         if capture_version_after "agy"; then
             update_say "       ${DIM}%s → %s${NC}\n" "${VERSION_BEFORE[agy]}" "${VERSION_AFTER[agy]}"
         fi
-        update_install_agy_locked_launchers || true
+        run_cmd "Antigravity locked launchers" update_install_agy_locked_launchers
     elif [[ "$FORCE_MODE" == "true" ]]; then
         capture_version_before "agy"
         if update_require_security; then
@@ -9289,13 +9292,12 @@ update_agents() {
             if capture_version_after "agy"; then
                 update_say "       ${DIM}%s → %s${NC}\n" "${VERSION_BEFORE[agy]}" "${VERSION_AFTER[agy]}"
             fi
-            update_install_agy_locked_launchers || true
+            run_cmd "Antigravity locked launchers" update_install_agy_locked_launchers
         else
             log_item "fail" "Antigravity CLI" "not installed and install unavailable (missing security.sh/checksums.yaml)"
         fi
     else
         log_item "skip" "Antigravity CLI" "not installed (use --force to install)"
-        update_install_agy_locked_launchers || true
     fi
 
     # oh-my-pi (omp) is a standalone self-updating native binary; prefer its

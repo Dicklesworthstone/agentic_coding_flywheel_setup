@@ -1631,6 +1631,103 @@ printf 'MINISIGN:%s\n' "$UPDATE_MINISIGN_STATUS"
         ])
         self.assertNotIn("launchers:agy", self.events())
 
+    def test_antigravity_launcher_failure_is_counted_and_other_selected_agents_continue(self):
+        self.selection("agents.antigravity", "agents.omp")
+        for force, present, first_event in (
+            ("false", "agy-real,omp", f"native:{self.bin}/agy-real update"),
+            ("true", "omp", "installer:antigravity"),
+        ):
+            with self.subTest(force=force):
+                self.events_file.write_text("")
+                result = self.shell(r'''
+update_install_agy_locked_launchers() { fixture_record "launchers:agy"; return 47; }
+update_agents
+printf 'COUNTS:%s:%s\n' "$SUCCESS_COUNT" "$FAIL_COUNT"
+''', TEST_PRESENT=present, TEST_FORCE=force)
+                self.assertIn("COUNTS:2:1", result.stdout)
+                self.assertEqual(self.events(), [
+                    first_event, "launchers:agy", f"native:{self.bin}/omp update",
+                ])
+                self.assertIn("Failed: Antigravity locked launchers (exit code: 47)",
+                              (self.base / "update.log").read_text())
+
+    def test_antigravity_launcher_failure_honors_abort_before_later_agents(self):
+        self.selection("agents.antigravity", "agents.omp")
+        self.shell(r'''
+update_install_agy_locked_launchers() { fixture_record "launchers:agy"; return 47; }
+update_agents
+''', TEST_PRESENT="agy-real,omp", TEST_ABORT="true", code=1)
+        self.assertEqual(self.events(), [
+            f"native:{self.bin}/agy-real update", "launchers:agy",
+        ])
+
+    def test_antigravity_missing_without_force_does_not_attempt_launcher_install(self):
+        self.selection("agents.antigravity")
+        result = self.shell(r'''
+update_install_agy_locked_launchers() { fixture_record "launchers:agy"; return 47; }
+update_agents
+printf 'COUNTS:%s:%s\n' "$SUCCESS_COUNT" "$FAIL_COUNT"
+''')
+        self.assertEqual(self.events(), [])
+        self.assertIn("COUNTS:0:0", result.stdout)
+
+    def test_antigravity_launcher_settings_failure_cannot_report_success(self):
+        self.write(self.repo, "scripts/lib/agy_locked.py",
+                   "#!/bin/bash\nexit 31\n", 0o755)
+        native = self.write(self.bin, "agy-real", "#!/bin/bash\nexit 0\n", 0o755)
+        native_before = native.read_bytes()
+        result = self.shell(r'''
+run_cmd "Antigravity locked launchers" update_install_agy_locked_launchers
+printf 'COUNTS:%s:%s\n' "$SUCCESS_COUNT" "$FAIL_COUNT"
+''', dispatch=False)
+        self.assertIn("COUNTS:0:1", result.stdout)
+        self.assertEqual(native.read_bytes(), native_before)
+        self.assertIn("Failed: Antigravity locked launchers", (self.base / "update.log").read_text())
+
+    def test_antigravity_launcher_settings_are_bounded_in_the_target_context(self):
+        self.write(self.repo, "scripts/lib/agy_locked.py", r'''#!/bin/bash
+printf '%s\n' "$HOME" > "$HOME/prime-started"
+sleep 30
+printf 'unbounded\n' > "$HOME/prime-finished"
+''', 0o755)
+        self.write(self.bin, "agy-real", "#!/bin/bash\nexit 0\n", 0o755)
+        result = self.shell(r'''
+UPDATE_CMD_TIMEOUT=0.2
+run_cmd "Antigravity locked launchers" update_install_agy_locked_launchers
+printf 'COUNTS:%s:%s\n' "$SUCCESS_COUNT" "$FAIL_COUNT"
+''', dispatch=False)
+        self.assertEqual((self.home / "prime-started").read_text(), str(self.home) + "\n")
+        self.assertFalse((self.home / "prime-finished").exists())
+        self.assertIn("COUNTS:0:1", result.stdout)
+
+    def test_antigravity_launcher_success_records_one_complete_operation(self):
+        self.write(self.repo, "scripts/lib/agy_locked.py", r'''#!/bin/bash
+[[ "$1" == --acfs-prime-settings ]] || exit 23
+printf '%s\n' "$HOME" > "$HOME/prime-target"
+''', 0o755)
+        native = self.write(self.bin, "agy-real", "#!/bin/bash\nexit 0\n", 0o755)
+        native_before = native.read_bytes()
+        result = self.shell(r'''
+run_cmd "Antigravity locked launchers" update_install_agy_locked_launchers
+printf 'COUNTS:%s:%s\n' "$SUCCESS_COUNT" "$FAIL_COUNT"
+''', dispatch=False)
+        self.assertIn("COUNTS:1:0", result.stdout)
+        self.assertEqual((self.home / "prime-target").read_text(), str(self.home) + "\n")
+        self.assertEqual(native.read_bytes(), native_before)
+        for name in ("agy", "agy-locked", "gmi"):
+            self.assertEqual((self.bin / name).read_bytes(),
+                             (self.repo / "scripts/lib/agy_locked.py").read_bytes())
+
+    def test_antigravity_dry_run_never_executes_launcher_refresh(self):
+        self.selection("agents.antigravity")
+        result = self.shell(r'''
+update_install_agy_locked_launchers() { fixture_record "launchers:agy"; return 47; }
+update_agents
+printf 'COUNTS:%s:%s\n' "$SUCCESS_COUNT" "$FAIL_COUNT"
+''', TEST_PRESENT="agy-real", TEST_DRY_RUN="true")
+        self.assertEqual(self.events(), [])
+        self.assertIn("COUNTS:0:0", result.stdout)
+
     def test_present_but_unselected_tools_and_shell_settings_remain_untouched(self):
         self.selection("acfs.update")
         self.source_assets()
