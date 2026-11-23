@@ -8,7 +8,25 @@ Each version links to its GitHub Release (where one exists) or to the tag compar
 
 ---
 
-## [Unreleased](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/compare/v0.11.1...HEAD)
+## [Unreleased](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/compare/v0.11.2...HEAD)
+
+## [v0.11.2](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/compare/v0.11.1...v0.11.2) -- 2026-11-23
+
+> Source-only installer release, matching the existing ACFS publication venue (no uploaded binary assets).
+
+### Verified Checksums & Ecosystem Alignment
+
+- **All 48/48 verified installer checksums match live upstream** -- authorized and pinned external `agents.grok` (`https://x.ai/cli/install.sh`) to audited SHA-256 `bdd23859b10bd0c1492ffc3443e8413b73a9b09966d48d4d3fa32121043956fc` ([#522](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/issues/522)), published refreshed `fsfs` checksum (`449f40792b91c8afe1dd12a1c1aa617714d11c9b28bf390bf27ccae3f8039728`), and regenerated manifest provenance and the 121-entry internal script integrity ledger with zero drift.
+- **Wave tool alignment verified live** -- confirmed all upstream installer pins and live release artifacts including `slb v0.6.2`, `sbh v0.8.0`, `dcg v0.17.0`, `bv v0.27.0`, `ee v0.19.0`, `fmd v0.8.0`, `mcp_agent_mail v0.3.41`, `xf v0.5.0`, `rano v0.2.2`, `brenner_bot v0.5.0`, `pi v0.9.0`, `s2p v0.3.5`, `fsfs v1.13.0`, `ms v0.4.0`, `cm v0.6.0`, `pt v2.4.2`, and `br v0.7.6`.
+
+### Installer, Doctor, Wizard, Plugin & Swarm Fixes
+
+- **Module scope & Bun repair (`0a08d96b`)** -- preserve resolved module scope across base package installation and recover stranded Bun global links only for owned, selected modules.
+- **Explicit doctor severity (`a48c81bb`)** -- fail missing explicitly requested stack/utility tools (`dcg`, `mcp_agent_mail`, `ru`, `br`, `ms`, `rch`, nightly timers) while preserving default/legacy warnings and excluded-module skips.
+- **Web wizard scope lowering (`78117c72`)** -- lower explicit defaults-only Safe and Vibe mode profiles to the mode-free Full selector so prior subset checkpoints cannot silently override reviewed default installs.
+- **Plugin dependency phase ordering (`4ff40495`)** -- order validated dependency closures by phase stably across selected branches.
+- **Antigravity launcher & settings accounting (`e39071cb`)** -- report locked-launcher and bounded settings-priming failures through `run_cmd`, honor `--abort-on-failure`, and avoid installing launchers for absent agents without `--force`.
+- **Swarm packet secret redaction (`40630f95`)** -- redact encoded provider tokens, PEM blocks, password-bearing URL userinfo, and Cookie/Set-Cookie values inside JSON and Markdown swarm packets.
 
 ## [v0.11.1](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/compare/v0.10.0...v0.11.1) -- 2026-11-23
 
