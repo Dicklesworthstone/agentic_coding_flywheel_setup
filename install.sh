@@ -135,7 +135,7 @@ export DEBCONF_NONINTERACTIVE_SEEN=true
 # ============================================================
 # Configuration
 # ============================================================
-ACFS_VERSION="0.11.2"
+ACFS_VERSION="0.11.3"
 
 # ------------------------------------------------------------
 # Best-effort failure tracking (record-and-continue abort paths).

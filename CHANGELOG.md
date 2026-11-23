@@ -8,7 +8,20 @@ Each version links to its GitHub Release (where one exists) or to the tag compar
 
 ---
 
-## [Unreleased](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/compare/v0.11.2...HEAD)
+## [Unreleased](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/compare/v0.11.3...HEAD)
+
+## [v0.11.3](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/compare/v0.11.2...v0.11.3) -- 2026-11-23
+
+> Source-only installer release, matching the existing ACFS publication venue (no uploaded binary assets).
+
+### Verified Checksums & Ecosystem Alignment
+
+- **All 48/48 verified installer checksums match live upstream** -- includes the validated `dcg` installer checksum update (`7d1cbbfa`, SHA-256 `d882e6fe510df5d2f9d29b93f108f23c4cb36931bfe9c2f01f5c047ca3e8a9dd`) delivering the `v0.17.1` stripped-container no-`python3` hook-merge fix, plus regenerated manifest provenance and the 121-entry internal script integrity ledger with zero drift.
+- **Ecosystem releases verified live** -- confirmed latest upstream installer pins and live release artifacts for `dcg v0.17.1`, `xf v0.5.1`, `fmd v0.8.1`, `bv v0.28.0`, and `ntm v1.39.0` (alongside `frankenpandas v0.7.1`, `frankenmermaid v0.6.1`, `mcp_agent_mail v0.3.41`, `asupersync v0.7.0`, `slb v0.6.2`, `sbh v0.8.0`, `ee v0.19.0`, `br v0.7.6`, `cm v0.6.0`, `pt v2.4.2`, `fsfs v1.13.0`, `pi v0.9.0`, `s2p v0.3.5`, `brenner_bot v0.5.0`, `rano v0.2.2`, and `ms v0.4.0`).
+
+### Dependencies & Web Maintenance
+
+- **Web workspace patch/minor dependency updates** -- updated `@tanstack/react-query`, `@tanstack/react-query-persist-client`, and `@tanstack/query-sync-storage-persister` from `5.108.3` to `5.108.4` (`query-core` GC timer cleanup) and `lucide-react` from `1.77.0` to `1.78.0`, with 0 vulnerabilities reported across 640 packages (`bun audit`).
 
 ## [v0.11.2](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/compare/v0.11.1...v0.11.2) -- 2026-11-23
 
