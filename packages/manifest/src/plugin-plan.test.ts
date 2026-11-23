@@ -221,3 +221,56 @@ test("refuses inherited installer entries", () =>
   invalid((config) => {
     config.installers = Object.create({ example: config.installers.example });
   }));
+
+test("the full selected closure respects phase order across independent roots", () => {
+  const config = input();
+  config.modules = [
+    { ...module("first", ["plugin.example.setup", "lang.first"]), phase: 6 },
+    { ...module("last", ["plugin.example.early", "lang.early"]), phase: 7 },
+    { ...module("setup"), phase: 5 },
+    { ...module("early"), phase: 4 },
+    module("unused"),
+  ];
+  config.firstPartyModules = [
+    { id: "lang.first", phase: 6, verify: ["first --version"] },
+    { id: "lang.early", phase: 2, verify: ["early --version"] },
+  ];
+  config.only = ["plugin.example.first", "plugin.example.last"];
+  const plan = buildPluginInstallPlan(config);
+  assert.deepEqual(
+    plan.actions.map((action) => action.id),
+    ["plugin.example.early", "plugin.example.setup", "plugin.example.first", "plugin.example.last"],
+  );
+  assert.deepEqual(
+    plan.prerequisites.map((entry) => entry.id),
+    ["lang.early", "lang.first"],
+  );
+  assert.deepEqual(plan.dependencyIds, [
+    "lang.early", "plugin.example.early", "plugin.example.setup", "lang.first",
+  ]);
+  assert.ok(!plan.actions.some((action) => action.id === "plugin.example.unused"));
+
+  config.modules = [...config.modules].reverse();
+  config.firstPartyModules = [...config.firstPartyModules].reverse();
+  config.only = [...config.only].reverse();
+  for (const entry of config.modules) entry.dependencies?.reverse();
+  assert.deepEqual(buildPluginInstallPlan(config), plan);
+});
+
+test("phase ordering preserves same-phase dependency order rather than sorting by ID", () => {
+  const config = input();
+  config.modules = [
+    module("a_app", ["plugin.example.z_library"]),
+    module("z_library", ["plugin.example.m_runtime"]),
+    module("m_runtime"),
+  ];
+  config.firstPartyModules = [];
+  config.only = ["plugin.example.a_app"];
+  const before = JSON.stringify(config);
+  const plan = buildPluginInstallPlan(config);
+  assert.deepEqual(
+    plan.actions.map((action) => action.id),
+    ["plugin.example.m_runtime", "plugin.example.z_library", "plugin.example.a_app"],
+  );
+  assert.equal(JSON.stringify(config), before);
+});

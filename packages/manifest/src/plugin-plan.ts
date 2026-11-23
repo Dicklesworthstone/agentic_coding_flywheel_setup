@@ -165,6 +165,12 @@ export function buildPluginInstallPlan(input: PluginPlanInput): PluginInstallPla
   };
   [...requested].sort(order).forEach(visit);
 
+  // DFS preserves dependency order, but separate roots can discover an earlier
+  // phase only after a later-phase branch has already been appended. Apply a
+  // stable phase sort to the complete closure: validated edges never point to
+  // a later phase, and equal-phase dependencies keep their topological order.
+  ordered.sort((a, b) => phase(a) - phase(b));
+
   const provenance = input.modules[0]!.plugin;
   if (
     !provenance ||
