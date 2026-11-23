@@ -1349,6 +1349,7 @@ _status_read_nightly_health() {
         { IFS= read -r first_line; IFS= read -r marker; } < "$helper" || continue
         [[ "$first_line" == '#!'* && "$marker" == '# ACFS_NIGHTLY_HEALTH_API=1' ]] || continue
         if output=$(
+            # shellcheck source=/dev/null
             source "$helper" || exit 1
             acfs_nightly_health_report "$_ACFS_HOME/nightly-update.state"
         ) && [[ "$output" == pass$'\t'* || "$output" == warn$'\t'* || "$output" == skip$'\t'* ]]; then

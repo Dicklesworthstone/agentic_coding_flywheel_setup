@@ -1511,10 +1511,12 @@ describe("verify_run_as execution context (#461)", () => {
         'run_as_root_shell() { calls+=("root:$1"); }\n' +
         'run_as_current_shell() { calls+=("current:$1"); }\n' +
         'acfs_verify_module_commands tools.fixture_tui\n' +
-        'printf "%s\\n" "${calls[@]}"\n',
+        'printf "count=%d\n%s\n" "${#calls[@]}" "${calls[0]}"\n',
     });
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toBe("target_user:fixture-tui --version\n");
+    expect(result.stdout).toMatch(/^count=1\ntarget_user:/);
+    expect(result.stdout).toContain("fixture-tui\\ --version");
+    expect(result.stdout).not.toMatch(/^(root|current):/m);
   });
 
   test("a target-user verify makes the module depend on users.ubuntu", () => {

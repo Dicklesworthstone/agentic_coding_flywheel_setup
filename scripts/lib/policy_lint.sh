@@ -313,7 +313,7 @@ policy_lint_check_toolchain_line() {
     lower="$(policy_lint_lower "$line")"
     [[ "$lower" == *"npm"* || "$lower" == *"yarn"* || "$lower" == *"pnpm"* ]] || return 0
 
-    if [[ "$lower" =~ (^|[^a-z0-9_-])(npm|yarn|pnpm)[[:space:]]+(install|i|run|test|build|exec|ci|add) ||
+    if [[ "$lower" =~ (^|[^a-z0-9_-])(npm|yarn|pnpm)[[:space:]]+(install|i|run|test|build|exec|ci|add)($|[^a-z0-9_-]) ||
           "$lower" =~ (^|[^a-z0-9_-])(yarn|pnpm)[[:space:]]*$ ]]; then
         policy_lint_has_allow_directive "toolchain.bun_only" "$line" && return 0
         if [[ "$lower" == *"bun install -g"* ||

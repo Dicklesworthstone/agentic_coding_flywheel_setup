@@ -8689,7 +8689,7 @@ update_nvm_and_node() {
         fi
         # Resolve user aliases without freezing nvm-managed rolling LTS aliases
         # to the exact release recorded before the remote version lookup.
-        declare -A seen=()
+        declare -gA seen=()
         for ((depth=0; depth<32; depth++)); do
             if [[ -z "$selector" || "$selector" == -* || "$selector" == *[[:space:]]* ]]; then
                 printf "Invalid nvm default alias.\n" >&2

@@ -122,6 +122,26 @@ Run `npm install` and then `yarn test`.
     fi
     assert_policy_present "$output" "toolchain.bun_only" || return 1
 
+    local prose_fixture="$ARTIFACT_DIR/package-manager/prose.md"
+    local prose_output="$ARTIFACT_DIR/package-manager-prose.json"
+    write_fixture "$prose_fixture" '# Node
+
+Migrate global packages when its Node and npm executables are available.
+'
+    bash "$POLICY_LINT_SH" --json --file "$prose_fixture" > "$prose_output" || return 1
+    jq -e '.status == "pass" and .summary.violations == 0' "$prose_output" >/dev/null || return 1
+
+    local exec_fixture="$ARTIFACT_DIR/package-manager/exec.md"
+    local exec_output="$ARTIFACT_DIR/package-manager-exec.json"
+    write_fixture "$exec_fixture" '# Web
+
+Run `npm exec tsc`.
+'
+    if bash "$POLICY_LINT_SH" --json --file "$exec_fixture" > "$exec_output"; then
+        return 1
+    fi
+    assert_policy_present "$exec_output" "toolchain.bun_only" || return 1
+
     pass "detects_js_package_manager_drift"
 }
 

@@ -2649,7 +2649,7 @@ state_verify_phase_recovery() (
     reasons_decl="$(declare -p ACFS_PLAN_REASON 2>/dev/null || true)"
     if [[ "$reasons_decl" != declare\ -A* ]]; then
         unset ACFS_PLAN_REASON
-        declare -A ACFS_PLAN_REASON=()
+        declare -gA ACFS_PLAN_REASON=()
     fi
     # Optional modules explicitly requested by an earlier run remain required,
     # even though the current repair requests a different module.
