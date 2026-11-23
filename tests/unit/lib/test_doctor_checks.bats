@@ -849,6 +849,112 @@ EOF
         all(.[] | select(.status == "fail"); .details | contains("verification failed"))' >/dev/null
 }
 
+@test "doctor selection: missing explicitly requested stack tools fail and queue only their repairs" {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["stack.dcg","stack.mcp_agent_mail","stack.ru","stack.beads_rust","stack.meta_skill","stack.rch"],"requested_modules":["stack.dcg","stack.mcp_agent_mail","stack.ru","stack.beads_rust","stack.meta_skill","stack.rch"]}}'
+    FIX_MODE=true
+    DOCTOR_FIX_SCOPED=true
+
+    check_stack
+
+    [ "$FAIL_COUNT:$WARN_COUNT:$PASS_COUNT" = 6:0:0 ]
+    [ "${#DOCTOR_FIX_PENDING_IDS[@]}" -eq 6 ]
+    doctor_selection_json | jq -e '
+        ([.[] | select(.status == "fail") | .id] | sort) ==
+            ["stack.beads_rust","stack.dcg","stack.mcp_agent_mail","stack.meta_skill","stack.rch","stack.ru"] and
+        all(.[] | select(.status == "fail"); .details == "not installed" and (.fix | contains("--only"))) and
+        all(.[] | select(.status == "skip"); .fix == null)' >/dev/null
+    [ ! -e "$DOCTOR_TEST_PROBES" ]
+}
+
+@test "doctor selection: default-selected missing stack tools keep their warning policy" {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["stack.dcg","stack.mcp_agent_mail","stack.ru","stack.beads_rust","stack.meta_skill","stack.rch"]}}'
+    FIX_MODE=true
+    DOCTOR_FIX_SCOPED=true
+
+    check_stack
+
+    [ "$FAIL_COUNT:$WARN_COUNT:$PASS_COUNT" = 0:6:0 ]
+    [ "${#DOCTOR_FIX_PENDING_IDS[@]}" -eq 6 ]
+    doctor_selection_json | jq -e '
+        ([.[] | select(.status == "warn") | .id] | sort) ==
+            ["stack.beads_rust","stack.dcg","stack.mcp_agent_mail","stack.meta_skill","stack.rch","stack.ru"] and
+        all(.[] | select(.status == "warn"); .details == "not installed" and .fix != null)' >/dev/null
+    [ ! -e "$DOCTOR_TEST_PROBES" ]
+}
+
+@test "doctor selection: legacy missing bespoke stack tools keep their warning policy" {
+    doctor_selection_fixture '{}'
+    # The fixture has no tools; do not query the runner's systemd user session.
+    _acfs_doctor_system_binary_path() { return 1; }
+
+    check_stack
+
+    doctor_selection_json | jq -e '
+        [.[] | select(.id == "stack.beads_rust" or .id == "stack.dcg" or
+            .id == "stack.mcp_agent_mail" or .id == "stack.meta_skill" or
+            .id == "stack.rch" or .id == "stack.ru")] |
+        length == 6 and all(.status == "warn" and .details == "not installed")' >/dev/null
+    [ ! -e "$DOCTOR_TEST_PROBES" ]
+}
+
+@test "doctor selection: leftover install artifacts and unavailable releases cannot hide requested missing tools" {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["stack.mcp_agent_mail","stack.meta_skill","stack.rch"],"requested_modules":["stack.mcp_agent_mail","stack.meta_skill","stack.rch"]}}'
+    mkdir -p "$TARGET_HOME/mcp_agent_mail" "$TARGET_HOME/.config/rch"
+    printf '%s\n' '[workers]' > "$TARGET_HOME/.config/rch/config.toml"
+    uname() {
+        case "${1:-}" in
+            -m) printf '%s\n' mips64 ;;
+            -s) printf '%s\n' Linux ;;
+            *) return 1 ;;
+        esac
+    }
+    FIX_MODE=true
+    DOCTOR_FIX_SCOPED=true
+
+    check_stack
+
+    [ "$FAIL_COUNT:$WARN_COUNT:$PASS_COUNT" = 3:0:0 ]
+    [ "${#DOCTOR_FIX_PENDING_IDS[@]}" -eq 3 ]
+    doctor_selection_json | jq -e '
+        ([.[] | select(.status == "fail") | .id] | sort) ==
+            ["stack.mcp_agent_mail","stack.meta_skill","stack.rch"] and
+        any(.[]; .id == "stack.mcp_agent_mail" and .details == "install directory present but am CLI is missing") and
+        any(.[]; .id == "stack.rch" and .details == "config exists but binary not in PATH") and
+        any(.[]; .id == "stack.meta_skill" and (.fix | contains("no checksum-anchored installer for mips64-Linux")))' >/dev/null
+    [ ! -e "$DOCTOR_TEST_PROBES" ]
+}
+
+@test "doctor selection: explicitly requested missing nightly timer fails despite a stale skipped marker" {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["acfs.nightly"],"requested_modules":["acfs.nightly"]},"skipped_tools":["acfs.nightly"]}'
+    FIX_MODE=true
+    DOCTOR_FIX_SCOPED=true
+
+    report_nightly_timer_status missing
+
+    [ "$FAIL_COUNT:$WARN_COUNT:$SKIP_COUNT" = 1:0:0 ]
+    [ "${DOCTOR_FIX_PENDING_IDS[*]}" = acfs.nightly ]
+    doctor_selection_json | jq -e '
+        length == 1 and .[0].id == "acfs.nightly" and .[0].status == "fail" and
+        (.[0].fix | contains("--only acfs.nightly"))' >/dev/null
+}
+
+@test "doctor selection: excluded bespoke stack tools remain unprobed and never queue repairs" {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["lang.bun"]}}'
+    local binary=""
+    for binary in dcg am ru br ms rch; do
+        doctor_selection_binary "$binary"
+    done
+    FIX_MODE=true
+    DOCTOR_FIX_SCOPED=true
+
+    check_stack
+
+    [ "$FAIL_COUNT:$WARN_COUNT:$PASS_COUNT" = 0:0:0 ]
+    [ "${#DOCTOR_FIX_PENDING_IDS[@]}" -eq 0 ]
+    doctor_selection_json | jq -e 'length > 0 and all(.status == "skip" and .fix == null)' >/dev/null
+    [ ! -e "$DOCTOR_TEST_PROBES" ]
+}
+
 @test "doctor selection: inconclusive launcher probes never queue or dispatch reinstallations" {
     doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["agents.codex","lang.bun"]}}'
     doctor_selection_binary bun

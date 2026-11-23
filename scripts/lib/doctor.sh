@@ -3567,8 +3567,8 @@ check_agent_path_conflicts() {
 check_dcg_hook_status() {
     doctor_skip_unselected_check "stack.dcg" "DCG" && return 0
     if ! doctor_binary_exists "dcg"; then
-        check "stack.dcg" "DCG" "warn" "not installed" \
-            "Re-run: acfs update --stack-only && dcg install --force"
+        check "stack.dcg" "DCG" "$(doctor_optional_failure_status stack.dcg warn)" "not installed" \
+            "Re-run: $(fix_for_module stack.dcg)"
         return
     fi
 
@@ -4004,10 +4004,12 @@ check_stack() {
                 "binary exists at ~/mcp_agent_mail/am but symlink missing from ~/.local/bin/am" \
                 "Fix: ln -sf ~/mcp_agent_mail/am ~/.local/bin/am (or run: acfs doctor --fix)"
         else
-            check "stack.mcp_agent_mail" "$am_label" "warn" "install directory present but am CLI is missing" "$am_install_fix"
+            check "stack.mcp_agent_mail" "$am_label" "$(doctor_optional_failure_status stack.mcp_agent_mail warn)" \
+                "install directory present but am CLI is missing" "$am_install_fix"
         fi
     else
-        check "stack.mcp_agent_mail" "$am_label" "warn" "not installed" "$am_install_fix"
+        check "stack.mcp_agent_mail" "$am_label" "$(doctor_optional_failure_status stack.mcp_agent_mail warn)" \
+            "not installed" "$am_install_fix"
     fi
 
     # Check RU (Repo Updater)
@@ -4016,7 +4018,7 @@ check_stack() {
     elif ru_bin="$(doctor_binary_path ru 2>/dev/null || true)" && [[ -n "$ru_bin" ]]; then
         check_optional_command "stack.ru" "RU" "$ru_bin" "Re-run: $(fix_for_module stack.ru)"
     else
-        check "stack.ru" "RU (Repo Updater)" "warn" "not installed" \
+        check "stack.ru" "RU (Repo Updater)" "$(doctor_optional_failure_status stack.ru warn)" "not installed" \
             "Re-run: $(fix_for_module stack.ru)"
     fi
 
@@ -4031,7 +4033,7 @@ check_stack() {
         check_optional_command "stack.beads_rust" "beads_rust" "$_br_bin" \
             "Re-run: $(fix_for_module stack.beads_rust)"
     else
-        check "stack.beads_rust" "beads_rust (br)" "warn" "not installed" \
+        check "stack.beads_rust" "beads_rust (br)" "$(doctor_optional_failure_status stack.beads_rust warn)" "not installed" \
             "Re-run: $(fix_for_module stack.beads_rust)"
     fi
 
@@ -4055,13 +4057,13 @@ check_stack() {
         # the pinned installer fails closed when the current release lacks it.
         case "${_ms_arch}-${_ms_os}" in
             x86_64-Linux|aarch64-Linux|arm64-Linux|x86_64-Darwin|arm64-Darwin|aarch64-Darwin)
-                check "stack.meta_skill" "meta_skill (ms)" "warn" "not installed" \
-                    "$_ms_fix"
+                check "stack.meta_skill" "meta_skill (ms)" "$(doctor_optional_failure_status stack.meta_skill warn)" \
+                    "not installed" "$_ms_fix"
                 ;;
             *)
                 _ms_fix="meta_skill has no checksum-anchored installer for ${_ms_arch}-${_ms_os}; wait for a verified release artifact"
-                check "stack.meta_skill" "meta_skill (ms)" "warn" "not installed" \
-                    "$_ms_fix"
+                check "stack.meta_skill" "meta_skill (ms)" "$(doctor_optional_failure_status stack.meta_skill warn)" \
+                    "not installed" "$_ms_fix"
                 ;;
         esac
     fi
@@ -4084,10 +4086,10 @@ check_stack() {
     else
         # Also check if RCH config exists (indicates partial/previous install)
         if [[ -f "$runtime_home/.config/rch/config.toml" ]] || [[ -d "$runtime_home/remote_compilation_helper" ]]; then
-            check "stack.rch" "rch (Remote Compilation Helper)" "warn" "config exists but binary not in PATH" \
-                "Add rch to PATH or re-run: $(fix_for_module stack.rch)"
+            check "stack.rch" "rch (Remote Compilation Helper)" "$(doctor_optional_failure_status stack.rch warn)" \
+                "config exists but binary not in PATH" "Add rch to PATH or re-run: $(fix_for_module stack.rch)"
         else
-            check "stack.rch" "rch (Remote Compilation Helper)" "warn" "not installed" \
+            check "stack.rch" "rch (Remote Compilation Helper)" "$(doctor_optional_failure_status stack.rch warn)" "not installed" \
                 "Re-run: $(fix_for_module stack.rch)"
         fi
     fi
@@ -4188,7 +4190,7 @@ report_nightly_timer_status() {
                 check "acfs.nightly" "Nightly auto-update timer" "skip" \
                     "not installed (skipped during installation)"
             else
-                check "acfs.nightly" "Nightly auto-update timer" "warn" \
+                check "acfs.nightly" "Nightly auto-update timer" "$(doctor_optional_failure_status acfs.nightly warn)" \
                     "not installed (optional)" \
                     "$(fix_for_module "acfs.nightly")"
             fi
