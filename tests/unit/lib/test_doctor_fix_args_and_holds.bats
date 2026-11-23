@@ -114,7 +114,7 @@ run_isolated_doctor_repair() {
     SCRIPT_DIR="$PROJECT_ROOT/scripts/lib"
     unset _ACFS_AUTOFIX_SOURCED _ACFS_DOCTOR_FIX_LOADED
     # shellcheck source=../../../scripts/lib/doctor_fix.sh
-    source "$PROJECT_ROOT/scripts/lib/doctor_fix.sh"
+    source "${DOCTOR_FIX_TEST_LIBRARY:-$PROJECT_ROOT/scripts/lib/doctor_fix.sh}"
     doctor_fix_runtime_home() { printf '%s\n' "$HOME"; }
     doctor_fix_runtime_acfs_home() { printf '%s\n' "$HOME/.acfs"; }
     doctor_fix_runtime_user() { id -un; }
@@ -188,6 +188,34 @@ run_isolated_doctor_repair() {
                 check_skipped path.optional "Optional PATH" "intentionally skipped"
                 check shell.fixture_missing "Unrelated warning" warn "missing shell prerequisite" "manual shell inspection"
             }
+            ;;
+        failed-command|optional-failed-command)
+            check_shell() { :; }
+            mkdir -p "$HOME/.local/bin"
+            local binary=""
+            for binary in codex claude dcg am ru; do
+                printf '#!/bin/bash\nprintf "fixture version 1.0\\n"\nexit 42\n' > "$HOME/.local/bin/$binary"
+                chmod +x "$HOME/.local/bin/$binary"
+            done
+            DOCTOR_VERSION_TIMEOUT=5
+            # Never touch a real service/hook or invoke an installer if the
+            # regression routes a known broken launcher to the wrong fixer.
+            fix_dcg_hook() { printf 'dcg hook\n' >> "$HOME/unrelated-repair-ran"; }
+            fix_mcp_agent_mail() { printf 'agent mail service\n' >> "$HOME/unrelated-repair-ran"; }
+            doctor_fix_run_verified_installer() { printf 'verified installer\n' >> "$HOME/unrelated-repair-ran"; return 91; }
+            doctor_fix_run_verified_installer_with_env() { printf 'verified installer\n' >> "$HOME/unrelated-repair-ran"; return 91; }
+            if [[ "$scenario" == optional-failed-command ]]; then
+                check_stack() { check_optional_command stack.ru RU ru "repair-ru --keep-config"; }
+            else
+                check_agents() {
+                    check_command agent.codex Codex codex "repair-codex --keep-config"
+                    check_command agent.claude Claude claude "repair-claude --keep-config"
+                }
+                check_stack() {
+                    check_command stack.dcg DCG dcg "repair-dcg --keep-config"
+                    check_command stack.mcp_agent_mail "Agent Mail" am "repair-am --keep-config"
+                }
+            fi
             ;;
     esac
     main doctor --fix "$@" > "$HOME/result.out" 2> "$HOME/result.err"
@@ -291,6 +319,94 @@ run_isolated_doctor_repair() {
     assert_success
     run grep -F 'Failed:  1' "$HOME/result.err"
     assert_success
+}
+
+@test "broken installed commands remain manual repairs with original hints and no mutations" {
+    run run_isolated_doctor_repair failed-command --yes --json
+    assert_failure 1
+    run jq -e '.summary.fail == 4 and .fixes.applied == 0 and .fixes.failed == 0 and .fixes.manual == 4 and .fixes.planned == 0 and .fixes.finalized' "$HOME/result.out"
+    assert_success
+    run jq -e '.checks | any(.id == "agent.codex" and .status == "fail" and .fix == "repair-codex --keep-config")' "$HOME/result.out"
+    assert_success
+    run grep -F 'repair-codex --keep-config' "$HOME/result.err"
+    assert_success
+    run grep -F 'already installed' "$HOME/result.err"
+    assert_failure
+    [[ ! -e "$HOME/unrelated-repair-ran" ]]
+    [[ ! -s "$HOME/.acfs/autofix/changes.jsonl" ]]
+    run cat "$HOME/.local/bin/codex"
+    assert_output $'#!/bin/bash\nprintf "fixture version 1.0\\n"\nexit 42'
+}
+
+@test "broken command repair previews report manual work without claiming no fixes needed" {
+    run run_isolated_doctor_repair failed-command --yes --dry-run --json
+    assert_failure 1
+    run jq -e '.fixes.dry_run and .fixes.manual == 4 and .fixes.applied == 0 and .fixes.planned == 0' "$HOME/result.out"
+    assert_success
+    run grep -F 'Manual fixes needed:' "$HOME/result.err"
+    assert_success
+    run grep -F 'No fixes needed.' "$HOME/result.err"
+    assert_failure
+    [[ ! -e "$HOME/unrelated-repair-ran" ]]
+    [[ ! -e "$HOME/.acfs/autofix/changes.jsonl" ]]
+}
+
+@test "broken command manual repairs respect exact selection" {
+    run run_isolated_doctor_repair failed-command --yes --only agent.codex --json
+    assert_failure 1
+    run jq -e '.summary.fail == 4 and .fixes.manual == 1 and .fixes.filtered == 3 and .fixes.applied == 0 and .fixes.selection_valid and .fixes.finalized' "$HOME/result.out"
+    assert_success
+    run grep -F 'repair-codex --keep-config' "$HOME/result.err"
+    assert_success
+    run grep -F 'repair-claude --keep-config' "$HOME/result.err"
+    assert_failure
+    [[ ! -e "$HOME/unrelated-repair-ran" ]]
+}
+
+@test "invalid selection cannot report broken command manual repairs as dispatched" {
+    run run_isolated_doctor_repair failed-command --yes --only agent.codex,agent.typo --json
+    assert_failure 2
+    run jq -e '.summary.fail == 4 and .fixes.manual == 0 and .fixes.applied == 0 and .fixes.selection_valid == false' "$HOME/result.out"
+    assert_success
+    [[ ! -e "$HOME/unrelated-repair-ran" ]]
+}
+
+@test "optional broken command manual repairs retain warning opt-in" {
+    run run_isolated_doctor_repair optional-failed-command --only stack.ru --json
+    assert_success
+    run jq -e '.summary.warn == 1 and .fixes.manual == 0 and .fixes.applied == 0 and .fixes.warning_fixes_enabled == false' "$HOME/result.out"
+    assert_success
+    [[ ! -e "$HOME/unrelated-repair-ran" ]]
+
+    run run_isolated_doctor_repair optional-failed-command --yes --only stack.ru --json
+    assert_success
+    run jq -e '.summary.warn == 1 and .fixes.manual == 1 and .fixes.applied == 0 and .fixes.failed == 0 and .fixes.warning_fixes_enabled' "$HOME/result.out"
+    assert_success
+    run grep -F 'repair-ru --keep-config' "$HOME/result.err"
+    assert_success
+    [[ ! -e "$HOME/unrelated-repair-ran" ]]
+}
+
+@test "broken command repair signals reset for the next invocation" {
+    SCRIPT_DIR="$PROJECT_ROOT/scripts/lib"
+    unset _ACFS_AUTOFIX_SOURCED _ACFS_DOCTOR_FIX_LOADED
+    # shellcheck source=../../../scripts/lib/doctor_fix.sh
+    source "${DOCTOR_FIX_TEST_LIBRARY:-$PROJECT_ROOT/scripts/lib/doctor_fix.sh}"
+    doctor_fix_runtime_user() { id -un; }
+    DOCTOR_FIX_LOG="$HOME/doctor-fix.log"
+    run_doctor_fix --dry-run >/dev/null
+    doctor_fix_mark_failed_command agent.codex
+    dispatch_fix agent.codex fail "repair-codex" >/dev/null
+    [[ "$FIX_MANUAL" -eq 1 ]]
+
+    run_doctor_fix --dry-run >/dev/null
+    # An ordinary missing-command finding must reach its installer again;
+    # the prior run's known-broken policy cannot turn it into manual work.
+    fix_stack_install() { printf '%s\n' "$1" > "$HOME/missing-command-dispatched"; }
+    dispatch_fix agent.codex fail "install-codex" >/dev/null
+    [[ "$FIX_MANUAL" -eq 0 ]]
+    run cat "$HOME/missing-command-dispatched"
+    assert_output agent.codex
 }
 
 @test "scoped JSON repair changes only the exact check and retains unrelated failures" {

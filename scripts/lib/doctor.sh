@@ -2610,6 +2610,9 @@ doctor_report_version_failure() {
                 "version/help verification unavailable (a positive timeout and system bash/head/cat/sleep are required)" "" false
             ;;
         *)
+            if [[ "${FIX_MODE:-false}" == true ]] && declare -F doctor_fix_mark_failed_command >/dev/null; then
+                doctor_fix_mark_failed_command "$id"
+            fi
             check "$id" "$label" "$failure_status" \
                 "installed but version/help verification failed (exit $probe_status)" "$fix"
             ;;

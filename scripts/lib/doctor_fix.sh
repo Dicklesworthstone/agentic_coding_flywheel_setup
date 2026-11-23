@@ -604,6 +604,12 @@ declare -g FIX_FILTERED=0
 # results before dispatching any scoped repairs.
 declare -ga DOCTOR_FIX_ONLY_SELECTORS=()
 
+# A failed launch is different from a missing command or a broken service/hook.
+# Keep that diagnostic fact until scoped repairs are dispatched. Existing
+# installers cannot transactionally replace a package and restore its full
+# prior state, so these findings require an explicit manual repair instead.
+declare -ga DOCTOR_FIX_FAILED_COMMAND_IDS=()
+
 # Arrays to track fixes for summary
 declare -ga FIXES_APPLIED=()
 declare -ga FIXES_DRY_RUN=()
@@ -1712,6 +1718,18 @@ doctor_fix_validate_selection() {
     return "$validation_status"
 }
 
+# Called by Doctor only after an installed command failed its bounded probe.
+# This records policy, not a repair: selection and warning opt-in still apply
+# later in dispatch_fix, after the complete diagnostic pass is validated.
+doctor_fix_mark_failed_command() {
+    local check_id="$1"
+    local existing_id=""
+    for existing_id in "${DOCTOR_FIX_FAILED_COMMAND_IDS[@]}"; do
+        [[ "$existing_id" == "$check_id" ]] && return 0
+    done
+    DOCTOR_FIX_FAILED_COMMAND_IDS+=("$check_id")
+}
+
 # Dispatch a fix based on check ID
 # Returns 0 if fix was applied or not needed, 1 if fix failed
 dispatch_fix() {
@@ -1744,6 +1762,15 @@ dispatch_fix() {
         doctor_fix_log INFO "$check_id: warning left as-is (run '$warning_retry' to apply warning-level fixes)"
         return 0
     fi
+
+    local failed_command_id=""
+    for failed_command_id in "${DOCTOR_FIX_FAILED_COMMAND_IDS[@]}"; do
+        [[ "$failed_command_id" == "$check_id" ]] || continue
+        FIXES_MANUAL+=("$check_id|Installed command failed verification; inspect or reinstall it before retrying Doctor|$fix_hint")
+        FIX_MANUAL=$((FIX_MANUAL + 1))
+        doctor_fix_log WARN "$check_id: installed command failed verification; manual repair required"
+        return 0
+    done
 
     case "$check_id" in
         # PATH fixes
@@ -3405,6 +3432,8 @@ print_fix_summary() {
                 echo "      File: $file"
                 echo "      Command: $cmd"
             done
+        elif [[ ${#FIXES_MANUAL[@]} -gt 0 ]]; then
+            echo "  No automatic fixes available for the reported manual repairs."
         elif [[ ${#DOCTOR_FIX_ONLY_SELECTORS[@]} -gt 0 ]]; then
             echo "  No automatic fixes planned for this selection."
         else
@@ -3438,7 +3467,9 @@ print_fix_summary() {
         for fix in "${FIXES_MANUAL[@]}"; do
             IFS='|' read -r id desc cmd <<< "$fix"
             echo "    [$id] $desc"
-            echo "      Run: $cmd"
+            if [[ -n "$cmd" ]]; then
+                echo "      Run: $cmd"
+            fi
         done
     fi
 
@@ -3569,6 +3600,7 @@ run_doctor_fix() {
     FIXES_DRY_RUN=()
     FIXES_MANUAL=()
     FIXES_PROMPTED=()
+    DOCTOR_FIX_FAILED_COMMAND_IDS=()
 
     # Under --json stdout must remain a single JSON document.
     local banner_fd=1
