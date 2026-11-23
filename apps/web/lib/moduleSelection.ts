@@ -583,14 +583,15 @@ export function buildInstallSelectorArgs(input: ModuleSelectionInput = {}): stri
       (normalized.profile.onlyModules.length > 0 || normalized.profile.onlyPhases.length > 0),
   );
 
-  // Full is an explicit expansion choice. Omitting it would let the installer
-  // reuse a saved subset even though the wizard displays the default full plan.
-  // Explicit roots still take precedence over this mode-free profile.
-  const explicitFullDefaults = normalized.profile?.id === "full" &&
+  // Every explicit defaults-only profile must opt out of saved subset reuse.
+  // Safe/Vibe are CLI mode aliases, but command builders supply the accepted
+  // mode separately. Lower their module scope to Full without overriding it.
+  // Explicit roots still take precedence over any defaults-only profile.
+  const explicitProfileDefaults = normalized.profile !== undefined &&
     normalized.onlyModules.length === 0 && normalized.onlyPhases.length === 0;
 
-  if (normalized.profile && (profileHasSelectors || explicitFullDefaults)) {
-    args.push("--profile", quoteInstallArg(normalized.profile.id));
+  if (normalized.profile && (profileHasSelectors || explicitProfileDefaults)) {
+    args.push("--profile", quoteInstallArg(profileHasSelectors ? normalized.profile.id : "full"));
   } else {
     for (const moduleId of normalized.onlyModules) {
       args.push("--only", quoteInstallArg(moduleId));

@@ -192,6 +192,25 @@ test("lowering does not mutate or alias input selections", () => {
   assert.equal(JSON.stringify(selection), before);
 });
 
+for (const profileId of ["safe", "vibe"] as const) {
+  for (const mode of ["safe", "vibe"] as const) {
+    test("imported " + profileId + " defaults stay explicit in " + mode + " mode", () => {
+      const config = { ...inputs({ profile: profileId }), mode };
+      const exported = buildTeamProfile(config);
+      const imported = buildTeamProfileImportDiff(JSON.parse(serializeTeamProfileJson(exported)));
+      assert.equal(imported.ok, true, JSON.stringify(imported.findings));
+      assert.equal(exported.install.profile, profileId);
+      assert.equal(exported.install.mode, mode);
+      const command = imported.installerCommand.command!;
+      const selection = commandSelection(command);
+      assert.equal(selection.profile, "full", "An imported full plan must bypass saved subset defaults");
+      assert.deepEqual(ids(selection), exported.install.modulePlan.included);
+      assert.ok(command.includes("--mode " + mode + " "), "The reviewed mode must remain authoritative");
+      assert.ok(!command.includes('--profile "' + profileId + '"'), "A CLI mode alias would override the reviewed mode");
+    });
+  }
+}
+
 test("phase aliases, mode-only profiles, pinned refs and target usernames survive profile transfer", () => {
   const selection: ModuleSelectionInput = {
     profile: "safe",

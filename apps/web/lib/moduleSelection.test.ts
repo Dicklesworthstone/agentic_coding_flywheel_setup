@@ -347,6 +347,21 @@ describe("buildInstallSelectorArgs", () => {
     ).toEqual(["--only", '"agents.codex"']);
   });
 
+  for (const profile of ["safe", "vibe"] as const) {
+    test("makes " + profile + " defaults explicit without emitting a CLI mode override", () => {
+      expect(buildInstallSelectorArgs({ profile })).toEqual(["--profile", '"full"']);
+      expect(buildInstallSelectorArgs({ profile, skipModules: ["network.tailscale"] })).toEqual([
+        "--profile", '"full"', "--skip", '"network.tailscale"',
+      ]);
+      expect(buildInstallSelectorArgs({ profile, onlyModules: ["agents.codex"] })).toEqual([
+        "--only", '"agents.codex"',
+      ]);
+      expect(buildInstallSelectorArgs({ profile, onlyPhases: ["agents"] })).toEqual([
+        "--only-phase", '"7"',
+      ]);
+    });
+  }
+
   test("serializes profile-lowered cloud-only selectors", () => {
     expect(buildInstallSelectorArgs({ profile: "cloud-only" })).toEqual([
       "--profile",

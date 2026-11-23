@@ -248,9 +248,15 @@ acfs_apply_saved_installation_selection
 }
 
 /** Resolve the emitted arguments with the real installer, without installing anything. */
-function runInstallerSelection(input: ModuleSelectionInput, probe: string, savedInstallation = false) {
+function runInstallerSelection(
+  input: ModuleSelectionInput,
+  probe: string,
+  savedInstallation = false,
+  mode?: "safe" | "vibe",
+) {
   const args = buildInstallSelectorArgs(input);
   const savedSetup = savedInstallation ? savedInstallationSetup() : "";
+  const modeSetup = mode === undefined ? "" : "MODE=" + mode + "\nACFS_MODE_EXPLICIT=true";
   return spawnSync(
     "/bin/bash",
     [
@@ -259,6 +265,7 @@ function runInstallerSelection(input: ModuleSelectionInput, probe: string, saved
 source scripts/generated/manifest_index.sh
 # Like install.sh, load the generated library and its helpers before resolving.
 source scripts/generated/install_agents.sh
+${modeSetup}
 profile=""
 set -- ${args.join(" ")}
 while (( $# )); do
@@ -310,6 +317,14 @@ const savedInstallationCases: Array<{ name: string; selection: ModuleSelectionIn
   { name: "Full", selection: { profile: "full" } },
   { name: "Full with exclusions", selection: { profile: "full", skipTags: ["maintenance"] } },
   { name: "Full with explicit roots", selection: { profile: "full", onlyModules: ["lang.go"] } },
+  { name: "Safe", selection: { profile: "safe" } },
+  { name: "Safe with exclusions", selection: { profile: "safe", skipTags: ["maintenance"] } },
+  { name: "Safe with explicit roots", selection: { profile: "safe", onlyModules: ["lang.go"] } },
+  { name: "Safe with phase roots", selection: { profile: "safe", onlyPhases: ["agents"] } },
+  { name: "Vibe", selection: { profile: "vibe" } },
+  { name: "Vibe with exclusions", selection: { profile: "vibe", skipTags: ["maintenance"] } },
+  { name: "Vibe with explicit roots", selection: { profile: "vibe", onlyModules: ["lang.go"] } },
+  { name: "Vibe with phase roots", selection: { profile: "vibe", onlyPhases: ["agents"] } },
 ];
 for (const { name, selection } of savedInstallationCases) {
   test(`${name} replaces saved defaults with exactly the displayed module plan`, () => {
@@ -318,6 +333,16 @@ for (const { name, selection } of savedInstallationCases) {
       resolveModuleSelection(selection).included.map((entry) => entry.id),
     );
   });
+}
+
+for (const profile of ["safe", "vibe"] as const) {
+  for (const mode of ["safe", "vibe"] as const) {
+    test(profile + " module scope preserves the separately accepted " + mode + " mode", () => {
+      const result = runInstallerSelection({ profile }, 'printf "%s\\n" "$MODE"', true, mode);
+      assert.equal(result.status, 0, result.error?.message ?? result.stderr);
+      assert.equal(result.stdout.trim(), mode);
+    });
+  }
 }
 
 for (const profile of ["agents-only", "cloud-only", "stack-only"] as const) {
