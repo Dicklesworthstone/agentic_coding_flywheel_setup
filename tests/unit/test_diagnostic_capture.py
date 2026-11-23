@@ -495,6 +495,128 @@ class DiagnosticCaptureTests(unittest.TestCase):
                 self.assertEqual(result.stdout, "native failure\n")
                 self.assertEqual(result.stderr, "")
 
+    def doctor_live_check_code(self, check_name: str, body: str, *, missing_timeout=False, args=()):
+        """Exercise live verdicts and repair collection, with inert provider binaries."""
+        source = ROOT / "scripts/lib/doctor.sh"
+        provider = self.root / "provider fixture"
+        provider.write_text("#!/bin/bash\n" + body + "\n")
+        provider.chmod(0o755)
+        auth = self.root / ".config/vercel"
+        auth.mkdir(parents=True, exist_ok=True)
+        (auth / "auth.json").write_text('{"token":"fixture-saved-token"}')
+        self.cache_marker = self.root / "cached-verdicts"
+        helpers = ["json_escape", "check", "check_with_timeout_status",
+                   "normalize_config_value", "is_placeholder_secret", "has_usable_secret",
+                   "json_file_has_usable_jq_value", "json_file_has_usable_string_key"]
+        return "\n".join([
+            "set -euo pipefail",
+            doctor_definitions("run_with_timeout"),
+            *(definition(source, name) for name in helpers),
+            definition(source, check_name),
+            'doctor_skip_unselected_check() { return 1; }',
+            "doctor_binary_path() { printf '%s\\n' " + shlex.quote(str(provider)) + "; }",
+            "doctor_runtime_home() { printf '%s\\n' " + shlex.quote(str(self.root)) + "; }",
+            "doctor_runtime_path() { printf '%s\\n' /usr/bin:/bin; }",
+            'get_cached_result() { return 1; }',
+            "cache_result() { printf '%s|%s\\n' \"$1\" \"$2\" >> " +
+                shlex.quote(str(self.cache_marker)) + "; }",
+            'default_auth_config_files() { :; }',
+            'get_configured_secret() { return 1; }',
+            'JSON_MODE=true; HAS_GUM=false; FIX_MODE=true; DOCTOR_FIX_SCOPED=true',
+            'PASS_COUNT=0; WARN_COUNT=0; FAIL_COUNT=0; SKIP_COUNT=0',
+            'JSON_CHECKS=(); DOCTOR_FIX_OBSERVED_IDS=(); DOCTOR_FIX_PENDING_IDS=()',
+            'DOCTOR_FIX_PENDING_STATUSES=(); DOCTOR_FIX_PENDING_HINTS=()',
+            'TARGET_USER=fixture; VAULT_ADDR=https://vault.invalid; DEEP_CHECK_TIMEOUT=0.5',
+            '_acfs_doctor_system_binary_path() { return 1; }' if missing_timeout else ':',
+            shlex.join([check_name, *args]),
+            'printf \'[%s]\\n\' "$(IFS=,; echo "${JSON_CHECKS[*]}")"',
+            'printf \'%s\\n\' "${#DOCTOR_FIX_PENDING_IDS[@]}"',
+        ])
+
+    def run_doctor_live_check(self, check_name: str, body: str, *, timeout=9, missing_timeout=False, args=()):
+        code = self.doctor_live_check_code(check_name, body, missing_timeout=missing_timeout, args=args)
+        result = subprocess.run(["/bin/bash", "-c", code], capture_output=True,
+                                text=True, timeout=timeout)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        lines = result.stdout.splitlines()
+        self.assertEqual(len(lines), 2, result.stdout)
+        return json.loads(lines[0]), int(lines[1])
+
+    def test_interrupted_live_cloud_auth_never_passes_caches_or_queues_repair(self):
+        for check_name in ("check_gh_auth", "check_wrangler_auth", "check_vercel_auth"):
+            for status in (124, 137, 143):
+                with self.subTest(check=check_name, status=status):
+                    checks, repairs = self.run_doctor_live_check(
+                        check_name, f"printf 'unverified provider output\\n'; exit {status}")
+                    self.assertEqual(len(checks), 1, checks)
+                    self.assertEqual(checks[0]["status"], "timeout", checks)
+                    self.assertEqual(repairs, 0)
+                    self.assertFalse(self.cache_marker.exists(), "Interrupted auth was cached")
+
+    def test_vercel_live_probe_kills_grandchild_without_using_saved_auth_as_pass(self):
+        fixture, stop, identity = self.wrapper_with_resistant_grandchild()
+        try:
+            checks, repairs = self.run_doctor_live_check(
+                "check_vercel_auth", "exec /usr/bin/python3 " + shlex.quote(str(fixture)))
+            self.assertEqual(checks[0]["status"], "timeout", checks)
+            self.assertEqual(repairs, 0)
+            self.assertFalse(self.cache_marker.exists())
+            self.assert_child_stopped(identity)
+        finally:
+            stop.touch()
+
+    def test_live_cloud_auth_success_still_caches_verified_identity(self):
+        for check_name in ("check_gh_auth", "check_wrangler_auth", "check_vercel_auth"):
+            with self.subTest(check=check_name):
+                checks, repairs = self.run_doctor_live_check(check_name, "printf 'fixture-user\\n'")
+                self.assertEqual(checks[0]["status"], "pass", checks)
+                self.assertEqual(repairs, 0)
+                self.assertIn("fixture-user" if check_name != "check_wrangler_auth" else "authenticated",
+                              self.cache_marker.read_text())
+
+    def test_optional_operational_timeout_cannot_be_hidden_by_a_version_fallback(self):
+        marker = self.root / "version-fallback-ran"
+        for status in (124, 137, 143):
+            with self.subTest(status=status):
+                checks, repairs = self.run_doctor_live_check(
+                    "deep_check_optional_probe", "exit 0", args=(
+                        "deep.stack.rch", "RCH readiness", "rch", "Review RCH configuration",
+                        f"exit {status}", "printf 'version' > " + shlex.quote(str(marker))))
+                self.assertEqual(checks[0]["status"], "timeout", checks)
+                self.assertEqual(repairs, 0)
+                self.assertFalse(marker.exists())
+                self.assertFalse(self.cache_marker.exists())
+
+    def test_optional_unsupported_probe_still_uses_a_successful_fallback(self):
+        checks, repairs = self.run_doctor_live_check(
+            "deep_check_optional_probe", "exit 0", args=(
+                "deep.stack.rch", "RCH readiness", "rch", "Review RCH configuration",
+                "exit 2", "printf 'fixture-ready\\n'"))
+        self.assertEqual(checks[0]["status"], "pass", checks)
+        self.assertEqual(repairs, 0)
+        self.assertIn("fixture-ready", self.cache_marker.read_text())
+
+    def test_doctor_version_missing_timeout_never_executes_unbounded_command(self):
+        marker = self.root / "unbounded-version"
+        code = doctor_definitions("doctor_version_probe") + \
+            "\ndoctor_version_probe '' 1 discard /usr/bin/touch " + shlex.quote(str(marker))
+        result = subprocess.run(["/bin/bash", "-c", code], capture_output=True,
+                                text=True, timeout=3)
+        self.assertEqual(result.stdout, "")
+        self.assertFalse(marker.exists(), "Version probe ran without a timeout guardian")
+
+    def test_doctor_rejects_deadlines_that_disable_or_reinterpret_timeout(self):
+        for kind in ("version", "deep"):
+            for index, deadline in enumerate(("0", "0.000", "-1", "--help", "NaN", "1h")):
+                with self.subTest(kind=kind, deadline=deadline):
+                    marker = self.root / f"doctor-invalid-deadline-{kind}-{index}"
+                    code = self.bounded_probe(kind, ["/usr/bin/touch", str(marker)],
+                                              deadline=shlex.quote(deadline))
+                    result = subprocess.run(["/bin/bash", "-c", code], capture_output=True,
+                                            text=True, timeout=3)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertFalse(marker.exists())
+
     def onboard_auth_check(self, service: str, body: str, *, stdin=""):
         home = self.root / "onboard-home"
         home.mkdir(exist_ok=True)

@@ -1490,16 +1490,17 @@ _acfs_doctor_run_bounded() {
     local bash_bin="" sleep_bin=""
     shift 2
 
-    if [[ -z "$timeout_bin" ]]; then
-        "$@" </dev/null
-        return $?
-    fi
+    # A missing timeout or a zero/option-like duration must never turn a
+    # diagnostic into an unbounded command. Version checks reach this helper
+    # even on partially installed hosts where coreutils may be unavailable.
+    [[ -n "$timeout_bin" ]] || return 127
+    [[ "$timeout_secs" =~ ^[0-9]+([.][0-9]+)?$ && "$timeout_secs" =~ [1-9] ]] || return 2
     bash_bin="$(_acfs_doctor_system_binary_path bash 2>/dev/null)" || return 127
     sleep_bin="$(_acfs_doctor_system_binary_path sleep 2>/dev/null)" || return 127
 
     # -p prevents BASH_ENV and imported shell functions from changing the
     # guardian. The command's argv remains data, and it keeps its environment.
-    "$timeout_bin" -k 5 "$timeout_secs" "$bash_bin" --noprofile --norc -p -c '
+    "$timeout_bin" -k 5 -- "$timeout_secs" "$bash_bin" --noprofile --norc -p -c '
         set +e
         set +m
         guardian_sleep=$1
@@ -4802,8 +4803,8 @@ deep_check_optional_probe() {
     fi
 
     for cmd in "$@"; do
-        output=$(run_with_timeout "$DEEP_CHECK_TIMEOUT" "$label via $cmd" "$env_bin" HOME="$runtime_home" PATH="$runtime_path" "$bash_bin" -o pipefail -c "$cmd")
-        status=$?
+        status=0
+        output=$(run_with_timeout "$DEEP_CHECK_TIMEOUT" "$label via $cmd" "$env_bin" HOME="$runtime_home" PATH="$runtime_path" "$bash_bin" -o pipefail -c "$cmd") || status=$?
 
         if ((status == 0)); then
             detail="$(printf '%s\n' "$output" | head -n 1)"
@@ -4817,10 +4818,13 @@ deep_check_optional_probe() {
             return 0
         fi
 
-        if ((status == 124)); then
+        if ((status == 124 || status == 137 || status == 143)); then
             last_timeout=true
-            detail="timed out running: $cmd"
-            continue
+            detail="verification exceeded its deadline or was terminated: $cmd"
+            # A fallback version command cannot establish readiness after an
+            # operational probe stalled. Keep the result inconclusive and do
+            # not cache a pass or authorize a repair from incomplete evidence.
+            break
         fi
 
         if [[ -z "$detail" ]]; then
@@ -5884,12 +5888,11 @@ check_gh_auth() {
     fi
 
     # Run with timeout
-    local result
-    result=$(run_with_timeout "$DEEP_CHECK_TIMEOUT" "GitHub CLI auth" "$gh_bin" auth status 2>&1)
-    local status=$?
+    local result status=0
+    result=$(run_with_timeout "$DEEP_CHECK_TIMEOUT" "GitHub CLI auth" "$gh_bin" auth status 2>&1) || status=$?
 
-    if ((status == 124)); then
-        check_with_timeout_status "deep.cloud.gh_auth" "GitHub CLI auth" "timeout" "check timed out" "Check network, then: gh auth login"
+    if ((status == 124 || status == 137 || status == 143)); then
+        check_with_timeout_status "deep.cloud.gh_auth" "GitHub CLI auth" "timeout" "verification exceeded its deadline or was terminated" "Check network, then: gh auth login"
     elif ((status == 0)); then
         # Get the authenticated user for more detail
         local gh_user
@@ -5931,12 +5934,11 @@ check_wrangler_auth() {
     fi
 
     # Run with timeout
-    local result
-    result=$(run_with_timeout "$DEEP_CHECK_TIMEOUT" "Wrangler auth" "$wrangler_bin" whoami 2>&1)
-    local status=$?
+    local result status=0
+    result=$(run_with_timeout "$DEEP_CHECK_TIMEOUT" "Wrangler auth" "$wrangler_bin" whoami 2>&1) || status=$?
 
-    if ((status == 124)); then
-        check_with_timeout_status "deep.cloud.wrangler_auth" "Wrangler (Cloudflare) auth" "timeout" "check timed out" "Check network, then set CLOUDFLARE_API_TOKEN or run wrangler login from a browser-capable session"
+    if ((status == 124 || status == 137 || status == 143)); then
+        check_with_timeout_status "deep.cloud.wrangler_auth" "Wrangler (Cloudflare) auth" "timeout" "verification exceeded its deadline or was terminated" "Check network, then set CLOUDFLARE_API_TOKEN or run wrangler login from a browser-capable session"
     elif ((status == 0)); then
         # Extract account info from wrangler whoami output
         local wrangler_account="authenticated"
@@ -6034,12 +6036,11 @@ check_vercel_auth() {
     fi
 
     # Run with timeout
-    local result
-    result=$(run_with_timeout "$DEEP_CHECK_TIMEOUT" "Vercel auth" "$vercel_bin" whoami 2>&1)
-    local status=$?
+    local result status=0
+    result=$(run_with_timeout "$DEEP_CHECK_TIMEOUT" "Vercel auth" "$vercel_bin" whoami 2>&1) || status=$?
 
-    if ((status == 124)); then
-        check_with_timeout_status "deep.cloud.vercel_auth" "Vercel CLI auth" "timeout" "check timed out" "Check network, then run vercel login or set VERCEL_TOKEN"
+    if ((status == 124 || status == 137 || status == 143)); then
+        check_with_timeout_status "deep.cloud.vercel_auth" "Vercel CLI auth" "timeout" "verification exceeded its deadline or was terminated" "Check network, then run vercel login or set VERCEL_TOKEN"
     elif ((status == 0)); then
         local vercel_user
         vercel_user=$(echo "$result" | head -n1 | tr -d ' ')
