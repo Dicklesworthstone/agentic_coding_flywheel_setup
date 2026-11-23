@@ -683,7 +683,7 @@ def run_tool(executable, arguments, env):
 
 def tool_environment():
     env = {k: v for k, v in os.environ.items() if not k.startswith(("GIT_", "BEADS_", "BR_"))
-           and k not in ("GH_REPO", "GH_DEBUG", "GH_FORCE_TTY", "GH_HTTP_UNIX_SOCKET")}
+           and k not in ("BD_DB", "BD_DATABASE", "GH_REPO", "GH_DEBUG", "GH_FORCE_TTY", "GH_HTTP_UNIX_SOCKET")}
     env.update({"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull,
                 "GIT_CONFIG_SYSTEM": os.devnull, "GIT_TERMINAL_PROMPT": "0", "GIT_NO_REPLACE_OBJECTS": "1",
                 "GH_HOST": "github.com", "GH_PROMPT_DISABLED": "1"})

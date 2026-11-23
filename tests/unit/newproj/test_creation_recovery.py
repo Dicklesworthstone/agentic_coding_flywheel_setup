@@ -5,6 +5,7 @@ Progress tests use helper fixtures. CLI tests run Git only in private local
 repositories; no installer, provider or network is used. Temporary fixtures
 are retained for inspection. Run with Python's unittest runner or directly.
 """
+import json
 import os
 from pathlib import Path
 import resource
@@ -18,6 +19,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = ROOT / "scripts/lib/newproj_screens/screen_progress.sh"
 BASH = shutil.which("bash")
+BEADS_SELECTORS = ("BEADS_DIR", "BEADS_DB", "BD_DB", "BD_DATABASE", "BEADS_JSONL", "BEADS_CACHE_DIR")
 
 HARNESS = r'''
 set -euo pipefail
@@ -772,6 +774,116 @@ for name in ("config.yaml", "metadata.json", "issues.jsonl", "README.md", "beads
                                            ".beads/issues.jsonl", ".beads/README.md"})
         self.assertEqual((self.project / ".beads/user-notes.txt").read_text(), "fixture\n")
         self.assertEqual((self.project / ".beads/beads.db").read_text(), "fixture\n")
+
+    def install_beads_scope_fixture(self):
+        """Exercise the real launch boundary with a directory-aware br fixture."""
+        br = self.bin / "br"
+        br.write_text("#!" + sys.executable + "\n" + r'''
+import json, os, sys
+from pathlib import Path
+assert sys.argv[1:] in (["init"], ["ready", "--json"]), sys.argv
+keys = ("BEADS_DIR", "BEADS_DB", "BD_DB", "BD_DATABASE", "BEADS_JSONL", "BEADS_CACHE_DIR")
+Path(os.environ["ACFS_TEST_BEADS_SCOPE"]).write_text(json.dumps({
+    "cwd": str(Path.cwd()), "selectors": {key: os.environ.get(key) for key in keys},
+    "actor": os.environ.get("BR_ACTOR"), "output": os.environ.get("BR_OUTPUT_FORMAT"),
+}))
+if os.environ.get("ACFS_TEST_BEADS_FAIL") == "1":
+    sys.exit(23)
+# Like real br init, BEADS_DIR controls the new workspace independently of cwd.
+directory = Path(os.environ.get("BEADS_DIR", ".beads"))
+if sys.argv[1] == "ready":
+    assert (directory / "beads.db").is_file()
+    print("[]")
+    sys.exit(0)
+directory.mkdir()
+(directory / ".gitignore").write_text("*.db\n")
+(directory / "metadata.json").write_text('{"database":"beads.db","jsonl_export":"issues.jsonl"}\n')
+(directory / "config.yaml").write_text("# new project\n")
+(directory / "issues.jsonl").write_text("")
+(directory / "beads.db").write_text("controlled tracker\n")
+''')
+        br.chmod(0o700)
+        scope = self.root / "beads-scope.json"
+        self.env.update(ACFS_TEST_BEADS_SCOPE=str(scope), BR_ACTOR="fixture-agent", BR_OUTPUT_FORMAT="json")
+        return scope
+
+    def test_beads_selectors_cannot_redirect_cli_initialization(self):
+        scope = self.install_beads_scope_fixture()
+        for selector in BEADS_SELECTORS:
+            with self.subTest(selector=selector):
+                self.project = self.root / ("cli-" + selector)
+                outside = self.root / ("outside-" + selector)
+                outside.mkdir()
+                (outside / "user-work.txt").write_text("existing tracker work\n")
+                before = self.repository_bytes(outside)
+                environment = self.env | {selector: str(outside / "redirected")}
+                result = self.create("--no-agents", "--no-claude", with_beads=True, environment=environment)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertTrue((self.project / ".beads/beads.db").is_file())
+                self.assertEqual(self.repository_bytes(outside), before)
+                observation = json.loads(scope.read_text())
+                self.assertEqual(observation["cwd"], str(self.project))
+                self.assertEqual(observation["selectors"], dict.fromkeys(BEADS_SELECTORS))
+                self.assertEqual((observation["actor"], observation["output"]), ("fixture-agent", "json"))
+                self.assertIn(".beads/issues.jsonl", self.committed())
+                self.assertNotIn(".beads/beads.db", self.committed())
+
+    def test_tui_beads_initialization_preserves_callers_environment_on_success_and_failure(self):
+        scope = self.install_beads_scope_fixture()
+        outside = self.root / "retained-tracker"
+        outside.mkdir()
+        (outside / "user-work.txt").write_text("existing tracker work\n")
+        before = self.repository_bytes(outside)
+        for fail in ("0", "1"):
+            with self.subTest(failure=fail):
+                self.project = self.root / ("tui-" + fail)
+                self.project.mkdir()
+                overrides = {key: str(outside / key) for key in BEADS_SELECTORS}
+                environment = self.env | overrides | {
+                    "ERROR_SCRIPT": str(ROOT / "scripts/lib/newproj_errors.sh"),
+                    "PROJECT": str(self.project), "OUTSIDE": str(outside), "ACFS_TEST_BEADS_FAIL": fail,
+                }
+                result = subprocess.run([BASH, "-c", r'''
+set -eu
+source "$ERROR_SCRIPT"
+status=0
+try_br_init "$PROJECT" || status=$?
+if [[ "$ACFS_TEST_BEADS_FAIL" == 1 ]]; then [[ $status == 2 ]]; else [[ $status == 0 ]]; fi
+for key in BEADS_DIR BEADS_DB BD_DB BD_DATABASE BEADS_JSONL BEADS_CACHE_DIR; do
+    [[ "${!key}" == "$OUTSIDE/$key" ]]
+done
+[[ "$BR_ACTOR" == fixture-agent && "$BR_OUTPUT_FORMAT" == json ]]
+'''], env=environment, cwd=self.root, text=True, capture_output=True, timeout=10)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                observation = json.loads(scope.read_text())
+                self.assertEqual(observation["cwd"], str(self.project))
+                self.assertEqual(observation["selectors"], dict.fromkeys(BEADS_SELECTORS))
+                self.assertEqual((self.project / ".beads/beads.db").is_file(), fail == "0")
+                self.assertEqual(self.repository_bytes(outside), before)
+
+    def test_reviewed_bootstrap_drops_all_beads_database_aliases(self):
+        scope = self.install_beads_scope_fixture()
+        outside = self.root / "reviewed-outside"
+        outside.mkdir()
+        (outside / "user-work.txt").write_text("existing tracker work\n")
+        before = self.repository_bytes(outside)
+        environment = self.env | {key: str(outside / key) for key in BEADS_SELECTORS}
+        plan = subprocess.run([BASH, str(ROOT / "scripts/lib/newproj.sh"), "--plan", "demo",
+                               str(self.project), "--with", "git,beads"], env=environment,
+                              cwd=self.root, text=True, capture_output=True, timeout=10)
+        self.assertEqual(plan.returncode, 0, plan.stderr)
+        plan_path = self.root / "reviewed-plan.json"
+        plan_path.write_text(plan.stdout)
+        result = subprocess.run([BASH, str(ROOT / "scripts/lib/newproj.sh"), "--apply",
+                                 str(plan_path), "--yes"], env=environment, cwd=self.root,
+                                text=True, capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["completed_commands"], ["git-init", "beads-init"])
+        self.assertTrue((self.project / ".beads/beads.db").is_file())
+        self.assertEqual(self.repository_bytes(outside), before)
+        observation = json.loads(scope.read_text())
+        self.assertEqual(observation["cwd"], str(self.project))
+        self.assertEqual(observation["selectors"], dict.fromkeys(BEADS_SELECTORS))
 
 
 @unittest.skipUnless(BASH, "Bash is required")

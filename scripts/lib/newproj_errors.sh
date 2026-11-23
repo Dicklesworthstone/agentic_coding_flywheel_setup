@@ -448,6 +448,8 @@ try_create_directory() {
 # project while reporting success here. br may invoke Git internally too.
 # Keep account-level Git configuration, identity, authentication and templates;
 # only repository-local state and injected per-command configuration are reset.
+# Beads also honors workspace/database overrides independently of cwd. A new
+# project must never inherit the calling agent's tracker or external cache.
 # The subshell preserves every caller variable, including on command failure.
 newproj_run_project_command() (
     local name
@@ -456,7 +458,8 @@ newproj_run_project_command() (
         GIT_IMPLICIT_WORK_TREE GIT_GRAFT_FILE GIT_REPLACE_REF_BASE GIT_PREFIX \
         GIT_SHALLOW_FILE GIT_SUPER_PREFIX GIT_INTERNAL_SUPER_PREFIX \
         GIT_CEILING_DIRECTORIES GIT_DISCOVERY_ACROSS_FILESYSTEM \
-        GIT_CONFIG GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT; do
+        GIT_CONFIG GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT \
+        BEADS_DIR BEADS_DB BD_DB BD_DATABASE BEADS_JSONL BEADS_CACHE_DIR; do
         unset "$name" || return 1
     done
     # Entries accompany GIT_CONFIG_COUNT, but must not leak into child tools
