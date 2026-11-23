@@ -10,6 +10,11 @@ if [[ -n "${_ACFS_SCREEN_SUCCESS_LOADED:-}" ]]; then
 fi
 _ACFS_SCREEN_SUCCESS_LOADED=1
 
+# Both the TUI and CLI source this screen. Keep project handoffs on the same
+# repository-isolation contract as project creation, including standalone use.
+# shellcheck source=../newproj_errors.sh
+source "${BASH_SOURCE[0]%/*}/../newproj_errors.sh" || return 1
+
 # ============================================================
 # Screen: Success
 # ============================================================
@@ -244,29 +249,27 @@ BANNER
 # Open project in new shell
 open_in_shell() {
     local project_dir
-    project_dir=$(state_get "project_dir")
-
-    if [[ ! -d "$project_dir" ]]; then
-        echo ""
-        printf "%b\n" "${TUI_WARNING}Project directory no longer exists: $project_dir${TUI_NC}"
-        return 1
-    fi
+    project_dir=$(newproj_ntm_project) || return 1
 
     local shell_bin="${SHELL:-}"
-    if [[ -z "$shell_bin" ]] || ! command -v "$shell_bin" &>/dev/null; then
-        shell_bin="$(command -v zsh 2>/dev/null || command -v bash 2>/dev/null || true)"
+    if [[ -n "$shell_bin" ]]; then
+        shell_bin=$(type -P -- "$shell_bin" 2>/dev/null || true)
+    fi
+    if [[ -z "$shell_bin" ]]; then
+        shell_bin="$(type -P zsh 2>/dev/null || type -P bash 2>/dev/null || true)"
     fi
     if [[ -z "$shell_bin" ]]; then
         echo ""
         printf "%b\n" "${TUI_WARNING}No interactive shell found in PATH${TUI_NC}"
         return 1
     fi
+    [[ "$shell_bin" == /* ]] || shell_bin="$PWD/$shell_bin"
 
     echo ""
     printf "%b\n" "${TUI_PRIMARY}Opening project shell...${TUI_NC}"
     echo ""
     prepare_success_exec
-    cd "$project_dir" || return 1
+    newproj_enter_launch_project "$project_dir" || return 1
     exec "$shell_bin" -i
 }
 
@@ -317,10 +320,19 @@ open_in_agent() {
     }
     printf '\nOpening %s in %s...\n' "${_NEWPROJ_AGENT_NAMES[$agent]}" "$project_dir"
     prepare_success_exec
-    cd -- "$project_dir" || return 1
-    unset BEADS_DB BD_DB BD_DATABASE BEADS_JSONL
-    export BEADS_DIR="$project_dir/.beads"
+    newproj_enter_launch_project "$project_dir" || return 1
     exec "$binary"
+}
+
+# Enter the chosen project with no inherited Git repository/index/config or
+# Beads database/cache selectors. Account configuration and authentication stay
+# intact. Exec handoffs call this in the replacing shell; tool probes use the
+# subshell below so the wizard's own environment remains unchanged.
+newproj_enter_launch_project() {
+    local project_dir="$1"
+    newproj_clear_project_environment || return 1
+    cd -- "$project_dir" || return 1
+    export BEADS_DIR="$project_dir/.beads"
 }
 
 # Canonicalize the exact project selected by the wizard, not NTM's default
@@ -375,9 +387,9 @@ newproj_validate_ntm_request() {
             return 1
         fi
     done
-    if { ((cc > 0)) && ! command -v claude >/dev/null 2>&1; } ||
-       { ((cod > 0)) && ! command -v codex >/dev/null 2>&1; } ||
-       { ((agy > 0)) && ! command -v agy >/dev/null 2>&1; }; then
+    if { ((cc > 0)) && ! newproj_agent_binary claude >/dev/null; } ||
+       { ((cod > 0)) && ! newproj_agent_binary codex >/dev/null; } ||
+       { ((agy > 0)) && ! newproj_agent_binary agy >/dev/null; }; then
         echo "A selected agent CLI is missing; adjust the mix or run acfs doctor." >&2
         return 1
     fi
@@ -389,9 +401,7 @@ newproj_validate_ntm_request() {
 newproj_ntm_project_command() (
     local project_dir="$1"
     shift
-    unset BEADS_DB BD_DB BD_DATABASE BEADS_JSONL
-    export BEADS_DIR="$project_dir/.beads"
-    cd -- "$project_dir" || return 1
+    newproj_enter_launch_project "$project_dir" || return 1
     "$@"
 )
 
@@ -499,9 +509,9 @@ open_in_ntm() {
             return 1
         fi
     done
-    newproj_agent_selected claude && command -v claude >/dev/null 2>&1 && { cc=1; available=$((available + 1)); }
-    newproj_agent_selected codex && command -v codex >/dev/null 2>&1 && { cod=1; available=$((available + 1)); }
-    newproj_agent_selected agy && command -v agy >/dev/null 2>&1 && { agy=1; available=$((available + 1)); }
+    newproj_agent_selected claude && newproj_agent_binary claude >/dev/null && { cc=1; available=$((available + 1)); }
+    newproj_agent_selected codex && newproj_agent_binary codex >/dev/null && { cod=1; available=$((available + 1)); }
+    newproj_agent_selected agy && newproj_agent_binary agy >/dev/null && { agy=1; available=$((available + 1)); }
     if ((available == 0)); then
         echo "Install Claude Code, Codex, or Antigravity before starting a workspace." >&2
         return 1
@@ -576,7 +586,7 @@ open_in_ntm() {
     printf '\nWorkspace started. Reconnect later with: ntm attach %q\n' "$session"
     echo "Detach with Ctrl-b then d. Agents keep running after you disconnect."
     prepare_success_exec
-    cd -- "$project_dir" || return 1
+    newproj_enter_launch_project "$project_dir" || return 1
     exec ntm attach "$session"
 }
 

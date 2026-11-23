@@ -450,8 +450,9 @@ try_create_directory() {
 # only repository-local state and injected per-command configuration are reset.
 # Beads also honors workspace/database overrides independently of cwd. A new
 # project must never inherit the calling agent's tracker or external cache.
-# The subshell preserves every caller variable, including on command failure.
-newproj_run_project_command() (
+# Also used immediately before exec when handing the project to an agent,
+# NTM, or an interactive shell; creation-time isolation alone is insufficient.
+newproj_clear_project_environment() {
     local name
     for name in GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE \
         GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_NAMESPACE \
@@ -468,6 +469,11 @@ newproj_run_project_command() (
         [[ -n "$name" ]] || continue
         unset "$name" || return 1
     done
+}
+
+# The subshell preserves every caller variable, including on command failure.
+newproj_run_project_command() (
+    newproj_clear_project_environment || return 1
     "$@"
 )
 

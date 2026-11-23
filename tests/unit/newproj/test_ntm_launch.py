@@ -18,9 +18,21 @@ REPO = Path(__file__).resolve().parents[3]
 SCREEN = REPO / "scripts/lib/newproj_screens/screen_success.sh"
 BASH = shutil.which("bash")
 JQ = shutil.which("jq")
+GIT = shutil.which("git")
+
+PROJECT_SELECTORS = (
+    "GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE",
+    "GIT_IMPLICIT_WORK_TREE", "GIT_GRAFT_FILE", "GIT_REPLACE_REF_BASE", "GIT_PREFIX",
+    "GIT_SHALLOW_FILE", "GIT_SUPER_PREFIX", "GIT_INTERNAL_SUPER_PREFIX",
+    "GIT_CEILING_DIRECTORIES", "GIT_DISCOVERY_ACROSS_FILESYSTEM",
+    "GIT_CONFIG", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT",
+    "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0", "GIT_CONFIG_KEY_19", "GIT_CONFIG_VALUE_19",
+    "BEADS_DB", "BD_DB", "BD_DATABASE", "BEADS_JSONL", "BEADS_CACHE_DIR",
+)
 
 NTM = r'''
-import json, os, sys
+import json, os, subprocess, sys
 from pathlib import Path
 args = sys.argv[1:]
 with open(os.environ["CALLS"], "a") as log:
@@ -28,6 +40,14 @@ with open(os.environ["CALLS"], "a") as log:
 if os.environ.get("SCOPE_LOG") and args and args[0] != "attach":
     with open(os.environ["SCOPE_LOG"], "a") as log:
         log.write(json.dumps({key: os.environ.get(key) for key in ("BEADS_DIR", "BEADS_DB", "BD_DB", "BD_DATABASE", "BEADS_JSONL")}) + "\n")
+if os.environ.get("PROBE_GIT_HANDOFF"):
+    git = os.environ["REAL_GIT"]
+    subprocess.run([git, "config", "--local", "newproj.handoff", args[0]], check=True, timeout=5)
+    repository = subprocess.check_output([git, "rev-parse", "--show-toplevel"], text=True, timeout=5).strip()
+    with open(os.environ["GIT_CALLS"], "a") as log:
+        log.write(json.dumps({"argv": args, "repository": repository,
+                             "scope": {key: os.environ.get(key) for key in
+                                       os.environ["PROJECT_SELECTORS"].split(":")}}) + "\n")
 if args and args[0] == "attach":
     print("ATTACHED")
     sys.exit(0)
@@ -101,6 +121,7 @@ tui_cleanup() { printf 'cleanup\n' >> "$EVENTS"; }
 finalize_logging() { printf 'finalize\n' >> "$EVENTS"; }
 log_input() { :; }
 render_success_screen() { :; }
+TUI_WARNING='' TUI_PRIMARY='' TUI_NC=''
 '''
 
 @unittest.skipUnless(BASH and JQ, "Bash and jq are required")
@@ -119,7 +140,7 @@ class LaunchTests(unittest.TestCase):
         self.executable("ntm", "#!" + sys.executable + "\n" + NTM)
         self.executable("tmux", "#!" + BASH + "\nexit 0\n")
         self.bin.joinpath("jq").symlink_to(JQ)
-        for agent in ("claude", "codex", "agy"):
+        for agent in ("claude", "codex", "agy", "agy-locked"):
             self.executable(agent, "#!" + BASH + "\nprintf 'UNEXPECTED PROVIDER EXECUTION' >&2\nexit 91\n")
         self.env = {
             **os.environ, "PATH": str(self.bin), "SCREEN": str(SCREEN),
@@ -127,6 +148,7 @@ class LaunchTests(unittest.TestCase):
             "CALLS": str(self.calls), "EVENTS": str(self.events),
             "FAKE_NTM_MODE": "ok", "LC_ALL": "C",
             "TARGET_HOME": str(self.home), "ACFS_HOME": str(self.acfs),
+            "PROJECT_SELECTORS": ":".join(PROJECT_SELECTORS),
         }
         for key in ("TARGET_USER", "ACFS_STATE_FILE"):
             self.env.pop(key, None)
@@ -140,12 +162,43 @@ class LaunchTests(unittest.TestCase):
 
     def record_provider(self, agent):
         self.executable(agent, "#!" + sys.executable + r'''
-import json, os, sys
+import json, os, subprocess, sys
+repository = None
+if os.environ.get("PROBE_GIT_HANDOFF"):
+    git = os.environ["REAL_GIT"]
+    subprocess.run([git, "config", "--local", "newproj.handoff", "provider"], check=True, timeout=5)
+    repository = subprocess.check_output([git, "rev-parse", "--show-toplevel"], text=True, timeout=5).strip()
 with open(os.environ["EVENTS"], "a") as log:
     log.write(json.dumps({"agent": os.path.basename(sys.argv[0]), "argv": sys.argv[1:],
-                         "cwd": os.getcwd(), "scope": {key: os.environ.get(key) for key in
-                         ("BEADS_DIR", "BEADS_DB", "BD_DB", "BD_DATABASE", "BEADS_JSONL")}}) + "\n")
+                         "cwd": os.getcwd(), "repository": repository,
+                         "scope": {key: os.environ.get(key) for key in
+                         ["BEADS_DIR", *os.environ["PROJECT_SELECTORS"].split(":")]}}) + "\n")
 ''')
+
+    def git_handoff_environment(self):
+        if not GIT:
+            self.skipTest("Git is required for repository handoff tests")
+        self.other_project = self.root / "other project"
+        self.other_project.mkdir()
+        for directory in (self.project, self.other_project):
+            subprocess.run([GIT, "init", "-q", "-b", "main", str(directory)],
+                           check=True, capture_output=True, timeout=5)
+        self.other_config = self.other_project / ".git/config"
+        self.other_config_before = self.other_config.read_bytes()
+        self.git_calls = self.root / "git-calls.jsonl"
+        return {
+            "PROBE_GIT_HANDOFF": "1", "REAL_GIT": GIT, "GIT_CALLS": str(self.git_calls),
+            "GIT_DIR": str(self.other_project / ".git"),
+            "GIT_WORK_TREE": str(self.other_project),
+            "GIT_COMMON_DIR": str(self.other_project / ".git"),
+            "GIT_INDEX_FILE": str(self.other_project / ".git/index"),
+            "GIT_OBJECT_DIRECTORY": str(self.other_project / ".git/objects"),
+            "GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "core.worktree",
+            "GIT_CONFIG_VALUE_0": str(self.other_project),
+            "GIT_CONFIG_KEY_19": "core.worktree", "GIT_CONFIG_VALUE_19": str(self.other_project),
+            "BEADS_CACHE_DIR": str(self.other_project / ".cache"),
+            "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_SYSTEM": os.devnull,
+        }
 
     def enable_work(self, ready=None):
         self.project.joinpath(".beads").mkdir()
@@ -286,7 +339,7 @@ with open(os.environ["EVENTS"], "a") as log:
         self.assertEqual(self.invocations()[-1], {"argv": ["attach", "acfs-my-app"], "cwd": str(self.project)})
 
     def test_single_provider_defaults_to_two_agents(self):
-        for agent in ("codex", "agy"):
+        for agent in ("codex", "agy", "agy-locked"):
             self.bin.joinpath(agent).rename(self.bin / (agent + ".disabled"))
         result = self.run_bash('open_in_ntm', "\n\nyes\n")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -339,6 +392,7 @@ with open(os.environ["EVENTS"], "a") as log:
 
     def test_antigravity_never_falls_back_to_unlocked_provider(self):
         self.select_modules(["agents.antigravity"])
+        self.bin.joinpath("agy-locked").rename(self.bin / "agy-locked.disabled")
         result = self.run_bash('open_in_agent agy')
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("acfs doctor", result.stderr)
@@ -349,6 +403,68 @@ with open(os.environ["EVENTS"], "a") as log:
         receipt = json.loads(self.events.read_text().splitlines()[-1])
         self.assertEqual(receipt["agent"], "agy-locked")
         self.assertEqual(receipt["argv"], [])
+
+    def test_ntm_accepts_antigravity_with_only_its_policy_launcher(self):
+        self.select_modules(["agents.antigravity", "stack.ntm"])
+        self.record_provider("agy-locked")
+        self.bin.joinpath("agy").rename(self.bin / "agy.disabled")
+        result = self.run_bash('open_in_ntm', "\n\nyes\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("--spawn-agy=2", self.invocations()[0]["argv"])
+        self.assertEqual(self.events.read_text(), "cleanup\nfinalize\n")
+
+    def test_ntm_requires_the_antigravity_policy_launcher(self):
+        self.select_modules(["agents.antigravity", "stack.ntm"])
+        self.bin.joinpath("agy-locked").rename(self.bin / "agy-locked.disabled")
+        result = self.run_bash('newproj_start_ntm "$PROJECT" acfs-my-app 0 0 1')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("acfs doctor", result.stderr)
+        self.assertEqual(self.invocations(), [])
+
+    def test_direct_agent_git_operations_cannot_return_to_callers_repository(self):
+        self.select_modules(["agents.codex"])
+        self.record_provider("codex")
+        environment = self.git_handoff_environment()
+        result = self.run_bash('open_in_agent codex', **environment)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        receipt = json.loads(self.events.read_text().splitlines()[-1])
+        self.assertEqual(receipt["repository"], str(self.project))
+        self.assertEqual(receipt["scope"].pop("BEADS_DIR"), str(self.project / ".beads"))
+        self.assertTrue(all(value is None for value in receipt["scope"].values()), receipt["scope"])
+        self.assertEqual(self.other_config.read_bytes(), self.other_config_before)
+
+    def test_project_shell_git_operations_cannot_return_to_callers_repository(self):
+        self.record_provider("project-shell")
+        environment = self.git_handoff_environment()
+        result = self.run_bash('open_in_shell', SHELL=str(self.bin / "project-shell"), **environment)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        receipt = json.loads(self.events.read_text().splitlines()[-1])
+        self.assertEqual(receipt["repository"], str(self.project))
+        self.assertEqual(receipt["argv"], ["-i"])
+        self.assertEqual(receipt["scope"].pop("BEADS_DIR"), str(self.project / ".beads"))
+        self.assertTrue(all(value is None for value in receipt["scope"].values()), receipt["scope"])
+        self.assertEqual(self.other_config.read_bytes(), self.other_config_before)
+
+    def test_project_shell_from_relative_path_keeps_its_selected_executable(self):
+        self.record_provider("project-shell")
+        result = self.run_bash('open_in_shell', SHELL="project-shell", PATH="bin")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        receipt = json.loads(self.events.read_text().splitlines()[-1])
+        self.assertEqual(receipt["agent"], "project-shell")
+        self.assertEqual(receipt["cwd"], str(self.project))
+        self.assertEqual(receipt["argv"], ["-i"])
+
+    def test_ntm_spawn_and_attach_git_operations_stay_in_selected_project(self):
+        environment = self.git_handoff_environment()
+        result = self.run_bash('open_in_ntm', "\n\n\n\nyes\n", **environment)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        receipts = [json.loads(line) for line in self.git_calls.read_text().splitlines()]
+        self.assertEqual(len(receipts), 2)
+        for receipt in receipts:
+            self.assertEqual(receipt["repository"], str(self.project))
+            self.assertTrue(all(value is None for value in receipt["scope"].values()), receipt["scope"])
+        self.assertEqual(receipts[-1]["argv"], ["attach", "acfs-my-app"])
+        self.assertEqual(self.other_config.read_bytes(), self.other_config_before)
 
     def test_direct_agent_from_relative_path_runs_in_exact_project(self):
         self.select_modules(["agents.codex"])
@@ -446,7 +562,7 @@ open_in_agent codex
         self.assertEqual(self.invocations()[-1]["argv"], ["attach", "review-team"])
 
     def test_no_agents_gives_actionable_failure(self):
-        for agent in ("claude", "codex", "agy"):
+        for agent in ("claude", "codex", "agy", "agy-locked"):
             self.bin.joinpath(agent).rename(self.bin / (agent + ".disabled"))
         result = self.run_bash('open_in_ntm')
         self.assertNotEqual(result.returncode, 0)
@@ -629,10 +745,11 @@ open_in_agent codex
 
     def test_project_scope_preserves_callers_environment(self):
         self.enable_work()
-        overrides = {key: "/another-project/" + key for key in ("BEADS_DIR", "BEADS_DB", "BD_DB", "BD_DATABASE", "BEADS_JSONL")}
+        overrides = {key: "/another-project/" + key for key in ("BEADS_DIR", *PROJECT_SELECTORS)}
         body = r'''
         newproj_ntm_ready_work "$PROJECT" >/dev/null
-        for key in BEADS_DIR BEADS_DB BD_DB BD_DATABASE BEADS_JSONL; do
+        IFS=: read -ra keys <<< "$PROJECT_SELECTORS"
+        for key in BEADS_DIR "${keys[@]}"; do
             [[ "${!key}" == "/another-project/$key" ]] || exit 92
         done
         pwd
