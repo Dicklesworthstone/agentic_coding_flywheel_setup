@@ -2067,7 +2067,7 @@ fix_bun_global_bin_dir() {
     while IFS=$'\t' read -r path package; do
         [[ -n "$path" && -n "$package" ]] || continue
         # Only a well-formed npm name is ever passed to bun.
-        [[ "$package" =~ ^(@[A-Za-z0-9._-]+/)?[A-Za-z0-9._-]+$ ]] || continue
+        [[ "$package" =~ ^(@[A-Za-z0-9][A-Za-z0-9._-]*/)?[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || continue
         names+=("${path##*/}")
         case " ${packages[*]:-} " in
             *" $package "*) ;;

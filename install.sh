@@ -7717,6 +7717,15 @@ ensure_base_deps() {
         return 0
     fi
 
+    # This phase runs before run_phase's selection gate. Arch always uses this
+    # authored path, as does an Ubuntu install with generated base disabled.
+    # Respect saved/--no-deps scope here too: installing a missing Arch base
+    # package may trigger a full system upgrade on the first pacman invocation.
+    if ! acfs_legacy_module_selected "base.system"; then
+        log_detail "Skipping base packages (base.system is not selected)"
+        return 0
+    fi
+
     # Arch-family: pacman equivalents of the Ubuntu base package set.
     if [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
         if [[ "$DRY_RUN" == "true" ]]; then

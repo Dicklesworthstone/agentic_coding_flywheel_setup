@@ -35,6 +35,7 @@ EOF
         acfs_early_sudo_binary_path() { echo "$FAKE_SUDO"; }
         log_detail() { :; }
         try_step() { shift; "$@"; }
+        eval "$(sed -n "/^acfs_legacy_module_selected() {/,/^}/p" install.sh)"
         eval "$(sed -n "/^ensure_base_deps() {/,/^}/p" install.sh)"
         ensure_base_deps
     '

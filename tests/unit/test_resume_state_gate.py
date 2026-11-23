@@ -1442,6 +1442,103 @@ acfs_verify_phase() { record_scope; exit 0; }
                 self.assert_unchanged(folder)
 
 
+class BaseDependencySelectionTests(unittest.TestCase):
+    """Authored base installers must honor the same scope as generated ones."""
+
+    BASE_SCOPE = ScopedInstallerResumeTests.BASE_SCOPE
+
+    @classmethod
+    def setUpClass(cls):
+        ScopedInstallerResumeTests.setUpClass()
+        cls.harness = ScopedInstallerResumeTests.harness
+        cls.base_install = _main_fixture.definitions(
+            _main_fixture.MAIN.read_text(), ["ensure_base_deps", "acfs_legacy_module_selected"])
+
+    run_scoped = ScopedInstallerResumeTests.run_scoped
+    scope_event = ScopedInstallerResumeTests.scope_event
+
+    def run_base_install(self, family, arguments=(), *, modules=None,
+                         alter="", packages_present=False, install_status=0):
+        # Run the real main, checkpoint policy, selector and authored base
+        # installer. Only host privileges, package queries and package writes
+        # are replaced, so this never invokes the machine's package manager.
+        execution = self.base_install + r'''
+ACFS_USE_GENERATED_BASE=0
+set_phase() { trace "phase:$1"; }
+log_step() { :; }
+try_step() { shift; "$@"; }
+acfs_early_sudo_binary_path() { printf 'fixture_sudo\n'; }
+fixture_sudo() { "$@"; }
+fixture_pacman() {
+    trace "query:pacman:$*"
+    [[ "$FIXTURE_PACKAGES_PRESENT" == true ]]
+}
+fixture_apt() {
+    trace "mut:apt:$*"
+    return "$FIXTURE_INSTALL_STATUS"
+}
+acfs_arch_pkg_install() {
+    trace "mut:pacman:$*"
+    return "$FIXTURE_INSTALL_STATUS"
+}
+'''
+        execution += f"\nFIXTURE_PACKAGES_PRESENT={'true' if packages_present else 'false'}"
+        execution += f"\nFIXTURE_INSTALL_STATUS={install_status}"
+        return self.run_scoped(
+            arguments, modules=modules, requested=(), alter=alter,
+            options={"ACFS_DISTRO_FAMILY": family}, execution=execution)
+
+    def test_explicit_no_deps_selection_does_not_install_base_packages(self):
+        for family in ("arch", "ubuntu"):
+            for arguments in (("--only", "lang.bun", "--no-deps"),
+                              ("--only", "lang.bun", "--skip", "base.system", "--no-deps")):
+                with self.subTest(family=family, arguments=arguments):
+                    result, events, _ = self.run_base_install(family, arguments)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertEqual(self.scope_event(events, "resolved"), ["lang.bun"])
+                    self.assertFalse(any(event.startswith(("mut:apt:", "mut:pacman:", "query:pacman:"))
+                                         for event in events), events)
+
+    def test_saved_scope_omitting_base_packages_survives_retry_and_force(self):
+        for family in ("arch", "ubuntu"):
+            for arguments in ((), ("--resume",), ("--force-reinstall",)):
+                with self.subTest(family=family, arguments=arguments):
+                    result, events, _ = self.run_base_install(
+                        family, arguments, modules=("agents.codex",))
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertEqual(self.scope_event(events, "resolved"), ["agents.codex"])
+                    self.assertFalse(any(event.startswith(("mut:apt:", "mut:pacman:", "query:pacman:"))
+                                         for event in events), events)
+
+    def test_selected_dependency_and_legacy_full_install_still_install_base_packages(self):
+        for family in ("arch", "ubuntu"):
+            for arguments, alter in ((("--only", "lang.bun"), ""),
+                                     ((), "state_update 'del(.module_selection)'")):
+                with self.subTest(family=family, arguments=arguments):
+                    result, events, _ = self.run_base_install(family, arguments, alter=alter)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertIn("base.system", self.scope_event(events, "resolved"))
+                    prefix = "mut:pacman:" if family == "arch" else "mut:apt:"
+                    self.assertTrue(any(event.startswith(prefix) for event in events), events)
+
+    def test_selected_base_install_failure_still_stops_the_installer(self):
+        for family in ("arch", "ubuntu"):
+            with self.subTest(family=family):
+                result, events, _ = self.run_base_install(
+                    family, ("--only", "lang.bun"), install_status=42)
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                prefix = "mut:pacman:" if family == "arch" else "mut:apt:"
+                self.assertTrue(any(event.startswith(prefix) for event in events), events)
+                self.assertFalse(any(event.startswith("resolved:") for event in events), events)
+
+    def test_existing_arch_base_packages_do_not_trigger_an_upgrade(self):
+        result, events, _ = self.run_base_install(
+            "arch", ("--only", "lang.bun"), packages_present=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue(any(event.startswith("query:pacman:") for event in events), events)
+        self.assertFalse(any(event.startswith("mut:pacman:") for event in events), events)
+
+
 class BaseDependencyRecoveryTests(unittest.TestCase):
     """The early base phase must preserve the same recovery scope as run_phase."""
 

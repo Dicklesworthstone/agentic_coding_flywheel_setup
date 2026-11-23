@@ -263,6 +263,89 @@ make_stranded_home() {
     [[ "$output" != *"/.cache/.bun/bin/bun	"* ]]
 }
 
+@test "doctor Bun recovery keeps excluded and unrelated packages outside the saved installation scope" {
+    load_doctor_functions
+    local home="$BATS_TEST_TMPDIR/scoped home"
+    make_stranded_home "$home"
+    mkdir -p "$home/.cache/.bun/install/global/node_modules/personal-tool/bin"
+    printf '#!/bin/bash\nexit 0\n' > "$home/.cache/.bun/install/global/node_modules/personal-tool/bin/tool"
+    chmod +x "$home/.cache/.bun/install/global/node_modules/personal-tool/bin/tool"
+    ln -s ../install/global/node_modules/personal-tool/bin/tool "$home/.cache/.bun/bin/personal-tool"
+    export TARGET_HOME="$home"
+    unset XDG_CACHE_HOME
+    # Use the same persisted policy reader as Doctor. Installing Bun alone
+    # does not authorize it to reinstall every global package in the cache.
+    source "$PROJECT_ROOT/scripts/lib/state.sh"
+    printf '%s\n' '{"module_selection":{"schema_version":1,"selected_modules":["lang.bun"]}}' > "$home/state.json"
+    state_load_module_selection "$home/state.json"
+    run doctor_bun_stranded_global_binaries
+    assert_success
+    [[ -z "$output" ]]
+
+    printf '%s\n' '{"module_selection":{"schema_version":1,"selected_modules":["lang.bun","agents.codex"]}}' > "$home/state.json"
+    state_load_module_selection "$home/state.json"
+    run doctor_bun_stranded_global_binaries
+    assert_success
+    [[ "$output" == "$home/.cache/.bun/bin/codex"$'\t''@openai/codex' ]]
+}
+
+@test "doctor Bun recovery never guesses registry packages from unowned or option-like binaries" {
+    load_doctor_functions
+    local home="$BATS_TEST_TMPDIR/unowned home"
+    mkdir -p "$home/.bun/bin" "$home/.cache/.bun/bin" \
+        "$home/.cache/.bun/install/global/node_modules/--malicious/bin"
+    printf '#!/bin/bash\nexit 0\n' > "$home/.cache/.bun/bin/private-helper"
+    printf '#!/bin/bash\nexit 0\n' > "$home/.cache/.bun/install/global/node_modules/--malicious/bin/tool"
+    chmod +x "$home/.cache/.bun/bin/private-helper" \
+        "$home/.cache/.bun/install/global/node_modules/--malicious/bin/tool"
+    ln -s ../install/global/node_modules/--malicious/bin/tool "$home/.cache/.bun/bin/tool"
+    export TARGET_HOME="$home"
+    unset XDG_CACHE_HOME
+
+    run doctor_bun_stranded_global_binaries
+    assert_success
+    [[ -z "$output" ]]
+}
+
+@test "doctor Bun repair previews and installs only scoped packages using the real recovery scanner" {
+    load_doctor_functions
+    source "$PROJECT_ROOT/scripts/lib/state.sh"
+    source "$PROJECT_ROOT/scripts/lib/doctor_fix.sh"
+    local home="$BATS_TEST_TMPDIR/repair home"
+    make_stranded_home "$home"
+    export TARGET_HOME="$home"
+    unset XDG_CACHE_HOME
+    printf '%s\n' '{"module_selection":{"schema_version":1,"selected_modules":["lang.bun","agents.codex"]}}' > "$home/state.json"
+    state_load_module_selection "$home/state.json"
+    cat > "$home/.bun/bin/bun" <<'EOF'
+#!/bin/bash
+printf '%s\n' "$*" >> "$HOME/recovery-installs"
+[[ "$*" == 'install -g --trust @openai/codex' ]] || exit 23
+printf '#!/bin/bash\nexit 0\n' > "$BUN_INSTALL/bin/codex"
+chmod +x "$BUN_INSTALL/bin/codex"
+EOF
+    doctor_fix_runtime_home() { printf '%s\n' "$TARGET_HOME"; }
+    doctor_fix_binary_path() { [[ "$1" == bun ]] && printf '%s/.bun/bin/bun\n' "$TARGET_HOME"; }
+    doctor_fix_run_in_runtime_context() { shift; HOME="$TARGET_HOME" BUN_INSTALL="$TARGET_HOME/.bun" "$@"; }
+    doctor_fix_record_change_or_rollback() { return 0; }
+    doctor_fix_log() { :; }
+
+    DOCTOR_FIX_DRY_RUN=true
+    fix_bun_global_bin_dir bun.global_bin_dir
+    [[ ${#FIXES_DRY_RUN[@]} -eq 1 ]]
+    [[ "${FIXES_DRY_RUN[0]}" == *'bun install -g --trust @openai/codex' ]]
+    [[ "${FIXES_DRY_RUN[0]}" != *wrangler* && "${FIXES_DRY_RUN[0]}" != *vercel* ]]
+    [[ ! -e "$home/recovery-installs" ]]
+
+    DOCTOR_FIX_DRY_RUN=false
+    fix_bun_global_bin_dir bun.global_bin_dir
+    [[ "$(cat "$home/recovery-installs")" == 'install -g --trust @openai/codex' ]]
+    [[ "$FIX_APPLIED:$FIX_FAILED" == 1:0 ]]
+    [[ -x "$home/.bun/bin/codex" ]]
+    [[ ! -e "$home/.bun/bin/vercel" && ! -e "$home/.bun/bin/vc" && ! -e "$home/.bun/bin/cf-wrangler" ]]
+    [[ -L "$home/.cache/.bun/bin/codex" && -L "$home/.cache/.bun/bin/vercel" ]]
+}
+
 @test "doctor honours XDG_CACHE_HOME as the fallback dir and reports nothing when it is clean" {
     load_doctor_functions
     local home="$BATS_TEST_TMPDIR/home"

@@ -3310,6 +3310,7 @@ doctor_bun_stranded_global_binaries() {
     local target=""
     local scope=""
     local package=""
+    local module=""
     local readlink_bin=""
 
     runtime_home="$(doctor_runtime_home)"
@@ -3350,8 +3351,29 @@ doctor_bun_stranded_global_binaries() {
                     fi
                 fi
             fi
-            # Only a well-formed npm name may reach the suggested fix command.
-            [[ "$package" =~ ^(@[A-Za-z0-9._-]+/)?[A-Za-z0-9._-]+$ ]] || package="$name"
+            # A binary name is not proof of a registry package: local scripts
+            # and packages whose executable has a different name must never
+            # become `bun install --trust <guessed-name>`. Require a package
+            # recorded in the global-install symlink, and reject option-like
+            # names before constructing a command or an automatic repair.
+            [[ "$package" =~ ^(@[A-Za-z0-9][A-Za-z0-9._-]*/)?[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || continue
+            case "${ACFS_STATE_SELECTION_MODE:-legacy}" in
+                legacy) ;;
+                scoped)
+                    # lang.bun owns the runtime, not every user-installed
+                    # global package. A subset repair may reinstall only the
+                    # package belonging to another selected manifest module.
+                    case "$package" in
+                        @openai/codex) module=agents.codex ;;
+                        @google/gemini-cli) module=agents.gemini ;;
+                        wrangler) module=cloud.wrangler ;;
+                        vercel) module=cloud.vercel ;;
+                        *) continue ;;
+                    esac
+                    state_module_is_selected "$module" || continue
+                    ;;
+                *) return 1 ;;
+            esac
             printf '%s\t%s\n' "$entry" "$package"
         done
     done
