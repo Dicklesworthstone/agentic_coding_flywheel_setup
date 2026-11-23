@@ -7,6 +7,7 @@ in a named temporary directory to make failures inspectable.
 import json
 import os
 from pathlib import Path
+import pwd
 import shutil
 import subprocess
 import sys
@@ -110,6 +111,9 @@ class LaunchTests(unittest.TestCase):
         self.bin.mkdir()
         self.project = self.root / "project spaces ' $(literal); [brackets]"
         self.project.mkdir()
+        self.home = self.root / "home"
+        self.acfs = self.home / ".acfs"
+        self.acfs.mkdir(parents=True)
         self.calls = self.root / "calls.jsonl"
         self.events = self.root / "events"
         self.executable("ntm", "#!" + sys.executable + "\n" + NTM)
@@ -122,7 +126,26 @@ class LaunchTests(unittest.TestCase):
             "PROJECT": str(self.project), "PROJECT_NAME": "my-app",
             "CALLS": str(self.calls), "EVENTS": str(self.events),
             "FAKE_NTM_MODE": "ok", "LC_ALL": "C",
+            "TARGET_HOME": str(self.home), "ACFS_HOME": str(self.acfs),
         }
+        for key in ("TARGET_USER", "ACFS_STATE_FILE"):
+            self.env.pop(key, None)
+
+    def select_modules(self, modules):
+        state = {
+            "target_home": str(self.home), "target_user": pwd.getpwuid(os.getuid()).pw_name,
+            "module_selection": {"schema_version": 1, "selected_modules": modules},
+        }
+        self.acfs.joinpath("state.json").write_text(json.dumps(state))
+
+    def record_provider(self, agent):
+        self.executable(agent, "#!" + sys.executable + r'''
+import json, os, sys
+with open(os.environ["EVENTS"], "a") as log:
+    log.write(json.dumps({"agent": os.path.basename(sys.argv[0]), "argv": sys.argv[1:],
+                         "cwd": os.getcwd(), "scope": {key: os.environ.get(key) for key in
+                         ("BEADS_DIR", "BEADS_DB", "BD_DB", "BD_DATABASE", "BEADS_JSONL")}}) + "\n")
+''')
 
     def enable_work(self, ready=None):
         self.project.joinpath(".beads").mkdir()
@@ -271,6 +294,147 @@ class LaunchTests(unittest.TestCase):
         self.assertIn("--spawn-cc=2", args)
         self.assertIn("--spawn-cod=0", args)
         self.assertIn("--spawn-agy=0", args)
+
+    def test_scoped_defaults_ignore_other_installed_providers(self):
+        self.select_modules(["agents.codex", "stack.ntm"])
+        result = self.run_bash('open_in_ntm', "\n\nyes\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        args = self.invocations()[0]["argv"]
+        self.assertIn("--spawn-cc=0", args)
+        self.assertIn("--spawn-cod=2", args)
+        self.assertIn("--spawn-agy=0", args)
+
+    def test_scoped_ntm_validation_refuses_excluded_provider_or_coordinator(self):
+        for modules in (["agents.codex", "stack.ntm"], ["agents.claude", "agents.codex"]):
+            with self.subTest(modules=modules):
+                self.select_modules(modules)
+                result = self.run_bash('newproj_start_ntm "$PROJECT" acfs-my-app 1 1 0')
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("not selected", result.stderr)
+                self.assertEqual(self.invocations(), [])
+
+    def test_single_selected_agent_launches_without_ntm(self):
+        for name in ("ntm", "tmux", "jq"):
+            self.bin.joinpath(name).rename(self.bin / (name + ".disabled"))
+        overrides = {key: "/other-project/" + key for key in
+                     ("BEADS_DIR", "BEADS_DB", "BD_DB", "BD_DATABASE", "BEADS_JSONL")}
+        for agent, module in (("codex", "agents.codex"), ("agy", "agents.antigravity"),
+                              ("opencode", "agents.opencode"), ("omp", "agents.omp"),
+                              ("grok", "agents.grok"), ("gemini", "agents.gemini"),
+                              ("pi", "stack.pi_agent_rust")):
+            with self.subTest(agent=agent):
+                self.select_modules([module])
+                launcher = "agy-locked" if agent == "agy" else agent
+                self.record_provider(launcher)
+                result = self.run_bash('handle_success_input', "a", **overrides)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertTrue(self.events.exists(), "the selected agent was never launched")
+                receipt = json.loads(self.events.read_text().splitlines()[-1])
+                self.assertEqual(receipt["agent"], launcher)
+                self.assertEqual(receipt["argv"], [])
+                self.assertEqual(receipt["cwd"], str(self.project))
+                self.assertEqual(receipt["scope"].pop("BEADS_DIR"), str(self.project / ".beads"))
+                self.assertTrue(all(value is None for value in receipt["scope"].values()))
+                self.assertEqual(self.invocations(), [])
+
+    def test_antigravity_never_falls_back_to_unlocked_provider(self):
+        self.select_modules(["agents.antigravity"])
+        result = self.run_bash('open_in_agent agy')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("acfs doctor", result.stderr)
+        self.assertFalse(self.events.exists())
+        self.record_provider("agy-locked")
+        result = self.run_bash('open_in_agent agy')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        receipt = json.loads(self.events.read_text().splitlines()[-1])
+        self.assertEqual(receipt["agent"], "agy-locked")
+        self.assertEqual(receipt["argv"], [])
+
+    def test_direct_agent_from_relative_path_runs_in_exact_project(self):
+        self.select_modules(["agents.codex"])
+        self.record_provider("codex")
+        result = self.run_bash('open_in_agent codex', PATH="bin")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        receipt = json.loads(self.events.read_text().splitlines()[-1])
+        self.assertEqual(receipt["agent"], "codex")
+        self.assertEqual(receipt["cwd"], str(self.project))
+
+    def test_direct_agent_choice_preserves_explicit_provider_selection(self):
+        self.select_modules(["agents.claude", "agents.codex", "agents.antigravity"])
+        self.record_provider("codex")
+        result = self.run_bash('handle_success_input', "a2\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        receipt = json.loads(self.events.read_text().splitlines()[-1])
+        self.assertEqual(receipt["agent"], "codex")
+        self.assertEqual(receipt["argv"], [])
+        self.assertEqual(self.invocations(), [])
+
+    def test_agent_chooser_eof_or_invalid_choice_never_launches(self):
+        self.select_modules(["agents.claude", "agents.codex"])
+        for answer in ("", "0\n", "3\n", "01\n", "$(touch injected)\n"):
+            with self.subTest(answer=answer):
+                result = self.run_bash('open_in_agent', answer)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse(self.events.exists())
+                self.assertEqual(self.invocations(), [])
+
+    def test_direct_launch_refuses_excluded_or_missing_agent(self):
+        self.select_modules(["agents.codex"])
+        excluded = self.run_bash('open_in_agent claude')
+        self.assertNotEqual(excluded.returncode, 0)
+        self.assertIn("not selected", excluded.stderr)
+        self.bin.joinpath("codex").rename(self.bin / "codex.disabled")
+        missing = self.run_bash('open_in_agent codex')
+        self.assertNotEqual(missing.returncode, 0)
+        self.assertIn("acfs doctor", missing.stderr)
+        self.assertFalse(self.events.exists())
+
+    def test_invalid_checkpoint_blocks_agent_and_ntm_without_mutation(self):
+        checkpoint = self.acfs / "state.json"
+        for contents in ('{"module_selection":', '{"module_selection":{"schema_version":2,"selected_modules":["agents.codex"]}}',
+                         json.dumps({"target_home": "/other-home", "target_user": pwd.getpwuid(os.getuid()).pw_name,
+                                     "module_selection": {"schema_version": 1, "selected_modules": ["agents.codex"]}})):
+            with self.subTest(contents=contents):
+                checkpoint.write_text(contents)
+                for body in ('open_in_agent codex', 'newproj_start_ntm "$PROJECT" acfs-my-app 0 1 0'):
+                    result = self.run_bash(body)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("selection", result.stderr)
+                self.assertEqual(checkpoint.read_text(), contents)
+                self.assertFalse(self.events.exists())
+                self.assertEqual(self.invocations(), [])
+
+    def test_missing_custom_checkpoint_is_not_legacy_permission(self):
+        result = self.run_bash('open_in_agent codex', ACFS_STATE_FILE=str(self.root / "missing.json"))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("selection", result.stderr)
+        self.assertFalse(self.events.exists())
+
+    def test_scope_is_reloaded_before_launch_and_does_not_replace_wizard_state(self):
+        self.select_modules(["agents.codex"])
+        result = self.run_bash(r'''
+newproj_load_launch_selection
+[[ "$(state_get project_dir)" == "$PROJECT" ]] || exit 92
+printf '{"module_selection":' > "$ACFS_HOME/state.json"
+open_in_agent codex
+''')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("selection", result.stderr)
+        self.assertFalse(self.events.exists())
+
+    def test_cli_next_steps_use_selected_installed_agent(self):
+        self.select_modules(["agents.codex"])
+        env = {**self.env, "PATH": str(self.bin) + os.pathsep + os.environ["PATH"],
+               "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_SYSTEM": os.devnull}
+        result = subprocess.run([BASH, str(REPO / "scripts/lib/newproj.sh"), "my-app", str(self.project),
+                                 "--no-br", "--no-claude", "--no-agents"],
+                                env=env, cwd=self.root, text=True, capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        steps = result.stdout.split("Next steps:")[-1]
+        self.assertIn("codex", steps)
+        self.assertNotIn("Claude", steps)
+        self.assertNotIn("agy", steps)
+        self.assertFalse(self.events.exists())
 
     def test_operator_can_choose_counts_and_session(self):
         result = self.run_bash('open_in_ntm', "review-team\n2\n0\n1\nyes\n")

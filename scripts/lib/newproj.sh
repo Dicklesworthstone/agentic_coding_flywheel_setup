@@ -2449,7 +2449,17 @@ EOF
         echo "  br ready                    # Check for work"
         echo "  br create --title=\"...\"    # Create tasks"
     fi
-    echo "  cc                          # Start Claude Code"
+    # Share the success screen's scoped provider guidance without initializing
+    # the TUI or launching a process in non-interactive project creation.
+    if [[ -r "$NEWPROJ_SCRIPT_DIR/newproj_screens/screen_success.sh" ]]; then
+        # shellcheck source=newproj_screens/screen_success.sh
+        source "$NEWPROJ_SCRIPT_DIR/newproj_screens/screen_success.sh"
+        if ! newproj_print_agent_next_steps; then
+            echo "  acfs doctor                 # Repair agent launch configuration"
+        fi
+    else
+        echo "  acfs doctor                 # Check available coding agents"
+    fi
 }
 
 # Only run main if script is executed directly, not sourced

@@ -19,6 +19,112 @@ SCREEN_SUCCESS_ID="success"
 SCREEN_SUCCESS_TITLE="Success"
 SCREEN_SUCCESS_STEP=9
 
+# Keep launch choices tied to cumulative installation intent. State parsing runs
+# in a separate shell because the installer and wizard both define state_get.
+# Never execute the generated catalogue; state.sh validates it as data.
+_NEWPROJ_LAUNCH_SELECTION_MODE=invalid
+declare -ga _NEWPROJ_LAUNCH_MODULES=()
+declare -ga _NEWPROJ_AGENT_COMMANDS=(claude codex agy opencode omp grok gemini pi)
+declare -gA _NEWPROJ_AGENT_MODULES=(
+    [claude]=agents.claude [codex]=agents.codex [agy]=agents.antigravity
+    [opencode]=agents.opencode [omp]=agents.omp [grok]=agents.grok
+    [gemini]=agents.gemini [pi]=stack.pi_agent_rust
+)
+declare -gA _NEWPROJ_AGENT_NAMES=(
+    [claude]="Claude Code" [codex]="Codex" [agy]="Antigravity"
+    [opencode]="OpenCode" [omp]="oh-my-pi" [grok]="Grok"
+    [gemini]="Gemini CLI (legacy)" [pi]="Pi"
+)
+
+newproj_load_launch_selection() {
+    _NEWPROJ_LAUNCH_SELECTION_MODE=invalid
+    _NEWPROJ_LAUNCH_MODULES=()
+    local lib_dir parsed
+    lib_dir=$(CDPATH='' cd -- "${BASH_SOURCE[0]%/*}/.." && pwd -P) || return 1
+    if ! parsed=$(PATH=/usr/sbin:/usr/bin:/sbin:/bin "$BASH" --noprofile --norc -p -c '
+        source "$1/state.sh" || exit 1
+        selection_home=$(state_resolve_target_home) || exit 1
+        selection_user="${TARGET_USER:-$(state_resolve_current_user)}"
+        state_is_valid_username "$selection_user" || exit 1
+        selection_file=$(state_get_file) || exit 1
+        [[ "$selection_file" == /* && "$selection_file" != / ]] || exit 1
+        if [[ "$selection_file" == "$selection_home/.acfs/state.json" ]]; then
+            state_load_module_selection "$selection_file" "$selection_home" "$selection_user" allow-legacy-identity || exit 1
+        else
+            state_load_module_selection "$selection_file" "$selection_home" "$selection_user" || exit 1
+        fi
+        state_validate_module_selection_catalog_file "$1/../generated/manifest_index.sh" || exit 1
+        printf "%s\n" "$ACFS_STATE_SELECTION_MODE"
+        if [[ "$ACFS_STATE_SELECTION_MODE" == scoped ]]; then
+            printf "%s\n" "${ACFS_STATE_SELECTED_MODULES[@]}"
+        fi
+    ' _ "$lib_dir"); then
+        printf '%s\n' 'Cannot validate the installation selection. Run acfs doctor before launching agents.' >&2
+        return 1
+    fi
+    local -a records=()
+    mapfile -t records <<< "$parsed"
+    case "${records[0]:-}" in
+        legacy|scoped) _NEWPROJ_LAUNCH_SELECTION_MODE="${records[0]}" ;;
+        *) return 1 ;;
+    esac
+    _NEWPROJ_LAUNCH_MODULES=("${records[@]:1}")
+}
+
+newproj_launch_module_selected() {
+    local wanted="$1" module
+    case "$_NEWPROJ_LAUNCH_SELECTION_MODE" in
+        legacy) return 0 ;;
+        scoped)
+            for module in "${_NEWPROJ_LAUNCH_MODULES[@]}"; do
+                [[ "$module" != "$wanted" ]] || return 0
+            done
+            return 1
+            ;;
+        *) return 2 ;;
+    esac
+}
+
+newproj_agent_selected() {
+    case "${1:-}" in
+        claude|codex|agy|opencode|omp|grok|gemini|pi) ;;
+        *) return 1 ;;
+    esac
+    local module="${_NEWPROJ_AGENT_MODULES[${1:-}]:-}"
+    [[ -n "$module" ]] && newproj_launch_module_selected "$module"
+}
+
+newproj_agent_binary() {
+    local command_name="$1" binary
+    # Non-interactive Bash does not expand the login shell's agy alias. Use
+    # the installed policy wrapper, and never fall back to the raw provider.
+    [[ "$command_name" != agy ]] || command_name="agy-locked"
+    binary=$(type -P -- "$command_name") || return 1
+    # A relative PATH entry must keep referring to the same executable after
+    # the launcher changes into the new project.
+    [[ "$binary" == /* ]] || binary="$PWD/$binary"
+    printf '%s\n' "$binary"
+}
+
+newproj_print_agent_next_steps() {
+    newproj_load_launch_selection || return 1
+    local agent command_name found=false
+    for agent in "${_NEWPROJ_AGENT_COMMANDS[@]}"; do
+        newproj_agent_selected "$agent" || continue
+        if newproj_agent_binary "$agent" >/dev/null; then
+            command_name="$agent"
+            [[ "$agent" != agy ]] || command_name="agy-locked"
+            printf '  %s  # Start %s\n' "$command_name" "${_NEWPROJ_AGENT_NAMES[$agent]}"
+            found=true
+        elif [[ "$_NEWPROJ_LAUNCH_SELECTION_MODE" == scoped ]]; then
+            printf '  # %s is selected but unavailable; run acfs doctor.\n' "${_NEWPROJ_AGENT_NAMES[$agent]}"
+        fi
+    done
+    if [[ "$found" != true ]]; then
+        printf '%s\n' '  # No selected agent CLI is available. Run acfs doctor or install an agent you want to use.'
+    fi
+}
+
 prepare_success_exec() {
     tui_cleanup
     finalize_logging 2>/dev/null || true
@@ -96,8 +202,10 @@ BANNER
     printf "%b\n" "     ${TUI_CYAN}cd $project_dir${TUI_NC}"
     echo ""
 
-    echo "  2. Start coding with Claude Code:"
-    printf "%b\n" "     ${TUI_CYAN}claude${TUI_NC}"
+    echo "  2. Start coding with an installed agent:"
+    if ! newproj_print_agent_next_steps; then
+        echo "     Repair the saved installation selection with acfs doctor."
+    fi
     echo ""
 
     if [[ "$(state_get "enable_br")" == "true" && "$beads_initialized" == "true" ]]; then
@@ -118,9 +226,18 @@ BANNER
     echo ""
     echo "Options:"
     echo "  [Enter/o]   Open project in shell"
-    echo "  [c]         Open in Claude Code"
-    echo "  [n]         Start a multi-agent NTM workspace"
-    echo "  [w]         Start agents and hand off ready Beads tasks"
+    if [[ "$_NEWPROJ_LAUNCH_SELECTION_MODE" != invalid ]]; then
+        echo "  [a]         Open in a coding agent"
+        if newproj_agent_selected claude && newproj_agent_binary claude >/dev/null; then
+            echo "  [c]         Open in Claude Code"
+        fi
+        if newproj_launch_module_selected stack.ntm; then
+            echo "  [n]         Start a multi-agent NTM workspace"
+            if newproj_launch_module_selected stack.beads_rust && newproj_launch_module_selected stack.beads_viewer; then
+                echo "  [w]         Start agents and hand off ready Beads tasks"
+            fi
+        fi
+    fi
     echo "  [q]         Exit wizard"
 }
 
@@ -153,30 +270,57 @@ open_in_shell() {
     exec "$shell_bin" -i
 }
 
-# Open project in Claude Code
-open_in_claude() {
-    local project_dir
-    project_dir=$(state_get "project_dir")
-
-    if [[ ! -d "$project_dir" ]]; then
-        echo ""
-        printf "%b\n" "${TUI_WARNING}Project directory no longer exists: $project_dir${TUI_NC}"
+# Direct launch works without NTM/tmux. A provider choice never adds permission
+# bypass flags, starts login, sends a task, or changes global agent settings.
+open_in_agent() {
+    local agent="${1:-}" project_dir binary answer index=0
+    local -a available=()
+    [[ $# -le 1 ]] || return 1
+    project_dir=$(newproj_ntm_project) || return 1
+    newproj_load_launch_selection || return 1
+    if [[ -z "$agent" ]]; then
+        for agent in "${_NEWPROJ_AGENT_COMMANDS[@]}"; do
+            if newproj_agent_selected "$agent" && newproj_agent_binary "$agent" >/dev/null; then
+                available+=("$agent")
+            fi
+        done
+        if [[ ${#available[@]} -eq 0 ]]; then
+            echo "No selected agent CLI is available. Run acfs doctor before launching an agent." >&2
+            return 1
+        fi
+        agent="${available[0]}"
+        if [[ ${#available[@]} -gt 1 ]]; then
+            echo "Choose the agent to open in this project:"
+            for agent in "${available[@]}"; do
+                index=$((index + 1))
+                printf '  [%s] %s (%s)\n' "$index" "${_NEWPROJ_AGENT_NAMES[$agent]}" "$agent"
+            done
+            read -r -p "Agent [1]: " answer || return 1
+            answer="${answer:-1}"
+            if [[ ! "$answer" =~ ^[1-9][0-9]?$ ]] || ((answer > ${#available[@]})); then
+                echo "Choose one of the listed agent numbers." >&2
+                return 1
+            fi
+            agent="${available[$((answer - 1))]}"
+        fi
+    fi
+    # Re-read after an interactive choice: a changed or damaged checkpoint is
+    # not permission to launch using stale defaults.
+    newproj_load_launch_selection || return 1
+    if ! newproj_agent_selected "$agent"; then
+        echo "This agent is not selected for this installation." >&2
         return 1
     fi
-
-    if ! command -v claude &>/dev/null; then
-        echo ""
-        printf "%b\n" "${TUI_WARNING}Claude Code not found in PATH${TUI_NC}"
-        echo "Run manually:"
-        printf "%b\n" "  ${TUI_CYAN}cd $project_dir && claude${TUI_NC}"
+    binary=$(newproj_agent_binary "$agent") || {
+        echo "The selected agent CLI is unavailable. Run acfs doctor before launching it." >&2
         return 1
-    fi
-
-    echo ""
-    printf "%b\n" "${TUI_PRIMARY}Opening in Claude Code...${TUI_NC}"
+    }
+    printf '\nOpening %s in %s...\n' "${_NEWPROJ_AGENT_NAMES[$agent]}" "$project_dir"
     prepare_success_exec
-    cd "$project_dir" || return 1
-    exec claude
+    cd -- "$project_dir" || return 1
+    unset BEADS_DB BD_DB BD_DATABASE BEADS_JSONL
+    export BEADS_DIR="$project_dir/.beads"
+    exec "$binary"
 }
 
 # Canonicalize the exact project selected by the wizard, not NTM's default
@@ -214,6 +358,17 @@ newproj_validate_ntm_request() {
         echo "An existing absolute project directory is required." >&2
         return 1
     fi
+    newproj_load_launch_selection || return 1
+    if ! newproj_launch_module_selected stack.ntm; then
+        echo "NTM is not selected for this installation. Open an agent directly instead." >&2
+        return 1
+    fi
+    if { ((cc > 0)) && ! newproj_agent_selected claude; } ||
+       { ((cod > 0)) && ! newproj_agent_selected codex; } ||
+       { ((agy > 0)) && ! newproj_agent_selected agy; }; then
+        echo "An agent in this mix is not selected for this installation." >&2
+        return 1
+    fi
     for tool in ntm tmux jq; do
         if ! command -v "$tool" >/dev/null 2>&1; then
             printf 'Missing %s. Run acfs doctor before starting a workspace.\n' "$tool" >&2
@@ -244,6 +399,11 @@ newproj_ntm_project_command() (
 # remains responsible for fresh triage, claims, reservations and safe dispatch.
 newproj_ntm_ready_work() {
     local project_dir="$1" ready
+    newproj_load_launch_selection || return 1
+    if ! newproj_launch_module_selected stack.beads_rust || ! newproj_launch_module_selected stack.beads_viewer; then
+        echo "Beads Rust and Beads Viewer are not selected for this installation. Start a workspace without task handoff." >&2
+        return 1
+    fi
     if [[ ! -d "$project_dir/.beads" || -L "$project_dir/.beads" ]]; then
         echo "This project needs its own initialized .beads directory. Run br init first." >&2
         return 1
@@ -328,15 +488,20 @@ open_in_ntm() {
     [[ "$work" == true || "$work" == false ]] || return 1
     project_dir=$(newproj_ntm_project) || return 1
     project_name=$(state_get "project_name") || return 1
+    newproj_load_launch_selection || return 1
+    if ! newproj_launch_module_selected stack.ntm; then
+        echo "NTM is not selected for this installation. Open an agent directly instead." >&2
+        return 1
+    fi
     for answer in ntm tmux jq; do
         if ! command -v "$answer" >/dev/null 2>&1; then
             printf 'Missing %s. Run acfs doctor before starting a workspace.\n' "$answer" >&2
             return 1
         fi
     done
-    command -v claude >/dev/null 2>&1 && { cc=1; available=$((available + 1)); }
-    command -v codex >/dev/null 2>&1 && { cod=1; available=$((available + 1)); }
-    command -v agy >/dev/null 2>&1 && { agy=1; available=$((available + 1)); }
+    newproj_agent_selected claude && command -v claude >/dev/null 2>&1 && { cc=1; available=$((available + 1)); }
+    newproj_agent_selected codex && command -v codex >/dev/null 2>&1 && { cod=1; available=$((available + 1)); }
+    newproj_agent_selected agy && command -v agy >/dev/null 2>&1 && { agy=1; available=$((available + 1)); }
     if ((available == 0)); then
         echo "Install Claude Code, Codex, or Antigravity before starting a workspace." >&2
         return 1
@@ -435,7 +600,13 @@ handle_success_input() {
             'c'|'C')
                 # Open in Claude Code
                 log_input "success" "open_claude"
-                if open_in_claude; then
+                if open_in_agent claude; then
+                    return 0
+                fi
+                ;;
+            'a'|'A')
+                log_input "success" "open_agent"
+                if open_in_agent; then
                     return 0
                 fi
                 ;;

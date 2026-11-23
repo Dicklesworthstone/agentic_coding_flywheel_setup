@@ -690,7 +690,7 @@ teardown() {
         source "'"$ACFS_LIB_DIR"'/newproj_screens.sh"
         load_screens >/dev/null
         render_success_screen() { echo "render"; }
-        open_in_claude() { echo "claude failed"; return 1; }
+        open_in_agent() { [[ "$1" == claude ]]; echo "claude failed"; return 1; }
         handle_success_input
     ' <<< $'cq'
 
