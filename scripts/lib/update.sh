@@ -1318,6 +1318,12 @@ update_ensure_jq_available() {
         return 0
     fi
 
+    update_load_module_selection || return 1
+    if [[ "$UPDATE_APT" != true ]] || ! update_module_is_selected base.system; then
+        echo -e "${YELLOW}Warning: jq is missing; automatic package installation is outside this update's system-package scope. Install jq separately to enable all update operations; continuing with limited functionality.${NC}" >&2
+        return 0
+    fi
+
     echo -e "${YELLOW}Installing jq (required for update operations)...${NC}" >&2
     # Pass noninteractive env inline: sudo strips DEBIAN_FRONTEND/NEEDRESTART_*
     # from the caller's environment by default, so exports alone won't reach apt.
@@ -6144,6 +6150,13 @@ update_ensure_minisign() {
     if update_minisign_present; then
         UPDATE_MINISIGN_STATUS="present"
         return 0
+    fi
+
+    update_load_module_selection || return 1
+    if [[ "$UPDATE_APT" != true ]] || ! update_module_is_selected base.system; then
+        log_to_file "minisign missing; automatic package installation is outside this update's system-package scope"
+        UPDATE_MINISIGN_STATUS="missing"
+        return 1
     fi
 
     if [[ "$DRY_RUN" == "true" ]]; then
@@ -11030,9 +11043,12 @@ update_stack() {
     fi
 
     # minisign (issue #375): the MCP Agent Mail and CAAM installers fail
-    # closed without it, so provision it once here, before either runs.
+    # closed without it. A held tool must not provision prerequisites merely
+    # because it belongs to the saved selection. Existing tool dispatch below
+    # retains hold reporting and failure accounting.
     local minisign_ready=true
-    if update_module_is_selected stack.mcp_agent_mail || update_module_is_selected stack.caam; then
+    if { update_module_is_selected stack.mcp_agent_mail && ! update_tool_hold_details mcp_agent_mail; } \
+        || { update_module_is_selected stack.caam && ! update_tool_hold_details caam; }; then
         update_ensure_minisign || minisign_ready=false
     fi
 

@@ -1502,6 +1502,107 @@ printf 'checkpoint-accepted\n' >> "$TEST_EVENTS"
         return [event.partition(":")[2].split()[0] for event in self.events()
                 if event.startswith("installer:")]
 
+    def prerequisite(self, command, **env):
+        # Keep the real checkpoint reader and prerequisite policy. Only package
+        # acquisition and installed-command presence are inert; neither apt nor
+        # sudo can run even when the test caller has system privileges.
+        return self.shell(r'''
+UPDATE_APT="$TEST_APT"
+FIXTURE_JQ_PRESENT="${TEST_JQ_PRESENT:-false}"
+FIXTURE_MINISIGN_PRESENT="${TEST_MINISIGN_PRESENT:-false}"
+cmd_exists() {
+    if [[ "$1" == jq ]]; then [[ "$FIXTURE_JQ_PRESENT" == true ]]; else command -v "$1" >/dev/null; fi
+}
+update_minisign_present() { [[ "$FIXTURE_MINISIGN_PRESENT" == true ]]; }
+update_sudo_prefix() { local -n prefix="$1"; prefix=(fixture_package_manager); }
+fixture_package_manager() {
+    printf 'package:%s\n' "$*" >> "$TEST_EVENTS"
+    [[ "${TEST_PACKAGE_FAILURE:-false}" != true ]] || return 42
+    case " $* " in
+        *" install "*" jq "*) FIXTURE_JQ_PRESENT=true ;;
+        *" install "*" minisign "*) FIXTURE_MINISIGN_PRESENT=true ;;
+    esac
+}
+run_cmd_sudo_with_retry_status() { shift; fixture_package_manager "$@"; }
+update_load_module_selection
+''' + command, dispatch=False, **env)
+
+    def test_missing_jq_cannot_install_outside_saved_or_requested_package_scope(self):
+        for modules, apt in ((["lang.bun"], "true"),
+                             (["base.system", "lang.bun"], "false")):
+            with self.subTest(modules=modules, apt=apt):
+                self.selection(*modules)
+                checkpoint = self.state.read_bytes()
+                result = self.prerequisite("update_ensure_jq_available\n", TEST_APT=apt)
+                self.assertEqual(self.events(), [])
+                self.assertIn("outside this update's system-package scope", result.stderr)
+                self.assertIn("Install jq separately", result.stderr)
+                self.assertEqual(self.state.read_bytes(), checkpoint)
+
+    def test_existing_jq_and_readonly_previews_never_install_packages(self):
+        self.selection("lang.bun")
+        result = self.prerequisite("update_ensure_jq_available\n",
+                                   TEST_APT="false", TEST_JQ_PRESENT="true")
+        self.assertEqual(result.stderr, "")
+        result = self.prerequisite("update_ensure_jq_available\n",
+                                   TEST_APT="true", TEST_DRY_RUN="true")
+        self.assertIn("limited preview", result.stderr)
+        self.assertEqual(self.events(), [])
+
+    def test_selected_system_updates_can_still_install_missing_jq(self):
+        self.selection("base.system", "lang.bun")
+        result = self.prerequisite("update_ensure_jq_available\nupdate_ensure_jq_available\n",
+                                   TEST_APT="true")
+        self.assertEqual(len(self.events()), 2)
+        self.assertTrue(self.events()[0].endswith("apt-get update -qq"))
+        self.assertTrue(self.events()[1].endswith("apt-get install -y -qq jq"))
+        self.assertNotIn("could not be installed", result.stderr)
+
+    def test_failed_jq_installation_keeps_its_missing_prerequisite_warning(self):
+        self.selection("base.system")
+        result = self.prerequisite("update_ensure_jq_available\n", TEST_APT="true",
+                                   TEST_PACKAGE_FAILURE="true")
+        self.assertEqual(len(self.events()), 1)
+        self.assertTrue(self.events()[0].endswith("apt-get update -qq"))
+        self.assertIn("jq could not be installed", result.stderr)
+
+    def test_missing_minisign_cannot_install_outside_saved_or_requested_package_scope(self):
+        for modules, apt in ((["stack.caam"], "true"),
+                             (["base.system", "stack.caam"], "false")):
+            with self.subTest(modules=modules, apt=apt):
+                self.selection(*modules)
+                checkpoint = self.state.read_bytes()
+                result = self.prerequisite(r'''
+status=0
+update_ensure_minisign || status=$?
+printf 'MINISIGN:%s:%s\n' "$status" "$UPDATE_MINISIGN_STATUS"
+''', TEST_APT=apt)
+                self.assertIn("MINISIGN:1:missing", result.stdout)
+                self.assertEqual(self.events(), [])
+                self.assertIn("outside this update's system-package scope",
+                              (self.base / "update.log").read_text())
+                self.assertEqual(self.state.read_bytes(), checkpoint)
+
+    def test_existing_minisign_remains_usable_without_package_updates(self):
+        self.selection("stack.caam")
+        result = self.prerequisite(r'''
+update_ensure_minisign
+printf 'MINISIGN:%s\n' "$UPDATE_MINISIGN_STATUS"
+''', TEST_APT="false", TEST_MINISIGN_PRESENT="true")
+        self.assertIn("MINISIGN:present", result.stdout)
+        self.assertEqual(self.events(), [])
+
+    def test_selected_system_updates_install_minisign_once_and_verify_presence(self):
+        self.selection("base.system", "stack.caam")
+        result = self.prerequisite(r'''
+update_ensure_minisign
+update_ensure_minisign
+printf 'MINISIGN:%s\n' "$UPDATE_MINISIGN_STATUS"
+''', TEST_APT="true")
+        self.assertIn("MINISIGN:installed", result.stdout)
+        self.assertEqual(len(self.events()), 1)
+        self.assertTrue(self.events()[0].endswith("install -y minisign"))
+
     def test_stack_subset_updates_only_selected_tool_and_required_prerequisite(self):
         for module, tool, needs_minisign in (
             ("stack.ntm", "ntm", False), ("stack.caam", "caam", True),

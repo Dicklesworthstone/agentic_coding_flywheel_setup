@@ -2405,6 +2405,61 @@ printf 'HELD=%s:%s\n' "$HELD_COUNT" "${UPDATE_HELD_TOOLS[*]}"
         log = (self.base / "update.log").read_text()
         self.assertIn("by operator: retain working version (expires 2999-12-31)", log)
 
+    def test_held_signature_verified_tools_never_provision_prerequisites(self):
+        for modules, tools in ((["stack.caam"], ["caam"]),
+                               (["stack.mcp_agent_mail"], ["mcp_agent_mail"]),
+                               (["stack.mcp_agent_mail", "stack.caam"], ["mcp_agent_mail", "caam"])):
+            with self.subTest(modules=modules):
+                self.write_selection(modules)
+                self.write_holds(tools)
+                checkpoint = (self.home / ".acfs/state.json").read_bytes()
+                output = self.run_update(command=r'''
+FORCE_MODE=true
+declare -gA KNOWN_INSTALLERS=([mcp_agent_mail]="https://fixture.invalid/agent-mail.sh")
+update_require_security() { return 0; }
+get_checksum() { printf '%064d\n' 1; }
+update_ensure_minisign() { printf 'unexpected-package-install\n' >> "$TEST_ROOT/events.tsv"; return 1; }
+update_stack
+printf 'HELD=%s:%s\n' "$HELD_COUNT" "${UPDATE_HELD_TOOLS[*]}"
+''')
+                self.assertEqual(self.events(), [])
+                self.assertIn(f"HELD={len(tools)}:", output)
+                self.assertIn(",0\n", output.split("COUNTS=")[1])
+                self.assertEqual((self.home / ".acfs/state.json").read_bytes(), checkpoint)
+
+    def test_unheld_signature_verified_tool_still_requires_minisign_beside_a_hold(self):
+        self.write_selection(["stack.mcp_agent_mail", "stack.caam"])
+        for held in ("mcp_agent_mail", "caam"):
+            with self.subTest(held=held):
+                self.write_holds([held])
+                self.events_file.write_text("")
+                output = self.run_update(command=r'''
+QUIET=false
+declare -gA KNOWN_INSTALLERS=([mcp_agent_mail]="https://fixture.invalid/agent-mail.sh")
+update_require_security() { return 0; }
+get_checksum() { printf '%064d\n' 1; }
+update_ensure_minisign() { printf 'prerequisite-required\n' >> "$TEST_ROOT/events.tsv"; return 1; }
+update_stack
+printf 'HELD=%s:%s\n' "$HELD_COUNT" "${UPDATE_HELD_TOOLS[*]}"
+''')
+                self.assertEqual(self.events(), [["prerequisite-required"]])
+                self.assertIn("minisign is required to verify release signatures", output)
+                self.assertIn(f"HELD=1:{held}", output)
+                self.assertTrue(output.split("COUNTS=")[1].strip().endswith(",1"), output)
+
+    def test_expired_signature_verified_tool_hold_does_not_bypass_prerequisites(self):
+        self.write_selection(["stack.caam"])
+        self.write_holds(["caam"], expiry="2000-01-01")
+        output = self.run_update(command=r'''
+update_require_security() { return 0; }
+update_ensure_minisign() { printf 'prerequisite-required\n' >> "$TEST_ROOT/events.tsv"; return 1; }
+update_stack
+printf 'HELD=%s\n' "$HELD_COUNT"
+''')
+        self.assertEqual(self.events(), [["prerequisite-required"]])
+        self.assertIn("HELD=0", output)
+        self.assertTrue(output.split("COUNTS=")[1].strip().endswith(",1"), output)
+
     def test_held_agents_skip_native_and_package_updates_even_with_force(self):
         self.write_selection(["agents.codex", "agents.antigravity", "agents.omp", "agents.opencode"])
         self.write_holds(["codex", "antigravity", "omp", "opencode"])

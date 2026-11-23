@@ -6171,6 +6171,7 @@ Fine-grained control over what gets installed using manifest-driven selection:
 - **Skip safety:** `--skip` fails early if it would break a required dependency chain
 - **Deterministic:** `--print-plan` shows exactly what will run, in what order
 - **Persistent selection:** New installations remember their resolved module set in `~/.acfs/state.json`. Doctor checks and updates use that set, including selected modules whose installation failed. Later targeted installs add to the managed set; `--only` repairs and `--force-reinstall` preserve previously managed modules. Retries without new selectors keep that exact saved scope, including an earlier `--no-deps` choice, and warn when current dependencies fall outside it; use an explicit `--only`, `--only-phase`, or `--profile` choice to expand the installation. Existing checkpoints without selection metadata retain the full-install behavior. Malformed or unsupported saved selections require repair before maintenance can continue.
+- **Maintenance prerequisites:** Updates install missing system prerequisites only when `base.system` belongs to the saved selection and system-package updates are enabled. `--no-apt` and category-only updates preserve that boundary. Existing `jq` and `minisign` remain usable; missing `jq` limits available operations, and a missing `minisign` blocks installers that require release-signature verification. Held tools do not trigger prerequisite installation.
 
 **Examples:**
 Only install agents (plus their dependencies):
