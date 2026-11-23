@@ -289,25 +289,30 @@ swarm_packet_sanitize_context_text() {
       # treating accessTokenCount or clientSecretPolicy as credentials.
       def oauth_name:
         "(?i:(?:[a-z0-9]+[._-])*(?:(?:access|refresh|id|auth)_?token|client_?secret))";
-      def authorization_name: "(?i:(?:proxy[-_]?)?authorization)";
+      def header_name: "(?i:(?:proxy[-_]?)?authorization|(?:set[-_]?)?cookie)";
       # Keep exact aliases case-insensitive and cover prefixed uppercase
       # environment names without treating public fields like tokenCount as keys.
       def credential_name:
         "(?i:" + aliases + ")|" + oauth_name + "|[A-Z0-9_]*(?:PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|ACCESS_KEY|PRIVATE_KEY)[A-Z0-9_]*";
       def string_token: "\"(?:\\\\.|[^\"\\\\])*\"";
+      # HTTP clients commonly represent repeated Set-Cookie fields as a list.
+      # Mask its string tokens in place, preserving empty entries and spacing.
+      def string_list:
+        "\\[\\s*(?:" + string_token + "(?:\\s*,\\s*" + string_token + ")*)?\\s*\\]";
       def redact_fields:
-        gsub("(?<field>" + string_token + ")(?<separator>\\s*:\\s*)(?<value>" + string_token + ")";
+        gsub("(?<field>" + string_token + ")(?<separator>\\s*:\\s*)(?<value>" + string_token + "|" + string_list + ")";
           . as $match | (try (.field | fromjson) catch null) as $key
-          | if ($key != null and ($key | test("^(" + credential_name + "|" + authorization_name + ")$"))) and .value != "\"\""
-            then .field + .separator + "\"[redacted]\""
+          | if ($key != null and ($key | test("^(" + credential_name + "|" + header_name + ")$")))
+            then .field + .separator + (.value | gsub("(?<item>" + string_token + ")";
+              if .item == "\"\"" then .item else "\"[redacted]\"" end))
             else $match.field + $match.separator + $match.value end);
-      # Header values include both a scheme and credentials, and Digest can
-      # contain several quoted parameters. Keep them out of the scalar
+      # Authorization schemes and cookie headers can carry several credentials
+      # and quoted parameters. Keep them out of the scalar
       # assignment matcher, which would mask only Bearer/Basic and leak its tail.
       # Match once: rematching a masked quoted curl header could swallow its
       # public URL. Complete quoted values also take priority over line bounds.
-      def redact_authorization:
-        ("\\b(?:" + authorization_name + ")[ \\t]*:[ \\t]*") as $header
+      def redact_headers:
+        ("\\b(?:" + header_name + ")[ \\t]*:[ \\t]*") as $header
         | gsub(
             "\u0027(?<single_prefix>[ \\t]*" + $header + ")(?:\\\\.|[^\u0027\\\\])+(?<single_tail>\u0027|$)"
             + "|\"(?<double_prefix>[ \\t]*" + $header + ")(?:\\\\.|[^\"\\\\])+(?<double_tail>\"|$)"
@@ -319,9 +324,36 @@ swarm_packet_sanitize_context_text() {
             elif .double_value_prefix != null then "\(.double_value_prefix)\"[credential redacted]\(.double_value_tail)"
             elif .single_value_prefix != null then "\(.single_value_prefix)\u0027[credential redacted]\(.single_value_tail)"
             else "\(.line_prefix)[credential redacted]" end);
+      # Apply value patterns to decoded strings, before re-encoding them into
+      # JSON. A whole-document sed pass misses Unicode-escaped token prefixes
+      # and PEM markers in nested session records. Preserve public JSON number
+      # bytes and endpoint metadata; only URL userinfo containing a password is
+      # a credential (ssh://git@host and ordinary host:port URLs stay useful).
+      # Some text logs retain escaped slashes without forming a JSON document.
+      def url_slash: "(?:/|\\\\/)";
+      def webhook_url:
+        "(?i:https?:" + url_slash + "{2}(?:hooks[.]slack(?:-gov)?[.]com" + url_slash
+        + "services" + url_slash + "[A-Za-z0-9_-]+" + url_slash + "[A-Za-z0-9_-]+" + url_slash
+        + "|(?:canary[.]|ptb[.])?discord(?:app)?[.]com" + url_slash + "api" + url_slash
+        + "(?:v[0-9]+" + url_slash + ")?webhooks" + url_slash + "[0-9]+" + url_slash
+        + "))[A-Za-z0-9_-]{8,}[^\\s\"\u0027<>`)]*";
+      def redact_values:
+        gsub("-----BEGIN (?<kind>[^-\\r\\n]*PRIVATE KEY[^-\\r\\n]*)-----(?s:.*?)(?:-----END \\k<kind>-----|\\z)";
+          "[private key redacted]")
+        | gsub("(?<scheme>[A-Za-z][A-Za-z0-9+.-]*:" + url_slash + "{2})[^\\s/@?#\"\u0027<>`]*:[^\\s/@?#\"\u0027<>`]+@";
+          "\(.scheme)[credentials redacted]@")
+        | gsub("(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}"; "[github token redacted]")
+        | gsub("github_pat_[A-Za-z0-9_]{20,}"; "[github token redacted]")
+        | gsub("tskey-[A-Za-z0-9-]{10,}"; "[tailscale key redacted]")
+        | gsub("AIza[A-Za-z0-9_-]{35,}"; "[google api key redacted]")
+        | gsub(webhook_url; "[webhook url redacted]")
+        | gsub("sk-[A-Za-z0-9_-]{20,}"; "[api key redacted]")
+        | gsub("hvs\\.[A-Za-z0-9_-]{20,}"; "[vault token redacted]")
+        | gsub("xox[bpsar]-[A-Za-z0-9-]{10,}"; "[slack token redacted]")
+        | gsub("AKIA[0-9A-Z]{16}"; "[aws key id redacted]");
       def redact_text:
         redact_fields
-        | redact_authorization
+        | redact_headers
         | ("(?<prefix>\\b(?:" + credential_name + ")\\b\\s*[=:]\\s*)") as $prefix
         | gsub($prefix + "(?<opening>\\\\[\"\u0027])[^\\r\\n]*";
             "\(.prefix)\(.opening)[redacted]\(.opening)")
@@ -329,7 +361,8 @@ swarm_packet_sanitize_context_text() {
             "\(.prefix)\"[redacted]\(.tail)")
         | gsub($prefix + "\u0027(?<value>(?:\\\\.|[^\u0027\\\\])+)(?<tail>\u0027|$)";
             "\(.prefix)\u0027[redacted]\(.tail)")
-        | gsub($prefix + "(?<value>[^\\s\"\u0027\\\\]+)"; "\(.prefix)[redacted]");
+        | gsub($prefix + "(?<value>[^\\s\"\u0027\\\\]+)"; "\(.prefix)[redacted]")
+        | redact_values;
       def redact_context:
         . as $input | (try ($input | fromjson | true) catch false) as $is_json
         | redact_fields
@@ -364,62 +397,11 @@ swarm_packet_sanitize_context_text() {
             -e 's/git[[:space:]]+clean[[:space:]]+-fd/[destructive git cleanup command redacted]/g'
         )
     fi
-    # Public endpoint metadata is safe; webhook token paths are credentials.
-    # Handle raw and JSON-escaped URLs before packet JSON adds another escape layer.
-    local webhook_slash='(/|\\/)'
-    local webhook_routes="([Hh][Oo][Oo][Kk][Ss][.][Ss][Ll][Aa][Cc][Kk](-[Gg][Oo][Vv])?[.][Cc][Oo][Mm]${webhook_slash}services${webhook_slash}[A-Za-z0-9_-]+${webhook_slash}[A-Za-z0-9_-]+${webhook_slash}|([Cc][Aa][Nn][Aa][Rr][Yy][.]|[Pp][Tt][Bb][.])?[Dd][Ii][Ss][Cc][Oo][Rr][Dd]([Aa][Pp][Pp])?[.][Cc][Oo][Mm]${webhook_slash}api${webhook_slash}(v[0-9]+${webhook_slash})?webhooks${webhook_slash}[0-9]+${webhook_slash})"
-    local webhook_pattern="[Hh][Tt][Tt][Pp][Ss]?:${webhook_slash}{2}${webhook_routes}[A-Za-z0-9_-]{8,}[^[:space:]\"'<>\`)]*"
-
-    # Two concerns, one pass:
-    #  1. Neutralize dangerous examples in historical context without rewriting
-    #     current repository instructions or their quoted prohibition examples.
-    #  2. Redact secret-shaped values. cass/cm excerpts replay agent session
-    #     history, which can contain tokens or passwords that were echoed in
-    #     past sessions; a work packet is handed to other agents and must
-    #     not carry live credentials. Cover inventory token shapes and the
-    #     additional provider keys and secret-bearing webhook paths below.
-    # A header-only substitution leaves the key body in replayed history.
-    # Track exact END markers; an incomplete block remains redacted through EOF.
-    # Inline blocks also cover JSON excerpts with escaped newline characters.
-    printf '%s' "$text" | awk '
-      {
-        line = $0
-        output = ""
-        emit_line = !redacting
-        while (length(line)) {
-          if (redacting) {
-            end_pos = index(line, end_marker)
-            if (!end_pos) break
-            line = substr(line, end_pos + length(end_marker))
-            redacting = 0
-          } else if (match(line, /-----BEGIN [^-]*PRIVATE KEY[^-]*-----/)) {
-            header_start = RSTART
-            header_length = RLENGTH
-            header = substr(line, header_start, header_length)
-            output = output substr(line, 1, header_start - 1) "[private key redacted]"
-            end_marker = header
-            sub(/BEGIN/, "END", end_marker)
-            line = substr(line, header_start + header_length)
-            redacting = 1
-          } else {
-            output = output line
-            break
-          }
-        }
-        if (emit_line || length(output)) print output
-      }
-    ' | sed -E "${context_rules[@]}" \
-        -e 's/(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}/[github token redacted]/g' \
-        -e 's/github_pat_[A-Za-z0-9_]{20,}/[github token redacted]/g' \
-        -e 's/tskey-[A-Za-z0-9-]{10,}/[tailscale key redacted]/g' \
-        -e 's/AIza[A-Za-z0-9_-]{35,}/[google api key redacted]/g' \
-        -e "s#${webhook_pattern}#[webhook url redacted]#g" \
-        -e 's/sk-[A-Za-z0-9_-]{20,}/[api key redacted]/g' \
-        -e 's/hvs\.[A-Za-z0-9_-]{20,}/[vault token redacted]/g' \
-        -e 's/xox[bpsar]-[A-Za-z0-9-]{10,}/[slack token redacted]/g' \
-        -e 's/AKIA[0-9A-Z]{16}/[aws key id redacted]/g' \
-        -e 's/-----BEGIN [A-Z ]*PRIVATE KEY-----/[private key redacted]/g' \
-        -e 's/([Aa]uthorization:[[:space:]]*)(Bearer|Basic)[[:space:]]+[A-Za-z0-9._~+\/=-]+/\1[credential redacted]/g'
+    if (( ${#context_rules[@]} )); then
+        printf '%s\n' "$text" | sed -E "${context_rules[@]}"
+    else
+        printf '%s\n' "$text"
+    fi
 }
 
 # Bound each live probe before its output reaches Bash. A plain timeout can

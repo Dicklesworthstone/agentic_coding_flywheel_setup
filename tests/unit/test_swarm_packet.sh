@@ -671,6 +671,145 @@ JSON
     pass "escaped_json_credentials_preserve_public_context"
 }
 
+test_url_and_cookie_credentials_are_redacted_in_actual_packets() {
+    python3 - "$SWARM_PACKET_SH" "$ARTIFACT_DIR" <<'PY'
+import json
+from pathlib import Path
+import subprocess
+import sys
+
+script = Path(sys.argv[1])
+root = Path(sys.argv[2]) / "url-cookie-credentials"
+root.mkdir()
+inputs = {
+    "bead.json": json.dumps({
+        "id": "bd-credentials", "title": "Review connection configuration",
+        "description": "Inspect https://fixtureUrlTask:fixtureUrlTaskPassword@git.example.test/team/repo.git",
+    }),
+    "AGENTS.md": "Preserve git reset --hard as a prohibited-command example.\nCookie: session=fixtureCookieSource\n",
+    "README.md": "Public connection guide: https://example.test:443/guide\n",
+    "cm.json": json.dumps({
+        "database": "postgres://fixtureUrlDatabase:fixtureUrlPassword@db.example.test:5432/app?sslmode=require",
+        "redis": "redis://:fixtureUrlRedis@localhost:6379/0",
+        "message": "git clone https://fixtureUrlGit:fixtureUrlGitPassword@git.example.test/team/repo.git",
+        "headers": {"Cookie": "sid=fixtureCookieSession; other=fixtureCookieOther",
+                    "sEt-CoOkIe": "sid=fixtureCookieSet; Path=/; Secure; HttpOnly",
+                    "Set-Cookie": ["sid=fixtureCookieFirst; Path=/", "other=fixtureCookieSecond; Secure", ""]},
+        "document": json.dumps({"Co\u006fkie": "sid=fixtureCookieNested", "publicId": 9007199254740993}),
+        "public": ["https://example.test:443/path?q=x", "ssh://git@git.example.test/repo",
+                   "Cookie-Policy: preserve public settings", "cookieCount=3"],
+        "unconfigured": {"Cookie": "", "Set-Cookie": None, "cookiesEnabled": True, "setCookie": []},
+        "eventId": 9007199254740993,
+    }),
+    "cass.txt": "\n".join([
+        "curl -H 'Cookie: sid=fixtureCookieQuoted; other=\"fixtureCookieQuotedTail\"' https://example.test/one",
+        'curl -H "Set-Cookie: sid=fixtureCookieResponse; Path=/" https://example.test/two',
+        "cookie: sid=fixtureCookieLower; other=fixtureCookieLowerTail",
+        r"Escaped hook: https:\/\/hooks.slack.com\/services\/T123\/B123\/fixtureUrlEscapedWebhook",
+        r"Escaped database: postgres:\/\/fixtureUrlUser:fixtureUrlEscapedPassword@db.example.test/app",
+        "Proxy-Authorization-Policy: preserve public policy",
+        "cookieCount=3",
+        "PUBLIC_URL=https://example.test:443/path?q=x",
+    ]),
+}
+for name, data in inputs.items():
+    (root / name).write_text(data)
+original = {name: (root / name).read_bytes() for name in inputs}
+base = ["bash", str(script), "--repo", str(root), "--bead-file", str(root / "bead.json"),
+        "--cm-file", str(root / "cm.json"), "--cass-file", str(root / "cass.txt"),
+        "--no-live-context", "--max-chars", "24000"]
+for format in ("--json", "--markdown"):
+    result = subprocess.run([*base, format], capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+    (root / (format[2:] + ".output")).write_text(result.stdout)
+    assert "fixtureUrl" not in result.stdout and "fixtureCookie" not in result.stdout, format
+    for public in ("git reset --hard", "https://example.test/one", "https://example.test/two",
+                   "Cookie-Policy: preserve public settings", "cookieCount=3",
+                   "Proxy-Authorization-Policy: preserve public policy",
+                   "Escaped hook: [webhook url redacted]"):
+        assert public in result.stdout, (format, public)
+    if format == "--json":
+        report = json.loads(result.stdout)
+        assert report["status"] == "pass" and not report["output"]["truncated"]
+        cm = json.loads(report["context"]["cm"]["text"])
+        assert cm["database"] == "postgres://[credentials redacted]@db.example.test:5432/app?sslmode=require"
+        assert cm["redis"] == "redis://[credentials redacted]@localhost:6379/0"
+        assert cm["message"] == "git clone https://[credentials redacted]@git.example.test/team/repo.git"
+        assert cm["headers"] == {"Cookie": "[redacted]", "sEt-CoOkIe": "[redacted]",
+                                 "Set-Cookie": ["[redacted]", "[redacted]", ""]}
+        assert json.loads(cm["document"])["Cookie"] == "[redacted]"
+        assert '"publicId": 9007199254740993' in cm["document"]
+        assert '"eventId": 9007199254740993' in report["context"]["cm"]["text"]
+        assert cm["public"] == json.loads(inputs["cm.json"])["public"]
+        assert cm["unconfigured"] == {"Cookie": "", "Set-Cookie": None, "cookiesEnabled": True, "setCookie": []}
+assert all((root / name).read_bytes() == data for name, data in original.items())
+PY
+    [[ $? -eq 0 ]] || return 1
+    pass "url_and_cookie_credentials_are_redacted_in_actual_packets"
+}
+
+test_encoded_provider_credentials_are_redacted_before_reencoding() {
+    python3 - "$SWARM_PACKET_SH" "$ARTIFACT_DIR" <<'PY'
+import json
+from pathlib import Path
+import subprocess
+import sys
+
+script = Path(sys.argv[1])
+root = Path(sys.argv[2]) / "encoded-provider-credentials"
+root.mkdir()
+(root / "bead.json").write_text('{"id":"bd-encoded","title":"Review encoded context"}')
+(root / "AGENTS.md").write_text("Keep current instructions and public metadata.\n")
+(root / "README.md").write_text("Public guide.\n")
+credentials = {
+    "github": ("ghp_fixtureEncodedGithub01234567890", "[github token redacted]"),
+    "fine_grained": ("github_pat_fixtureEncodedPat01234567890", "[github token redacted]"),
+    "tailscale": ("tskey-auth-fixtureEncodedTailscale01234567890", "[tailscale key redacted]"),
+    "google": ("AIza0123456789abcdefghijklmnopqrstuvwxy", "[google api key redacted]"),
+    "api": ("sk-fixtureEncodedApi01234567890", "[api key redacted]"),
+    "vault": ("hvs.fixtureEncodedVault01234567890", "[vault token redacted]"),
+    "slack": ("xoxb-fixtureEncodedSlack01234567890", "[slack token redacted]"),
+    "aws": ("AKIA0123456789ABCDEF", "[aws key id redacted]"),
+    "webhook": ("https://hooks.slack.com/services/T123/B123/fixtureEncodedWebhook01234567890", "[webhook url redacted]"),
+    "pem": ("-----BEGIN PRIVATE KEY-----\nfixtureEncodedPemBody\n-----END PRIVATE KEY----- after", "[private key redacted] after"),
+}
+
+def encoded_string(value):
+    # The decoded credential is ordinary text, but no raw token prefix reaches
+    # a later whole-document regular expression. Preserve valid JSON syntax.
+    return '"\\u%04x' % ord(value[0]) + json.dumps(value)[2:]
+
+cm = "{" + ",".join(json.dumps(key) + ":" + encoded_string(value)
+                     for key, (value, _) in credentials.items()) + ',"eventId":9007199254740993}'
+nested = '{"message":' + encoded_string(credentials["github"][0]) + ',"eventId":9007199254740993}'
+cass = json.dumps({"document": nested, "publicLabel": "public context", "eventId": 9007199254740993})
+(root / "cm.json").write_text(cm)
+(root / "cass.json").write_text(cass)
+base = ["bash", str(script), "--repo", str(root), "--bead-file", str(root / "bead.json"),
+        "--cm-file", str(root / "cm.json"), "--cass-file", str(root / "cass.json"),
+        "--no-live-context", "--max-chars", "24000"]
+for format in ("--json", "--markdown"):
+    result = subprocess.run([*base, format], capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+    (root / (format[2:] + ".output")).write_text(result.stdout)
+    assert "fixtureEncoded" not in result.stdout and "public context" in result.stdout
+    for _, marker in credentials.values():
+        assert marker in result.stdout, (format, marker)
+    if format == "--json":
+        report = json.loads(result.stdout)
+        assert report["status"] == "pass" and not report["output"]["truncated"]
+        safe_cm = json.loads(report["context"]["cm"]["text"])
+        assert all(safe_cm[key] == marker for key, (_, marker) in credentials.items())
+        assert '"eventId":9007199254740993' in report["context"]["cm"]["text"]
+        safe_cass = json.loads(report["context"]["cass"]["text"])
+        assert json.loads(safe_cass["document"])["message"] == "[github token redacted]"
+        assert '"eventId":9007199254740993' in safe_cass["document"]
+assert (root / "cm.json").read_text() == cm and (root / "cass.json").read_text() == cass
+PY
+    [[ $? -eq 0 ]] || return 1
+    pass "encoded_provider_credentials_are_redacted_before_reencoding"
+}
+
 test_packet_refuses_failed_credential_redaction() {
     local bead agents readme cm cass output real_jq bin_dir phase marked_bead
     real_jq="$(command -v jq)"
@@ -1284,6 +1423,8 @@ main() {
     run_test test_authorization_credentials_are_redacted_in_actual_packets
     run_test test_sanitizer_masks_complete_header_values_without_touching_public_text
     run_test test_escaped_json_credentials_preserve_public_context
+    run_test test_url_and_cookie_credentials_are_redacted_in_actual_packets
+    run_test test_encoded_provider_credentials_are_redacted_before_reencoding
     run_test test_packet_refuses_failed_credential_redaction
     run_test test_packet_preserves_empty_labels
     run_test test_packet_rejects_malformed_labels_without_echoing_values
