@@ -252,6 +252,198 @@ EOF
     [[ "$(cut -f 1 "$HOOK_FIXTURE/events")" == doctor ]]
 }
 
+doctor_agent_mail_context_fixture() {
+    unset _ACFS_DOCTOR_FIX_LOADED
+    source "${DOCTOR_FIX_TEST_LIBRARY:-$PROJECT_ROOT/scripts/lib/doctor_fix.sh}"
+    MAIL_FIXTURE="$BATS_TEST_TMPDIR/mail-context"
+    mkdir -p "$MAIL_FIXTURE/target/mcp_agent_mail" "$MAIL_FIXTURE/target/.local/bin" \
+        "$MAIL_FIXTURE/caller/storage" "$MAIL_FIXTURE/caller/project"
+    TARGET_HOME="$MAIL_FIXTURE/target"
+    TARGET_USER=acfs_mail_target
+    MAIL_CURRENT_USER=acfs_mail_caller
+    MAIL_TRANSPORT=available
+    export STORAGE_ROOT="$MAIL_FIXTURE/caller/storage"
+    export DATABASE_URL="sqlite:///$MAIL_FIXTURE/caller/caller.sqlite3"
+    export XDG_CONFIG_HOME="$MAIL_FIXTURE/caller/config" XDG_DATA_HOME="$MAIL_FIXTURE/caller/data"
+    export BASH_ENV="$MAIL_FIXTURE/caller/startup"
+    printf 'printf startup > "%s/startup-ran"\n' "$MAIL_FIXTURE" > "$BASH_ENV"
+    DOCTOR_FIX_LOG="$MAIL_FIXTURE/doctor.log"
+    DOCTOR_FIX_DRY_RUN=false
+    FIX_APPLIED=0 FIX_FAILED=0 FIX_SKIPPED=0
+    FIXES_DRY_RUN=() FIXES_APPLIED=()
+    doctor_fix_runtime_home() { printf '%s\n' "$TARGET_HOME"; }
+    doctor_fix_runtime_user() { printf '%s\n' "$TARGET_USER"; }
+    doctor_fix_current_user() { printf '%s\n' "$MAIL_CURRENT_USER"; }
+    doctor_fix_runtime_path() { printf '%s:/usr/bin:/bin\n' "$TARGET_HOME/.local/bin"; }
+    doctor_fix_system_binary_path() {
+        case "$1" in
+            sudo|runuser)
+                [[ "$MAIL_TRANSPORT" != missing ]] || return 1
+                printf '%s/transport\n' "$MAIL_FIXTURE"
+                ;;
+            timeout) printf '%s/timeout\n' "$MAIL_FIXTURE" ;;
+            *) PATH=/usr/sbin:/usr/bin:/sbin:/bin command -v "$1" ;;
+        esac
+    }
+    doctor_fix_source_stack_lib() { return 0; }
+    _stack_configure_agent_mail_service() { printf service >> "$MAIL_FIXTURE/service-calls"; return 75; }
+    doctor_fix_system_curl() { return 0; }
+    agent_mail_fix_readiness_ready() { return 0; }
+    record_change() { printf '%s|%s|%s\n' "$1" "$2" "$3" >> "$MAIL_FIXTURE/changes"; }
+    # Simulate only the account transport and systemd service. Probe, drain,
+    # repair, follow-up fix, environment and timeout dispatch remain real.
+    cat > "$MAIL_FIXTURE/transport" <<EOF
+#!/bin/bash -p
+[[ ! -f "$MAIL_FIXTURE/deny-transport" ]] || exit 71
+printf '%s\\n' "\$*" >> "$MAIL_FIXTURE/transport.log"
+[[ "\${1:-}" != -n ]] || shift
+[[ "\${1:-}" == -u && "\${2:-}" == acfs_mail_target ]] || exit 72
+shift 2
+[[ "\${1:-}" != -- ]] || shift
+exec "\$@"
+EOF
+    cat > "$MAIL_FIXTURE/timeout" <<EOF
+#!/bin/bash -p
+printf '%s\\n' "\$*" >> "$MAIL_FIXTURE/deadlines"
+[[ "\${1:-}" != --kill-after=5s ]] || shift
+case "\${1:-}" in 15s|60s) shift ;; *) exit 74 ;; esac
+exec /usr/bin/timeout --kill-after=1s 0.2s "\$@"
+EOF
+    cat > "$TARGET_HOME/mcp_agent_mail/am" <<EOF
+#!/bin/bash
+storage=\${STORAGE_ROOT:-\$HOME/.mcp_agent_mail_git_mailbox_repo}
+database=\${DATABASE_URL:-sqlite:///\$storage/storage.sqlite3}
+config=\${XDG_CONFIG_HOME:-\$HOME/.config}
+data=\${XDG_DATA_HOME:-\$HOME/.local/share}
+operation=\${2:---version}
+printf '%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n' \
+    "\$operation" "\$HOME" "\${USER-}" "\$PWD" "\$storage" "\$database" "\$config" "\$data" "\${BASH_ENV-<unset>}" >> "$MAIL_FIXTURE/events"
+if [[ -f "$MAIL_FIXTURE/hang-\$operation" ]]; then sleep 5; exit 75; fi
+case "\${1:-}:\$operation" in
+    --version:*) printf 'am 1.0.0\\n' ;;
+    doctor:drain)
+        if [[ -f "$MAIL_FIXTURE/live-owner" ]]; then
+            printf '{"safe_to_mutate":false}\\n'
+        else
+            printf '{"safe_to_mutate":true}\\n'
+        fi ;;
+    doctor:repair|doctor:fix)
+        mkdir -p -- "\$storage"
+        printf '%s\\n' "\$database" > "\$storage/\$operation-ran" ;;
+    doctor:check) printf '{"healthy":true}\\n' ;;
+    *) exit 76 ;;
+esac
+EOF
+    chmod +x "$MAIL_FIXTURE/transport" "$MAIL_FIXTURE/timeout" "$TARGET_HOME/mcp_agent_mail/am"
+    ln -s "$TARGET_HOME/mcp_agent_mail/am" "$TARGET_HOME/.local/bin/am"
+    cd "$MAIL_FIXTURE/caller/project"
+}
+
+@test "doctor mail context: drain and repair use the target account mailbox and never caller startup" {
+    doctor_agent_mail_context_fixture
+    fix_mcp_agent_mail stack.mcp_agent_mail
+    [[ "$FIX_APPLIED" -eq 2 && "$FIX_FAILED" -eq 0 ]]
+    [[ -f "$TARGET_HOME/.mcp_agent_mail_git_mailbox_repo/repair-ran" ]]
+    [[ -f "$TARGET_HOME/.mcp_agent_mail_git_mailbox_repo/fix-ran" ]]
+    [[ ! -e "$STORAGE_ROOT/repair-ran" && ! -e "$STORAGE_ROOT/fix-ran" ]]
+    [[ ! -e "$MAIL_FIXTURE/startup-ran" ]]
+    run awk -F '\t' -v home="$TARGET_HOME" '
+        $2 != home || $3 != "acfs_mail_target" || $4 != home ||
+        $5 != home "/.mcp_agent_mail_git_mailbox_repo" ||
+        $6 != "sqlite:///" home "/.mcp_agent_mail_git_mailbox_repo/storage.sqlite3" ||
+        $7 != home "/.config" || $8 != home "/.local/share" || $9 != "<unset>" { exit 1 }
+        END { if (NR != 5) exit 1 }
+    ' "$MAIL_FIXTURE/events"
+    assert_success
+    [[ "$(wc -l < "$MAIL_FIXTURE/changes")" -eq 2 ]]
+    run grep -F 'Manual rollback required: restore Agent Mail' "$MAIL_FIXTURE/changes"
+    assert_success
+}
+
+@test "doctor mail context: missing account transport refuses all repair side effects" {
+    doctor_agent_mail_context_fixture
+    MAIL_TRANSPORT=missing
+    if fix_mcp_agent_mail stack.mcp_agent_mail; then fail "mail repair ran without an account transport"; fi
+    [[ "$FIX_FAILED" -eq 1 && "$FIX_APPLIED" -eq 0 ]]
+    [[ ! -e "$MAIL_FIXTURE/events" && ! -e "$MAIL_FIXTURE/changes" && ! -e "$MAIL_FIXTURE/service-calls" ]]
+}
+
+@test "doctor mail context: rejected account transport refuses all repair side effects" {
+    doctor_agent_mail_context_fixture
+    touch "$MAIL_FIXTURE/deny-transport"
+    if fix_mcp_agent_mail stack.mcp_agent_mail; then fail "mail repair ignored account switch failure"; fi
+    [[ "$FIX_FAILED" -eq 1 && "$FIX_APPLIED" -eq 0 ]]
+    [[ ! -e "$MAIL_FIXTURE/events" && ! -e "$MAIL_FIXTURE/changes" && ! -e "$MAIL_FIXTURE/service-calls" ]]
+}
+
+@test "doctor mail context: same-account explicit mailbox overrides and relative paths remain intentional" {
+    doctor_agent_mail_context_fixture
+    TARGET_USER="$(id -un)"
+    MAIL_CURRENT_USER="$TARGET_USER"
+    MAIL_TRANSPORT=missing
+    export STORAGE_ROOT='custom mailbox $(touch must-not-run)'
+    export DATABASE_URL="sqlite:///$PWD/custom database.sqlite3"
+    fix_mcp_agent_mail stack.mcp_agent_mail
+    [[ -f "$PWD/$STORAGE_ROOT/repair-ran" && -f "$PWD/$STORAGE_ROOT/fix-ran" ]]
+    [[ "$(cat "$PWD/$STORAGE_ROOT/repair-ran")" == "$DATABASE_URL" ]]
+    [[ ! -e "$MAIL_FIXTURE/transport.log" && ! -e "$MAIL_FIXTURE/startup-ran" && ! -e "$PWD/must-not-run" ]]
+    run awk -F '\t' -v cwd="$PWD" -v config="$XDG_CONFIG_HOME" -v data="$XDG_DATA_HOME" '
+        $4 != cwd || $7 != config || $8 != data || $9 != "<unset>" { exit 1 }
+        END { if (NR != 5) exit 1 }
+    ' "$MAIL_FIXTURE/events"
+    assert_success
+}
+
+@test "doctor mail context: cleared public-handoff selectors also discard the foreign working directory" {
+    doctor_agent_mail_context_fixture
+    # Public dispatch has already changed identity and removed foreign
+    # selectors, while retaining its original working directory.
+    TARGET_USER="$(id -un)"
+    MAIL_CURRENT_USER="$TARGET_USER"
+    MAIL_TRANSPORT=missing
+    export HOME="$TARGET_HOME"
+    unset DATABASE_URL STORAGE_ROOT XDG_CONFIG_HOME XDG_DATA_HOME BASH_ENV
+    printf 'AM_FOREIGN_PROJECT_CONFIG=1\n' > "$PWD/.env"
+    fix_mcp_agent_mail stack.mcp_agent_mail
+    [[ -f "$TARGET_HOME/.mcp_agent_mail_git_mailbox_repo/repair-ran" ]]
+    [[ ! -e "$MAIL_FIXTURE/transport.log" ]]
+    run awk -F '\t' -v home="$TARGET_HOME" '
+        $2 != home || $4 != home || $9 != "<unset>" { exit 1 }
+        END { if (NR != 5) exit 1 }
+    ' "$MAIL_FIXTURE/events"
+    assert_success
+}
+
+@test "doctor mail context: drain has a deadline and a timed out attestation never enables mutation" {
+    doctor_agent_mail_context_fixture
+    touch "$MAIL_FIXTURE/hang-drain"
+    run agent_mail_fix_safe_to_mutate "$TARGET_HOME/mcp_agent_mail/am"
+    assert_failure 2
+    [[ "$(cut -f 1 "$MAIL_FIXTURE/events")" == drain ]]
+    run grep -F -- '--kill-after=5s 15s' "$MAIL_FIXTURE/deadlines"
+    assert_success
+    [[ ! -e "$TARGET_HOME/.mcp_agent_mail_git_mailbox_repo/repair-ran" ]]
+}
+
+@test "doctor mail context: timed out database repair never starts the follow-up mutating fix" {
+    doctor_agent_mail_context_fixture
+    touch "$MAIL_FIXTURE/hang-repair"
+    if fix_mcp_agent_mail stack.mcp_agent_mail; then fail "timed out database repair reported success"; fi
+    [[ "$FIX_FAILED" -eq 1 && "$FIX_APPLIED" -eq 0 ]]
+    run grep -F -- '--kill-after=5s 60s' "$MAIL_FIXTURE/deadlines"
+    assert_success
+    [[ "$(cut -f 1 "$MAIL_FIXTURE/events")" == $'drain\nrepair' ]]
+    [[ ! -e "$MAIL_FIXTURE/changes" ]]
+}
+
+@test "doctor mail context: dry-run runs no Agent Mail payload or service mutation" {
+    doctor_agent_mail_context_fixture
+    DOCTOR_FIX_DRY_RUN=true
+    fix_mcp_agent_mail stack.mcp_agent_mail
+    [[ "$FIX_APPLIED" -eq 0 && "$FIX_FAILED" -eq 0 && ${#FIXES_DRY_RUN[@]} -eq 1 ]]
+    [[ ! -e "$MAIL_FIXTURE/events" && ! -e "$MAIL_FIXTURE/changes" && ! -e "$MAIL_FIXTURE/service-calls" ]]
+}
+
 # Exercise the actual doctor command, dispatcher, PATH repair and undo journal
 # in a private home. Only host diagnostics and account discovery are replaced;
 # these tests must never repair the machine running the suite.

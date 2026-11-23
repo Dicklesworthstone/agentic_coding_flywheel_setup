@@ -2906,6 +2906,75 @@ doctor_fix_agent_mail_bin() {
     return 1
 }
 
+# Build every Agent Mail probe and database mutation in the same account and
+# configuration context. A drain of the caller's mailbox cannot authorize a
+# repair of the installation selected by TARGET_USER/TARGET_HOME.
+doctor_fix_build_agent_mail_command() {
+    local result_name="$1"
+    local am_bin="$2"
+    local deadline="$3"
+    shift 3
+    local runtime_home=""
+    local runtime_user=""
+    local current_user=""
+    local working_dir=""
+    local env_bin=""
+    local bash_bin=""
+    local timeout_bin=""
+    local selector=""
+    local selector_value=""
+    local -a mailbox_env=()
+
+    runtime_home="$(doctor_fix_runtime_home 2>/dev/null || true)"
+    runtime_user="$(doctor_fix_runtime_user 2>/dev/null || true)"
+    current_user="$(doctor_fix_current_user 2>/dev/null || true)"
+    [[ -n "$runtime_home" && -n "$runtime_user" && -n "$current_user" && -n "$am_bin" ]] || return 1
+    [[ "$deadline" =~ ^[1-9][0-9]*s$ ]] || return 1
+
+    working_dir="$runtime_home"
+    if [[ "$current_user" == "$runtime_user" ]]; then
+        # An operator repairing their own mailbox may deliberately select a
+        # custom database, archive or XDG directory. Keep relative paths tied
+        # to their original directory, without evaluating any shell syntax.
+        # With no explicit selectors, always use target HOME: a public account
+        # handoff has already changed identity and cleared foreign selectors,
+        # but can still retain the caller's inaccessible/project-local CWD.
+        for selector in DATABASE_URL STORAGE_ROOT XDG_CONFIG_HOME XDG_DATA_HOME; do
+            [[ -v "$selector" ]] || continue
+            working_dir="$PWD"
+            selector_value="${!selector}"
+            if [[ "$selector_value" == *$'\n'* || "$selector_value" == *$'\r'* ]]; then
+                doctor_fix_log WARN "Refusing a multiline Agent Mail configuration value for $selector"
+                return 1
+            fi
+            mailbox_env+=("$selector=$selector_value")
+        done
+    fi
+
+    env_bin="$(doctor_fix_system_binary_path env 2>/dev/null || true)"
+    bash_bin="$(doctor_fix_system_binary_path bash 2>/dev/null || true)"
+    timeout_bin="$(doctor_fix_system_binary_path timeout 2>/dev/null || true)"
+    if [[ -z "$env_bin" || -z "$bash_bin" || -z "$timeout_bin" ]]; then
+        doctor_fix_log WARN "Agent Mail repair requires system env, bash and timeout commands"
+        return 1
+    fi
+
+    # The outer builder drops ambient startup hooks and switches accounts
+    # before executing this bounded command. Never inherit a foreign CWD's
+    # .env configuration; user-global config is discovered under target HOME.
+    doctor_fix_build_runtime_command "$result_name" "" \
+        "$timeout_bin" --kill-after=5s "$deadline" \
+        "$bash_bin" --noprofile --norc -p -c \
+        'cd -- "$1" || exit 1; shift; exec "$@"' -- "$working_dir" \
+        "$env_bin" -- "${mailbox_env[@]}" "$am_bin" "$@"
+}
+
+doctor_fix_run_agent_mail_command() {
+    local -a agent_mail_command=()
+    doctor_fix_build_agent_mail_command agent_mail_command "$@" || return $?
+    "${agent_mail_command[@]}"
+}
+
 doctor_fix_agent_mail_mcp_path() {
     local am_bin="${1:-}"
 
@@ -2914,7 +2983,9 @@ doctor_fix_agent_mail_mcp_path() {
     fi
     [[ -n "$am_bin" ]] || return 1
 
-    if "$am_bin" --version 2>/dev/null | grep -q '^am '; then
+    local version_output=""
+    version_output="$(doctor_fix_run_agent_mail_command "$am_bin" 15s --version 2>/dev/null)" || return 1
+    if [[ "$version_output" == am\ * ]]; then
         printf '/mcp/\n'
     else
         printf '/api/\n'
@@ -2924,23 +2995,17 @@ agent_mail_fix_doctor_healthy() {
     local doctor_json=""
     local am_bin=""
     local jq_bin=""
-    local timeout_bin=""
     local -a cmd=()
 
     am_bin="$(doctor_fix_agent_mail_bin 2>/dev/null || true)"
     [[ -n "$am_bin" ]] || return 1
-    cmd=("$am_bin" doctor check --json)
+    cmd=(doctor check --json)
 
     if [[ $# -gt 0 ]]; then
         cmd+=("$1")
     fi
 
-    timeout_bin="$(doctor_fix_system_binary_path timeout 2>/dev/null || true)"
-    if [[ -n "$timeout_bin" ]]; then
-        doctor_json="$("$timeout_bin" 15s "${cmd[@]}" 2>/dev/null)" || return 1
-    else
-        doctor_json="$("${cmd[@]}" 2>/dev/null)" || return 1
-    fi
+    doctor_json="$(doctor_fix_run_agent_mail_command "$am_bin" 15s "${cmd[@]}" 2>/dev/null)" || return 1
 
     [[ -n "$doctor_json" ]] || return 1
 
@@ -3148,7 +3213,7 @@ agent_mail_fix_safe_to_mutate() {
     local drain_json=""
     local jq_bin=""
 
-    drain_json="$("$am_bin" doctor drain --json 2>/dev/null)" || return 2
+    drain_json="$(doctor_fix_run_agent_mail_command "$am_bin" 15s doctor drain --json 2>/dev/null)" || return 2
     jq_bin="$(doctor_fix_system_binary_path jq 2>/dev/null || true)"
     [[ -n "$jq_bin" ]] || return 2
     if ! printf '%s\n' "$drain_json" | "$jq_bin" -e \
@@ -3178,12 +3243,25 @@ fix_mcp_agent_mail() {
     local am_dst=""
     local storage_root=""
     local unit_file=""
+    local runtime_probe_bin=""
     runtime_home="$(doctor_fix_runtime_home)"
     runtime_user="$(doctor_fix_runtime_user)"
     am_src="$runtime_home/mcp_agent_mail/am"
     am_dst="$runtime_home/.local/bin/am"
     storage_root="$runtime_home/.mcp_agent_mail_git_mailbox_repo"
     unit_file="$runtime_home/.config/systemd/user/agent-mail.service"
+
+    # Resolve and exercise the account transport before changing symlinks,
+    # installing a CLI or reconciling service state. A missing/denied switch
+    # must not fall through to caller-owned execution or a misleading success.
+    if [[ "$DOCTOR_FIX_DRY_RUN" != "true" ]]; then
+        runtime_probe_bin="$(doctor_fix_system_binary_path true 2>/dev/null || true)"
+        if [[ -z "$runtime_probe_bin" ]] || ! doctor_fix_run_agent_mail_command "$runtime_probe_bin" 15s; then
+            doctor_fix_log ERROR "Unable to enter the target account and configuration for MCP Agent Mail repair"
+            FIX_FAILED=$((FIX_FAILED + 1))
+            return 1
+        fi
+    fi
 
     doctor_fix_source_stack_lib || {
         doctor_fix_log ERROR "Unable to load stack helper library for MCP Agent Mail repair"
@@ -3330,7 +3408,7 @@ fix_mcp_agent_mail() {
 
     agent_mail_fix_safe_to_mutate "$am_bin" || drain_rc=$?
     if [[ "$drain_rc" -eq 0 ]]; then
-        if "$am_bin" doctor repair --yes >/dev/null 2>&1; then
+        if doctor_fix_run_agent_mail_command "$am_bin" 60s doctor repair --yes >/dev/null 2>&1; then
             if ! doctor_fix_record_change_or_rollback \
                 "" \
                 false \
@@ -3355,7 +3433,7 @@ fix_mcp_agent_mail() {
             drain_rc=0
             agent_mail_fix_safe_to_mutate "$am_bin" || drain_rc=$?
             if [[ "$drain_rc" -eq 0 ]]; then
-                if "$am_bin" doctor fix --yes >/dev/null 2>&1; then
+                if doctor_fix_run_agent_mail_command "$am_bin" 60s doctor fix --yes >/dev/null 2>&1; then
                     if ! doctor_fix_record_change_or_rollback \
                         "" \
                         false \
