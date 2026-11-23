@@ -241,6 +241,7 @@ function timestamp(value: unknown): number {
 const CHECK_MODULES: Readonly<Record<string, string>> = Object.freeze({
   "identity.passwordless_sudo": "users.ubuntu",
   "identity.sudo": "users.ubuntu",
+  "identity.acfs_sudo_policy": "users.ubuntu",
   "workspace.data_projects": "base.filesystem",
   "shell.zsh": "shell.zsh",
   "shell.login_shell": "shell.login",

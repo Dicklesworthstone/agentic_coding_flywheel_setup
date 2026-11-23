@@ -7908,6 +7908,73 @@ acfs_install_sudoers_dropin() {
     return 0
 }
 
+# Reconcile only the exact per-user policy written by ACFS. A mode change
+# must not leave an earlier NOPASSWD grant active, and an administrator's
+# replacement at this pathname must not be silently overwritten.
+acfs_configure_sudo_policy() {
+    local policy_file="/etc/sudoers.d/90-ubuntu-acfs"
+    local policy="" existing="" metadata="" owner="" permissions="" links=""
+    local test_bin="" cat_bin="" stat_bin="" id_bin="" target_uid=""
+    local -a sudo_prefix=()
+
+    user_require_valid_target_user "$TARGET_USER" || return 1
+    case "$MODE" in
+        vibe) policy="$TARGET_USER ALL=(ALL) NOPASSWD:ALL" ;;
+        safe) policy="$TARGET_USER ALL=(ALL) PASSWD:ALL" ;;
+        *) log_error "Invalid installation mode for sudo policy: $MODE"; return 1 ;;
+    esac
+    [[ "${ACFS_DISTRO_FAMILY:-ubuntu}" != arch ]] || policy_file="/etc/sudoers.d/90-acfs"
+    [[ -z "${SUDO:-}" ]] || sudo_prefix=("$SUDO")
+    test_bin="$(acfs_early_system_binary_path test)" || return 1
+    cat_bin="$(acfs_early_system_binary_path cat)" || return 1
+    stat_bin="$(acfs_early_system_binary_path stat)" || return 1
+
+    if "${sudo_prefix[@]}" "$test_bin" -e "$policy_file" \
+        || "${sudo_prefix[@]}" "$test_bin" -L "$policy_file"; then
+        if ! "${sudo_prefix[@]}" "$test_bin" -f "$policy_file" \
+            || "${sudo_prefix[@]}" "$test_bin" -L "$policy_file"; then
+            log_error "Refusing to replace a linked or non-regular ACFS sudo policy: $policy_file"
+            return 1
+        fi
+        metadata="$("${sudo_prefix[@]}" "$stat_bin" -c '%u:%a:%h' -- "$policy_file")" || return 1
+        IFS=: read -r owner permissions links <<< "$metadata"
+        if [[ "$owner" != 0 || "$links" != 1 || ! "$permissions" =~ ^[0-7]{3,4}$ ]] \
+            || (( (8#$permissions & 0022) != 0 )); then
+            log_error "Refusing to replace an unsafe ACFS sudo policy: $policy_file"
+            return 1
+        fi
+        existing="$("${sudo_prefix[@]}" "$cat_bin" -- "$policy_file")" || return 1
+        case "$existing" in
+            "$TARGET_USER ALL=(ALL) NOPASSWD:ALL"|"$TARGET_USER ALL=(ALL) PASSWD:ALL") ;;
+            *)
+                log_error "The ACFS sudo policy contains custom or foreign rules; preserving $policy_file. Review it before changing installation mode."
+                return 1
+                ;;
+        esac
+        [[ "$existing" != "$policy" ]] || return 0
+        if [[ "$MODE" == safe && "$EUID" -ne 0 ]]; then
+            id_bin="$(acfs_early_system_binary_path id)" || return 1
+            target_uid="$("$id_bin" -u "$TARGET_USER")" || return 1
+            [[ "$target_uid" =~ ^[0-9]+$ ]] || return 1
+            if [[ "$target_uid" == "$EUID" ]]; then
+                # Streamed installs may run under setsid without a terminal.
+                # Revoking this process's own grant would strand every later
+                # privileged phase even though this one atomic write succeeds.
+                log_error "Changing your own ACFS sudo policy to safe mode requires a root installer process. The existing policy was left untouched."
+                log_info "Rerun this installation as root (for a checkout: sudo env TARGET_USER=$TARGET_USER bash install.sh --mode safe, keeping your other options)."
+                return 1
+            fi
+        fi
+    elif [[ "$MODE" == safe ]]; then
+        # A fresh safe install does not alter unrelated administrator policy.
+        # Arch's default wheel entitlement is handled separately below.
+        return 0
+    fi
+
+    acfs_install_sudoers_dropin "Applying $MODE sudo policy for $TARGET_USER" \
+        "$policy" "$policy_file"
+}
+
 # Legacy phase bodies are coarse category installers and do not consult the
 # module selection plan. When selection filters (--only/--only-phase/--skip)
 # are active, individually guarded legacy modules must honor them too (#350:
@@ -8055,20 +8122,9 @@ normalize_user() {
         try_step "Setting home directory ownership" acfs_chown_target_home "$TARGET_USER:$TARGET_USER" "$TARGET_HOME" || return 1
     fi
 
-    # Set up passwordless sudo in vibe mode
-    if [[ "$MODE" == "vibe" ]]; then
-        log_detail "Enabling passwordless sudo for $TARGET_USER"
-        # Arch-family uses a distro-neutral drop-in name; Ubuntu keeps the
-        # historical 90-ubuntu-acfs name.
-        local acfs_sudoers_file="90-ubuntu-acfs"
-        if [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
-            acfs_sudoers_file="90-acfs"
-        fi
-        acfs_install_sudoers_dropin \
-            "Installing passwordless sudo drop-in" \
-            "$TARGET_USER ALL=(ALL) NOPASSWD:ALL" \
-            "/etc/sudoers.d/$acfs_sudoers_file" || return 1
-    elif [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
+    # Apply the accepted mode in both directions, including resumed installs.
+    acfs_configure_sudo_policy || return 1
+    if [[ "$MODE" == "safe" && "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
         # Safe mode on Arch: wheel membership alone grants nothing because the
         # stock /etc/sudoers ships `%wheel` commented out (Ubuntu's `sudo` group
         # is enabled by default). Without this the target user would have no

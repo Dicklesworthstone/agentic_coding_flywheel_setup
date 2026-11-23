@@ -1877,6 +1877,7 @@ acfs_run_verification_shell() {
     local run_as="${1:-}"
     local check_cmd="${2:-}"
     local install_mode="${MODE:-vibe}"
+    local distro_family="${ACFS_DISTRO_FAMILY:-ubuntu}"
     local timeout_bin="" bash_bin="" sleep_bin="" bounded_cmd=""
 
     [[ -n "$check_cmd" ]] || return 1
@@ -1884,6 +1885,13 @@ acfs_run_verification_shell() {
         safe|vibe) ;;
         *)
             log_error "Invalid installation mode for installed-state verification"
+            return 1
+            ;;
+    esac
+    case "$distro_family" in
+        ubuntu|arch) ;;
+        *)
+            log_error "Invalid distribution family for installed-state verification"
             return 1
             ;;
     esac
@@ -1906,20 +1914,21 @@ acfs_run_verification_shell() {
     # guardian until escalation and execute the actual check in a strict child.
     # Privileged mode prevents either new shell from loading ambient startup
     # hooks/functions. Authored checks may still define/source their helpers.
-    # Pass validated mode as argv data: parent shell variables may not be
-    # exported, and sudo may clear even an exported MODE before verification.
+    # Pass validated mode and distro as argv data: shell variables may not be
+    # exported, and sudo can clear them. Dropping the distro would check the
+    # Ubuntu sudoers path on Arch and incorrectly accept a stale vibe grant.
     # Disabling job control keeps that child in timeout's process group.
     printf -v bounded_cmd '%q ' "$timeout_bin" --kill-after=2s 120s \
         "$bash_bin" --noprofile --norc -p -c '
             set +e
             set +m
             trap '\''trap "" HUP INT QUIT TERM; while :; do "$3" 1; done'\'' HUP INT QUIT TERM
-            "$2" --noprofile --norc -p -c '\''set -euo pipefail; export MODE="$2"; eval "$1"'\'' _ "$1" "$4" &
+            "$2" --noprofile --norc -p -c '\''set -euo pipefail; export MODE="$2" ACFS_DISTRO_FAMILY="$3"; eval "$1"'\'' _ "$1" "$4" "$5" &
             probe_pid=$!
             probe_status=0
             wait "$probe_pid" || probe_status=$?
             exit "$probe_status"
-        ' _ "$check_cmd" "$bash_bin" "$sleep_bin" "$install_mode"
+        ' _ "$check_cmd" "$bash_bin" "$sleep_bin" "$install_mode" "$distro_family"
     case "$run_as" in
         root) run_as_root_shell "$bounded_cmd" </dev/null ;;
         target_user|target) run_as_target_shell "$bounded_cmd" </dev/null ;;

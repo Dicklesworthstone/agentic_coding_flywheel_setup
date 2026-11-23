@@ -47,9 +47,13 @@ test("maps actual Doctor check IDs to the same modules as the Bash producer", as
   const known = manifestCjs.exports.manifestModules.map((module) => module.id);
   // Inventory literal IDs used by the current producer, including multiline
   // deep-check calls. No verify/install command from the table is executed.
-  const emittedIds = [...new Set([...source.matchAll(
-    /"((?:identity|workspace|shell|config|path|tool|bun|agent|cloud|stack|symlink|updates|util|deep)\.[a-z0-9_.]+)"/g,
-  )].map((match) => match[1]))];
+  const emittedIds = [...new Set([
+    ...[...source.matchAll(
+      /"((?:identity|workspace|shell|config|path|tool|bun|agent|cloud|stack|symlink|updates|util|deep)\.[a-z0-9_.]+)"/g,
+    )].map((match) => match[1]),
+    // This check uses an unquoted literal in the Bash call site.
+    "identity.acfs_sudo_policy",
+  ])];
   const rows = execFileSync("/bin/bash", ["-p", "-s", "--", ...emittedIds], {
     input: [
       "set -euo pipefail",
@@ -65,6 +69,9 @@ test("maps actual Doctor check IDs to the same modules as the Bash producer", as
     timeout: 10000,
   }).toString().trim().split("\n").map((row) => row.split("\t"));
   assert.ok(rows.length > known.length, "exercise both generated checks and legacy aliases");
+  assert.ok(rows.some(([id, module]) =>
+    id === "identity.acfs_sudo_policy" && module === "users.ubuntu"),
+  "the managed Safe-mode sudo check must belong to user setup");
   const mismatches = [];
   for (const [id, module] of rows) {
     assert.ok(known.includes(module), `${id} must have an actual manifest owner`);

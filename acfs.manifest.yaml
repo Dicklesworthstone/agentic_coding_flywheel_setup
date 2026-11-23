@@ -59,6 +59,22 @@ modules:
     verify:
       - "id \"${TARGET_USER:-ubuntu}\""
       - "[[ \"${MODE:-vibe}\" != \"vibe\" ]] || runuser -u \"${TARGET_USER:-ubuntu}\" -- sudo -n true"
+      - |
+          # A completed vibe installation must re-enter user setup when safe
+          # mode is requested. Check only ACFS's managed policy, not unrelated
+          # administrator rules or the invoking user's cached sudo timestamp.
+          if [[ "${MODE:-vibe}" == safe ]]; then
+            policy_file=/etc/sudoers.d/90-ubuntu-acfs
+            [[ "${ACFS_DISTRO_FAMILY:-ubuntu}" != arch ]] || policy_file=/etc/sudoers.d/90-acfs
+            if [[ -e "$policy_file" || -L "$policy_file" ]]; then
+              [[ -f "$policy_file" && ! -L "$policy_file" ]] || exit 1
+              metadata="$(stat -c '%u:%a:%h' -- "$policy_file")" || exit 1
+              IFS=: read -r owner permissions links <<< "$metadata"
+              [[ "$owner" == 0 && "$links" == 1 && "$permissions" =~ ^[0-7]{3,4}$ ]] || exit 1
+              (( (8#$permissions & 0022) == 0 )) || exit 1
+              [[ "$(cat -- "$policy_file")" == "${TARGET_USER:-ubuntu} ALL=(ALL) PASSWD:ALL" ]] || exit 1
+            fi
+          fi
 
   # ============================================================
   # PHASE 3: Filesystem setup

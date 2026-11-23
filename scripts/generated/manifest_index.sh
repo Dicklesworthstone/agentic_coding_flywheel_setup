@@ -6,7 +6,7 @@
 # ============================================================
 # Data-only manifest index. Safe to source.
 
-ACFS_MANIFEST_SHA256="284fe6dd10b5cbb70430908f1ed2c6620db98691fa2e95e4aa823f6fb39d91bb"
+ACFS_MANIFEST_SHA256="274653a83fc50e778db8125a0b66f7dd3b71d5d94aaef9368b058e5805210913"
 
 ACFS_MODULES_IN_ORDER=(
   "base.system"
@@ -1032,7 +1032,7 @@ declare -gA ACFS_MODULE_INSTALLED_CHECK_RUN_AS=(
 
 declare -gA ACFS_MODULE_VERIFY_COUNT=(
   ['base.system']="4"
-  ['users.ubuntu']="2"
+  ['users.ubuntu']="3"
   ['base.filesystem']="2"
   ['shell.zsh']="1"
   ['shell.login']="1"
@@ -1118,6 +1118,21 @@ declare -gA ACFS_MODULE_VERIFY_COMMAND=(
   ['base.system.3']='gpg --version'
   ['users.ubuntu.0']='id "${TARGET_USER:-ubuntu}"'
   ['users.ubuntu.1']='[[ "${MODE:-vibe}" != "vibe" ]] || runuser -u "${TARGET_USER:-ubuntu}" -- sudo -n true'
+  ['users.ubuntu.2']='# A completed vibe installation must re-enter user setup when safe
+# mode is requested. Check only ACFS'\''s managed policy, not unrelated
+# administrator rules or the invoking user'\''s cached sudo timestamp.
+if [[ "${MODE:-vibe}" == safe ]]; then
+  policy_file=/etc/sudoers.d/90-ubuntu-acfs
+  [[ "${ACFS_DISTRO_FAMILY:-ubuntu}" != arch ]] || policy_file=/etc/sudoers.d/90-acfs
+  if [[ -e "$policy_file" || -L "$policy_file" ]]; then
+    [[ -f "$policy_file" && ! -L "$policy_file" ]] || exit 1
+    metadata="$(stat -c '\''%u:%a:%h'\'' -- "$policy_file")" || exit 1
+    IFS=: read -r owner permissions links <<< "$metadata"
+    [[ "$owner" == 0 && "$links" == 1 && "$permissions" =~ ^[0-7]{3,4}$ ]] || exit 1
+    (( (8#$permissions & 0022) == 0 )) || exit 1
+    [[ "$(cat -- "$policy_file")" == "${TARGET_USER:-ubuntu} ALL=(ALL) PASSWD:ALL" ]] || exit 1
+  fi
+fi'
   ['base.filesystem.0']='test -d /data/projects'
   ['base.filesystem.1']='# Generated helper functions used by this child shell.
 acfs_generated_system_binary_path() {

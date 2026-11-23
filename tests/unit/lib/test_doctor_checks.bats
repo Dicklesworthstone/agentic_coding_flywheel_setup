@@ -613,6 +613,124 @@ doctor_custom_checkpoint_fixture() {
     done
 }
 
+doctor_managed_sudo_fixture() {
+    doctor_selection_fixture '{"mode":"safe","module_selection":{"schema_version":1,"selected_modules":["users.ubuntu"]}}'
+    DOCTOR_TEST_SUDO_FILE="$BATS_TEST_TMPDIR/90-ubuntu-acfs"
+    DOCTOR_TEST_REAL_STAT="$(command -v stat)"
+    DOCTOR_TEST_STAT="$BATS_TEST_TMPDIR/policy-stat"
+    # The fixture is owned by the unprivileged test account. Substitute only
+    # the kernel owner field; file contents, modes, link counts, and all actual
+    # policy-reader/diagnostic behavior remain unchanged.
+    cat > "$DOCTOR_TEST_STAT" <<EOF
+#!/bin/bash
+metadata=\$("$DOCTOR_TEST_REAL_STAT" "\$@") || exit \$?
+printf '0:%s\\n' "\${metadata#*:}"
+EOF
+    chmod +x "$DOCTOR_TEST_STAT"
+    _acfs_doctor_managed_sudo_policy_file() { printf '%s\n' "$DOCTOR_TEST_SUDO_FILE"; }
+    _acfs_doctor_system_binary_path() {
+        case "$1" in
+            stat) printf '%s\n' "$DOCTOR_TEST_STAT" ;;
+            sudo) return 1 ;;
+            *) PATH=/usr/sbin:/usr/bin:/sbin:/bin command -v "$1" ;;
+        esac
+    }
+    _acfs_doctor_resolve_current_user() { printf '%s\n' "$TARGET_USER"; }
+    _acfs_doctor_has_sudo_entitlement() { return 0; }
+}
+
+@test "doctor safe mode: stale ACFS passwordless policy cannot pass as safe sudo" {
+    doctor_managed_sudo_fixture
+    printf '%s ALL=(ALL) NOPASSWD:ALL\n' "$TARGET_USER" > "$DOCTOR_TEST_SUDO_FILE"
+    chmod 0440 "$DOCTOR_TEST_SUDO_FILE"
+    check_identity
+    [[ "$FAIL_COUNT" -eq 1 ]] || fail "stale vibe policy was not a failure"
+    doctor_selection_json | jq -e '
+        any(.id == "identity.sudo" and .status == "pass") and
+        any(.id == "identity.acfs_sudo_policy" and .status == "fail" and
+            (.details | contains("passwordless")) and (.fix | contains("--mode safe")))
+    ' >/dev/null
+}
+
+@test "doctor safe mode: absent and password-required managed rules report only ACFS policy" {
+    doctor_managed_sudo_fixture
+    local state=""
+    for state in absent password; do
+        if [[ "$state" == password ]]; then
+            printf '%s ALL=(ALL) PASSWD:ALL\n' "$TARGET_USER" > "$DOCTOR_TEST_SUDO_FILE"
+            chmod 0440 "$DOCTOR_TEST_SUDO_FILE"
+        fi
+        JSON_CHECKS=()
+        check_identity
+        doctor_selection_json | jq -e '
+            any(.id == "identity.acfs_sudo_policy" and .status == "pass" and
+                (.details | contains("other sudo policies are not evaluated")))
+        ' >/dev/null
+    done
+}
+
+@test "doctor safe mode: custom unsafe and linked managed rules cannot certify the checkpoint" {
+    doctor_managed_sudo_fixture
+    local scenario=""
+    for scenario in custom writable symlink hardlink foreign-owner; do
+        DOCTOR_TEST_SUDO_FILE="$BATS_TEST_TMPDIR/policy-$scenario"
+        printf '%s ALL=(ALL) PASSWD:ALL\n' "$TARGET_USER" > "$DOCTOR_TEST_SUDO_FILE"
+        chmod 0440 "$DOCTOR_TEST_SUDO_FILE"
+        case "$scenario" in
+            custom)
+                chmod 0640 "$DOCTOR_TEST_SUDO_FILE"
+                printf 'another-user ALL=(ALL) NOPASSWD:ALL\n' > "$DOCTOR_TEST_SUDO_FILE"
+                chmod 0440 "$DOCTOR_TEST_SUDO_FILE"
+                ;;
+            writable) chmod 0660 "$DOCTOR_TEST_SUDO_FILE" ;;
+            symlink)
+                ln -s "$DOCTOR_TEST_SUDO_FILE" "$DOCTOR_TEST_SUDO_FILE.link"
+                DOCTOR_TEST_SUDO_FILE+=".link"
+                ;;
+            hardlink) ln "$DOCTOR_TEST_SUDO_FILE" "$DOCTOR_TEST_SUDO_FILE.link" ;;
+            foreign-owner)
+                # Keep the fixture independent of whether the test runner is
+                # root by returning an explicitly foreign owner.
+                cat > "$DOCTOR_TEST_STAT" <<EOF
+#!/bin/bash
+metadata=\$("$DOCTOR_TEST_REAL_STAT" "\$@") || exit \$?
+printf '1234:%s\\n' "\${metadata#*:}"
+EOF
+                ;;
+        esac
+        JSON_CHECKS=()
+        check_identity
+        doctor_selection_json | jq -e '
+            any(.id == "identity.acfs_sudo_policy" and .status == "fail")
+        ' >/dev/null || fail "$scenario was accepted as a safe managed rule"
+    done
+}
+
+@test "doctor safe mode: an unreadable managed-policy directory is unknown rather than absent" {
+    doctor_managed_sudo_fixture
+    # A non-directory parent cannot authorize an absent rule. Use it instead
+    # of chmod 000 so the test retains its meaning when run as root.
+    printf 'unreadable parent fixture\n' > "$BATS_TEST_TMPDIR/policy-parent"
+    DOCTOR_TEST_SUDO_FILE="$BATS_TEST_TMPDIR/policy-parent/90-ubuntu-acfs"
+    check_identity
+    doctor_selection_json | jq -e '
+        any(.id == "identity.acfs_sudo_policy" and .status == "warn" and
+            (.details | contains("could not inspect")))
+    ' >/dev/null
+}
+
+@test "doctor safe mode: excluded user normalization and vibe mode do not inspect safe policy" {
+    doctor_managed_sudo_fixture
+    _acfs_doctor_managed_sudo_policy_file() { printf 'read\n' >> "$BATS_TEST_TMPDIR/policy-read"; return 1; }
+    ACFS_STATE_SELECTED_MODULES=(lang.bun)
+    check_identity
+    [[ ! -e "$BATS_TEST_TMPDIR/policy-read" ]]
+    ACFS_STATE_SELECTED_MODULES=(users.ubuntu)
+    ACFS_MODE=vibe
+    check_identity
+    [[ ! -e "$BATS_TEST_TMPDIR/policy-read" ]]
+}
+
 @test "doctor entrypoints: invalid explicit checkpoint paths fail before dispatch" {
     local entrypoint="" state_path=""
     for entrypoint in "$DOCTOR_SH" "$PROJECT_ROOT/scripts/acfs-global"; do

@@ -1223,7 +1223,7 @@ EOF
     assert_failure
 }
 
-@test "acfs_run_verification_shell: mode survives cleared transports and is exported to children" {
+@test "acfs_run_verification_shell: mode and distro survive cleared transports and reach children" {
     # These are transport boundaries, not evidence of a privilege transition.
     # The actual guardian and native check still run with GNU timeout.
     run_as_root_shell() {
@@ -1239,18 +1239,63 @@ EOF
         /usr/bin/env -i PATH=/usr/bin:/bin /bin/bash --noprofile --norc -p -c "$1"
     }
 
-    local mode context expected
-    local check_cmd='printf "shell:%s\n" "$MODE"; /bin/bash -p -c '\''printf "child:%s\n" "$MODE"'\'''
+    local mode family context expected
+    local check_cmd='printf "shell:%s:%s\n" "$MODE" "$ACFS_DISTRO_FAMILY"; /bin/bash -p -c '\''printf "child:%s:%s\n" "$MODE" "$ACFS_DISTRO_FAMILY"'\'''
     for mode in safe vibe; do
         MODE="$mode"
         export -n MODE
-        for context in root target_user current; do
-            run acfs_run_verification_shell "$context" "$check_cmd"
-            assert_success
-            printf -v expected 'context:%s\nshell:%s\nchild:%s' "$context" "$mode" "$mode"
-            assert_output "$expected"
+        for family in ubuntu arch; do
+            ACFS_DISTRO_FAMILY="$family"
+            export -n ACFS_DISTRO_FAMILY
+            for context in root target_user current; do
+                run acfs_run_verification_shell "$context" "$check_cmd"
+                assert_success
+                printf -v expected 'context:%s\nshell:%s:%s\nchild:%s:%s' "$context" "$mode" "$family" "$mode" "$family"
+                assert_output "$expected"
+            done
         done
     done
+}
+
+@test "acfs_run_verification_shell: nonroot Arch sudo transport checks the actual managed policy" {
+    [[ "$EUID" -ne 0 ]] || skip "sudo path is bypassed when tests run as root"
+    source "$PROJECT_ROOT/scripts/generated/manifest_index.sh"
+    local policy_dir="$BATS_TEST_TMPDIR/sudoers.d"
+    mkdir -p "$policy_dir"
+    printf 'ubuntu ALL=(ALL) NOPASSWD:ALL\n' > "$policy_dir/90-acfs"
+    chmod 0440 "$policy_dir/90-acfs"
+    export TARGET_USER=ubuntu
+    MODE=safe
+    ACFS_DISTRO_FAMILY=arch
+    export -n MODE ACFS_DISTRO_FAMILY
+    export ACFS_TEST_SUDO_BIN="$BATS_TEST_TMPDIR/cleared-sudo"
+    cat > "$ACFS_TEST_SUDO_BIN" <<'EOF'
+#!/usr/bin/env bash
+[[ "$1" == -n ]] || exit 90
+shift
+exec /usr/bin/env -i PATH=/usr/bin:/bin "$@"
+EOF
+    chmod +x "$ACFS_TEST_SUDO_BIN"
+    _acfs_system_binary_path() {
+        case "$1" in
+            sudo) printf '%s\n' "$ACFS_TEST_SUDO_BIN" ;;
+            *) printf '/usr/bin/%s\n' "$1" ;;
+        esac
+    }
+    # Only account ownership is modeled; real sudo argv construction, the
+    # cleared environment, deadline shells, and authored policy check run.
+    local check_cmd='stat() { local result; result=$(/usr/bin/stat "$@") || return; printf "0:%s\n" "${result#*:}"; }; '
+    local policy_check="${ACFS_MODULE_VERIFY_COMMAND[users.ubuntu.2]}"
+    check_cmd+="${policy_check//\/etc\/sudoers.d/$policy_dir}"
+    run acfs_run_verification_shell root "$check_cmd"
+    assert_failure
+    [[ "$(cat "$policy_dir/90-acfs")" == 'ubuntu ALL=(ALL) NOPASSWD:ALL' ]]
+
+    chmod 0640 "$policy_dir/90-acfs"
+    printf 'ubuntu ALL=(ALL) PASSWD:ALL\n' > "$policy_dir/90-acfs"
+    chmod 0440 "$policy_dir/90-acfs"
+    run acfs_run_verification_shell root "$check_cmd"
+    assert_success
 }
 
 @test "acfs_run_verification_shell: authored user check honors safe and preserves vibe failures" {
@@ -1287,6 +1332,22 @@ EOF
         run acfs_run_verification_shell "$context" true
         assert_failure
         [[ ! -e "$marker" ]] || fail "Invalid mode reached $context transport"
+    done
+}
+
+@test "acfs_run_verification_shell: invalid distro fails before entering any transport" {
+    local marker="$BATS_TEST_TMPDIR/invalid-distro-transport"
+    run_as_root_shell() { touch "$marker"; }
+    run_as_target_shell() { touch "$marker"; }
+    run_as_current_shell() { touch "$marker"; }
+    MODE=safe
+    ACFS_DISTRO_FAMILY='arch; printf unsafe'
+    export -n ACFS_DISTRO_FAMILY
+    local context
+    for context in root target_user current; do
+        run acfs_run_verification_shell "$context" true
+        assert_failure
+        [[ ! -e "$marker" ]] || fail "Invalid distro reached $context transport"
     done
 }
 

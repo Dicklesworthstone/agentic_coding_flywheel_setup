@@ -2049,7 +2049,7 @@ doctor_check_module_id() {
     local manifest_id=""
     local manifest_module=""
     case "$id" in
-        identity.passwordless_sudo|identity.sudo) module=users.ubuntu ;;
+        identity.passwordless_sudo|identity.sudo|identity.acfs_sudo_policy) module=users.ubuntu ;;
         workspace.data_projects) module=base.filesystem ;;
         shell.zsh) module=shell.zsh ;;
         shell.login_shell) module=shell.login ;;
@@ -2857,6 +2857,91 @@ ACFS_APT_AUDIT_PY
         "Review Ubuntu source suites and recovery guidance: https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/blob/main/docs/operations/ubuntu-upgrade.md#mixed-ubuntu-archive-suites-463"
 }
 
+# Inspect only the rule ACFS owns. Other administrator-managed sudo policies
+# may still grant passwordless access; this check does not certify those.
+_acfs_doctor_managed_sudo_policy_file() {
+    if _acfs_doctor_is_arch_family; then
+        printf '/etc/sudoers.d/90-acfs\n'
+    else
+        printf '/etc/sudoers.d/90-ubuntu-acfs\n'
+    fi
+}
+
+_acfs_doctor_read_managed_sudo_policy() {
+    local policy_file="$1" target_user="$2"
+    local bash_bin="" env_bin="" stat_bin="" cat_bin="" timeout_bin="" sudo_bin=""
+    local -a reader=()
+    [[ "$target_user" =~ ^[a-z_][a-z0-9._-]*$ ]] || return 2
+    bash_bin="$(_acfs_doctor_system_binary_path bash 2>/dev/null || true)"
+    env_bin="$(_acfs_doctor_system_binary_path env 2>/dev/null || true)"
+    stat_bin="$(_acfs_doctor_system_binary_path stat 2>/dev/null || true)"
+    cat_bin="$(_acfs_doctor_system_binary_path cat 2>/dev/null || true)"
+    [[ -n "$bash_bin" && -n "$env_bin" && -n "$stat_bin" && -n "$cat_bin" ]] || return 2
+    timeout_bin="$(_acfs_doctor_system_binary_path timeout 2>/dev/null || true)"
+    [[ -z "$timeout_bin" ]] || reader+=("$timeout_bin" --kill-after=1s 5s)
+    reader+=("$env_bin" -i PATH=/usr/sbin:/usr/bin:/sbin:/bin "$bash_bin" --noprofile --norc -p -c '
+        policy_file=$1 target_user=$2 stat_bin=$3 cat_bin=$4
+        # An inaccessible directory is unknown, not evidence of absence.
+        [[ -d "${policy_file%/*}" && -x "${policy_file%/*}" ]] || exit 2
+        if [[ -L "$policy_file" ]]; then printf "unsafe\n"; exit 0; fi
+        if [[ ! -e "$policy_file" ]]; then printf "absent\n"; exit 0; fi
+        if [[ ! -f "$policy_file" ]]; then printf "unsafe\n"; exit 0; fi
+        metadata=$("$stat_bin" -c "%u:%a:%h" -- "$policy_file") || exit 2
+        IFS=: read -r owner permissions links <<< "$metadata"
+        [[ "$owner" =~ ^[0-9]+$ && "$permissions" =~ ^[0-7]{3,4}$ && "$links" =~ ^[0-9]+$ ]] || exit 2
+        if [[ "$owner" != 0 || "$links" != 1 ]] || (( (8#$permissions & 022) != 0 )); then
+            printf "unsafe\n"
+            exit 0
+        fi
+        [[ -r "$policy_file" ]] || exit 2
+        content=$("$cat_bin" -- "$policy_file") || exit 2
+        case "$content" in
+            "$target_user ALL=(ALL) PASSWD:ALL") printf "safe\n" ;;
+            "$target_user ALL=(ALL) NOPASSWD:ALL") printf "vibe\n" ;;
+            *) printf "custom\n" ;;
+        esac
+    ' acfs-sudo-policy "$policy_file" "$target_user" "$stat_bin" "$cat_bin")
+    "${reader[@]}" 2>/dev/null && return 0
+    # A correct safe-mode rule may require authenticated sudo just to read it.
+    # Never prompt from Doctor; report unknown when noninteractive access fails.
+    sudo_bin="$(_acfs_doctor_system_binary_path sudo 2>/dev/null || true)"
+    [[ -n "$sudo_bin" ]] || return 2
+    "$sudo_bin" -n "${reader[@]}" 2>/dev/null
+}
+
+check_managed_sudo_policy() {
+    doctor_skip_unselected_check identity.acfs_sudo_policy "ACFS safe sudo policy" && return 0
+    [[ "${ACFS_MODE:-vibe}" == safe ]] || return 0
+    local policy_file="" policy="" fix=""
+    policy_file="$(_acfs_doctor_managed_sudo_policy_file)"
+    fix="Re-run ACFS installer with --mode safe to reconcile its managed sudo rule"
+    if ! policy="$(_acfs_doctor_read_managed_sudo_policy "$policy_file" "$TARGET_USER")"; then
+        check identity.acfs_sudo_policy "ACFS safe sudo policy" warn \
+            "could not inspect $policy_file without an interactive sudo prompt; ACFS policy is unverified" \
+            "Inspect $policy_file as an administrator; do not infer password protection from group membership alone"
+        return 0
+    fi
+    case "$policy" in
+        absent)
+            check identity.acfs_sudo_policy "ACFS safe sudo policy" pass \
+                "no ACFS-managed passwordless rule; other sudo policies are not evaluated"
+            ;;
+        safe)
+            check identity.acfs_sudo_policy "ACFS safe sudo policy" pass \
+                "ACFS-managed rule requires a password; other sudo policies are not evaluated"
+            ;;
+        vibe)
+            check identity.acfs_sudo_policy "ACFS safe sudo policy" fail \
+                "saved safe mode still has an ACFS-managed passwordless sudo rule ($policy_file)" "$fix"
+            ;;
+        *)
+            check identity.acfs_sudo_policy "ACFS safe sudo policy" fail \
+                "ACFS-managed sudo rule is custom or has unsafe file metadata ($policy_file); safe mode is not verified" \
+                "Inspect $policy_file as an administrator; preserve custom policy before retrying the installer"
+            ;;
+    esac
+}
+
 check_identity() {
     section "Identity"
 
@@ -2898,6 +2983,7 @@ check_identity() {
             admin_group="$(_acfs_doctor_admin_group_name)"
             check "identity.sudo" "Sudo available (safe mode)" "fail" "sudo unavailable" "Ensure ${TARGET_USER} is in the ${admin_group} group and sudo is installed"
         fi
+        check_managed_sudo_policy
     fi
 
     blank_line

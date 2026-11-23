@@ -1539,6 +1539,208 @@ acfs_arch_pkg_install() {
         self.assertFalse(any(event.startswith("mut:pacman:") for event in events), events)
 
 
+class SudoPolicyResumeTests(unittest.TestCase):
+    """Run user-phase resume and atomic policy writes in a private /etc fixture."""
+
+    @classmethod
+    def setUpClass(cls):
+        ResumeCheckpointGateTests.setUpClass()
+        index = Path(os.environ.get("ACFS_USER_MANIFEST_INDEX_TEST_SOURCE",
+                                    ROOT / "scripts/generated/manifest_index.sh"))
+        probes = subprocess.check_output([
+            "/bin/bash", "-p", "-euo", "pipefail", "-c",
+            'source "$1"; for ((i=0; i<ACFS_MODULE_VERIFY_COUNT[users.ubuntu]; i++)); do '
+            'printf "%s\\0" "${ACFS_MODULE_VERIFY_COMMAND[users.ubuntu.$i]}"; done',
+            "_", str(index),
+        ], env={"PATH": "/usr/bin:/bin"}, timeout=10)
+        cls.checks = [probe.decode() for probe in probes.split(b"\0")[:-1]]
+        installer = _main_fixture.MAIN.read_text()
+        cls.installer = _main_fixture.definitions(installer, [
+            "normalize_user", "acfs_install_sudoers_dropin", "acfs_verify_phase"],
+            ["acfs_configure_sudo_policy"])
+
+    def run_policy(self, mode, *, family="ubuntu", content=None, completed=False,
+                   fail_validation=False, custom_kind=None, target_user="ubuntu"):
+        folder = Path(tempfile.mkdtemp(prefix="acfs-sudo-policy-"))
+        policy_dir = folder / "etc/sudoers.d"
+        policy_dir.mkdir(parents=True)
+        policy = policy_dir / ("90-acfs" if family == "arch" else "90-ubuntu-acfs")
+        unrelated = policy_dir / "70-administrator"
+        unrelated.write_text("operator ALL=(ALL) NOPASSWD:/usr/bin/id\n")
+        (policy_dir / "90-acfs-wheel").write_text("%wheel ALL=(ALL:ALL) ALL\n")
+        if content is not None:
+            policy.write_text(content)
+            policy.chmod(0o440)
+        if custom_kind == "symlink":
+            policy.symlink_to(unrelated)
+        if custom_kind == "hardlink":
+            os.link(unrelated, policy)
+        if custom_kind == "directory":
+            policy.mkdir()
+        (folder / "bin").mkdir()
+        # Privilege/account boundaries are inert. The actual file contents,
+        # atomic writer, candidate validation ordering, selectors, checkpoint
+        # and phase/resume verifiers run unchanged in the retained fixture.
+        (folder / "bin/stat").write_text(
+            "#!/bin/bash\nresult=$(/usr/bin/stat \"$@\") || exit $?\n"
+            "printf '%s:%s\\n' \"${TEST_OWNER:-0}\" \"${result#*:}\"\n")
+        (folder / "bin/visudo").write_text(
+            "#!/bin/bash\nprintf 'validate\\n' >> \"$TEST_ROOT/events\"\n"
+            "[[ \"${TEST_VISUDO_FAIL:-false}\" != true ]]\n")
+        (folder / "bin/id").write_text(
+            "#!/bin/bash\nif [[ \"$*\" == '-u ubuntu' ]]; then printf '42424\\n'; "
+            "else /usr/bin/id \"$@\"; fi\n")
+        for path in (folder / "bin").iterdir():
+            path.chmod(0o755)
+        fixture_source = self.installer.replace("/etc/sudoers", str(folder / "etc/sudoers"))
+        commands = [check.replace("/etc/sudoers", str(folder / "etc/sudoers")) for check in self.checks]
+        script = "\n".join([
+            "set -euo pipefail",
+            f"export TEST_ROOT={shlex.quote(str(folder))}",
+            f"export TARGET_HOME={shlex.quote(str(folder / 'home'))} TARGET_USER={shlex.quote(target_user)}",
+            'mkdir -p "$TARGET_HOME"; export HOME="$TARGET_HOME" ACFS_HOME="$TARGET_HOME/.acfs"',
+            'export ACFS_STATE_FILE="$ACFS_HOME/state.json"',
+            f"source {shlex.quote(str(ROOT / 'scripts/lib/install_helpers.sh'))}",
+            f"source {shlex.quote(str(STATE))}",
+            "MODE=vibe; ACFS_VERSION=fixture; HAS_GUM=false; SUDO=''; DRY_RUN=false",
+            f"ACFS_DISTRO_FAMILY={shlex.quote(family)}",
+            "ACFS_MANIFEST_INDEX_LOADED=true; ACFS_GENERATED_SELECTION_READY=true",
+            "declare -a ACFS_EFFECTIVE_PLAN=(users.ubuntu) ONLY_MODULES=() ONLY_PHASES=() SKIP_MODULES=()",
+            "declare -A ACFS_EFFECTIVE_RUN=([users.ubuntu]=1) ACFS_PLAN_REASON=()",
+            "declare -a ACFS_MODULES_IN_ORDER=(users.ubuntu)",
+            "declare -A ACFS_MODULE_PHASE=([users.ubuntu]=2) ACFS_MODULE_OPTIONAL=([users.ubuntu]=0)",
+            "declare -A ACFS_MODULE_FAMILIES=([users.ubuntu]='')",
+            r'''state_getent_passwd_entry() { printf '%s:x:1000:1000::%s:/bin/bash\n' "$TARGET_USER" "$TARGET_HOME"; }''',
+            "state_init",
+            "state_phase_complete user_setup" if completed else "",
+            fixture_source,
+            f"MODE={shlex.quote(mode)}; state_record_module_selection users.ubuntu",
+            f"declare -A ACFS_MODULE_VERIFY_COUNT=([users.ubuntu]={len(commands)})",
+            "declare -A ACFS_MODULE_VERIFY_RUN_AS=([users.ubuntu]=root) ACFS_MODULE_VERIFY_COMMAND=()",
+            *[f"ACFS_MODULE_VERIFY_COMMAND[users.ubuntu.{i}]={shlex.quote(check)}"
+              for i, check in enumerate(commands)],
+            r'''
+set_phase() { :; }; log_step() { :; }; log_detail() { :; }; log_success() { :; }
+try_step() { shift; "$@"; }
+try_step_optional() { shift; "$@"; }
+user_require_valid_target_user() { [[ "$1" =~ ^[a-z_][a-z0-9._-]*$ ]]; }
+user_verify_local_account_identity() { return 0; }
+acfs_chown_target_home() { return 0; }
+acfs_use_generated_category() { return 1; }
+acfs_early_system_binary_path() {
+    case "$1" in
+        stat|visudo|id) printf '%s/bin/%s\n' "$TEST_ROOT" "$1" ;;
+        *) printf '/usr/bin/%s\n' "$1" ;;
+    esac
+}
+id() { [[ "${1:-}" != -u ]]; }
+getent() { return 2; }
+usermod() { printf 'user_setup\n' >> "$TEST_ROOT/events"; }
+command_exists() { return 1; }
+runuser() {
+    [[ "$*" == "-u $TARGET_USER -- sudo -n true" ]] || return 91
+    [[ "$(cat -- "$TEST_POLICY")" == "$TARGET_USER ALL=(ALL) NOPASSWD:ALL" ]]
+}
+acfs_run_verification_shell() { ( eval "$2"; ); }
+stat() { "$TEST_ROOT/bin/stat" "$@"; }
+''',
+            f"export TEST_POLICY={shlex.quote(str(policy))}",
+            f"export TEST_VISUDO_FAIL={'true' if fail_validation else 'false'}",
+            f"export TEST_OWNER={'1234' if custom_kind == 'foreign-owner' else '0'}",
+            'run_phase user_setup "User setup" normalize_user',
+        ])
+        (folder / "fixture.sh").write_text(script + "\n")
+        result = subprocess.run(["/bin/bash", "-p", "-c", script], text=True, capture_output=True,
+                                env={"PATH": "/usr/bin:/bin", "HOME": str(folder)}, timeout=15)
+        self.assertNotIn("command not found", result.stderr, result.stderr)
+        self.assertNotIn("unbound variable", result.stderr, result.stderr)
+        self.assertEqual(unrelated.read_text(), "operator ALL=(ALL) NOPASSWD:/usr/bin/id\n")
+        self.assertEqual((policy_dir / "90-acfs-wheel").read_text(), "%wheel ALL=(ALL:ALL) ALL\n")
+        state = json.loads((folder / "home/.acfs/state.json").read_text())
+        events = (folder / "events").read_text().splitlines() if (folder / "events").exists() else []
+        return result, policy, state, events
+
+    def test_completed_vibe_install_reconciles_safe_policy_on_both_families(self):
+        for family in ("ubuntu", "arch"):
+            with self.subTest(family=family):
+                result, policy, state, events = self.run_policy(
+                    "safe", family=family, content="ubuntu ALL=(ALL) NOPASSWD:ALL\n", completed=True)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(policy.read_text(), "ubuntu ALL=(ALL) PASSWD:ALL\n")
+                self.assertEqual(policy.stat().st_mode & 0o777, 0o440)
+                self.assertEqual(events, ["user_setup", "validate"])
+                self.assertEqual(state["mode"], "safe")
+                self.assertIn("user_setup", state["completed_phases"])
+
+    def test_vibe_reenables_managed_policy_and_safe_rerun_is_idempotent(self):
+        for mode, before, after, expected_events in (
+            ("vibe", "PASSWD", "NOPASSWD", ["user_setup", "validate"]),
+            ("safe", "PASSWD", "PASSWD", []),
+        ):
+            with self.subTest(mode=mode):
+                result, policy, state, events = self.run_policy(
+                    mode, content=f"ubuntu ALL=(ALL) {before}:ALL\n", completed=True)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(policy.read_text(), f"ubuntu ALL=(ALL) {after}:ALL\n")
+                self.assertEqual(events, expected_events)
+                self.assertEqual(state["mode"], mode)
+
+    def test_safe_policy_validation_failure_remains_retryable(self):
+        original = "ubuntu ALL=(ALL) NOPASSWD:ALL\n"
+        result, policy, state, events = self.run_policy(
+            "safe", content=original, completed=True, fail_validation=True)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(policy.read_text(), original)
+        self.assertEqual(events, ["user_setup", "validate"])
+        self.assertNotIn("user_setup", state["completed_phases"])
+        self.assertEqual(state["failed_phase"], "user_setup")
+
+    def test_custom_foreign_or_linked_managed_files_are_preserved(self):
+        cases = (
+            (None, "ubuntu ALL=(ALL) NOPASSWD:ALL\noperator ALL=(ALL) ALL\n"),
+            (None, "anotheruser ALL=(ALL) NOPASSWD:ALL\n"),
+            ("foreign-owner", "ubuntu ALL=(ALL) NOPASSWD:ALL\n"),
+            ("symlink", None), ("hardlink", None), ("directory", None),
+        )
+        for kind, content in cases:
+            with self.subTest(kind=kind, content=content):
+                result, policy, state, events = self.run_policy(
+                    "safe", content=content, custom_kind=kind, completed=True)
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                if content is not None:
+                    self.assertEqual(policy.read_text(), content)
+                if kind == "symlink":
+                    self.assertTrue(policy.is_symlink())
+                if kind == "hardlink":
+                    self.assertEqual(policy.stat().st_nlink, 2)
+                if kind == "directory":
+                    self.assertTrue(policy.is_dir())
+                self.assertNotIn("validate", events)
+                self.assertNotIn("user_setup", state["completed_phases"])
+
+    def test_fresh_safe_install_does_not_create_a_passwordless_grant(self):
+        for family in ("ubuntu", "arch"):
+            with self.subTest(family=family):
+                result, policy, state, events = self.run_policy("safe", family=family)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertFalse(policy.exists())
+                self.assertEqual(events, ["user_setup"])
+                self.assertIn("user_setup", state["completed_phases"])
+
+    def test_nonroot_caller_cannot_revoke_its_own_active_sudo_grant(self):
+        if os.geteuid() == 0:
+            self.skipTest("This refusal requires a non-root test process")
+        user = subprocess.check_output(["/usr/bin/id", "-un"], text=True, timeout=10).strip()
+        original = f"{user} ALL=(ALL) NOPASSWD:ALL\n"
+        result, policy, state, events = self.run_policy(
+            "safe", target_user=user, content=original, completed=True)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("requires a root installer process", result.stderr)
+        self.assertEqual(policy.read_text(), original)
+        self.assertNotIn("validate", events)
+        self.assertNotIn("user_setup", state["completed_phases"])
+
+
 class BaseDependencyRecoveryTests(unittest.TestCase):
     """The early base phase must preserve the same recovery scope as run_phase."""
 
