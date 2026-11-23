@@ -97,6 +97,161 @@ load_doctor_functions() {
 # Repair execution and undo lifecycle
 # ============================================================
 
+doctor_hook_context_fixture() {
+    unset _ACFS_DOCTOR_FIX_LOADED
+    source "${DOCTOR_FIX_TEST_LIBRARY:-$PROJECT_ROOT/scripts/lib/doctor_fix.sh}"
+    HOOK_FIXTURE="$BATS_TEST_TMPDIR/hook-context"
+    mkdir -p "$HOOK_FIXTURE/target/.local/bin" "$HOOK_FIXTURE/caller-config"
+    TARGET_HOME="$HOOK_FIXTURE/target"
+    TARGET_USER=acfs_hook_target
+    HOOK_CURRENT_USER=acfs_hook_caller
+    HOOK_TRANSPORT=available
+    HOOK_RECORD_FAILURE=false
+    export CLAUDE_CONFIG_DIR="$HOOK_FIXTURE/caller-config"
+    export BASH_ENV="$HOOK_FIXTURE/caller-startup"
+    printf 'printf startup > "%s/startup-ran"\n' "$HOOK_FIXTURE" > "$BASH_ENV"
+    DOCTOR_FIX_LOG="$HOOK_FIXTURE/doctor.log"
+    DOCTOR_FIX_DRY_RUN=false
+    FIX_APPLIED=0 FIX_FAILED=0 FIX_SKIPPED=0
+    FIXES_DRY_RUN=() FIXES_APPLIED=()
+    doctor_fix_runtime_home() { printf '%s\n' "$TARGET_HOME"; }
+    doctor_fix_runtime_user() { printf '%s\n' "$TARGET_USER"; }
+    doctor_fix_current_user() { printf '%s\n' "$HOOK_CURRENT_USER"; }
+    doctor_fix_runtime_path() { printf '%s:/usr/bin:/bin\n' "$TARGET_HOME/.local/bin"; }
+    doctor_fix_binary_path() { printf '%s/.local/bin/%s\n' "$TARGET_HOME" "$1"; }
+    doctor_fix_system_binary_path() {
+        case "$1" in
+            sudo|runuser)
+                [[ "$HOOK_TRANSPORT" == available ]] || return 1
+                printf '%s/transport\n' "$HOOK_FIXTURE"
+                ;;
+            *) PATH=/usr/sbin:/usr/bin:/sbin:/bin command -v "$1" ;;
+        esac
+    }
+    record_change() {
+        printf '%s\n' "$3" > "$HOOK_FIXTURE/undo-command"
+        [[ "$HOOK_RECORD_FAILURE" != true ]]
+    }
+    # Only the OS account-switch boundary is simulated. Production env
+    # construction, probe, installer, rollback command and counters run intact.
+    cat > "$HOOK_FIXTURE/transport" <<EOF
+#!/bin/bash -p
+printf '%s\\n' "\$*" >> "$HOOK_FIXTURE/transport.log"
+[[ "\${1:-}" != -n ]] || shift
+[[ "\${1:-}" == -u && "\${2:-}" == acfs_hook_target ]] || exit 71
+shift 2
+[[ "\${1:-}" != -- ]] || shift
+exec "\$@"
+EOF
+    cat > "$TARGET_HOME/.local/bin/dcg" <<EOF
+#!/bin/bash
+config=\${CLAUDE_CONFIG_DIR:-\$HOME/.claude}
+printf '%s\\t%s\\t%s\\t%s\\t%s\\n' "\$1" "\$HOME" "\${USER-}" "\$config" "\${BASH_ENV-<unset>}" >> "$HOOK_FIXTURE/events"
+case "\$1" in
+    doctor) printf '{"hook_installed":false,"checks":[]}\\n' ;;
+    install) mkdir -p -- "\$config"; printf 'hook installed\\n' > "\$config/hook-fixture" ;;
+    uninstall) printf 'hook rollback\\n' > "\$config/rollback-fixture" ;;
+    *) exit 72 ;;
+esac
+EOF
+    chmod +x "$HOOK_FIXTURE/transport" "$TARGET_HOME/.local/bin/dcg"
+}
+
+@test "doctor hook context: cross-account probe and repair discard caller configuration and startup hooks" {
+    doctor_hook_context_fixture
+    fix_dcg_hook stack.dcg
+    [[ "$FIX_APPLIED" -eq 1 && "$FIX_FAILED" -eq 0 ]]
+    [[ -f "$TARGET_HOME/.claude/hook-fixture" ]] || fail "target hook was not installed"
+    [[ ! -e "$HOOK_FIXTURE/caller-config/hook-fixture" ]] || fail "caller Claude configuration was changed"
+    [[ ! -e "$HOOK_FIXTURE/startup-ran" ]] || fail "caller shell startup executed during target repair"
+    [[ "$(wc -l < "$HOOK_FIXTURE/transport.log")" -eq 2 ]]
+    run awk -F '\t' -v home="$TARGET_HOME" '
+        $2 != home || $3 != "acfs_hook_target" || $4 != home "/.claude" || $5 != "<unset>" { exit 1 }
+        END { if (NR != 2) exit 1 }
+    ' "$HOOK_FIXTURE/events"
+    assert_success
+}
+
+@test "doctor hook context: unavailable account transport refuses repair without caller fallback" {
+    doctor_hook_context_fixture
+    HOOK_TRANSPORT=missing
+    if fix_dcg_hook stack.dcg; then fail "cross-account repair ran without a transport"; fi
+    [[ "$FIX_FAILED" -eq 1 && "$FIX_APPLIED" -eq 0 ]]
+    [[ ! -e "$HOOK_FIXTURE/events" ]] || fail "target executable ran as the caller"
+    [[ ! -e "$HOOK_FIXTURE/undo-command" ]]
+}
+
+@test "doctor hook context: journal failure rolls back in the same target account and configuration" {
+    doctor_hook_context_fixture
+    HOOK_RECORD_FAILURE=true
+    if fix_dcg_hook stack.dcg; then fail "journal failure was reported as a successful repair"; fi
+    [[ "$FIX_FAILED" -eq 1 && "$FIX_APPLIED" -eq 0 ]]
+    [[ -f "$TARGET_HOME/.claude/rollback-fixture" ]] || fail "target hook rollback did not run"
+    [[ ! -e "$HOOK_FIXTURE/caller-config/hook-fixture" ]]
+    [[ ! -e "$HOOK_FIXTURE/caller-config/rollback-fixture" ]]
+    [[ "$(wc -l < "$HOOK_FIXTURE/transport.log")" -eq 3 ]]
+    run awk -F '\t' -v home="$TARGET_HOME" '
+        $2 != home || $3 != "acfs_hook_target" || $4 != home "/.claude" || $5 != "<unset>" { exit 1 }
+        END { if (NR != 3) exit 1 }
+    ' "$HOOK_FIXTURE/events"
+    assert_success
+}
+
+@test "doctor hook context: same-account custom Claude directory survives repair and serialized undo" {
+    doctor_hook_context_fixture
+    TARGET_USER="$(id -un)"
+    HOOK_CURRENT_USER="$TARGET_USER"
+    HOOK_TRANSPORT=missing
+    mkdir -p "$HOOK_FIXTURE/working directory"
+    cd "$HOOK_FIXTURE/working directory"
+    export CLAUDE_CONFIG_DIR="custom Claude configuration"
+    fix_dcg_hook stack.dcg
+    [[ -f "$PWD/$CLAUDE_CONFIG_DIR/hook-fixture" ]]
+    [[ ! -e "$HOOK_FIXTURE/transport.log" ]]
+    [[ ! -e "$HOOK_FIXTURE/startup-ran" ]]
+    doctor_fix_run_rollback_command "$(cat "$HOOK_FIXTURE/undo-command")" false
+    [[ -f "$PWD/$CLAUDE_CONFIG_DIR/rollback-fixture" ]] || fail "undo lost the custom Claude config directory"
+}
+
+@test "doctor hook context: same-account undo refuses a different replay actor despite forged USER" {
+    doctor_hook_context_fixture
+    # Account discovery represents an earlier repair by the journal's owner;
+    # the undo below deliberately runs as the actual, different test account.
+    HOOK_CURRENT_USER="$TARGET_USER"
+    HOOK_TRANSPORT=missing
+    fix_dcg_hook stack.dcg
+    [[ -f "$HOOK_FIXTURE/caller-config/hook-fixture" ]]
+    export USER="$TARGET_USER" LOGNAME="$TARGET_USER"
+    run doctor_fix_run_rollback_command "$(cat "$HOOK_FIXTURE/undo-command")" false
+    assert_failure
+    assert_output --partial "Refusing DCG undo as a different account"
+    [[ ! -e "$HOOK_FIXTURE/caller-config/rollback-fixture" ]]
+    [[ "$(wc -l < "$HOOK_FIXTURE/events")" -eq 2 ]] || fail "undo executed the target binary under a different account"
+}
+
+@test "doctor hook context: multiline Claude directories cannot become environment assignments" {
+    doctor_hook_context_fixture
+    TARGET_USER="$(id -un)"
+    HOOK_CURRENT_USER="$TARGET_USER"
+    export CLAUDE_CONFIG_DIR="$HOOK_FIXTURE/custom"$'\nRU_NON_INTERACTIVE=1'
+    if fix_dcg_hook stack.dcg; then fail "multiline path was accepted as installer assignments"; fi
+    [[ "$FIX_FAILED" -eq 1 && "$FIX_APPLIED" -eq 0 ]]
+    [[ ! -e "$HOOK_FIXTURE/events" ]]
+    [[ ! -e "$HOOK_FIXTURE/undo-command" ]]
+}
+
+@test "doctor hook context: dry-run probes only the target account and never installs a hook" {
+    doctor_hook_context_fixture
+    DOCTOR_FIX_DRY_RUN=true
+    fix_dcg_hook stack.dcg
+    [[ ${#FIXES_DRY_RUN[@]} -eq 1 && "$FIX_APPLIED" -eq 0 ]]
+    [[ ! -e "$TARGET_HOME/.claude/hook-fixture" ]]
+    [[ ! -e "$HOOK_FIXTURE/caller-config/hook-fixture" ]]
+    [[ ! -e "$HOOK_FIXTURE/undo-command" ]]
+    [[ "$(wc -l < "$HOOK_FIXTURE/transport.log")" -eq 1 ]]
+    [[ "$(cut -f 1 "$HOOK_FIXTURE/events")" == doctor ]]
+}
+
 # Exercise the actual doctor command, dispatcher, PATH repair and undo journal
 # in a private home. Only host diagnostics and account discovery are replaced;
 # these tests must never repair the machine running the suite.

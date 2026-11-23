@@ -3249,5 +3249,133 @@ update_system_binary_path() {
         self.assertNotIn("installer finished", stdout)
 
 
+class PublicMaintenanceHandoffTests(unittest.TestCase):
+    """Exercise complete public dispatchers without changing host accounts.
+
+    Root dispatch runs in a private user/mount namespace. Only passwd metadata
+    and runuser are fixtures: the latter records the command's environment
+    through the real env executable instead of claiming a real account switch.
+    Same-account dispatch uses the real current identity. No repair executes.
+    """
+
+    SELECTORS = ("CLAUDE_CONFIG_DIR", "DATABASE_URL", "STORAGE_ROOT",
+                 "XDG_CONFIG_HOME", "XDG_DATA_HOME")
+
+    def setUp(self):
+        self.base = Path(tempfile.mkdtemp(prefix="acfs-public-handoff-"))
+        self.home = self.base / "target-home"
+        self.caller = self.base / "caller-home"
+        self.acfs_home = self.home / ".acfs"
+        self.library = self.acfs_home / "scripts/lib"
+        self.library.mkdir(parents=True)
+        (self.acfs_home / "bin").mkdir()
+        (self.home / ".local/bin").mkdir(parents=True)
+        self.caller.mkdir()
+        self.capture = self.base / "capture.py"
+        self.capture.write_text(
+            "import json, os, pathlib, sys\n"
+            "pathlib.Path(os.environ['TEST_ROOT'], 'captured.json').write_text(\n"
+            "    json.dumps({'env': dict(os.environ), 'args': sys.argv[1:]}))\n")
+        capture_shell = "#!/bin/bash\nexec /usr/bin/python3 " + shlex.quote(str(self.capture)) + ' "$@"\n'
+        # Stop at the first repair-helper load, after the actual Doctor
+        # bootstrap and public wrapper have resolved the runtime context.
+        (self.library / "doctor_fix.sh").write_text(capture_shell)
+        self.doctor = self.library / "doctor.sh"
+        self.doctor.write_text((ROOT / "scripts/lib/doctor.sh").read_text())
+        entry = self.acfs_home / "bin/acfs"
+        entry.write_text("#!/bin/bash\nexec /bin/bash " + shlex.quote(str(self.doctor)) + ' "$@"\n')
+        entry.chmod(0o755)
+        self.wrapper = self.base / "acfs-global"
+        self.wrapper.write_text((ROOT / "scripts/acfs-global").read_text())
+        self.transport = self.base / "runuser"
+        self.transport.write_text(r'''#!/bin/bash
+set -euo pipefail
+[[ "$1" == -u && "$2" == handoffowner && "$3" == -- ]]
+printf '%s\n' "$2" > "$TEST_ROOT/transport-user"
+shift 3
+env_binary="$1"
+shift
+env_arguments=()
+while (( $# > 0 )); do
+    case "$1" in /bin/bash|/usr/bin/bash) break ;; esac
+    env_arguments+=("$1")
+    shift
+done
+(( $# >= 2 ))
+exec "$env_binary" "${env_arguments[@]}" /usr/bin/python3 "$TEST_ROOT/capture.py" "$@"
+''')
+        self.transport.chmod(0o755)
+
+    def run_public(self, entrypoint, *, cross):
+        account = "handoffowner" if cross else pwd.getpwuid(os.geteuid()).pw_name
+        state_file = self.acfs_home / "state.json"
+        state_file.write_text(json.dumps({
+            "schema_version": 3, "target_user": account, "target_home": str(self.home),
+            "bin_dir": str(self.home / ".local/bin"), "mode": "safe",
+        }))
+        selected_home = self.caller if cross else self.home
+        selectors = {name: str(selected_home / ("custom " + name.lower())) for name in self.SELECTORS}
+        selectors["DATABASE_URL"] = "sqlite:///" + str(selected_home / "mail.sqlite3").lstrip("/")
+        env = {
+            "PATH": "/usr/bin:/bin", "HOME": str(selected_home), "TEST_ROOT": str(self.base),
+            "ACFS_STATE_FILE": str(state_file), "ACFS_SYSTEM_STATE_FILE": str(state_file),
+            "ACFS_HOME": str(self.acfs_home), "ACFS_MODE": "safe", "ACFS_REF": "fixture-ref",
+            "ACFS_RAW": "https://example.invalid/acfs", "ACFS_OFFLINE": "1",
+            "NO_COLOR": "1", **selectors,
+        }
+        script = self.wrapper if entrypoint == "global" else self.doctor
+        args = ["doctor"] if entrypoint == "global" else []
+        command = ["/bin/bash", str(script), *args, "--fix", "--yes"]
+        if cross:
+            unshare = shutil.which("unshare")
+            runuser = shutil.which("runuser")
+            if not unshare or not runuser:
+                self.skipTest("public root handoff fixture requires unshare and runuser")
+            namespace = [unshare, "--user", "--map-root-user", "--mount"]
+            probe = subprocess.run([*namespace, "/usr/bin/true"], capture_output=True, timeout=5)
+            if probe.returncode:
+                self.skipTest("private user/mount namespaces unavailable: " + probe.stderr.decode().strip())
+            passwd = self.base / "passwd"
+            passwd.write_text(f"root:x:0:0::/root:/bin/bash\nhandoffowner:x:1000:1000::{self.home}:/bin/bash\n")
+            command = [*namespace, "/bin/bash", "-c", r'''
+set -euo pipefail
+mount --bind "$TEST_ROOT/passwd" /etc/passwd
+mount --bind "$TEST_ROOT/runuser" "$1"
+shift
+exec "$@"
+''', "_", runuser, *command]
+        result = subprocess.run(command, env=env, text=True, capture_output=True, timeout=15)
+        (self.base / "stdout").write_text(result.stdout)
+        (self.base / "stderr").write_text(result.stderr)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr + "\nArtifacts: " + str(self.base))
+        capture = json.loads((self.base / "captured.json").read_text())
+        for name in ("ACFS_STATE_FILE", "ACFS_SYSTEM_STATE_FILE", "ACFS_HOME", "ACFS_MODE",
+                     "ACFS_REF", "ACFS_RAW", "ACFS_OFFLINE"):
+            self.assertEqual(capture["env"].get(name), env[name], name)
+        if cross:
+            self.assertEqual((self.base / "transport-user").read_text(), "handoffowner\n")
+            self.assertEqual(capture["env"]["HOME"], str(self.home))
+            self.assertEqual(capture["env"]["TARGET_HOME"], str(self.home))
+            self.assertEqual(capture["env"]["ACFS_BIN_DIR"], str(self.home / ".local/bin"))
+            for name in self.SELECTORS:
+                self.assertNotIn(name, capture["env"], name + " crossed the account boundary")
+        else:
+            self.assertFalse((self.base / "transport-user").exists())
+            for name, value in selectors.items():
+                self.assertEqual(capture["env"].get(name), value, name)
+
+    def test_global_wrapper_clears_foreign_repair_selectors(self):
+        self.run_public("global", cross=True)
+
+    def test_direct_doctor_clears_foreign_repair_selectors(self):
+        self.run_public("doctor", cross=True)
+
+    def test_global_wrapper_preserves_same_account_repair_selectors(self):
+        self.run_public("global", cross=False)
+
+    def test_direct_doctor_preserves_same_account_repair_selectors(self):
+        self.run_public("doctor", cross=False)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

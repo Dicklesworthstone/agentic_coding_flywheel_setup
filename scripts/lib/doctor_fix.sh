@@ -963,6 +963,12 @@ doctor_fix_build_runtime_env_args() {
                             return 1
                         fi
                         ;;
+                    CLAUDE_CONFIG_DIR)
+                        if [[ "$env_value" != /* || "$env_value" == / || "$env_value" == *$'\n'* || "$env_value" == *$'\r'* ]]; then
+                            doctor_fix_log WARN "Refusing an invalid Claude configuration directory"
+                            return 1
+                        fi
+                        ;;
                     *)
                         doctor_fix_log WARN "Refusing unsupported installer environment variable: $env_name"
                         return 1
@@ -974,7 +980,9 @@ doctor_fix_build_runtime_env_args() {
     fi
 }
 
-doctor_fix_run_in_runtime_context() {
+doctor_fix_build_runtime_command() {
+    local -n _runtime_command_ref="$1"
+    shift
     local extra_env_assignment="${1:-}"
     shift
     local env_bin=""
@@ -984,6 +992,7 @@ doctor_fix_run_in_runtime_context() {
     local current_user=""
     local -a env_args=()
 
+    _runtime_command_ref=()
     [[ $# -gt 0 ]] || {
         doctor_fix_log WARN "doctor_fix_run_in_runtime_context requires a command"
         return 1
@@ -1000,24 +1009,30 @@ doctor_fix_run_in_runtime_context() {
     runtime_user="${env_args[0]#TARGET_USER=}"
     current_user="$(doctor_fix_current_user 2>/dev/null || true)"
     if [[ "$current_user" == "$runtime_user" ]]; then
-        "$env_bin" -i "${env_args[@]}" "$@"
-        return $?
+        _runtime_command_ref=("$env_bin" -i "${env_args[@]}" "$@")
+        return 0
     fi
 
     runuser_bin="$(doctor_fix_system_binary_path runuser 2>/dev/null || true)"
     if [[ $EUID -eq 0 && -n "$runuser_bin" ]]; then
-        "$runuser_bin" -u "$runtime_user" -- "$env_bin" -i "${env_args[@]}" "$@"
-        return $?
+        _runtime_command_ref=("$runuser_bin" -u "$runtime_user" -- "$env_bin" -i "${env_args[@]}" "$@")
+        return 0
     fi
 
     sudo_bin="$(doctor_fix_system_binary_path sudo 2>/dev/null || true)"
     if [[ -n "$sudo_bin" ]]; then
-        "$sudo_bin" -n -u "$runtime_user" "$env_bin" -i "${env_args[@]}" "$@"
-        return $?
+        _runtime_command_ref=("$sudo_bin" -n -u "$runtime_user" "$env_bin" -i "${env_args[@]}" "$@")
+        return 0
     fi
 
     doctor_fix_log WARN "Unable to run command as $runtime_user without passwordless sudo or root runuser"
     return 1
+}
+
+doctor_fix_run_in_runtime_context() {
+    local -a runtime_command=()
+    doctor_fix_build_runtime_command runtime_command "$@" || return $?
+    "${runtime_command[@]}"
 }
 
 doctor_fix_run_verified_installer_with_env() {
@@ -1333,27 +1348,42 @@ fix_config_copy() {
 # Fixer: DCG Hook (fix.dcg.hook)
 # ============================================================
 
-dcg_hook_already_installed() {
-    local doctor_json=""
-    local dcg_bin=""
-    local jq_bin=""
-    local runtime_home=""
-    local runtime_path=""
-
+# Build a reusable target-account command so probe, repair and serialized undo
+# all carry the same privilege and configuration boundary. Only a same-account
+# caller can intentionally select a custom Claude configuration directory.
+doctor_fix_build_dcg_hook_command() {
+    local result_name="$1" duration="$2"
+    shift 2
+    local dcg_bin="" runtime_home="" runtime_user="" current_user=""
+    local config_dir="" extra_env="" timeout_bin=""
+    local -a bounded=()
     dcg_bin="$(doctor_fix_binary_path dcg 2>/dev/null || true)"
-    runtime_home="$(doctor_fix_runtime_home)"
-    runtime_path="$(doctor_fix_runtime_path 2>/dev/null || true)"
-    [[ -n "$dcg_bin" && -n "$runtime_home" && -n "$runtime_path" ]] || return 1
-
-    # Cap the probe: a wedged dcg (e.g. blocked on config or a hook
-    # subprocess) would otherwise hang the fixer indefinitely.
-    local timeout_bin=""
-    timeout_bin="$(doctor_fix_system_binary_path timeout 2>/dev/null || true)"
-    if [[ -n "$timeout_bin" ]]; then
-        doctor_json="$(env HOME="$runtime_home" PATH="$runtime_path" "$timeout_bin" 15s "$dcg_bin" doctor --format json 2>/dev/null)" || return 1
-    else
-        doctor_json="$(env HOME="$runtime_home" PATH="$runtime_path" "$dcg_bin" doctor --format json 2>/dev/null)" || return 1
+    runtime_home="$(doctor_fix_runtime_home 2>/dev/null || true)"
+    runtime_user="$(doctor_fix_runtime_user 2>/dev/null || true)"
+    current_user="$(doctor_fix_current_user 2>/dev/null || true)"
+    [[ -n "$dcg_bin" && -n "$runtime_home" && -n "$runtime_user" ]] || return 1
+    if [[ "$runtime_user" == "$current_user" && -n "${CLAUDE_CONFIG_DIR:-}" ]]; then
+        case "$CLAUDE_CONFIG_DIR" in
+            '~') config_dir="$runtime_home" ;;
+            \~/*) config_dir="$runtime_home/${CLAUDE_CONFIG_DIR#\~/}" ;;
+            /*) config_dir="$CLAUDE_CONFIG_DIR" ;;
+            *) config_dir="$PWD/$CLAUDE_CONFIG_DIR" ;;
+        esac
+        # The shared environment API accepts multiple newline-separated
+        # assignments. A literal path must remain one value before entering it.
+        [[ "$config_dir" != *$'\n'* && "$config_dir" != *$'\r'* ]] || return 1
+        extra_env="CLAUDE_CONFIG_DIR=$config_dir"
     fi
+    timeout_bin="$(doctor_fix_system_binary_path timeout 2>/dev/null || true)"
+    [[ -z "$timeout_bin" ]] || bounded=("$timeout_bin" --kill-after=5s "$duration")
+    doctor_fix_build_runtime_command "$result_name" "$extra_env" "${bounded[@]}" "$dcg_bin" "$@"
+}
+
+dcg_hook_already_installed() {
+    local doctor_json="" jq_bin=""
+    local -a probe_command=()
+    doctor_fix_build_dcg_hook_command probe_command 15s doctor --format json || return 1
+    doctor_json="$("${probe_command[@]}" 2>/dev/null)" || return 1
     [[ -n "$doctor_json" ]] || return 1
 
     jq_bin="$(doctor_fix_system_binary_path jq 2>/dev/null || true)"
@@ -1373,22 +1403,39 @@ dcg_hook_already_installed() {
 # Install DCG pre-tool-use hook
 fix_dcg_hook() {
     local check_id="$1"
-    local dcg_bin=""
-    local runtime_home=""
-    local runtime_path=""
     local dcg_uninstall_cmd=""
+    local rollback_requires_root=false
+    local current_user="" runtime_user="" id_bin="" undo_guard=""
+    local -a install_command=() uninstall_command=()
 
-    dcg_bin="$(doctor_fix_binary_path dcg 2>/dev/null || true)"
-    runtime_home="$(doctor_fix_runtime_home)"
-    runtime_path="$(doctor_fix_runtime_path 2>/dev/null || true)"
-
-    # Guard: dcg command must exist
-    if [[ -z "$dcg_bin" || -z "$runtime_home" || -z "$runtime_path" ]]; then
-        doctor_fix_log WARN "DCG not installed for the runtime home, cannot fix hook"
+    # Prepare both operations before any target binary executes. Missing
+    # account transport must never fall through to running it as the caller.
+    if ! doctor_fix_build_dcg_hook_command install_command 60s install \
+        || ! doctor_fix_build_dcg_hook_command uninstall_command 60s uninstall; then
+        doctor_fix_log ERROR "Cannot run the DCG hook repair in the target account"
+        FIX_FAILED=$((FIX_FAILED + 1))
         return 1
     fi
-
-    dcg_uninstall_cmd="env HOME=$(printf '%q' "$runtime_home") PATH=$(printf '%q' "$runtime_path") $(printf '%q' "$dcg_bin") uninstall"
+    printf -v dcg_uninstall_cmd '%q ' "${uninstall_command[@]}"
+    current_user="$(doctor_fix_current_user)"
+    runtime_user="$(doctor_fix_runtime_user)"
+    if [[ "$current_user" == "$runtime_user" ]]; then
+        # A same-account repair needs no transport at install time. Its saved
+        # undo may later be replayed under sudo, so HOME/USER alone cannot grant
+        # permission to execute the user-owned binary. Refuse a changed actor;
+        # the original account can still undo without elevated privileges.
+        id_bin="$(doctor_fix_system_binary_path id 2>/dev/null || true)"
+        if [[ -z "$id_bin" ]]; then
+            doctor_fix_log ERROR "Cannot verify the account for DCG hook undo"
+            FIX_FAILED=$((FIX_FAILED + 1))
+            return 1
+        fi
+        printf -v undo_guard '[ "$(%q -un)" = %q ] || { printf %q >&2; exit 1; }; ' \
+            "$id_bin" "$runtime_user" "Refusing DCG undo as a different account; run acfs undo as $runtime_user without sudo."$'\n'
+        dcg_uninstall_cmd="$undo_guard$dcg_uninstall_cmd"
+    elif [[ $EUID -eq 0 ]]; then
+        rollback_requires_root=true
+    fi
 
     # Guard: Check if already installed
     if dcg_hook_already_installed; then
@@ -1404,13 +1451,13 @@ fix_dcg_hook() {
     fi
 
     # Install hook
-    if env HOME="$runtime_home" PATH="$runtime_path" "$dcg_bin" install 2>/dev/null; then
+    if "${install_command[@]}" 2>/dev/null; then
         if ! doctor_fix_record_change_or_rollback \
             "$dcg_uninstall_cmd" \
-            false \
+            "$rollback_requires_root" \
             "hook" "Installed DCG pre-tool-use hook" \
             "$dcg_uninstall_cmd" \
-            false "info" "[]" "[]" "[]"; then
+            "$rollback_requires_root" "info" "[]" "[]" "[]"; then
             FIX_FAILED=$((FIX_FAILED + 1))
             return 1
         fi

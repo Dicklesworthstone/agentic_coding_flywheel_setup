@@ -925,6 +925,11 @@ _acfs_doctor_reexec_as_target_if_root() {
     [[ -n "$target_bin" ]] || target_bin="$TARGET_HOME/.local/bin"
     target_path="$target_bin:$TARGET_HOME/.local/bin:$TARGET_HOME/.acfs/bin:$TARGET_HOME/.cargo/bin:$TARGET_HOME/.bun/bin:$TARGET_HOME/.atuin/bin:$TARGET_HOME/go/bin:$TARGET_HOME/google-cloud-sdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
 
+    # These repair locations belong to the invoking account. After re-exec,
+    # helpers see the target identity and cannot distinguish foreign overrides
+    # from that user's own configuration. Clear them only at the account switch.
+    unset CLAUDE_CONFIG_DIR DATABASE_URL STORAGE_ROOT XDG_CONFIG_HOME XDG_DATA_HOME
+
     exec "$runuser_bin" -u "$TARGET_USER" -- "$env_bin" \
         HOME="$TARGET_HOME" \
         TARGET_USER="$TARGET_USER" \

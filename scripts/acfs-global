@@ -1147,6 +1147,11 @@ main() {
         [[ -n "${ACFS_REF:-}" ]] && env_args+=("ACFS_REF=$ACFS_REF")
         [[ -n "${ACFS_RAW:-}" ]] && env_args+=("ACFS_RAW=$ACFS_RAW")
 
+        # Caller-owned repair locations must not become target-user overrides
+        # after runuser/sudo changes identity. Same-account dispatch below keeps
+        # its explicit configuration, and ACFS runtime selectors stay intact.
+        unset CLAUDE_CONFIG_DIR DATABASE_URL STORAGE_ROOT XDG_CONFIG_HOME XDG_DATA_HOME
+
         env_bin="$(system_binary_path env 2>/dev/null || true)"
         if [[ -n "$env_bin" && ${#env_args[@]} -gt 0 ]]; then
             cmd_with_env=("$env_bin" "${env_args[@]}" "$@")
