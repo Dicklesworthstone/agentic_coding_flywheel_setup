@@ -1095,6 +1095,74 @@ acfs_verify_phase() { record_scope; exit 0; }
                     self.assertEqual(selection["selected_modules"], list(self.BASE_SCOPE))
                     self.assertEqual(selection["requested_modules"], ["lang.bun"])
 
+    def test_saved_no_deps_scope_survives_retry_force_and_readonly_preview(self):
+        for arguments in ((), ("--resume",), ("--force-reinstall",),
+                          ("--print-plan",), ("--dry-run",)):
+            with self.subTest(arguments=arguments):
+                # This is the persisted result of --only agents.codex --no-deps.
+                # The next invocation has its normal NO_DEPS=false default.
+                result, events, folder = self.run_scoped(
+                    arguments, modules=("agents.codex",),
+                    requested=("agents.codex",), completed=False)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(self.scope_event(events, "resolved"), ["agents.codex"])
+                self.assertEqual(self.scope_event(events, "required"), ["agents.codex"])
+                selection = json.loads((folder / "home/.acfs/state.json").read_text())["module_selection"]
+                self.assertEqual(selection["selected_modules"], ["agents.codex"])
+                self.assertEqual(selection["requested_modules"], ["agents.codex"])
+                self.assertIn("outside the saved installation", result.stderr)
+                self.assertIn("agents.codex -> lang.bun", result.stderr)
+                if arguments in (("--print-plan",), ("--dry-run",)):
+                    self.assert_unchanged(folder)
+                    self.assertFalse(any(event.startswith("mut:") for event in events), events)
+
+    def test_saved_scope_does_not_silently_add_new_manifest_dependencies(self):
+        for arguments in (("--resume",), ("--force-reinstall",)):
+            with self.subTest(arguments=arguments):
+                result, events, folder = self.run_scoped(
+                    arguments, alter="ACFS_MODULE_DEPS[lang.bun]+=,lang.go")
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(self.scope_event(events, "resolved"), list(self.BASE_SCOPE))
+                self.assertIn("lang.bun -> lang.go", result.stderr)
+                selection = json.loads((folder / "home/.acfs/state.json").read_text())["module_selection"]
+                self.assertEqual(selection["selected_modules"], list(self.BASE_SCOPE))
+
+    def test_explicit_choices_can_expand_a_saved_no_deps_installation(self):
+        cases = (
+            ("--only", "agents.codex"),
+            ("--only-phase", "agents"),
+            ("--profile", "full"),
+        )
+        for arguments in cases:
+            with self.subTest(arguments=arguments):
+                result, events, folder = self.run_scoped(
+                    arguments, modules=("agents.codex",), requested=("agents.codex",))
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                scope = self.scope_event(events, "resolved")
+                for module in (*self.BASE_SCOPE, "agents.codex"):
+                    self.assertIn(module, scope)
+                self.assertNotIn("outside the saved installation", result.stderr)
+                selection = json.loads((folder / "home/.acfs/state.json").read_text())["module_selection"]
+                self.assertEqual(set(selection["selected_modules"]), set(scope))
+                self.assertIn("agents.codex", selection["requested_modules"])
+
+    def test_saved_scope_still_refuses_explicit_dependency_skips(self):
+        result, events, folder = self.run_scoped(
+            ("--resume", "--skip", "lang.bun"),
+            modules=("agents.codex",), requested=("agents.codex",))
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("agents.codex depends on skipped lang.bun", result.stderr)
+        self.assertFalse(any(event.startswith("mut:") for event in events), events)
+        self.assert_unchanged(folder)
+
+    def test_saved_scope_does_not_hide_unknown_dependency_metadata(self):
+        result, events, folder = self.run_scoped(
+            ("--resume",), alter="ACFS_MODULE_DEPS[lang.bun]=lang.missing")
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("lang.bun depends on unknown module lang.missing", result.stderr)
+        self.assertFalse(any(event.startswith("mut:") for event in events), events)
+        self.assert_unchanged(folder)
+
     def test_explicit_module_phase_and_profile_requests_can_expand_the_installation(self):
         cases = (
             (("--only", "agents.grok"), "agents.grok", ["agents.grok"]),

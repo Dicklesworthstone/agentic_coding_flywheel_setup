@@ -6170,7 +6170,7 @@ Fine-grained control over what gets installed using manifest-driven selection:
 - **Dependency closure:** `--only` automatically includes required dependencies (safe by default)
 - **Skip safety:** `--skip` fails early if it would break a required dependency chain
 - **Deterministic:** `--print-plan` shows exactly what will run, in what order
-- **Persistent selection:** New installations remember their resolved module set in `~/.acfs/state.json`. Doctor checks and updates use that set, including selected modules whose installation failed. Later targeted installs add to the managed set; `--only` repairs and `--force-reinstall` preserve previously managed modules. Existing checkpoints without selection metadata retain the full-install behavior. Malformed or unsupported saved selections require repair before maintenance can continue.
+- **Persistent selection:** New installations remember their resolved module set in `~/.acfs/state.json`. Doctor checks and updates use that set, including selected modules whose installation failed. Later targeted installs add to the managed set; `--only` repairs and `--force-reinstall` preserve previously managed modules. Retries without new selectors keep that exact saved scope, including an earlier `--no-deps` choice, and warn when current dependencies fall outside it; use an explicit `--only`, `--only-phase`, or `--profile` choice to expand the installation. Existing checkpoints without selection metadata retain the full-install behavior. Malformed or unsupported saved selections require repair before maintenance can continue.
 
 **Examples:**
 Only install agents (plus their dependencies):

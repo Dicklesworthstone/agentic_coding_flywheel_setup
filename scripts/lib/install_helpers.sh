@@ -277,6 +277,7 @@ acfs_resolve_selection() {
 
     local -A desired=()
     local -A start_reason=()
+    local using_saved_scope=false
 
     if [[ "${#ONLY_MODULES[@]}" -gt 0 ]]; then
         for module in "${ONLY_MODULES[@]}"; do
@@ -324,6 +325,7 @@ acfs_resolve_selection() {
 
     if [[ "${#ONLY_MODULES[@]}" -eq 0 && "${#ONLY_PHASES[@]}" -eq 0 ]]; then
         if [[ "${ACFS_SAVED_SELECTION_ACTIVE:-false}" == true ]]; then
+            using_saved_scope=true
             if [[ ${#ACFS_SAVED_SELECTION_MODULES[@]} -eq 0 ]]; then
                 log_error "The saved module selection is empty."
                 return 1
@@ -476,6 +478,7 @@ acfs_resolve_selection() {
     else
         local -a queue=()
         local idx=0
+        local saved_scope_missing_dependencies=false
         for module in "${!desired[@]}"; do
             queue+=("$module")
         done
@@ -498,6 +501,15 @@ acfs_resolve_selection() {
                     return 1
                 fi
                 if [[ -z "${desired[$dep]:-}" ]]; then
+                    # Saved modules are the approved resolved scope, not new
+                    # selector roots. Re-expanding them would undo an earlier
+                    # --no-deps choice or silently adopt new manifest deps on
+                    # retry/force-reinstall. Explicit selectors still expand.
+                    if [[ "$using_saved_scope" == true ]]; then
+                        log_warn "Dependency $current -> $dep is outside the saved installation; leaving its module scope unchanged."
+                        saved_scope_missing_dependencies=true
+                        continue
+                    fi
                     desired["$dep"]=1
                     if [[ -z "${start_reason[$dep]:-}" ]]; then
                         start_reason["$dep"]="dependency of $current"
@@ -506,6 +518,9 @@ acfs_resolve_selection() {
                 fi
             done
         done
+        if [[ "$saved_scope_missing_dependencies" == true ]]; then
+            log_warn "To include dependencies, explicitly select a module with --only or choose a --profile."
+        fi
     fi
 
     for module in "${ACFS_MODULES_IN_ORDER[@]}"; do
