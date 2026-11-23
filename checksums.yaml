@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-11-23T08:46:21+00:00
+# checksums.yaml - Auto-generated 2026-11-23T10:05:11+00:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -88,7 +88,7 @@ installers:
 
   grok:
     url: "https://x.ai/cli/install.sh"
-    sha256: "7fd6fdc75d9418b2e58356726fcbf1ae849416f773925da07d0ccc7a60d3e791"
+    sha256: "bdd23859b10bd0c1492ffc3443e8413b73a9b09966d48d4d3fa32121043956fc"
 
   jfp:
     url: "https://jeffreysprompts.com/install-cli.sh"
