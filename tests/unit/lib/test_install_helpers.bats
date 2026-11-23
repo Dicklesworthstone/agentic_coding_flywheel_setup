@@ -1297,9 +1297,15 @@ setup_verification_deadline_fixture() {
     export ACFS_VERIFY_FIXTURE_ROOT="$BATS_TEST_TMPDIR/verification"
     export ACFS_VERIFY_FIXTURE_SOURCE="$PROJECT_ROOT"
     mkdir -p "$ACFS_VERIFY_FIXTURE_ROOT"
-    cat > "$ACFS_VERIFY_FIXTURE_ROOT/timeout" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
+    # The timeout and hanging-tool fixtures also run in the root context. A
+    # non-root caller reaches it through run_as_root_shell's sudo allow-list,
+    # which deliberately drops ACFS_VERIFY_FIXTURE_ROOT (#507), so each script
+    # carries its own absolute fixture path instead of reading the environment.
+    local fixture_root_assignment
+    printf -v fixture_root_assignment 'ACFS_VERIFY_FIXTURE_ROOT=%q\n' "$ACFS_VERIFY_FIXTURE_ROOT"
+    {
+        printf '#!/usr/bin/env bash\nset -euo pipefail\n%s' "$fixture_root_assignment"
+        cat <<'EOF'
 printf '%s\n' "$1 $2" >> "$ACFS_VERIFY_FIXTURE_ROOT/timeouts"
 [[ "$1" == --kill-after=2s && "$2" == 120s ]] || exit 98
 shift 2
@@ -1308,8 +1314,10 @@ duration=0.3s
 [[ "${ACFS_VERIFY_FIXTURE_INTERRUPT:-false}" != true ]] || duration=7s
 exec /usr/bin/timeout --kill-after=0.3s "$duration" "$@"
 EOF
-    cat > "$ACFS_VERIFY_FIXTURE_ROOT/hanging-tool" <<'EOF'
-#!/usr/bin/env bash
+    } > "$ACFS_VERIFY_FIXTURE_ROOT/timeout"
+    {
+        printf '#!/usr/bin/env bash\n%s' "$fixture_root_assignment"
+        cat <<'EOF'
 trap '' TERM
 while read -r key value; do
     if [[ "$key" == Pid: ]]; then
@@ -1332,6 +1340,7 @@ done < /proc/self/status
 ) &
 wait
 EOF
+    } > "$ACFS_VERIFY_FIXTURE_ROOT/hanging-tool"
     cat > "$ACFS_VERIFY_FIXTURE_ROOT/runner" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -1473,10 +1482,12 @@ assert_verification_fixture_stopped() {
 
 @test "acfs_module_is_installed: bounds hanging presence checks in every execution context" {
     setup_verification_deadline_fixture
-    local context
+    local context check
+    # Expand the path now: the root context's environment does not carry it.
+    printf -v check 'exec %q' "$ACFS_VERIFY_FIXTURE_ROOT/hanging-tool"
     for context in current root target_user; do
         run /usr/bin/timeout --kill-after=0.2s 8s "$ACFS_VERIFY_FIXTURE_ROOT/runner" present \
-            'exec "$ACFS_VERIFY_FIXTURE_ROOT/hanging-tool"' "$context"
+            "$check" "$context"
         assert_equal "$status" 137
         assert_output --partial 'returned:137'
         assert_verification_fixture_stopped
