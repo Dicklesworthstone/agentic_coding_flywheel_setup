@@ -8,7 +8,16 @@ Each version links to its GitHub Release (where one exists) or to the tag compar
 
 ---
 
-## [Unreleased](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/compare/v0.11.3...HEAD)
+## [Unreleased](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/compare/v0.11.4...HEAD)
+
+## [v0.11.4](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/compare/v0.11.3...v0.11.4) -- 2026-11-23
+
+> Source-only installer release, matching the existing ACFS publication venue (no uploaded binary assets).
+
+### Installer Reliability
+
+- **Fix `stack.mcp_agent_mail` abort under `set -euo pipefail` when `lsof` inspects an unoccupied port 8765** -- guarded `agent_mail_port_holder` in `acfs.manifest.yaml` (regenerated into `scripts/generated/install_stack.sh`) and both port-holder diagnostic probes in `install.sh` against `lsof`/`ss` returning exit status 1 when port `8765` is free and against early-closing `head` pipes (`SIGPIPE`), and simplified the `systemctl --user` fallback branch check. Fixes fresh installs on minimal Ubuntu 24.04 container/VPS images that have `lsof` without `ss` (`iproute2`), with regression tests in `tests/unit/test_stack_agent_mail_mask.sh`.
+- **Regenerated manifest & 121-entry internal script checksums** -- zero manifest drift across all 75 modules, 461 drift contract checks, and 48/48 verified upstream installer pins (`dcg v0.17.1`, `xf v0.5.1`, `fmd v0.8.1`, `bv v0.28.0`, `ntm v1.39.0`, `mcp_agent_mail v0.3.41`, and the rest of the flywheel stack).
 
 ## [v0.11.3](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/compare/v0.11.2...v0.11.3) -- 2026-11-23
 
