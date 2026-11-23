@@ -10,7 +10,7 @@
 ACFS_INTERNAL_CHECKSUMS_SCHEMA=1
 
 declare -gA ACFS_INTERNAL_CHECKSUMS=(
-  [install.sh]="5b4125081b54a87a9613c2b87009923a18168d5c0422995bc461b58ea61ed2d0"
+  [install.sh]="76cf87bc8096bcd930f199f8315950b9212150f683bd8bc8443c2f9996c57c1c"
   [checksums.yaml]="c0102416f2914087cf7905beda02225957962e2d70eb547ef9339a584f37dbc9"
   [scripts/preflight.sh]="76e6768d16238317e67f7c0ba38abf5e7440b9d4f76bfd28b5c07b7f007d247e"
   [scripts/lib/security.sh]="2c3efe1b2dc83355710f0f59f0e182c3acbc022dabcb400e215d80c725c87f70"
@@ -54,7 +54,7 @@ declare -gA ACFS_INTERNAL_CHECKSUMS=(
   [scripts/templates/acfs-nightly-update.service]="f623e39c8addc30a58fa887885cf94299de0c64352877e30a62b910b3ee4a26b"
   [scripts/templates/acfs-nightly-update.timer]="aa4fbad4fadabe0b61d202b4bf4311ce71c1132ad0ce8453099b593aa04988c3"
   [packages/onboard/onboard.sh]="1d237b4e26c49bd2a3fdbaad9356fc7d72a64f34acb2ca3c79fb518aa394d9f6"
-  [VERSION]="a71756fe3302627972537ffafb2fc1391c9382715ecbdfedbf3712296e96b72d"
+  [VERSION]="939f07bb10023db653bb019c8c57f7d01569bff679ec6841ff793f8cf37cde0d"
   [acfs.manifest.yaml]="284fe6dd10b5cbb70430908f1ed2c6620db98691fa2e95e4aa823f6fb39d91bb"
   [acfs/AGENTS.md]="a3cd0b401d0a55ed4bce4e89a3ed1855944bef57cc51801a7f863de5036da39b"
   [acfs/onboard/docs/ntm/command_palette.md]="32a60a206d8431c60f948016cc13b85baa6a9470f345e083783f5f4bf224bfee"

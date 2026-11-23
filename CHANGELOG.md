@@ -8,7 +8,17 @@ Each version links to its GitHub Release (where one exists) or to the tag compar
 
 ---
 
-## [Unreleased](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/compare/v0.11.4...HEAD)
+## [Unreleased](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/compare/v0.11.5...HEAD)
+
+## [v0.11.5](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/compare/v0.11.4...v0.11.5) -- 2026-11-23
+
+> Source-only installer release, matching the existing ACFS publication venue (no uploaded binary assets).
+
+### Installer & Doctor Reliability
+
+- **Detach non-systemd `stack.mcp_agent_mail` background fallback with `setsid`** -- updated `launch_agent_mail_fallback` in `acfs.manifest.yaml` (regenerated into `scripts/generated/install_stack.sh`) and `install.sh` to launch `am serve-http` via `setsid nohup` when `setsid` is available, preventing the verified bootstrap process-group quiescence check (`_acfs_wait_for_bootstrap_group_quiescence`) from failing non-systemd/container `curl|bash` installs while the healthy Agent Mail daemon remains running.
+- **Retry Agent Mail readiness probe briefly after liveness succeeds** -- updated `stack.mcp_agent_mail` verification (`acfs.manifest.yaml` / `scripts/generated/manifest_index.sh`) and `scripts/lib/doctor.sh` to retry `/health/readiness` briefly once `/health/liveness` responds `200 OK`, tolerating Agent Mail's bounded readiness-cache lazy refresh (`503 database_probe_stale` on the first request after idle expiry during finalization) while still failing closed if readiness does not recover. Covered by new regressions in `tests/unit/test_stack_agent_mail_mask.sh`.
+- **Regenerated manifest & 121-entry internal script checksums** -- zero manifest drift across all 75 modules, 461 drift contract checks, and 48/48 verified upstream installer pins.
 
 ## [v0.11.4](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/compare/v0.11.3...v0.11.4) -- 2026-11-23
 
