@@ -132,7 +132,7 @@ export default function RunInstallerPage() {
   const router = useRouter();
   const [isNavigating, setIsNavigating] = useState(false);
   const [userOS, , userOSLoaded] = useUserOS();
-  const [installMode, , installModeLoaded] = useInstallMode();
+  const [installMode, setInstallMode, installModeLoaded] = useInstallMode();
   const [moduleProfile, setModuleProfile, moduleProfileLoaded] = useModuleProfile();
   const [moduleSelection, moduleSelectionLoaded] = useModuleSelection();
   const [includeWizardSetup, setIncludeWizardSetup, wizardSetupLoaded] = useWizardSetup();
@@ -638,6 +638,29 @@ export default function RunInstallerPage() {
         <h2 className="text-xl font-semibold">Paste this command in your SSH session</h2>
 
         <div className="space-y-3 rounded-lg border border-border/50 bg-card/50 p-4">
+          <label htmlFor="installer-mode" className="block text-sm font-medium">
+            Install mode
+          </label>
+          <select
+            id="installer-mode"
+            value={effectiveInstallMode}
+            disabled={reviewedInstallation !== null}
+            onChange={(event) => {
+              if (reviewedInstallation) return;
+              const mode = event.target.value;
+              if (mode === "safe" || mode === "vibe") setInstallMode(mode);
+            }}
+            aria-describedby="installer-mode-summary"
+            className="min-h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          >
+            <option value="safe">Safe — keep agent confirmations</option>
+            <option value="vibe">Vibe — skip agent confirmations</option>
+          </select>
+          <p id="installer-mode-summary" className="text-sm text-muted-foreground">
+            Safe keeps agent confirmation prompts and does not enable passwordless sudo.
+            Vibe enables passwordless sudo and skips agent confirmations for a throwaway VPS.
+            Changing the mode keeps your selected tools and updates the command and every handoff.
+          </p>
           <label htmlFor="installer-profile" className="block text-sm font-medium">
             Installation profile
           </label>
@@ -648,14 +671,16 @@ export default function RunInstallerPage() {
             onChange={(event) => {
               if (reviewedInstallation) return;
               const profile = manifestSelectionProfiles.find(
-                (item) => item.id === event.target.value,
+                (item) => item.id === event.target.value && !item.mode,
               );
               if (profile) setModuleProfile(profile.id);
             }}
             aria-describedby="installer-profile-summary"
             className="min-h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
           >
-            {manifestSelectionProfiles.map((profile) => (
+            {manifestSelectionProfiles.filter(
+              (profile) => !profile.mode || (reviewedInstallation && profile.id === moduleProfile),
+            ).map((profile) => (
               <option key={profile.id} value={profile.id}>
                 {profile.label}
               </option>

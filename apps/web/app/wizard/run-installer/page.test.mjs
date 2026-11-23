@@ -490,6 +490,7 @@ function fixture(initial = {}) {
         ),
       button: (label) => find((node) => node.type === "button" && text(node).trim() === label),
       picker: () => find((node) => node.type === "select" && node.props.id === "installer-profile"),
+      modePicker: () => find((node) => node.type === "select" && node.props.id === "installer-mode"),
       pinToggle: () => find((node) => node.type === "checkbox" && node.props.id === "pin-ref"),
       setupToggle: () => find((node) => node.type === "checkbox" && node.props.id === "include-wizard-setup"),
       text: () => nodes.map(text).join(" "),
@@ -623,6 +624,89 @@ test("changing the native profile picker refreshes memoized commands and all exp
   assert.equal(JSON.parse(item.copies[0]).input.moduleSelection.profile, "stack-only");
   after.picker().props.onChange({ target: { value: "not-a-profile" } });
   assert.equal(item.prefs.profile, "stack-only");
+});
+
+test("the saved profile picker offers only module profiles accepted by preferences", () => {
+  const item = fixture({ mode: "vibe" });
+  const view = item.render();
+  assert.deepEqual(
+    plain(view.picker().props.children.map((option) => option.props.value)),
+    [...selectionCatalogue.manifestSelectionProfiles].filter((profile) => !profile.mode)
+      .map((profile) => profile.id),
+  );
+  for (const value of ["safe", "vibe"]) {
+    view.picker().props.onChange({ target: { value } });
+    assert.equal(item.prefs.profile, "full");
+    assert.equal(item.prefs.mode, "vibe");
+  }
+});
+
+for (const [from, to] of [["vibe", "safe"], ["safe", "vibe"]]) {
+  test(`changing install mode from ${from} to ${to} preserves guided scope and refreshes commands and approval`, async () => {
+    const item = fixture({
+      mode: from,
+      profile: "cloud-only",
+      setupProfile: "cloud-only",
+      ref: "v1.2.3",
+    });
+    item.useProductionSelection();
+    item.render();
+    item.setAcknowledged(true);
+    const before = item.render();
+    const staleContinue = before.navigation().onContinue;
+    const originalSelection = item.calls.command.at(-1).selection;
+    assert.equal(before.navigation().disabled, false);
+    assert.equal(before.modePicker().props.value, from);
+
+    before.modePicker().props.onChange({ target: { value: to } });
+    const after = item.render();
+    assert.equal(item.prefs.mode, to);
+    assert.equal(item.prefs.profile, "cloud-only");
+    assert.equal(item.prefs.setupProfile, "cloud-only");
+    assert.equal(after.modePicker().props.value, to);
+    assert.match(after.main().props.command, new RegExp(`--mode ${to} `));
+    assert.ok(after.cache().props.command.startsWith(after.main().props.command));
+    assert.equal(item.calls.command.at(-1).ref, "v1.2.3");
+    assert.equal(item.calls.command.at(-1).username, "developer");
+    assert.deepEqual(item.calls.command.at(-1).selection, originalSelection);
+    for (const kind of ["runbook", "provider", "profile"]) {
+      const input = item.calls[kind].at(-1);
+      assert.equal(input.mode ?? input.installMode, to);
+      assert.deepEqual(input.moduleSelection, originalSelection);
+    }
+    assert.equal(after.navigation().disabled, true);
+    staleContinue();
+    after.navigation().onContinue();
+    assert.deepEqual(item.navigations, []);
+    assert.deepEqual(item.completed, []);
+
+    after.button("Runbook JSON").props.onClick();
+    await Promise.resolve();
+    const exported = JSON.parse(item.copies[0]);
+    assert.equal(exported.input.mode, to);
+    assert.deepEqual(exported.input.moduleSelection, originalSelection);
+    item.setAcknowledged(true);
+    const confirmed = item.render();
+    assert.equal(confirmed.navigation().disabled, false);
+    confirmed.modePicker().props.onChange({ target: { value: "not-a-mode" } });
+    assert.equal(item.prefs.mode, to);
+  });
+}
+
+test("reviewed installation mode and mode-bearing profile remain visible and immutable", () => {
+  const item = fixture({ mode: "vibe", profile: "cloud-only" });
+  item.adopt({ mode: "safe", moduleSelection: { profile: "safe" } });
+  const before = item.render();
+  assert.equal(before.modePicker().props.value, "safe");
+  assert.equal(before.modePicker().props.disabled, true);
+  assert.equal(before.picker().props.value, "safe");
+  assert.ok(before.picker().props.children.some((option) => option.props.value === "safe"));
+  before.modePicker().props.onChange({ target: { value: "vibe" } });
+  before.picker().props.onChange({ target: { value: "minimal" } });
+  const after = item.render();
+  assert.equal(after.main().props.command, item.session.installation.command);
+  assert.equal(item.prefs.mode, "vibe");
+  assert.equal(item.prefs.profile, "cloud-only");
 });
 
 test("mode-bearing profiles cannot be downgraded by a conflicting saved install mode", () => {
