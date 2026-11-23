@@ -3263,9 +3263,9 @@ state_handle_invalid() {
 
             local response=""
             if [[ -t 0 ]]; then
-                read -r -p "Start fresh? [Y/n] " response < /dev/tty
+                read -r -p "Start fresh? [Y/n] " response < /dev/tty || return 1
             elif [[ -r /dev/tty ]]; then
-                read -r -p "Start fresh? [Y/n] " response < /dev/tty
+                read -r -p "Start fresh? [Y/n] " response < /dev/tty || return 1
             else
                 echo "ERROR: --yes is required when no TTY is available" >&2
                 return 1
@@ -3299,9 +3299,9 @@ state_handle_invalid() {
 
             local response=""
             if [[ -t 0 ]]; then
-                read -r -p "Start fresh install? [Y/n] " response < /dev/tty
+                read -r -p "Start fresh install? [Y/n] " response < /dev/tty || return 1
             elif [[ -r /dev/tty ]]; then
-                read -r -p "Start fresh install? [Y/n] " response < /dev/tty
+                read -r -p "Start fresh install? [Y/n] " response < /dev/tty || return 1
             else
                 echo "ERROR: --yes is required when no TTY is available" >&2
                 return 1
@@ -3336,9 +3336,9 @@ state_handle_invalid() {
 
             local response=""
             if [[ -t 0 ]]; then
-                read -r -p "Start fresh install? [Y/n] " response < /dev/tty
+                read -r -p "Start fresh install? [Y/n] " response < /dev/tty || return 1
             elif [[ -r /dev/tty ]]; then
-                read -r -p "Start fresh install? [Y/n] " response < /dev/tty
+                read -r -p "Start fresh install? [Y/n] " response < /dev/tty || return 1
             else
                 echo "ERROR: --yes is required when no TTY is available" >&2
                 return 1
@@ -3373,9 +3373,9 @@ state_handle_invalid() {
 
                 local response=""
                 if [[ -t 0 ]]; then
-                    read -r -p "Migrate existing state? [Y/n] " response
+                    read -r -p "Migrate existing state? [Y/n] " response || return 1
                 elif [[ -r /dev/tty ]]; then
-                    read -r -p "Migrate existing state? [Y/n] " response < /dev/tty
+                    read -r -p "Migrate existing state? [Y/n] " response < /dev/tty || return 1
                 else
                     echo "ERROR: --yes is required when no TTY is available" >&2
                     return 1

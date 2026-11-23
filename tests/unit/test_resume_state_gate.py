@@ -77,6 +77,16 @@ mktemp() {
 }
 '''
 
+# Model the optional bootstrap binary being absent without changing system
+# packages. Python, the real fallback parser, remains available.
+WITHOUT_JQ = r'''
+command() {
+    if [[ "${1:-}" == -v && "${2:-}" == jq ]]; then return 1; fi
+    builtin command "$@"
+}
+jq() { trace unexpected_jq; return 127; }
+'''
+
 
 class ResumeCheckpointGateTests(unittest.TestCase):
     @classmethod
@@ -1331,6 +1341,105 @@ acfs_verify_phase() { record_scope; exit 0; }
         self.assertIn("declined-mode:vibe", events)
         self.assertNotIn("mut:base", events)
         self.assert_unchanged(folder)
+
+    def test_expanded_selection_and_mode_survive_base_dependency_failure(self):
+        for resume in ((), ("--resume",), ("--force-reinstall",)):
+            with self.subTest(resume=resume):
+                result, events, folder = self.run_scoped(
+                    ("--yes", *resume, "--only", "agents.grok", "--mode", "vibe"),
+                    execution="ensure_base_deps() { trace mut:base; exit 42; }")
+                self.assertEqual(result.returncode, 42, result.stdout + result.stderr)
+                self.assertIn("mut:base", events)
+                checkpoint = json.loads((folder / "home/.acfs/state.json").read_text())
+                selection = checkpoint["module_selection"]
+                self.assertTrue(set(self.BASE_SCOPE).issubset(selection["selected_modules"]))
+                self.assertIn("agents.grok", selection["selected_modules"])
+                self.assertEqual(set(selection["requested_modules"]),
+                                 {"lang.bun", "agents.grok"})
+                self.assertEqual(checkpoint["mode"], "vibe")
+
+    def test_failed_selection_write_stops_before_base_dependencies(self):
+        result, events, folder = self.run_scoped(
+            ("--resume", "--only", "agents.grok"), execution=WRITE_FAILURE)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue((folder / "home/.acfs/write-failed").exists())
+        self.assertIn("Could not record the selected modules", result.stderr)
+        self.assertNotIn("mut:base", events)
+        self.assert_unchanged(folder)
+
+    def test_declined_expansion_never_updates_saved_selection(self):
+        result, events, folder = self.run_scoped(
+            ("--only", "agents.grok", "--mode", "vibe"),
+            execution='confirm_resume() { trace declined_expansion; return 2; }')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("declined_expansion", events)
+        self.assertNotIn("mut:base", events)
+        self.assert_unchanged(folder)
+
+    def test_legacy_selection_remains_legacy_after_base_failure(self):
+        result, events, folder = self.run_scoped(
+            ("--resume", "--only", "agents.grok", "--mode", "vibe"),
+            alter="state_update 'del(.module_selection)'",
+            execution="ensure_base_deps() { trace mut:base; exit 42; }")
+        self.assertEqual(result.returncode, 42, result.stdout + result.stderr)
+        self.assertIn("mut:base", events)
+        checkpoint = json.loads((folder / "home/.acfs/state.json").read_text())
+        self.assertNotIn("module_selection", checkpoint)
+        self.assertEqual(checkpoint["mode"], "vibe")
+
+    def test_fresh_selection_without_jq_can_reach_base_dependency_repair(self):
+        result, events, folder = self.run_scoped(
+            ("--yes", "--only", "agents.grok", "--mode", "safe"),
+            options={"TEST_MISSING_TOOLS": "true"},
+            execution='mv -- "$ACFS_STATE_FILE" "$TEST_ROOT/fixture-checkpoint.json"\n'
+            + WITHOUT_JQ + '\nensure_base_deps() { trace mut:base; exit 42; }')
+        self.assertEqual(result.returncode, 42, result.stdout + result.stderr)
+        self.assertIn("mut:base", events)
+        self.assertNotIn("unexpected_jq", events)
+        checkpoint = json.loads((folder / "home/.acfs/state.json").read_text())
+        self.assertIn("agents.grok", checkpoint["module_selection"]["selected_modules"])
+        self.assertEqual(checkpoint["module_selection"]["requested_modules"], ["agents.grok"])
+        self.assertEqual(checkpoint["mode"], "safe")
+
+    def test_approved_no_jq_recovery_preserves_scope_before_base_dependencies(self):
+        result, events, folder = self.run_scoped(
+            ("--yes", "--only", "agents.grok", "--mode", "vibe"),
+            options={"TEST_MISSING_TOOLS": "true"},
+            execution=WITHOUT_JQ + '\nensure_base_deps() { trace mut:base; exit 42; }')
+        self.assertEqual(result.returncode, 42, result.stdout + result.stderr)
+        self.assertIn("mut:base", events)
+        self.assertNotIn("unexpected_jq", events)
+        checkpoint = json.loads((folder / "home/.acfs/state.json").read_text())
+        selection = checkpoint["module_selection"]
+        self.assertTrue(set(self.BASE_SCOPE).issubset(selection["selected_modules"]))
+        self.assertIn("agents.grok", selection["selected_modules"])
+        self.assertEqual(set(selection["requested_modules"]), {"lang.bun", "agents.grok"})
+        self.assertEqual(checkpoint["mode"], "vibe")
+        backups = list((folder / "home/.acfs").glob("state.json.backup.*"))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(backups[0].read_bytes(), (folder / "checkpoint-before.json").read_bytes())
+
+    def test_no_jq_checkpoint_recovery_requires_readable_confirmation(self):
+        result, events, folder = self.run_scoped(
+            ("--resume", "--only", "agents.grok"),
+            options={"YES_MODE": "false", "TEST_MISSING_TOOLS": "true"},
+            execution=WITHOUT_JQ)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("Cannot validate state safely without jq", result.stderr)
+        self.assertNotIn("mut:base", events)
+        self.assertNotIn("unexpected_jq", events)
+        self.assert_unchanged(folder)
+
+    def test_invalid_checkpoint_recovery_never_treats_missing_tty_as_consent(self):
+        for damage in ("del(.version)", ".schema_version = 99", ".schema_version = 1"):
+            with self.subTest(damage=damage):
+                result, events, folder = self.run_scoped(
+                    ("--resume",), options={"YES_MODE": "false"},
+                    alter="state_update " + shlex.quote(damage))
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn("State validation failed", result.stderr)
+                self.assertNotIn("mut:base", events)
+                self.assert_unchanged(folder)
 
 
 class BaseDependencyRecoveryTests(unittest.TestCase):

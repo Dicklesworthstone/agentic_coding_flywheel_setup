@@ -13121,22 +13121,23 @@ main() {
         confirm_or_exit
     fi
 
-    # Normal ACFS dependencies belong after the OS upgrade decision (the
-    # upgrade phase installs its own minimal requirements under its own lock)
-    # and after the user's go-ahead: on Arch the first package install is a
-    # full `pacman -Syu`, which must not upgrade the whole system before an
-    # interactive user has answered the confirmation prompt.
-    ensure_base_deps
-
-    # Persist the approved plan before executing its modules. This records
-    # intent even when a later module fails, and unions targeted repairs with
-    # the existing managed set instead of silently shrinking it.
+    # Persist the approved plan before executing any modules, including base
+    # dependencies. A failed or interrupted package operation must retain new
+    # selections for the next resume, and a failed checkpoint write must stop
+    # before package mutation. Targeted repairs union with the existing scope.
     if [[ "$DRY_RUN" != true ]] && type -t state_record_module_selection >/dev/null; then
         if ! state_record_module_selection "${ACFS_EFFECTIVE_PLAN[@]}"; then
             log_error "Could not record the selected modules; installation has stopped before module execution."
             return 1
         fi
     fi
+
+    # Normal ACFS dependencies belong after the OS upgrade decision (the
+    # upgrade phase installs its own minimal requirements under its own lock)
+    # and after the user's go-ahead: on Arch the first package install is a
+    # full `pacman -Syu`, which must not upgrade the whole system before an
+    # interactive user has answered the confirmation prompt.
+    ensure_base_deps
 
     # Base dependencies run before the resumable phase loop because state and
     # module verification need jq. Clear only older failures after checking
