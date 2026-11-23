@@ -8,7 +8,38 @@ Each version links to its GitHub Release (where one exists) or to the tag compar
 
 ---
 
-## [Unreleased](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/compare/v0.10.0...HEAD)
+## [Unreleased](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/compare/v0.11.0...HEAD)
+
+## [v0.11.0](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/compare/v0.10.0...v0.11.0) -- 2026-11-23
+
+> Over 900 commits since v0.10.0. Source-only installer release, matching the existing ACFS publication venue (no uploaded binary assets).
+
+### Installer, Scope & Reliability
+
+- **End-to-end saved module scope** -- resolved module selection now persists cleanly across retries, bootstrap recovery, smoke checks, onboarding, `acfs update`, and provisioning packets without leaking unselected modules or prerequisites into managed scope.
+- **Hardened `acfs doctor` & targeted repairs** -- added validated targeted repairs with `acfs doctor --fix --only`, nightly update health reporting next to rollback checks, bounded readiness/startup probes that keep interrupted probes inconclusive, and manual-repair reporting for broken launchers.
+- **Safer updates & service drift recovery** -- added opt-in restart of stale services detected by drift checks, Codex/Claude launcher repair with pre-success verification, shell-tool restoration with per-step verification, target-account boundary enforcement, and `umask 0002` runtime permission repair before bootstrap admission.
+- **Guided first-project creation & agent defaults** -- connected verified installations to guided `acfs newproj` workflows with isolated Beads storage and reviewed GitHub/`ru` registration; updated default launcher pins for `agy` (Gemini 4 Neon XHigh) and `cod` (gpt-6.2-sol xhigh).
+- **Swarm, fleet & cloud workflows** -- added batched immutable receipt reads, offline dispatch recovery audits, parallel fleet observation with append-only watch evidence, verified memory ceilings (`capacity`), and Markdown agent setup briefs for cloud environments.
+- **Manifest & quality fixes** -- resolved ShellCheck warning in `scripts/lib/status.sh`, fixed `declare -gA` scoping in `scripts/lib/state.sh` and `scripts/lib/update.sh`, tightened the `toolchain.bun_only` word boundary in `scripts/lib/policy_lint.sh`, updated the bounded `verify_run_as` manifest test assertion, and fixed the trailing syntax error in `tests/unit/test_swarm_fleet_receipt_batch.py`.
+
+### Verified Checksums & Ecosystem Alignment
+
+- **All 47/48 verified installer checksums match live upstream**, including every ACFS-distributed flywheel tool refreshed in this release cycle (`cm`, `mcp_agent_mail`, `fmd`, `bv`, `ee`, `pt`, `fsfs`, `s2p`, `pi`, `brenner_bot`, `rano`, `xf`, `ms`, `slb`, plus `ru`, `dcg`, `dsr`, `rch`, `ubs`, `casr`, `asb`, `srps`).
+- **External authorization boundary preserved** -- optional, disabled-by-default `agents.grok` (`https://x.ai/cli/install.sh`) remains on its reviewed pin pending explicit human authorization in [#522](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/issues/522); this release does not silently authorize unreviewed third-party installer bytes.
+- Added exact reviewed-subset external checksum authorization, private checksum evidence export/verification, and offline monitor diagnostics.
+
+### Web (`apps/web`) & Dependencies
+
+- Upgraded website and manifest workspace dependencies (`next` 16.4.6, `react`/`react-dom` 19.3.1, `@next/third-parties` 16.4.6, `@tanstack/*` 5.108.3, `framer-motion` 14.14.0, `lucide-react` 1.77.0, `three` 0.187.0, `tailwindcss` 4.3.5, `eslint` 10.15.0, `zod` 4.6.7, `@playwright/test` 1.65.1) with **0 `bun audit` vulnerabilities** across 640 packages.
+- Web wizard improvements: preserved team profile constraints, tailored account sign-in guidance to selected installations, and connected verified installs to first-project onboarding.
+
+### Verification Summary
+
+- Manifest & generated artifact drift: `scripts/check-manifest-drift.sh --json` clean (0 drift across 121 internal checksums, 75 manifest modules, and 461 semantic contract checks).
+- Bash syntax & linting: `bash -n` 142/142 clean; warning-level `shellcheck -S warning` 142/142 clean (0 warnings, 0 errors); `scripts/tests/lint_declare_scoping.sh` 74/74 clean; `tests/unit/test_policy_lint.sh` 9/9 pass.
+- Suites: `@acfs/manifest` type-check + 1170/1170 non-skipped `bun test` pass (5 root-only skips, 0 failures); `@acfs/web` type-check, lint (0 errors), 1119/1119 unit tests (1 skip, 0 failures), and production Next.js build pass; root Ubuntu upgrade orchestration tests 127/127 pass in `ubuntu:24.04`; `tests/vm/bootstrap_offline_checks.sh` passes in `ubuntu:24.04`.
+- External checker (`automated_flywheel_setup_checker` v0.1.0): `validate`, `list`, and `check --dry-run --local` pass; `--check-urls --check-hashes` reports 48/48 reachable URLs and 47/48 matching hashes (only optional `grok`, tracked in [#522](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/issues/522)).
 
 ## [v0.10.0](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/compare/v0.9.0...v0.10.0) -- 2026-10-02
 
