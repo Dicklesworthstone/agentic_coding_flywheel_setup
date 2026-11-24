@@ -993,13 +993,30 @@ modules:
           ~/.bun/bin/bun install -g --trust @openai/codex
         fi
       - |
+        bun_bin="$HOME/.bun/bin/bun"
+        global_bin="$("$bun_bin" pm bin -g)" || {
+          echo "Codex CLI: unable to resolve Bun's global bin directory" >&2
+          exit 1
+        }
+        if [[ "$global_bin" != /* || "$global_bin" == *$'\n'* || "$global_bin" == *$'\r'* \
+              || ! -d "$global_bin" || "$global_bin" -ef / ]]; then
+          echo "Codex CLI: Bun returned an invalid global bin directory" >&2
+          exit 1
+        fi
+        if [[ "${ACFS_BIN_DIR:-$HOME/.local/bin}" -ef "$global_bin" ]]; then
+          echo "Codex CLI: choose an ACFS bin directory outside Bun's global bin to avoid replacing the package" >&2
+          exit 1
+        fi
+        package_path="$global_bin/codex"
+        if [[ ! -f "$package_path" ]]; then
+          echo "Codex CLI: Bun reported success but the package command is missing: $package_path" >&2
+          exit 1
+        fi
         wrapper_tmp="$(mktemp "${TMPDIR:-/tmp}/acfs-codex-wrapper.XXXXXX")"
         trap 'rm -f "$wrapper_tmp"' EXIT
-        cat > "$wrapper_tmp" << 'WRAPPER'
-        #!/bin/bash
-        exec "$HOME/.bun/bin/bun" "$HOME/.bun/bin/codex" "$@"
-        WRAPPER
+        printf '#!/bin/bash\nexec %q %q "$@"\n' "$bun_bin" "$package_path" > "$wrapper_tmp"
         chmod 0755 "$wrapper_tmp"
+        "$wrapper_tmp" --version >/dev/null
         acfs_install_executable_into_primary_bin "$wrapper_tmp" "codex"
     verify:
       - |

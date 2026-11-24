@@ -9583,6 +9583,7 @@ install_agents_phase() {
     # Uses fallback chain: @latest -> unversioned -> pinned 0.87.0
     # npm can 404 briefly after publishing; pinned version is reliable fallback
     local codex_install_blocked=false
+    local codex_install_attempted=false
     if ! acfs_legacy_module_selected "agents.codex"; then
         log_detail "Skipping Codex CLI (agents.codex is not selected)"
     elif acfs_should_skip_module "agents.codex"; then
@@ -9593,6 +9594,7 @@ install_agents_phase() {
         agents_phase_rc=1
         codex_install_blocked=true
     else
+        codex_install_attempted=true
         log_detail "Installing Codex CLI for $TARGET_USER"
         try_step "Installing Codex CLI" run_as_target bash -c '
         set -euo pipefail
@@ -9611,23 +9613,50 @@ install_agents_phase() {
     fi
 
     # Create wrapper script that uses bun as runtime (avoids node PATH issues)
-    local codex_bin_local="$ACFS_BIN_DIR/codex"
-    if acfs_legacy_module_selected "agents.codex" && [[ -x "$bun_bin" && -x "$TARGET_HOME/.bun/bin/codex" && ! -x "$codex_bin_local" ]]; then
+    # Ask Bun in the same target account that installed the package: its global
+    # bin can be configured independently of BUN_INSTALL. Rebuild stale launchers
+    # on retry, but publish only after the replacement executes successfully.
+    if [[ "$codex_install_attempted" == true ]]; then
+        local codex_global_bin="" codex_package_path="" codex_wrapper_error=""
         local codex_wrapper_tmp=""
-        local mktemp_bin="" chmod_bin="" rm_bin=""
-        mktemp_bin="$(acfs_early_system_binary_path mktemp 2>/dev/null || true)"
-        chmod_bin="$(acfs_early_system_binary_path chmod 2>/dev/null || true)"
-        rm_bin="$(acfs_early_system_binary_path rm 2>/dev/null || true)"
-        if [[ -n "$mktemp_bin" && -n "$chmod_bin" && -n "$rm_bin" ]]; then
-            codex_wrapper_tmp="$("$mktemp_bin" "${TMPDIR:-/tmp}/acfs-codex-wrapper.XXXXXX" 2>/dev/null)" || true
+        local mktemp_bin="" chmod_bin="" rm_bin="" codex_wrapper_bash=""
+        if ! codex_global_bin="$(run_as_target "$bun_bin" pm bin -g)"; then
+            codex_wrapper_error="unable to resolve Bun's global bin directory"
+        elif [[ "$codex_global_bin" != /* || "$codex_global_bin" == *$'\n'* || "$codex_global_bin" == *$'\r'* \
+                || ! -d "$codex_global_bin" || "$codex_global_bin" -ef / ]]; then
+            codex_wrapper_error="Bun returned an invalid global bin directory"
+        elif [[ "$ACFS_BIN_DIR" -ef "$codex_global_bin" ]]; then
+            codex_wrapper_error="choose an ACFS bin directory outside Bun's global bin to avoid replacing the package"
+        elif [[ ! -f "$codex_global_bin/codex" ]]; then
+            codex_wrapper_error="Bun reported success but the package command is missing: $codex_global_bin/codex"
         else
-            log_warn "Skipping Codex wrapper: trusted system file tools are unavailable"
+            codex_package_path="$codex_global_bin/codex"
+            mktemp_bin="$(acfs_early_system_binary_path mktemp 2>/dev/null || true)"
+            chmod_bin="$(acfs_early_system_binary_path chmod 2>/dev/null || true)"
+            rm_bin="$(acfs_early_system_binary_path rm 2>/dev/null || true)"
+            codex_wrapper_bash="$(acfs_early_system_binary_path bash 2>/dev/null || true)"
+            # The caller opens the staged file for both operations so a target
+            # account need not traverse the caller's private TMPDIR.
+            if [[ -z "$mktemp_bin" || -z "$chmod_bin" || -z "$rm_bin" || -z "$codex_wrapper_bash" ]]; then
+                codex_wrapper_error="trusted system file tools are unavailable"
+            elif ! codex_wrapper_tmp="$("$mktemp_bin" "${TMPDIR:-/tmp}/acfs-codex-wrapper.XXXXXX" 2>/dev/null)"; then
+                codex_wrapper_error="unable to stage the Bun launcher"
+            elif ! printf '#!/bin/bash\nexec %q %q "$@"\n' "$bun_bin" "$codex_package_path" > "$codex_wrapper_tmp" \
+                || ! "$chmod_bin" 0755 "$codex_wrapper_tmp" \
+                || ! run_as_target "$codex_wrapper_bash" --noprofile --norc -p -s -- --version < "$codex_wrapper_tmp" >/dev/null; then
+                codex_wrapper_error="the staged Bun launcher failed verification"
+            elif ! try_step "Creating Codex bun wrapper" acfs_install_executable_into_primary_bin /dev/stdin "codex" < "$codex_wrapper_tmp"; then
+                codex_wrapper_error="unable to publish the verified Bun launcher"
+            fi
         fi
-        if [[ -n "$codex_wrapper_tmp" ]]; then
-            printf '%s\n' '#!/bin/bash' "exec \"$TARGET_HOME/.bun/bin/bun\" \"$TARGET_HOME/.bun/bin/codex\" \"\$@\"" > "$codex_wrapper_tmp"
-            "$chmod_bin" 0755 "$codex_wrapper_tmp" || true
-            try_step "Creating Codex bun wrapper" acfs_install_executable_into_primary_bin "$codex_wrapper_tmp" "codex" || true
+        if [[ -n "$codex_wrapper_tmp" && -n "$rm_bin" ]]; then
             "$rm_bin" -f "$codex_wrapper_tmp" 2>/dev/null || true
+        fi
+        if [[ -n "$codex_wrapper_error" ]]; then
+            log_error "Codex CLI: $codex_wrapper_error"
+            ACFS_MODULE_FAILURES+=("agents.codex ($codex_wrapper_error)")
+            agents_phase_rc=1
+            codex_install_blocked=true
         fi
     fi
     if acfs_legacy_module_selected "agents.codex" && ! acfs_verify_module "agents.codex"; then

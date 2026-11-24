@@ -680,7 +680,7 @@ INSTALL_AGENTS_CODEX
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: install: trap 'rm -f \"\$wrapper_tmp\"' EXIT (target_user)"
+        log_info "dry-run: install: echo \"Codex CLI: unable to resolve Bun's global bin directory\" >&2 (target_user)"
     else
         if ! run_as_target_shell <<'INSTALL_AGENTS_CODEX'
 # Generated helper functions used by this child shell.
@@ -841,17 +841,34 @@ acfs_install_executable_into_primary_bin() {
     "$install_bin" -m 0755 "$src_path" "$dest_path"
 }
 
+bun_bin="$HOME/.bun/bin/bun"
+global_bin="$("$bun_bin" pm bin -g)" || {
+  echo "Codex CLI: unable to resolve Bun's global bin directory" >&2
+  exit 1
+}
+if [[ "$global_bin" != /* || "$global_bin" == *$'\n'* || "$global_bin" == *$'\r'* \
+      || ! -d "$global_bin" || "$global_bin" -ef / ]]; then
+  echo "Codex CLI: Bun returned an invalid global bin directory" >&2
+  exit 1
+fi
+if [[ "${ACFS_BIN_DIR:-$HOME/.local/bin}" -ef "$global_bin" ]]; then
+  echo "Codex CLI: choose an ACFS bin directory outside Bun's global bin to avoid replacing the package" >&2
+  exit 1
+fi
+package_path="$global_bin/codex"
+if [[ ! -f "$package_path" ]]; then
+  echo "Codex CLI: Bun reported success but the package command is missing: $package_path" >&2
+  exit 1
+fi
 wrapper_tmp="$(mktemp "${TMPDIR:-/tmp}/acfs-codex-wrapper.XXXXXX")"
 trap 'rm -f "$wrapper_tmp"' EXIT
-cat > "$wrapper_tmp" << 'WRAPPER'
-#!/bin/bash
-exec "$HOME/.bun/bin/bun" "$HOME/.bun/bin/codex" "$@"
-WRAPPER
+printf '#!/bin/bash\nexec %q %q "$@"\n' "$bun_bin" "$package_path" > "$wrapper_tmp"
 chmod 0755 "$wrapper_tmp"
+"$wrapper_tmp" --version >/dev/null
 acfs_install_executable_into_primary_bin "$wrapper_tmp" "codex"
 INSTALL_AGENTS_CODEX
         then
-            log_error "agents.codex: install command failed: trap 'rm -f \"\$wrapper_tmp\"' EXIT"
+            log_error "agents.codex: install command failed: echo \"Codex CLI: unable to resolve Bun's global bin directory\" >&2"
             return 1
         fi
     fi

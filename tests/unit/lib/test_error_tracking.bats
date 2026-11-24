@@ -841,6 +841,13 @@ install_agents_fixture_bun() {
     cat > "$TARGET_HOME/.bun/bin/bun" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+if [[ "${1:-}" == pm && "${2:-}" == bin && "${3:-}" == -g ]]; then
+    printf '%s\n' "$HOME/.bun/bin"
+    exit 0
+fi
+if [[ "${1:-}" == "${BASH_SOURCE[0]%/*}/codex" ]]; then
+    exec "$@"
+fi
 [[ "$1" == install && "$2" == -g && "$3" == --trust ]] || exit 99
 case "$4" in
     @openai/codex*) fixture_tool=codex ;;
@@ -848,8 +855,10 @@ case "$4" in
     *) exit 99 ;;
 esac
 printf 'bun:%s\n' "$fixture_tool" >> "$AGENT_ATTEMPTS"
-printf '#!/bin/sh\nprintf "fixture agent\\n"\n' > "$ACFS_BIN_DIR/$fixture_tool"
-chmod +x "$ACFS_BIN_DIR/$fixture_tool"
+fixture_destination="$ACFS_BIN_DIR/$fixture_tool"
+[[ "$fixture_tool" != codex ]] || fixture_destination="$HOME/.bun/bin/codex"
+printf '#!/bin/sh\nprintf "fixture agent\\n"\n' > "$fixture_destination"
+chmod +x "$fixture_destination"
 EOF
     chmod +x "$TARGET_HOME/.bun/bin/bun"
 }
