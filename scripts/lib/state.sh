@@ -3403,7 +3403,7 @@ state_handle_invalid() {
 }
 
 # Backup and quarantine corrupted state file (move aside)
-# Usage: state_backup_and_remove
+# Usage: state_backup_and_remove [--install-target]
 state_backup_and_remove() {
     local state_file
     state_file="$(state_get_file 2>/dev/null || true)"
@@ -3427,21 +3427,25 @@ state_backup_and_remove() {
         fi
         local expected_system_state="/var/lib/acfs/state.json"
 
-        case "$state_file" in
-            "$expected_user_state"|"$expected_system_state") ;;
-            *)
-                if declare -f log_error &>/dev/null; then
-                    log_error "Refusing to move unexpected state file path: $state_file"
-                else
-                    echo "Refusing to move unexpected state file path: $state_file" >&2
-                fi
-                echo "Expected: $expected_user_state or $expected_system_state" >&2
+        if [[ "${1:-}" == --install-target ]]; then
+            # Explicit installer recovery never owns the OS upgrade checkpoint.
+            if [[ "$state_file" -ef "$expected_system_state" || -L "$state_file" ]]; then
+                printf 'Refusing to reset protected checkpoint: %s\n' "$state_file" >&2
                 return 1
-                ;;
-        esac
+            fi
+            # The standard path must also be recoverable when its JSON is
+            # damaged. At any custom path, require the resolved account identity.
+            if [[ "$state_file" != "${TARGET_HOME:?}/.acfs/state.json" ]]; then
+                state_load_module_selection "$state_file" "$TARGET_HOME" "${TARGET_USER:?}" || return 1
+            fi
+        elif [[ "$state_file" != "$expected_user_state" && "$state_file" != "$expected_system_state" ]]; then
+            printf 'Refusing to move unexpected state file path: %s\nExpected: %s or %s\n' \
+                "$state_file" "$expected_user_state" "$expected_system_state" >&2
+            return 1
+        fi
 
         local backup_file
-        backup_file="${state_file}.backup.$(date +%Y%m%d_%H%M%S)"
+        backup_file=$(mktemp "${state_file}.backup.$(date +%Y%m%d_%H%M%S).XXXXXX") || return 1
 
         if mv "$state_file" "$backup_file" 2>/dev/null; then
             if declare -f log_warn &>/dev/null; then
@@ -3450,6 +3454,7 @@ state_backup_and_remove() {
                 echo "Moved state file aside: $backup_file" >&2
             fi
         else
+            rm -f -- "$backup_file"
             if declare -f log_error &>/dev/null; then
                 log_error "Failed to move state file to backup: $backup_file"
             else

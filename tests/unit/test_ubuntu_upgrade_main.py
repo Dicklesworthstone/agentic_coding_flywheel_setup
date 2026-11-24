@@ -89,10 +89,11 @@ acfs_interactive_module_selector() { trace interactive; ACFS_EFFECTIVE_PLAN=(bas
 list_modules() { trace list; }
 print_execution_plan() { trace plan; }
 print_summary() { trace summary; }
+_state_acquire_lock() { :; }
 state_backup_and_remove() { trace mut:reset; }
 ensure_root() { trace root; if [[ "$TEST_ROOT_STATUS" != 0 ]]; then exit "$TEST_ROOT_STATUS"; fi; }
 validate_target_user() { trace user; if [[ "$TEST_USER_STATUS" != 0 ]]; then exit "$TEST_USER_STATUS"; fi; }
-init_target_paths() { trace paths; }
+init_target_paths() { trace paths; ACFS_STATE_FILE="${ACFS_STATE_FILE:-$ACFS_HOME/state.json}"; }
 ensure_ubuntu() { trace supported_os; }
 run_ubuntu_upgrade_phase() {
     trace upgrade

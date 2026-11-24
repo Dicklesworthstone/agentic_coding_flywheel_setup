@@ -12883,6 +12883,10 @@ main() {
     # file 664. Nothing ACFS writes is meant to be group-writable.
     umask 022
     parse_args "$@"
+    if [[ "$RESET_STATE_ONLY" == true && ( "$DRY_RUN" == true || "$PRINT_MODE" == true ) ]]; then
+        log_error "--reset-state moves a checkpoint. Use it separately from --dry-run or --print."
+        exit 1
+    fi
     acfs_require_ref_arg_value "ACFS_REF" "${ACFS_REF:-}" "main"
     acfs_require_ref_arg_value "ACFS_CHECKSUMS_REF" "${ACFS_CHECKSUMS_REF:-}" "main"
     normalize_read_only_modes
@@ -12975,6 +12979,15 @@ main() {
             exit 1
         fi
         acfs_apply_saved_installation_selection
+    elif [[ "$RESET_STATE_ONLY" == true && "$LIST_MODULES" != true && "$PRINT_PLAN_MODE" != true ]]; then
+        # Reset uses the same target resolution and install lock as a run.
+        # Never redirect an explicit recovery request to another checkpoint.
+        local reset_requested_file="${ACFS_STATE_FILE:-${ACFS_HOME:+$ACFS_HOME/state.json}}"
+        init_target_paths
+        if [[ -n "$reset_requested_file" && "$reset_requested_file" != "$ACFS_STATE_FILE" ]]; then
+            log_error "The checkpoint $reset_requested_file conflicts with the resolved target home. Check TARGET_USER and TARGET_HOME."
+            exit 1
+        fi
     elif [[ "$PRINT_PLAN_MODE" == true || "$DRY_RUN" == true ]]; then
         acfs_preview_installation_selection
     fi
@@ -13089,50 +13102,17 @@ main() {
     # Handle --reset-state: move state file aside and exit
     if [[ "$RESET_STATE_ONLY" == "true" ]]; then
         echo "Resetting ACFS state..." >&2
-        local state_file=""
-        if [[ -n "${ACFS_HOME:-}" ]]; then
-            state_file="${ACFS_HOME}/state.json"
-        else
-            local base_home=""
-            if [[ -n "${TARGET_HOME:-}" ]]; then
-                base_home="$TARGET_HOME"
-            else
-                base_home="$(acfs_home_for_user "${TARGET_USER:-ubuntu}" || true)"
-            fi
-
-            if [[ -z "$base_home" ]]; then
-                echo "ERROR: Unable to resolve TARGET_HOME for '${TARGET_USER:-ubuntu}'; export TARGET_HOME explicitly" >&2
-                exit 1
-            fi
-
-            if [[ -z "$base_home" ]] || [[ "$base_home" == "/" ]]; then
-                echo "ERROR: Invalid TARGET_HOME: '${base_home:-<empty>}'" >&2
-                exit 1
-            fi
-            if [[ "$base_home" != /* ]]; then
-                echo "ERROR: TARGET_HOME must be an absolute path (got: $base_home)" >&2
-                exit 1
-            fi
-
-            state_file="${base_home}/.acfs/state.json"
+        local state_file="${ACFS_STATE_FILE:-$ACFS_HOME/state.json}"
+        if [[ "$state_file" != /* || "$state_file" == / || -L "$state_file" || ( -e "$state_file" && ! -f "$state_file" ) ]]; then
+            log_error "Cannot reset an unsafe checkpoint path: $state_file"
+            exit 1
         fi
         if [[ -f "$state_file" ]]; then
-            if type -t state_backup_and_remove &>/dev/null; then
-                local state_dir
-                state_dir="$(dirname "$state_file")"
-                if ! ACFS_HOME="$state_dir" ACFS_STATE_FILE="$state_file" state_backup_and_remove; then
-                    echo "ERROR: Failed to move state file out of the way: $state_file" >&2
-                    exit 1
-                fi
-            else
-                local backup_file
-                backup_file="${state_file}.backup.$(date +%Y%m%d_%H%M%S)"
-                if mv "$state_file" "$backup_file" 2>/dev/null; then
-                    echo "Moved state file aside: $backup_file" >&2
-                else
-                    echo "ERROR: Failed to move state file out of the way: $state_file" >&2
-                    exit 1
-                fi
+            # Maintenance commands share the checkpoint lock, even when they
+            # use a different install lock. The subshell closes its lock FD.
+            if ! (export ACFS_STATE_FILE="$state_file"; _state_acquire_lock && state_backup_and_remove --install-target); then
+                log_error "Failed to move the installation checkpoint aside: $state_file"
+                exit 1
             fi
         else
             echo "No state file found at: $state_file" >&2

@@ -1247,6 +1247,59 @@ acfs_verify_phase() { record_scope; exit 0; }
         self.assertIn("stack.ntm", self.scope_event(events, "resolved"))
         self.assertNotIn("module_selection", json.loads((folder / "home/.acfs/state.json").read_text()))
 
+    def test_reset_moves_only_the_requested_custom_checkpoint(self):
+        result, _, folder = self.run_scoped(("--reset-state",), custom=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assert_unchanged(folder)
+        self.assertFalse((folder / "custom-state.json").exists())
+        backups = list(folder.glob("custom-state.json.backup.*"))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(backups[0].read_bytes(), (folder / "checkpoint-before.json").read_bytes())
+
+    def test_reset_rejects_foreign_custom_checkpoint(self):
+        result, _, folder = self.run_scoped(("--reset-state",), custom=True,
+                                            alter="""state_update '.target_user = "other"'""")
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assert_unchanged(folder, custom=True)
+        self.assertTrue((folder / "home/.acfs/state.json").is_file())
+        self.assertEqual(list(folder.rglob("*.backup.*")), [])
+
+    def test_reset_recovers_damaged_default_without_replacing_an_earlier_backup(self):
+        result, _, folder = self.run_scoped(
+            ("--reset-state",), alter=r'''
+printf 'truncated checkpoint' > "$ACFS_STATE_FILE"
+printf 'prior recovery' > "$ACFS_STATE_FILE.backup.20261124_000000"
+date() { if [[ "$1" == +%Y%m%d_%H%M%S ]]; then echo 20261124_000000; else command date "$@"; fi; }
+''')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        checkpoint = folder / "home/.acfs/state.json"
+        self.assertFalse(checkpoint.exists())
+        backups = checkpoint.parent.glob("state.json.backup.*")
+        self.assertCountEqual([file.read_bytes() for file in backups],
+                              [b"prior recovery", b"truncated checkpoint"])
+
+    def test_reset_respects_the_custom_checkpoint_writer_lock(self):
+        result, _, folder = self.run_scoped(
+            ("--reset-state",), custom=True, execution=r'''
+exec 195>>"$ACFS_STATE_FILE.lock"
+flock -xn 195
+ACFS_STATE_LOCK_TIMEOUT=1
+''')
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assert_unchanged(folder, custom=True)
+        self.assertEqual(list(folder.rglob("*.backup.*")), [])
+
+    def test_readonly_flags_cannot_move_a_checkpoint_in_either_argument_order(self):
+        for flag in ("--dry-run", "--print"):
+            for arguments in (("--reset-state", flag), (flag, "--reset-state")):
+                with self.subTest(arguments=arguments):
+                    result, events, folder = self.run_scoped(arguments)
+                    self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertIn("--reset-state", result.stderr)
+                    self.assertNotIn("install_lock", events)
+                    self.assert_unchanged(folder)
+                    self.assertEqual(list(folder.rglob("*.backup.*")), [])
+
     def test_saved_scope_previews_match_execution_without_privileges_or_checkpoint_writes(self):
         for flag in ("--print-plan", "--dry-run"):
             result, events, folder = self.run_scoped((flag,))
