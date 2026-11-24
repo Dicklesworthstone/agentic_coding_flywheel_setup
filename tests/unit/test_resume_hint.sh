@@ -82,6 +82,10 @@ extract_print_resume_hint_function() {
     sed -n '/^print_resume_hint()/,/^}$/p' "$REPO_ROOT/install.sh"
 }
 
+extract_smoke_fix_function() {
+    sed -n '/^acfs_smoke_install_fix_command()/,/^}$/p' "$REPO_ROOT/install.sh"
+}
+
 extract_normalize_read_only_modes_function() {
     sed -n '/^normalize_read_only_modes()/,/^}$/p' "$REPO_ROOT/install.sh"
 }
@@ -107,15 +111,34 @@ setup_test_env() {
     # Reset all variables to defaults
     SCRIPT_DIR=""
     ACFS_COMMIT_SHA_FULL=""
+    ACFS_REPO_OWNER=""
+    ACFS_REPO_NAME=""
+    ACFS_REF=""
     ACFS_REF_INPUT=""
     ACFS_CHECKSUMS_REF=""
     ACFS_CHECKSUMS_REF_EXPLICIT=false
+    ACFS_MODE_EXPLICIT=false
+    ACFS_STATE_INSTALL_MODE=""
+    ACFS_SELECTED_PROFILE=""
+    ACFS_VERIFIED_BOOTSTRAP_SOURCE=""
+    ACFS_BOOTSTRAP_ORIGINAL_ARCHIVE_PATH=""
+    TARGET_USER=""
+    TARGET_HOME=""
+    ACFS_HOME=""
+    ACFS_STATE_FILE=""
+    ACFS_BIN_DIR=""
+    ONLY_MODULES=()
+    ONLY_PHASES=()
+    SKIP_MODULES=()
+    NO_DEPS=false
     MODE="vibe"
     SKIP_POSTGRES=false
     SKIP_VAULT=false
     SKIP_CLOUD=false
     SKIP_PREFLIGHT=false
     SKIP_UBUNTU_UPGRADE=false
+    TARGET_UBUNTU_VERSION="26.04"
+    TARGET_UBUNTU_VERSION_EXPLICIT=false
     YES_MODE=false
     STRICT_MODE=false
     ACFS_STRICT_MODE=false
@@ -152,6 +175,8 @@ eval "$(extract_resume_hint_function)"
 # shellcheck disable=SC1090
 eval "$(extract_print_resume_hint_function)"
 # shellcheck disable=SC1090
+eval "$(extract_smoke_fix_function)"
+# shellcheck disable=SC1090
 eval "$(extract_normalize_read_only_modes_function)"
 # shellcheck disable=SC1090
 eval "$(extract_ref_arg_value_helper)"
@@ -174,6 +199,211 @@ state_set_resume_hint() {
 # ============================================================
 # Tests
 # ============================================================
+
+# Replay the actual copyable command in a new shell that has none of the
+# installation's environment. The installer and curl are recording fixtures;
+# no packages, account changes, or network requests are performed. Retain all
+# scratch files so a failed replay can be inspected.
+setup_replay_fixture() {
+    ACFS_REPLAY_TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/acfs-resume-replay.XXXXXX")" || return 1
+    mkdir -p "$ACFS_REPLAY_TEST_ROOT/mock-bin" "$ACFS_REPLAY_TEST_ROOT/local checkout" || return 1
+    cat > "$ACFS_REPLAY_TEST_ROOT/local checkout/install.sh" <<'REPLAY_INSTALLER'
+#!/bin/bash
+printf '%s\0' "${TARGET_USER:-}" "${TARGET_HOME:-}" "${ACFS_HOME:-}" \
+    "${ACFS_STATE_FILE:-}" "${ACFS_BIN_DIR:-}" \
+    "${ACFS_REPO_OWNER:-}" "${ACFS_REPO_NAME:-}" "$@" > "$ACFS_REPLAY_TEST_TRACE"
+REPLAY_INSTALLER
+    cat > "$ACFS_REPLAY_TEST_ROOT/mock-bin/curl" <<'REPLAY_CURL'
+#!/bin/bash
+printf '%s\0' "$@" > "${ACFS_REPLAY_TEST_TRACE}.curl"
+cat "$ACFS_REPLAY_TEST_SCRIPT"
+REPLAY_CURL
+    chmod +x "$ACFS_REPLAY_TEST_ROOT/mock-bin/curl" || return 1
+
+    TARGET_USER=alice
+    TARGET_HOME="$ACFS_REPLAY_TEST_ROOT/home for alice"
+    ACFS_HOME="$TARGET_HOME/runtime with ' quote"
+    ACFS_STATE_FILE="$ACFS_REPLAY_TEST_ROOT/"'$(touch "$ACFS_REPLAY_TEST_MARKER") checkpoint.json'
+    ACFS_BIN_DIR="$ACFS_REPLAY_TEST_ROOT/"'bin `printf injected`'
+    ACFS_REPO_OWNER=Dicklesworthstone
+    ACFS_REPO_NAME=agentic_coding_flywheel_setup
+    ACFS_CHECKSUMS_REF=main
+}
+
+run_replay_fixture() {
+    local command="$1"
+    env -u TARGET_USER -u TARGET_HOME -u ACFS_HOME -u ACFS_STATE_FILE -u ACFS_BIN_DIR \
+        PATH="$ACFS_REPLAY_TEST_ROOT/mock-bin:$PATH" \
+        ACFS_REPLAY_TEST_TRACE="$ACFS_REPLAY_TEST_ROOT/captured" \
+        ACFS_REPLAY_TEST_SCRIPT="$ACFS_REPLAY_TEST_ROOT/local checkout/install.sh" \
+        ACFS_REPLAY_TEST_MARKER="$ACFS_REPLAY_TEST_ROOT/injected" \
+        ACFS_REPO_OWNER=other-owner ACFS_REPO_NAME=other-installer ACFS_REF=unrelated-branch \
+        ACFS_CHECKSUMS_REF=unrelated-checksums \
+        bash --noprofile --norc -c "$command" || return 1
+    if [[ -e "$ACFS_REPLAY_TEST_ROOT/injected" ]]; then
+        log "  Replay evaluated shell text from the checkpoint path"
+        return 1
+    fi
+}
+
+assert_replay_capture() {
+    local -a actual=() expected=("$TARGET_USER" "$TARGET_HOME" "$ACFS_HOME" "$ACFS_STATE_FILE" "$ACFS_BIN_DIR" "$ACFS_REPO_OWNER" "$ACFS_REPO_NAME" "$@")
+    local value="" index=0 actual_q="" expected_q=""
+    while IFS= read -r -d '' value; do
+        actual+=("$value")
+    done < "$ACFS_REPLAY_TEST_ROOT/captured"
+    if [[ ${#actual[@]} -ne ${#expected[@]} ]]; then
+        log "  Expected ${#expected[@]} recorded fields, got ${#actual[@]}; retained $ACFS_REPLAY_TEST_ROOT"
+        return 1
+    fi
+    for ((index = 0; index < ${#expected[@]}; index++)); do
+        if [[ "${actual[$index]}" != "${expected[$index]}" ]]; then
+            printf -v actual_q '%q' "${actual[$index]}"
+            printf -v expected_q '%q' "${expected[$index]}"
+            log "  Replay field $index: expected $expected_q, got $actual_q; retained $ACFS_REPLAY_TEST_ROOT"
+            return 1
+        fi
+    done
+}
+
+test_local_replay_preserves_installation_context() {
+    setup_test_env
+    setup_replay_fixture || return 1
+    SCRIPT_DIR="$ACFS_REPLAY_TEST_ROOT/local checkout"
+    MODE=safe
+    ONLY_MODULES=(agents.codex)
+    NO_DEPS=true
+    local hint=""
+    hint="$(generate_resume_hint agents agents.codex)" || return 1
+    run_replay_fixture "$hint" || return 1
+    assert_replay_capture --resume --mode safe --ref main --checksums-ref main --only agents.codex --no-deps
+}
+
+test_streamed_replay_preserves_context_policy_and_artifact_sources() {
+    setup_test_env
+    setup_replay_fixture || return 1
+    ACFS_REPO_OWNER=Dicklesworthstone
+    ACFS_REPO_NAME=agentic_coding_flywheel_setup
+    ACFS_COMMIT_SHA_FULL=abc123def456abc123def456abc123def456abc1
+    ACFS_REF_INPUT=reviewed-tools
+    ACFS_CHECKSUMS_REF=reviewed-checksums
+    ACFS_CHECKSUMS_REF_EXPLICIT=true
+    ACFS_VERIFIED_INSTALLER_CACHE="$ACFS_REPLAY_TEST_ROOT/cache with spaces"
+    ACFS_MODE_EXPLICIT=true
+    MODE=vibe
+    ONLY_MODULES=(agents.codex stack.ntm)
+    SKIP_MODULES=(db.postgres18)
+    NO_DEPS=true
+    SKIP_UBUNTU_UPGRADE=true
+    YES_MODE=true
+    STRICT_MODE=true
+    local hint=""
+    hint="$(generate_resume_hint agents agents.codex)" || return 1
+    run_replay_fixture "$hint" || return 1
+    assert_replay_capture --resume --mode vibe --ref "$ACFS_COMMIT_SHA_FULL" \
+        --checksums-ref reviewed-checksums --verified-installer-cache "$ACFS_VERIFIED_INSTALLER_CACHE" \
+        --only agents.codex --only stack.ntm --skip db.postgres18 --no-deps \
+        --skip-ubuntu-upgrade --yes --strict
+}
+
+test_smoke_repair_replays_the_same_installation_and_policy() {
+    setup_test_env
+    setup_replay_fixture || return 1
+    ACFS_REPO_OWNER=Dicklesworthstone
+    ACFS_REPO_NAME=agentic_coding_flywheel_setup
+    ACFS_COMMIT_SHA_FULL=abc123def456abc123def456abc123def456abc1
+    ACFS_REF_INPUT=reviewed-tools
+    ACFS_CHECKSUMS_REF=reviewed-tools
+    ACFS_VERIFIED_INSTALLER_CACHE="$ACFS_REPLAY_TEST_ROOT/cache with spaces"
+    MODE=safe
+    ONLY_MODULES=(agents.codex cloud.vercel)
+    SKIP_MODULES=(db.postgres18)
+    NO_DEPS=true
+    SKIP_UBUNTU_UPGRADE=true
+    TARGET_UBUNTU_VERSION="24.04"
+    TARGET_UBUNTU_VERSION_EXPLICIT=true
+    STRICT_MODE=true
+    local hint=""
+    hint="$(acfs_smoke_install_fix_command agents.codex)" || return 1
+    run_replay_fixture "$hint" || return 1
+    assert_replay_capture --yes --force-reinstall --only agents.codex --ref "$ACFS_COMMIT_SHA_FULL" \
+        --mode safe --checksums-ref reviewed-tools --verified-installer-cache "$ACFS_VERIFIED_INSTALLER_CACHE" \
+        --skip db.postgres18 --no-deps --skip-ubuntu-upgrade --strict
+}
+
+test_resume_replay_preserves_explicit_ubuntu_upgrade() {
+    setup_test_env
+    setup_replay_fixture || return 1
+    TARGET_UBUNTU_VERSION="24.04"
+    TARGET_UBUNTU_VERSION_EXPLICIT=true
+    local hint="" skip="" value=""
+    local -a expected=() replayed=()
+    # Exercise the actual opt-in gate after parsing the copied command's argv;
+    # no operating-system inspection, package operation or upgrade is invoked.
+    # shellcheck disable=SC1090
+    eval "$(sed -n '/^acfs_ubuntu_upgrade_requested()/,/^}$/p' "$REPO_ROOT/install.sh")"
+    for skip in false true; do
+        SKIP_UBUNTU_UPGRADE="$skip"
+        hint="$(generate_resume_hint ubuntu_upgrade)" || return 1
+        run_replay_fixture "$hint" || return 1
+        expected=(--resume --ref main --checksums-ref main --target-ubuntu 24.04)
+        [[ "$skip" != true ]] || expected+=(--skip-ubuntu-upgrade)
+        assert_replay_capture "${expected[@]}" || return 1
+        replayed=()
+        while IFS= read -r -d '' value; do
+            replayed+=("$value")
+        done < "$ACFS_REPLAY_TEST_ROOT/captured"
+        (
+            setup_parse_args_env
+            parse_args "${replayed[@]:7}"
+            [[ "$TARGET_UBUNTU_VERSION" == 24.04 && "$TARGET_UBUNTU_VERSION_EXPLICIT" == true ]] || exit 1
+            if [[ "$skip" == true ]]; then
+                ! acfs_ubuntu_upgrade_requested
+            else
+                acfs_ubuntu_upgrade_requested
+            fi
+        ) || return 1
+    done
+
+    # A configured default is not consent, and a targeted repair must not
+    # inherit release-upgrade consent from the installation it diagnoses.
+    SKIP_UBUNTU_UPGRADE=false
+    TARGET_UBUNTU_VERSION_EXPLICIT=false
+    hint="$(generate_resume_hint)" || return 1
+    run_replay_fixture "$hint" || return 1
+    assert_replay_capture --resume --ref main --checksums-ref main || return 1
+    TARGET_UBUNTU_VERSION_EXPLICIT=true
+    hint="$(acfs_smoke_install_fix_command stack.ntm)" || return 1
+    run_replay_fixture "$hint" || return 1
+    assert_replay_capture --yes --force-reinstall --only stack.ntm --ref main --mode vibe --checksums-ref main
+}
+
+test_fork_replays_pin_main_despite_inherited_ref() {
+    setup_test_env
+    setup_replay_fixture || return 1
+    ACFS_REPO_OWNER=ExampleOrg
+    ACFS_REPO_NAME=reviewed-flywheel
+    ACFS_REF_INPUT=main
+    local hint="" value="" actual_url=""
+    local expected_url="https://raw.githubusercontent.com/ExampleOrg/reviewed-flywheel/main/install.sh"
+    local generator=""
+    for generator in generate_resume_hint acfs_smoke_install_fix_command; do
+        hint="$("$generator" stack.ntm)" || return 1
+        run_replay_fixture "$hint" || return 1
+        if [[ "$generator" == generate_resume_hint ]]; then
+            assert_replay_capture --resume --ref main --checksums-ref main || return 1
+        else
+            assert_replay_capture --yes --force-reinstall --only stack.ntm --ref main --mode vibe --checksums-ref main || return 1
+        fi
+        while IFS= read -r -d '' value; do
+            actual_url="$value"
+        done < "$ACFS_REPLAY_TEST_ROOT/captured.curl"
+        if [[ "$actual_url" != "$expected_url" ]]; then
+            log "  Expected fork download $expected_url, got $actual_url"
+            return 1
+        fi
+    done
+}
 
 # Test: Basic curl|bash invocation with defaults
 test_basic_curl_invocation() {
@@ -814,6 +1044,11 @@ main() {
     run_test test_complex_combination
     run_test test_main_branch_shorthand
     run_test test_empty_ref_shorthand
+    run_test test_local_replay_preserves_installation_context
+    run_test test_streamed_replay_preserves_context_policy_and_artifact_sources
+    run_test test_smoke_repair_replays_the_same_installation_and_policy
+    run_test test_resume_replay_preserves_explicit_ubuntu_upgrade
+    run_test test_fork_replays_pin_main_despite_inherited_ref
     run_test test_print_resume_hint_uses_state_helper
     run_test test_print_resume_hint_fallback_uses_absolute_local_path
     run_test test_print_resume_hint_fallback_uses_fail_closed_curl

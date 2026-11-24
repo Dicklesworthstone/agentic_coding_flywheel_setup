@@ -1744,10 +1744,21 @@ generate_resume_hint() {
     local install_url_q=""
     local arg_q=""
     local resume_ref=""
-    local resume_ref_pinned_from_commit=false
     local resume_repo_owner="${ACFS_REPO_OWNER:-Dicklesworthstone}"
     local resume_repo_name="${ACFS_REPO_NAME:-agentic_coding_flywheel_setup}"
+    local replay_env="" env_name="" env_value=""
     local -a resume_args=(--resume)
+
+    # A copied command may run in a fresh login shell, where the original
+    # target, custom checkpoint and repository are no longer exported. Bind those values
+    # to the installer process (not curl), so it validates and resumes the same
+    # installation instead of loading another user's/default module scope.
+    for env_name in TARGET_USER TARGET_HOME ACFS_HOME ACFS_STATE_FILE ACFS_BIN_DIR ACFS_REPO_OWNER ACFS_REPO_NAME; do
+        env_value="${!env_name:-}"
+        [[ -n "$env_value" ]] || continue
+        printf -v env_value '%q' "$env_value"
+        replay_env+="$env_name=$env_value "
+    done
 
     # A verified archive child has a temporary SCRIPT_DIR, but its logical
     # origin is still the streamed installer. Never suggest that deleted path.
@@ -1776,41 +1787,37 @@ generate_resume_hint() {
         fi
         printf -v install_url_q '%q' "$install_url"
         cmd="$cmd $install_url_q"
-        cmd="$cmd | bash -p -s --"
+        cmd="$cmd | ${replay_env}bash -p -s --"
     else
         # Local script invocation
         local local_install
         local_install="${SCRIPT_DIR%/}/install.sh"
         printf -v local_install '%q' "$local_install"
-        cmd="bash $local_install"
+        cmd="${replay_env}bash $local_install"
     fi
 
     # Always add --resume flag (skips completed phases via state.json)
 
-    # Add mode if not default
-    if [[ "${MODE:-vibe}" != "vibe" ]]; then
-        resume_args+=(--mode "$MODE")
+    # An explicit/profile-selected vibe mode must not silently revert to a
+    # saved safe mode when replayed before the checkpoint was updated. Keep
+    # the short default hint only when no policy has been selected or loaded.
+    if [[ "${MODE:-vibe}" != vibe || "${ACFS_MODE_EXPLICIT:-false}" == true \
+        || -n "${ACFS_SELECTED_PROFILE:-}" || -n "${ACFS_STATE_INSTALL_MODE:-}" ]]; then
+        resume_args+=(--mode "${MODE:-vibe}")
     fi
 
-    # Propagate --ref so the resume uses the same git ref (avoids the
-    # curl|bash env-var pitfall where ACFS_REF only reaches curl, not bash)
+    # Propagate --ref even for main so a receiving shell's ACFS_REF cannot
+    # change the bootstrap after curl has downloaded the intended installer.
     if [[ "$logical_streamed" == "true" && -n "${ACFS_COMMIT_SHA_FULL:-}" ]]; then
         resume_ref="$ACFS_COMMIT_SHA_FULL"
-        resume_ref_pinned_from_commit=true
-    elif [[ -n "${ACFS_REF_INPUT:-}" && "${ACFS_REF_INPUT}" != "main" ]]; then
-        resume_ref="$ACFS_REF_INPUT"
+    else
+        resume_ref="${ACFS_REF_INPUT:-main}"
     fi
-    if [[ -n "$resume_ref" ]]; then
-        resume_args+=(--ref "$resume_ref")
-    fi
+    resume_args+=(--ref "$resume_ref")
 
-    # Preserve checksum metadata that would otherwise be lost when replaying
-    # the resume command with a different --ref than the original invocation.
-    if [[ "${ACFS_CHECKSUMS_REF_EXPLICIT:-false}" == "true" && -n "${ACFS_CHECKSUMS_REF:-}" ]]; then
-        resume_args+=(--checksums-ref "$ACFS_CHECKSUMS_REF")
-    elif [[ "$resume_ref_pinned_from_commit" == "true" && -n "${ACFS_CHECKSUMS_REF:-}" && "$ACFS_CHECKSUMS_REF" != "main" ]]; then
-        # Pinning --ref to an exact SHA would otherwise make parse_args derive
-        # checksum metadata from main, not the symbolic branch used originally.
+    # Preserve known checksum metadata, including main: a receiving shell's
+    # ACFS_CHECKSUMS_REF is treated as explicit before --ref is parsed.
+    if [[ -n "${ACFS_CHECKSUMS_REF:-}" ]]; then
         resume_args+=(--checksums-ref "$ACFS_CHECKSUMS_REF")
     fi
     if [[ -n "${ACFS_VERIFIED_INSTALLER_CACHE:-}" ]]; then
@@ -1848,6 +1855,13 @@ generate_resume_hint() {
         done
     fi
     [[ "${NO_DEPS:-false}" == "true" ]] && resume_args+=(--no-deps)
+
+    # Resume an explicitly requested release upgrade with the same destination.
+    # --resume alone does not opt into upgrades, including a pending pre-upgrade
+    # reboot. Keep --skip-ubuntu-upgrade below so an original skip still wins.
+    if [[ "${TARGET_UBUNTU_VERSION_EXPLICIT:-false}" == true ]]; then
+        resume_args+=(--target-ubuntu "$TARGET_UBUNTU_VERSION")
+    fi
 
     # Add skip flags that were used
     [[ "${SKIP_POSTGRES:-false}" == "true" ]] && resume_args+=(--skip-postgres)
@@ -11974,7 +11988,21 @@ acfs_smoke_install_fix_command() {
     local install_url_q=""
     local flags=""
     local module_id=""
+    local replay_env="" env_name="" env_value="" selection=""
+    local repair_repo_owner="${ACFS_REPO_OWNER:-Dicklesworthstone}"
+    local repair_repo_name="${ACFS_REPO_NAME:-agentic_coding_flywheel_setup}"
     local -a fix_args=(--yes --force-reinstall)
+
+    # Repair the installation that produced this diagnosis even after the
+    # caller reconnects or copies the command into another shell. Assignment
+    # words belong to Bash's side of the pipeline; they must not reach curl
+    # alone or become shell source when a path contains spaces/metacharacters.
+    for env_name in TARGET_USER TARGET_HOME ACFS_HOME ACFS_STATE_FILE ACFS_BIN_DIR ACFS_REPO_OWNER ACFS_REPO_NAME; do
+        env_value="${!env_name:-}"
+        [[ -n "$env_value" ]] || continue
+        printf -v env_value '%q' "$env_value"
+        replay_env+="$env_name=$env_value "
+    done
 
     for module_id in "$@"; do
         [[ -n "$module_id" ]] || continue
@@ -11982,18 +12010,47 @@ acfs_smoke_install_fix_command() {
     done
 
     if [[ -n "${ACFS_COMMIT_SHA_FULL:-}" ]]; then
-        install_url="https://raw.githubusercontent.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/${ACFS_COMMIT_SHA_FULL}/install.sh"
+        install_url="https://raw.githubusercontent.com/${repair_repo_owner}/${repair_repo_name}/${ACFS_COMMIT_SHA_FULL}/install.sh"
         fix_args+=(--ref "$ACFS_COMMIT_SHA_FULL")
     elif [[ -n "${ACFS_REF_INPUT:-}" && "${ACFS_REF_INPUT}" != "main" ]]; then
-        install_url="https://raw.githubusercontent.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/${ACFS_REF_INPUT}/install.sh"
+        install_url="https://raw.githubusercontent.com/${repair_repo_owner}/${repair_repo_name}/${ACFS_REF_INPUT}/install.sh"
         fix_args+=(--ref "$ACFS_REF_INPUT")
+    else
+        fix_args+=(--ref main)
+        if [[ "$repair_repo_owner" != Dicklesworthstone || "$repair_repo_name" != agentic_coding_flywheel_setup ]]; then
+            install_url="https://raw.githubusercontent.com/${repair_repo_owner}/${repair_repo_name}/main/install.sh"
+        fi
     fi
+
+    # Keep the accepted policy and verified artifact sources while narrowing
+    # the repair to the named modules. Replaying the whole original profile
+    # here would turn a targeted repair into a full-profile reinstall.
+    [[ -z "${MODE:-}" ]] || fix_args+=(--mode "$MODE")
+    if [[ -n "${ACFS_CHECKSUMS_REF:-}" ]]; then
+        fix_args+=(--checksums-ref "$ACFS_CHECKSUMS_REF")
+    fi
+    [[ -z "${ACFS_VERIFIED_INSTALLER_CACHE:-}" ]] || fix_args+=(--verified-installer-cache "$ACFS_VERIFIED_INSTALLER_CACHE")
+    if [[ "${ACFS_VERIFIED_BOOTSTRAP_SOURCE:-}" == local_archive && -n "${ACFS_BOOTSTRAP_ORIGINAL_ARCHIVE_PATH:-}" ]]; then
+        fix_args+=(--bootstrap-archive "$ACFS_BOOTSTRAP_ORIGINAL_ARCHIVE_PATH")
+    fi
+    if [[ "${SKIP_MODULES+x}" == x ]]; then
+        for selection in "${SKIP_MODULES[@]}"; do
+            fix_args+=(--skip "$selection")
+        done
+    fi
+    [[ "${NO_DEPS:-false}" == true ]] && fix_args+=(--no-deps)
+    [[ "${SKIP_POSTGRES:-false}" == true ]] && fix_args+=(--skip-postgres)
+    [[ "${SKIP_VAULT:-false}" == true ]] && fix_args+=(--skip-vault)
+    [[ "${SKIP_CLOUD:-false}" == true ]] && fix_args+=(--skip-cloud)
+    [[ "${SKIP_PREFLIGHT:-false}" == true ]] && fix_args+=(--skip-preflight)
+    [[ "${SKIP_UBUNTU_UPGRADE:-false}" == true ]] && fix_args+=(--skip-ubuntu-upgrade)
+    [[ "${STRICT_MODE:-false}" == true || "${ACFS_STRICT_MODE:-false}" == true ]] && fix_args+=(--strict)
 
     printf -v install_url_q '%q' "$install_url"
     printf -v flags '%q ' "${fix_args[@]}"
     flags="${flags% }"
 
-    printf 'curl -fsSL %s | bash -s -- %s\n' "$install_url_q" "$flags"
+    printf 'curl -fsSL %s | %sbash -s -- %s\n' "$install_url_q" "$replay_env" "$flags"
 }
 
 run_smoke_test() {

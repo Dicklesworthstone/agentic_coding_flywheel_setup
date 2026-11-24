@@ -14143,7 +14143,7 @@ EOF
     run acfs_smoke_install_fix_command "stack.ntm"
     assert_success
     assert_output --partial "https://agent-flywheel.com/install"
-    refute_output --partial "--ref"
+    assert_output --partial "--ref main"
 }
 
 @test "doctor.sh: state mode is validated before sudo policy and fix suggestions" {
