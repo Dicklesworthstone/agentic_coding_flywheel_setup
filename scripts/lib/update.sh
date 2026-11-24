@@ -3288,6 +3288,36 @@ update_run_bounded_in_target_context() {
     update_run_in_target_context "" "${command_argv[@]}"
 }
 
+# A native self-updater can exit successfully after leaving an unusable
+# replacement. Count the operation only after the same installed entrypoint
+# answers its version probe in the target account. Preserve the native update
+# status, and give verification its own short smoke deadline rather than the
+# much longer install deadline.
+update_native_agent_and_verify() {
+    local binary="${1:-}"
+    local UPDATE_CMD_TIMEOUT="${2:-1800}"
+    shift 2
+    [[ -n "$binary" && $# -gt 0 ]] || return 1
+    update_run_bounded_in_target_context "$binary" "$@" || return $?
+
+    if [[ ! -f "$binary" || ! -x "$binary" ]]; then
+        printf 'Native agent update left a missing or unexecutable command: %s\n' "$binary" >&2
+        return 1
+    fi
+    local output="" status=0
+    output="$(update_run_smoke_probe "$binary" --version)" || status=$?
+    if [[ "$status" -ne 0 ]]; then
+        [[ -z "$output" ]] || printf '%s\n' "$output" >&2
+        printf 'Native agent version verification failed (exit %s): %s\n' "$status" "$binary" >&2
+        return "$status"
+    fi
+    if [[ -z "${output//[[:space:]]/}" ]]; then
+        printf 'Native agent version verification returned no version: %s\n' "$binary" >&2
+        return 1
+    fi
+    printf '%s\n' "$output"
+}
+
 # The caller's custom Cargo bin directory is relevant only for its own account.
 # Resolve relative overrides before the target runner changes directory.
 update_rust_binary_path() {
@@ -6276,6 +6306,17 @@ update_smoke_output_indicates_probe_rejected() {
 # block verification on a terminal). Prints the probe's combined output and
 # returns its exit status; 124 when the timeout expired, or 126 when the
 # target context could not start the probe.
+_update_capture_smoke_target() {
+    local end_marker="$1" status=0
+    shift
+    update_run_in_target_context "" "$@" </dev/null || status=$?
+    # Preserve native trailing newlines through update_capture_command's
+    # string capture. A background writer cannot hold its regular file open
+    # in a way that delays this command's return.
+    printf '%s' "$end_marker"
+    return "$status"
+}
+
 update_run_smoke_probe() {
     local binary="${1:-}"
     shift
@@ -6299,13 +6340,12 @@ update_run_smoke_probe() {
     if [[ -n "$timeout_bin" ]]; then
         command_argv=("$timeout_bin" --kill-after=5s "${UPDATE_SMOKE_TIMEOUT:-20}" "${command_argv[@]}")
     fi
-    output="$(
-        probe_status=0
-        update_run_in_target_context "" "${command_argv[@]}" </dev/null 2>&1 || probe_status=$?
-        printf '%s' "$end_marker"
-        exit "$probe_status"
-    )" || status=$?
-    output="${output%"$end_marker"}"
+    # A pipe capture waits for every inherited writer, even after timeout has
+    # returned because the foreground probe finished. Use the updater's file
+    # capture so a probe's background helper cannot stall the update forever.
+    local UPDATE_LAST_COMMAND_OUTPUT=""
+    update_capture_command _update_capture_smoke_target "$end_marker" "${command_argv[@]}" || status=$?
+    output="${UPDATE_LAST_COMMAND_OUTPUT/"$end_marker"/}"
     if [[ "$output" != *"$start_marker"* ]]; then
         printf '%s' "$output"
         printf '\nTarget-account smoke probe did not reach execution\n' >&2
@@ -9319,7 +9359,7 @@ update_agents() {
         :
     elif [[ -n "$agy_bin" ]]; then
         capture_version_before "agy"
-        run_cmd "Antigravity CLI" update_run_bounded_in_target_context "$agy_bin" update
+        run_cmd "Antigravity CLI" update_native_agent_and_verify "$agy_bin" "${UPDATE_CMD_TIMEOUT:-1800}" update
         if capture_version_after "agy"; then
             update_say "       ${DIM}%s → %s${NC}\n" "${VERSION_BEFORE[agy]}" "${VERSION_AFTER[agy]}"
         fi
@@ -9349,7 +9389,7 @@ update_agents() {
         local omp_bin=""
         omp_bin="$(update_binary_path omp 2>/dev/null || true)"
         capture_version_before "omp"
-        run_cmd "oh-my-pi (omp)" update_run_bounded_in_target_context "$omp_bin" update
+        run_cmd "oh-my-pi (omp)" update_native_agent_and_verify "$omp_bin" "${UPDATE_CMD_TIMEOUT:-1800}" update
         if capture_version_after "omp"; then
             update_say "       ${DIM}%s → %s${NC}\n" "${VERSION_BEFORE[omp]}" "${VERSION_AFTER[omp]}"
         fi
@@ -9377,9 +9417,7 @@ update_agents() {
         :
     elif update_binary_exists opencode; then
         local opencode_bin=""
-        local opencode_timeout_bin=""
         opencode_bin="$(update_binary_path opencode 2>/dev/null || true)"
-        opencode_timeout_bin="$(update_system_binary_path timeout 2>/dev/null || true)"
         if [[ -f "$opencode_bin" ]] && grep -q 'exec mise x' "$opencode_bin" 2>/dev/null; then
             # Omarchy's mise wrapper (omarchy-mise-install) runs `mise use -g`
             # on every launch, so it is already current; `opencode upgrade`
@@ -9387,14 +9425,9 @@ update_agents() {
             log_item "skip" "OpenCode" "managed by a mise wrapper (updates itself on launch)"
         else
             capture_version_before "opencode"
-            # run_cmd cannot apply its own timeout to a shell function, so bound
-            # the external `opencode upgrade` explicitly.
-            if [[ -n "$opencode_timeout_bin" ]]; then
-                run_cmd "OpenCode" update_run_in_target_context "" "$opencode_timeout_bin" \
-                    --kill-after=30s "${UPDATE_OPENCODE_TIMEOUT:-600}" "$opencode_bin" upgrade
-            else
-                run_cmd "OpenCode" update_run_in_target_context "" "$opencode_bin" upgrade
-            fi
+            # Keep the native upgrade's existing deadline while also checking
+            # the replacement before success is recorded.
+            run_cmd "OpenCode" update_native_agent_and_verify "$opencode_bin" "${UPDATE_OPENCODE_TIMEOUT:-600}" upgrade
             if capture_version_after "opencode"; then
                 update_say "       ${DIM}%s → %s${NC}\n" "${VERSION_BEFORE[opencode]}" "${VERSION_AFTER[opencode]}"
             fi

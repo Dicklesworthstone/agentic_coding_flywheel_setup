@@ -582,6 +582,20 @@ case "$tool:$*" in
                 if [[ "$attempt" -eq 1 ]]; then printf 'curl: (7) Connection refused\n' >&2; exit 7; fi
                 ;;
             hang) /bin/sleep 5 ;;
+            broken-payload)
+                cp -- "$0" "$0.fixture-before-update"
+                printf '#!/bin/bash\nprintf "broken native replacement\\n" >&2\nexit 42\n' > "$0"
+                ;;
+            empty-payload)
+                cp -- "$0" "$0.fixture-before-update"
+                printf '#!/bin/bash\nexit 0\n' > "$0"
+                ;;
+            missing-payload) mv -- "$0" "$0.fixture-before-update" ;;
+            unexecutable-payload) chmod 0644 "$0" ;;
+            hung-payload)
+                cp -- "$0" "$0.fixture-before-update"
+                printf '#!/bin/bash\n/bin/sleep 5\n' > "$0"
+                ;;
         esac
         printf '%s\n' "$EUID" > "$HOME/$tool-native-installed"
         ;;
@@ -2423,7 +2437,7 @@ class AgentPackageDeadlineTests(unittest.TestCase):
         # These fixtures already belong to the account that executes them.
         pass
 
-    def run_update(self, *, command, timeout="5", dry_run=False):
+    def run_update(self, *, command, timeout="5", dry_run=False, abort=False, expected=0):
         env = {
             "HOME": str(self.home), "PATH": "/usr/bin:/bin",
             "TARGET_USER": self.account.pw_name, "TARGET_HOME": str(self.home),
@@ -2431,7 +2445,7 @@ class AgentPackageDeadlineTests(unittest.TestCase):
             "UPDATE_TEST_LIBRARY": str(self.library), "TEST_ROOT": str(self.base),
             "TEST_USER": self.account.pw_name, "TEST_UID": str(self.account.pw_uid),
             "TEST_GID": str(self.account.pw_gid), "TEST_HOME": str(self.home),
-            "TEST_DRY_RUN": str(dry_run).lower(), "TEST_ABORT": "false",
+            "TEST_DRY_RUN": str(dry_run).lower(), "TEST_ABORT": str(abort).lower(),
             "TEST_TIMEOUT": timeout, "TEST_TRANSPORT": "default",
             "TMPDIR": str(self.tmp), "NO_COLOR": "1", "ACFS_INTERACTIVE": "false",
         }
@@ -2448,7 +2462,7 @@ printf 'COUNTS=%s,%s,%s\n' "$SUCCESS_COUNT" "$SKIP_COUNT" "$FAIL_COUNT"
         (self.base / "stdout").write_text(result.stdout)
         (self.base / "stderr").write_text(result.stderr)
         (self.base / "exit").write_text(str(result.returncode) + "\n")
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
         return result.stdout + result.stderr
 
     def write_selection(self, modules):
@@ -2923,6 +2937,69 @@ fi
         for tool in ("agy-real", "omp", "opencode"):
             self.assertFalse((self.home / f"{tool}-native-attempts").exists())
 
+    def assert_native_replacement_failure(self, mode, *, timeout="5", verification_status=None):
+        """A real successful updater leaves a broken final command on disk."""
+        labels = {"agy-real": "Antigravity CLI", "omp": "oh-my-pi (omp)", "opencode": "OpenCode"}
+        for failed_tool, label in labels.items():
+            with self.subTest(mode=mode, tool=failed_tool):
+                self.setUp()
+                self.write_selection(["agents.antigravity", "agents.omp", "agents.opencode"])
+                for tool in ("agy", *labels):
+                    self.write_native_tool(tool)
+                self.write_input(self.base / f"mode-{failed_tool}", mode + "\n")
+                checkpoint = self.home / ".acfs/state.json"
+                original_checkpoint = checkpoint.read_bytes()
+                output = self.run_update(timeout=timeout, command=r'''
+UPDATE_SMOKE_TIMEOUT=0.2
+UPDATE_OPENCODE_TIMEOUT=0.2
+update_agents
+printf 'CONTINUED-AFTER-AGENTS\n'
+''')
+                self.assert_target_events(self.events())
+                # The fixture omits the Antigravity launcher source, so that
+                # existing failure remains separate from the native payload.
+                self.assertIn("COUNTS=2,3,2", output)
+                self.assertIn("CONTINUED-AFTER-AGENTS", output)
+                log = (self.base / "update.log").read_text()
+                self.assertIn(f"Failed: {label} (exit code:", log)
+                self.assertNotIn(f"Success: {label}\n", log)
+                if verification_status is not None:
+                    self.assertIn(f"verification failed (exit {verification_status})", log)
+                for tool in labels:
+                    self.assertTrue((self.home / f"{tool}-native-installed").is_file())
+                    self.assertEqual((self.home / f"{tool}-native-attempts").read_text(), "1\n")
+                self.assertEqual(checkpoint.read_bytes(), original_checkpoint)
+                self.assertEqual(list(self.caller.iterdir()), [])
+
+    def test_native_agent_update_rejects_broken_replacement(self):
+        self.assert_native_replacement_failure("broken-payload", verification_status=42)
+
+    def test_native_agent_update_rejects_empty_version_output(self):
+        self.assert_native_replacement_failure("empty-payload")
+
+    def test_native_agent_update_rejects_missing_replacement(self):
+        self.assert_native_replacement_failure("missing-payload")
+
+    def test_native_agent_update_rejects_unexecutable_replacement(self):
+        self.assert_native_replacement_failure("unexecutable-payload")
+
+    def test_native_agent_replacement_verification_has_a_deadline(self):
+        self.assert_native_replacement_failure("hung-payload", timeout="0.2", verification_status=124)
+
+    def test_native_agent_verification_failure_honors_abort_before_later_agents(self):
+        self.write_selection(["agents.omp", "agents.opencode"])
+        self.write_native_tool("omp")
+        later_binary = self.write_native_tool("opencode")
+        original_later_binary = later_binary.read_bytes()
+        self.write_input(self.base / "mode-omp", "broken-payload\n")
+        output = self.run_update(command="update_agents", abort=True, expected=1)
+        self.assertIn("Aborting due to failure", output)
+        self.assertNotIn("COUNTS=", output)
+        self.assert_target_events(self.events())
+        self.assertFalse((self.home / "opencode-native-attempts").exists())
+        self.assertEqual(later_binary.read_bytes(), original_later_binary)
+        self.assertIn("verification failed (exit 42)", (self.base / "update.log").read_text())
+
     def test_codex_package_timeout_preserves_retries_and_later_agents(self):
         for tool in ("bun", "codex", "omp"):
             self.write_native_tool(tool)
@@ -3137,6 +3214,56 @@ printf 'STATE=%s\n' "$UPDATE_LAST_HOLD_DETAILS"
             except ProcessLookupError:
                 pass
             process.communicate(timeout=3)
+
+
+class SmokeCommandExecutionTests(UpdaterCommandHarness):
+    SETUP = r'''
+update_target_home() { printf '%s\n' "$TEST_ROOT"; }
+UPDATE_SMOKE_TIMEOUT=0.2
+'''
+    INVOCATION = 'update_run_smoke_probe "$TEST_ROOT/command" --version'
+
+    def test_smoke_does_not_wait_for_successful_probe_background_writer(self):
+        case, stdout, stderr = self.execute("update_run_logged_passthrough", r'''
+/bin/sleep 30 &
+printf '%s\n' "$!" > "$TEST_ROOT/background-pid"
+printf 'omp 1.2.3\n\n'
+''', setup=self.SETUP, invocation=self.INVOCATION)
+        self.assertIn("RESULT=0 COUNTS=0,0,0", stdout)
+        log = (case / "update.log").read_text()
+        payload = log.split("\n----- COMMAND: ", 1)[1].split("\n", 1)[1]
+        self.assertEqual(payload, "omp 1.2.3\n\n")
+        self.assertNotIn("ACFS_SMOKE_STARTED_", stdout + stderr)
+        self.assertEqual(stderr, "")
+
+    def test_smoke_preserves_native_failure_and_trailing_diagnostics(self):
+        case, stdout, stderr = self.execute("update_run_logged_passthrough", r'''
+printf 'native failure diagnostic\n\n' >&2
+exit 42
+''', setup=self.SETUP, invocation=self.INVOCATION)
+        self.assertIn("RESULT=42 COUNTS=0,0,0", stdout)
+        log = (case / "update.log").read_text()
+        payload = log.split("\n----- COMMAND: ", 1)[1].split("\n", 1)[1]
+        self.assertEqual(payload, "native failure diagnostic\n\n")
+        self.assertEqual(stderr, "")
+
+    def test_smoke_capture_allocation_failure_never_executes_probe(self):
+        case, stdout, _ = self.execute("update_run_logged_passthrough", r'''
+printf 'executed\n' > "$TEST_ROOT/probe-executed"
+printf 'omp 1.2.3\n'
+''', setup=self.SETUP + '\nmktemp() { return 73; }\n', invocation=self.INVOCATION)
+        self.assertIn("RESULT=126 COUNTS=0,0,0", stdout)
+        self.assertFalse((case / "probe-executed").exists())
+        self.assertIn("Unable to allocate update command capture", (case / "update.log").read_text())
+
+    def test_smoke_capture_read_failure_cannot_report_success(self):
+        case, stdout, _ = self.execute("update_run_logged_passthrough", r'''
+printf 'executed\n' > "$TEST_ROOT/probe-executed"
+printf 'omp 1.2.3\n'
+''', setup=self.SETUP + '\ncat() { return 74; }\n', invocation=self.INVOCATION)
+        self.assertIn("RESULT=126 COUNTS=0,0,0", stdout)
+        self.assertTrue((case / "probe-executed").is_file())
+        self.assertIn("Unable to read update command output", (case / "update.log").read_text())
 
 
 class RetryCommandExecutionTests(UpdaterCommandHarness):
