@@ -9132,7 +9132,7 @@ unset BASH_ENV ENV
 bun_bin="$1" primary_bin="$2" force="$3"
 mkdir_bin="$4" mktemp_bin="$5" chmod_bin="$6" mv_bin="$7" rm_bin="$8"
 launcher="$primary_bin/codex"
-package="$HOME/.bun/bin/codex"
+global_bin="" package=""
 staged=""
 trap '[[ -z "$staged" ]] || "$rm_bin" -f -- "$staged"' EXIT
 trap 'exit 129' HUP
@@ -9148,8 +9148,22 @@ if [[ -e "$launcher" && ! -f "$launcher" && ! -L "$launcher" ]]; then
     printf 'Codex launcher destination is not a file or symlink: %s\n' "$launcher" >&2
     exit 1
 fi
-if [[ "$primary_bin" -ef "$HOME/.bun/bin" ]]; then
-    printf 'Cannot replace the Codex package with its launcher; choose a primary bin outside ~/.bun/bin.\n' >&2
+# Ask Bun in the same account, home and environment used for installation.
+# Its global config and BUN_INSTALL_BIN can independently select this directory;
+# reconstructing it from BUN_INSTALL would bind a stale or missing package.
+global_bin="$("$bun_bin" pm bin -g)" || {
+    status=$?
+    printf 'Unable to resolve the Bun global bin directory (exit %s).\n' "$status" >&2
+    exit "$status"
+}
+if [[ "$global_bin" != /* || "$global_bin" == *$'\n'* || "$global_bin" == *$'\r'* \
+      || ! -d "$global_bin" || "$global_bin" -ef / ]]; then
+    printf 'Bun returned an invalid global bin directory; keeping the existing Codex launcher.\n' >&2
+    exit 1
+fi
+package="$global_bin/codex"
+if [[ "$primary_bin" -ef "$global_bin" ]]; then
+    printf 'Cannot replace the Codex package with its launcher; choose a primary bin outside %s.\n' "$global_bin" >&2
     exit 1
 fi
 if [[ ! -f "$package" ]]; then
@@ -9159,7 +9173,7 @@ fi
 
 "$mkdir_bin" -p -- "$primary_bin"
 staged="$("$mktemp_bin" "$primary_bin/.acfs-codex.XXXXXX")"
-printf '#!/bin/bash\nexec %q "$HOME/.bun/bin/codex" "$@"\n' "$bun_bin" > "$staged"
+printf '#!/bin/bash\nexec %q %q "$@"\n' "$bun_bin" "$package" > "$staged"
 "$chmod_bin" 0755 "$staged"
 "$staged" --version
 "$mv_bin" -fT -- "$staged" "$launcher"

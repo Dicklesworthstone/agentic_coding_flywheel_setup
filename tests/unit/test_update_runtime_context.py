@@ -3026,26 +3026,43 @@ printf 'CONTINUED-AFTER-AGENTS\n'
         self.assertFalse((self.home / "omp-native-attempts").exists())
 
     def write_codex_package_fixture(self, *, package_mode="success"):
-        """Model Bun's global package and its Node-shebang command, without Node."""
+        """Model Bun's global-bin query and Node-shebang package, without Node."""
         self.write_selection(["agents.codex", "lang.bun"])
         bun_dir = self.home / ".bun/bin"
         self.owned_dir(bun_dir)
         bun = bun_dir / "bun"
         bun.write_text("#!/bin/bash\nset -euo pipefail\nfixture=" + shlex.quote(str(self.base)) + r'''
 printf '%s\t%s\t%s\t%s\t%s\n' "$EUID" "$HOME" "$PWD" "${BUN_INSTALL-}" "$*" >> "$fixture/package-events.tsv"
+global_bin="${BUN_INSTALL_BIN:-$HOME/.bun/bin}"
+if [[ -f "$fixture/reported-global-bin" ]]; then
+    IFS= read -r global_bin < "$fixture/reported-global-bin"
+fi
 case "$*" in
     'install -g --trust @openai/codex'*)
         [[ ! -f "$fixture/missing-package" ]] || exit 0
-        printf '#!/usr/bin/env node\nconsole.log("codex-cli 1.2.3-fixture");\n' > "$HOME/.bun/bin/codex"
-        chmod 0755 "$HOME/.bun/bin/codex"
+        mkdir -p -- "$global_bin"
+        printf '%s\n' "$global_bin" > "$fixture/installed-global-bin"
+        printf '#!/usr/bin/env node\nconsole.log("codex-cli 1.2.3-fixture");\n' > "$global_bin/codex"
+        chmod 0755 "$global_bin/codex"
         ;;
-    "$HOME/.bun/bin/codex --version")
-        [[ -f "$HOME/.bun/bin/codex" ]] || exit 127
+    'pm bin -g')
+        [[ ! -f "$fixture/failed-bin-query" ]] || exit 42
+        [[ ! -f "$fixture/hung-bin-query" ]] || /bin/sleep 5
+        if [[ -f "$fixture/global-bin-output" ]]; then
+            cat "$fixture/global-bin-output"
+        else
+            printf '%s\n' "$global_bin"
+        fi
+        ;;
+    *)
+        [[ -f "$fixture/installed-global-bin" ]] || exit 64
+        IFS= read -r global_bin < "$fixture/installed-global-bin"
+        [[ $# == 2 && "$1" == "$global_bin/codex" && "$2" == --version ]] || exit 64
+        [[ -f "$global_bin/codex" ]] || exit 127
         [[ ! -f "$fixture/failed-package" ]] || { printf 'broken package fixture\n' >&2; exit 42; }
         [[ ! -f "$fixture/hung-package" ]] || /bin/sleep 5
         printf 'codex-cli 1.2.3-fixture\n'
         ;;
-    *) exit 64 ;;
 esac
 ''')
         bun.chmod(0o755)
@@ -3087,6 +3104,98 @@ esac
         self.assertIn("COUNTS=1,5,0", output)
         self.assert_codex_launcher_works(launcher)
         self.assertFalse((self.home / ".local/bin/codex").exists())
+
+    def test_codex_forced_repair_uses_bun_environment_global_bin(self):
+        self.write_codex_package_fixture()
+        global_bin = self.home / "Bun's global bin"
+        output = self.run_update(command=(
+            "export BUN_INSTALL_BIN=" + shlex.quote(str(global_bin)) +
+            "; FORCE_MODE=true; update_agents"))
+        self.assertIn("COUNTS=1,5,0", output)
+        self.assertTrue((global_bin / "codex").is_file())
+        self.assertFalse((self.home / ".bun/bin/codex").exists())
+        self.assert_codex_launcher_works(self.home / ".local/bin/codex")
+
+    def test_codex_forced_repair_uses_bun_reported_global_bin(self):
+        self.write_codex_package_fixture()
+        global_bin = self.home / "configured global bin"
+        # Configuration can select a directory without BUN_INSTALL_BIN. Let
+        # the package manager resolve it; the updater must consume its query.
+        self.write_input(self.base / "reported-global-bin", str(global_bin) + "\n")
+        output = self.run_update(command="FORCE_MODE=true; update_agents")
+        self.assertIn("COUNTS=1,5,0", output)
+        self.assertTrue((global_bin / "codex").is_file())
+        self.assertFalse((self.home / ".bun/bin/codex").exists())
+        self.assert_codex_launcher_works(self.home / ".local/bin/codex")
+        events = (self.base / "package-events.tsv").read_text().splitlines()
+        self.assertTrue(any(row.endswith("\tpm bin -g") for row in events), events)
+
+    def test_codex_global_bin_query_failure_or_timeout_keeps_existing_launcher(self):
+        for mode, status in (("failed", 42), ("hung", 124)):
+            with self.subTest(mode=mode):
+                self.setUp()
+                self.write_codex_package_fixture()
+                launcher = self.write_native_tool("codex")
+                original = launcher.read_bytes()
+                self.write_input(self.base / f"{mode}-bin-query", "fixture\n")
+                output = self.run_update(command="FORCE_MODE=true; UPDATE_SMOKE_TIMEOUT=0.2; update_agents")
+                self.assertIn("COUNTS=0,5,1", output)
+                self.assertEqual(launcher.read_bytes(), original)
+                self.assertEqual(list(launcher.parent.glob(".acfs-codex.*")), [])
+                self.assertIn(f"launcher verification failed (exit {status})",
+                              (self.base / "update.log").read_text())
+
+    def test_codex_global_bin_query_invalid_output_keeps_existing_launcher(self):
+        for value in ("", "relative/bin\n", "/\n", "/missing/acfs-bin\n", "/tmp\n/another/bin\n"):
+            with self.subTest(value=value):
+                self.setUp()
+                self.write_codex_package_fixture()
+                launcher = self.write_native_tool("codex")
+                original = launcher.read_bytes()
+                self.write_input(self.base / "global-bin-output", value)
+                output = self.run_update(command="FORCE_MODE=true; update_agents")
+                self.assertIn("COUNTS=0,5,1", output)
+                self.assertEqual(launcher.read_bytes(), original)
+                self.assertEqual(list(launcher.parent.glob(".acfs-codex.*")), [])
+                self.assertIn("invalid global bin directory", (self.base / "update.log").read_text())
+
+    def test_codex_global_bin_collision_and_directory_alias_preserve_package(self):
+        for alias in (False, True):
+            with self.subTest(alias=alias):
+                self.setUp()
+                self.write_codex_package_fixture()
+                global_bin = self.home / "configured global bin"
+                self.owned_dir(global_bin)
+                primary = global_bin
+                if alias:
+                    primary = self.home / "primary bin alias"
+                    primary.symlink_to(global_bin, target_is_directory=True)
+                self.write_input(self.base / "reported-global-bin", str(global_bin) + "\n")
+                output = self.run_update(command=(
+                    "ACFS_BIN_DIR=" + shlex.quote(str(primary)) +
+                    "; FORCE_MODE=true; update_agents"))
+                self.assertIn("COUNTS=0,5,1", output)
+                self.assertEqual((global_bin / "codex").read_text(),
+                                 '#!/usr/bin/env node\nconsole.log("codex-cli 1.2.3-fixture");\n')
+                self.assertEqual(list(global_bin.glob(".acfs-codex.*")), [])
+                self.assertIn("Cannot replace the Codex package with its launcher",
+                              (self.base / "update.log").read_text())
+
+    def test_codex_launcher_uses_native_bun_global_configuration(self):
+        native_bun = shutil.which("bun")
+        if native_bun is None:
+            self.skipTest("Bun is required for the offline native configuration check")
+        global_bin = self.home / "native configured bin"
+        self.owned_dir(global_bin)
+        self.write_input(self.home / ".bunfig.toml",
+                         "[install]\nglobalBinDir = " + json.dumps(str(global_bin)) + "\n")
+        self.write_input(global_bin / "codex", 'console.log("codex-cli 1.2.3-fixture");\n')
+        # No registry/package installation: real Bun resolves its own account
+        # config and executes the local JavaScript package through the launcher.
+        self.run_update(command=(
+            "FORCE_MODE=true; update_reconcile_codex_launcher " + shlex.quote(native_bun)))
+        self.assert_codex_launcher_works(self.home / ".local/bin/codex")
+        self.assertFalse((self.home / ".bun/bin/codex").exists())
 
     def test_codex_update_preserves_healthy_custom_launcher(self):
         self.write_codex_package_fixture()
