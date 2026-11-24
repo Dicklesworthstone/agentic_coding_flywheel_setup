@@ -40,6 +40,13 @@ declare -gA _NEWPROJ_AGENT_NAMES=(
     [opencode]="OpenCode" [omp]="oh-my-pi" [grok]="Grok"
     [gemini]="Gemini CLI (legacy)" [pi]="Pi"
 )
+# Native robot-spawn flag suffix and response type. Pi is NTM's shipped agent
+# plugin; older NTM builds must advertise its flag before it can be offered.
+declare -gA _NEWPROJ_NTM_PROVIDERS=(
+    [claude]=cc:claude [codex]=cod:codex [agy]=agy:antigravity
+    [opencode]=oc:oc [omp]=omp:omp [grok]=grok:grok
+    [gemini]=gmi:gemini [pi]=pi:pi
+)
 
 newproj_load_launch_selection() {
     _NEWPROJ_LAUNCH_SELECTION_MODE=invalid
@@ -347,15 +354,75 @@ newproj_ntm_project() {
     (CDPATH='' cd -P -- "$project_dir" && pwd -P)
 }
 
-# Validate before either task creation or agent launch can mutate the project.
+# Inspect the installed version, including its registered plugin flags. Match
+# flag declarations rather than examples or similarly named options in help.
+newproj_ntm_has_flag() {
+    local help="$1" flag="$2"
+    local pattern="(^|"$'\n'")[[:space:]]*--${flag}([=[:space:]]|$)"
+    [[ "$help" =~ $pattern ]]
+}
+
+newproj_ntm_help() {
+    local help tool binary
+    local -a binaries=()
+    for tool in timeout sleep cat ntm; do
+        binary=$(type -P -- "$tool" 2>/dev/null || true)
+        if [[ -z "$binary" && "$tool" == timeout ]]; then
+            binary=$(type -P gtimeout 2>/dev/null || true)
+        fi
+        if [[ -z "$binary" ]]; then
+            printf 'Missing %s for bounded NTM capability checks. Run acfs doctor or open an agent directly.\n' "$tool" >&2
+            return 1
+        fi
+        [[ "$binary" == /* ]] || binary="$PWD/$binary"
+        binaries+=("$binary")
+    done
+    # Keep a guardian alive through TERM so a wrapper cannot exit early and
+    # leave a descendant holding the captured output pipe past the deadline.
+    if ! help=$(newproj_ntm_project_command "$1" "${binaries[0]}" --kill-after=1 -- 5 \
+        "$BASH" --noprofile --norc -p -c '
+            set +e
+            set +m
+            set -o pipefail
+            guardian_sleep=$1
+            guardian_cat=$2
+            shift 2
+            trap '\''trap "" HUP INT QUIT TERM; while :; do "$guardian_sleep" 1; done'\'' HUP INT QUIT TERM
+            "$@" 2>&1 | "$guardian_cat" &
+            probe_pid=$!
+            probe_status=0
+            wait "$probe_pid" || probe_status=$?
+            exit "$probe_status"
+        ' _ "${binaries[1]}" "${binaries[2]}" "${binaries[3]}" --help </dev/null); then
+        [[ -z "$help" ]] || printf '%s\n' "$help" >&2
+        echo "Cannot inspect NTM launch support. Run acfs doctor or open an agent directly." >&2
+        return 1
+    fi
+    printf '%s\n' "$help"
+}
+
+# Counts follow _NEWPROJ_AGENT_COMMANDS. Validate before either task creation or
+# agent launch can mutate the project; no count is evaluated as shell arithmetic
+# until it has matched the single-digit range.
 newproj_validate_ntm_request() {
-    local project_dir="$1" session="$2" cc="$3" cod="$4" agy="$5"
-    local count total=0 tool
+    if [[ $# -ne $((${#_NEWPROJ_AGENT_COMMANDS[@]} + 3)) ]]; then
+        echo "A count for each workspace provider is required." >&2
+        return 1
+    fi
+    local project_dir="$1" session="$2" work="$3"
+    shift 3
+    local -a counts=("$@") flags=(robot-spawn spawn-dir spawn-safety robot-format)
+    local count total=0 tool index agent flag help
+    case "$work" in
+        true) flags+=(spawn-assign-work) ;;
+        false) ;;
+        *) echo "Work assignment requires an explicit true/false choice." >&2; return 1 ;;
+    esac
     if [[ ! "$session" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$ ]]; then
         echo "Use a session name of 1-64 letters, numbers, underscores, or hyphens." >&2
         return 1
     fi
-    for count in "$cc" "$cod" "$agy"; do
+    for count in "${counts[@]}"; do
         if [[ ! "$count" =~ ^[0-4]$ ]]; then
             echo "Choose 0-4 agents per provider, with 1-8 agents in total." >&2
             return 1
@@ -375,24 +442,36 @@ newproj_validate_ntm_request() {
         echo "NTM is not selected for this installation. Open an agent directly instead." >&2
         return 1
     fi
-    if { ((cc > 0)) && ! newproj_agent_selected claude; } ||
-       { ((cod > 0)) && ! newproj_agent_selected codex; } ||
-       { ((agy > 0)) && ! newproj_agent_selected agy; }; then
-        echo "An agent in this mix is not selected for this installation." >&2
-        return 1
-    fi
+    for index in "${!counts[@]}"; do
+        ((counts[index] > 0)) || continue
+        agent="${_NEWPROJ_AGENT_COMMANDS[$index]}"
+        if ! newproj_agent_selected "$agent"; then
+            echo "An agent in this mix is not selected for this installation." >&2
+            return 1
+        fi
+    done
     for tool in ntm tmux jq; do
         if ! command -v "$tool" >/dev/null 2>&1; then
             printf 'Missing %s. Run acfs doctor before starting a workspace.\n' "$tool" >&2
             return 1
         fi
     done
-    if { ((cc > 0)) && ! newproj_agent_binary claude >/dev/null; } ||
-       { ((cod > 0)) && ! newproj_agent_binary codex >/dev/null; } ||
-       { ((agy > 0)) && ! newproj_agent_binary agy >/dev/null; }; then
-        echo "A selected agent CLI is missing; adjust the mix or run acfs doctor." >&2
-        return 1
-    fi
+    for index in "${!counts[@]}"; do
+        ((counts[index] > 0)) || continue
+        agent="${_NEWPROJ_AGENT_COMMANDS[$index]}"
+        if ! newproj_agent_binary "$agent" >/dev/null; then
+            echo "A selected agent CLI is missing; adjust the mix or run acfs doctor." >&2
+            return 1
+        fi
+        flags+=("spawn-${_NEWPROJ_NTM_PROVIDERS[$agent]%%:*}")
+    done
+    help=$(newproj_ntm_help "$project_dir") || return 1
+    for flag in "${flags[@]}"; do
+        if ! newproj_ntm_has_flag "$help" "$flag"; then
+            printf 'Installed NTM does not support --%s. Update NTM or open an agent directly.\n' "$flag" >&2
+            return 1
+        fi
+    done
 }
 
 # Scope both Beads and NTM's child processes to this project. A terminal can
@@ -441,31 +520,45 @@ newproj_ntm_ready_work() {
 # Returns a validated session name. Ordinary launch never sends a task. Work
 # mode delegates dispatch to NTM, never raw tmux send-keys or a shell broadcast.
 newproj_start_ntm() {
-    local project_dir="$1" session="$2" cc="$3" cod="$4" agy="$5" work="${6:-false}"
-    local response status=0 total delivered assignments
-    newproj_validate_ntm_request "$project_dir" "$session" "$cc" "$cod" "$agy" || return 1
-    total=$((cc + cod + agy))
-    local -a work_args=()
-    case "$work" in
-        true)
-            newproj_ntm_ready_work "$project_dir" >/dev/null || return 1
-            work_args=(--spawn-assign-work)
-            ;;
-        false) ;;
-        *) echo "Work assignment requires an explicit true/false choice." >&2; return 1 ;;
-    esac
+    newproj_validate_ntm_request "$@" || return 1
+    local project_dir="$1" session="$2" work="$3"
+    shift 3
+    local -a counts=("$@") spawn_args=()
+    local response status=0 total=0 delivered assignments index agent count number ntm_binary
+    local expected_types='["user"'
+    for index in "${!counts[@]}"; do
+        count="${counts[$index]}"
+        ((count > 0)) || continue
+        agent="${_NEWPROJ_AGENT_COMMANDS[$index]}"
+        # Omitted robot-spawn providers default to zero. Do not pass a new
+        # provider's flag with =0 to an older NTM that does not understand it.
+        spawn_args+=("--spawn-${_NEWPROJ_NTM_PROVIDERS[$agent]%%:*}=$count")
+        total=$((total + count))
+        for ((number = 0; number < count; number++)); do
+            expected_types+=",\"${_NEWPROJ_NTM_PROVIDERS[$agent]#*:}\""
+        done
+    done
+    expected_types+=']'
+    if [[ "$work" == true ]]; then
+        newproj_ntm_ready_work "$project_dir" >/dev/null || return 1
+        spawn_args+=(--spawn-assign-work)
+    fi
+    ntm_binary=$(newproj_agent_binary ntm) || return 1
     # --spawn-safety delegates the create-only check to NTM. Never retry without
     # it: an existing session may belong to another project or contain live work.
-    response=$(newproj_ntm_project_command "$project_dir" ntm "--robot-spawn=$session" \
+    response=$(newproj_ntm_project_command "$project_dir" "$ntm_binary" "--robot-spawn=$session" \
         "--spawn-dir=$project_dir" --spawn-safety --robot-format=json \
-        "--spawn-cc=$cc" "--spawn-cod=$cod" "--spawn-agy=$agy" "${work_args[@]}") || status=$?
+        "${spawn_args[@]}") || status=$?
+    # NTM includes the operator's shell as one type=user entry in agents.
+    # Confirm that shell plus the exact provider mix, not only the total panes.
     if ((status != 0)) || ! jq -e -s --arg session "$session" --arg dir "$project_dir" \
-        --argjson count "$total" '
+        --argjson count "$total" --argjson types "$expected_types" '
         length == 1 and (.[0] |
         type == "object" and .success == true and .session == $session and
         .working_dir == $dir and (.dry_run != true) and
-        (.agents | type == "array" and length == $count and
-            all(.[]; type == "object" and ((.error // "") == ""))) and
+        (.agents | type == "array" and length == ($count + 1) and
+            all(.[]; type == "object" and ((.error // "") == "")) and
+            ((map(.type) | sort) == ($types | sort))) and
         ((.error // "") == ""))
     ' >/dev/null 2>&1 <<< "$response"; then
         echo "NTM did not confirm the requested workspace. No automatic retry or cleanup was attempted." >&2
@@ -493,7 +586,8 @@ newproj_start_ntm() {
 }
 
 open_in_ntm() {
-    local project_dir project_name session answer cc=0 cod=0 agy=0 available=0
+    local project_dir project_name session answer agent index help ntm_binary
+    local -a counts=() available_indices=()
     local work="${1:-false}" ready task_title="" created_task=""
     [[ "$work" == true || "$work" == false ]] || return 1
     project_dir=$(newproj_ntm_project) || return 1
@@ -509,18 +603,25 @@ open_in_ntm() {
             return 1
         fi
     done
-    newproj_agent_selected claude && newproj_agent_binary claude >/dev/null && { cc=1; available=$((available + 1)); }
-    newproj_agent_selected codex && newproj_agent_binary codex >/dev/null && { cod=1; available=$((available + 1)); }
-    newproj_agent_selected agy && newproj_agent_binary agy >/dev/null && { agy=1; available=$((available + 1)); }
-    if ((available == 0)); then
-        echo "Install Claude Code, Codex, or Antigravity before starting a workspace." >&2
+    help=$(newproj_ntm_help "$project_dir") || return 1
+    for index in "${!_NEWPROJ_AGENT_COMMANDS[@]}"; do
+        counts+=(0)
+        agent="${_NEWPROJ_AGENT_COMMANDS[$index]}"
+        newproj_agent_selected "$agent" && newproj_agent_binary "$agent" >/dev/null || continue
+        if ! newproj_ntm_has_flag "$help" "spawn-${_NEWPROJ_NTM_PROVIDERS[$agent]%%:*}"; then
+            printf '%s is selected, but this NTM cannot launch it. Update NTM or open it directly.\n' "${_NEWPROJ_AGENT_NAMES[$agent]}" >&2
+            continue
+        fi
+        counts[index]=1
+        available_indices+=("$index")
+    done
+    if [[ ${#available_indices[@]} -eq 0 ]]; then
+        echo "No selected agent is available for this NTM. Run acfs doctor, update NTM, or open an agent directly." >&2
         return 1
     fi
     # Even a single-provider installation can start a useful two-agent workspace.
-    if ((available == 1)); then
-        ((cc > 0)) && cc=2
-        ((cod > 0)) && cod=2
-        ((agy > 0)) && agy=2
+    if [[ ${#available_indices[@]} -eq 1 ]]; then
+        counts[available_indices[0]]=2
     fi
     session="acfs-${project_name:0:48}"
     printf '\nProject: %s\n' "$project_dir"
@@ -534,20 +635,17 @@ open_in_ntm() {
     fi
     read -r -p "Session name [$session]: " answer || return 1
     session="${answer:-$session}"
-    if ((cc > 0)); then
-        read -r -p "Claude agents, 0-4 [$cc]: " answer || return 1
-        cc="${answer:-$cc}"
-    fi
-    if ((cod > 0)); then
-        read -r -p "Codex agents, 0-4 [$cod]: " answer || return 1
-        cod="${answer:-$cod}"
-    fi
-    if ((agy > 0)); then
-        read -r -p "Antigravity agents, 0-4 [$agy]: " answer || return 1
-        agy="${answer:-$agy}"
-    fi
-    printf '\nSession: %s\nClaude: %s  Codex: %s  Antigravity: %s\n' "$session" "$cc" "$cod" "$agy"
-    newproj_validate_ntm_request "$project_dir" "$session" "$cc" "$cod" "$agy" || return 1
+    for index in "${available_indices[@]}"; do
+        agent="${_NEWPROJ_AGENT_COMMANDS[$index]}"
+        read -r -p "${_NEWPROJ_AGENT_NAMES[$agent]} agents, 0-4 [${counts[$index]}]: " answer || return 1
+        counts[index]="${answer:-${counts[$index]}}"
+    done
+    printf '\nSession: %s\n' "$session"
+    for index in "${available_indices[@]}"; do
+        agent="${_NEWPROJ_AGENT_COMMANDS[$index]}"
+        printf '%s: %s\n' "${_NEWPROJ_AGENT_NAMES[$agent]}" "${counts[$index]}"
+    done
+    newproj_validate_ntm_request "$project_dir" "$session" "$work" "${counts[@]}" || return 1
     if [[ "$work" == true ]]; then
         ready=$(newproj_ntm_ready_work "$project_dir") || return 1
         if [[ "$(jq 'length' <<< "$ready")" == 0 ]]; then
@@ -570,7 +668,11 @@ open_in_ntm() {
         echo "Workspace launch cancelled; your project is unchanged."
         return 1
     fi
+    # Selection and the installed NTM may change during the prompts. Recheck
+    # before creating a first task, then the spawn path checks again itself.
+    newproj_validate_ntm_request "$project_dir" "$session" "$work" "${counts[@]}" || return 1
     if [[ -n "$task_title" ]]; then
+        newproj_ntm_ready_work "$project_dir" >/dev/null || return 1
         # --silent is br's single-ID output contract. A title stays one argument,
         # including quotes or shell syntax. Never recreate automatically on error.
         if ! created_task=$(newproj_ntm_project_command "$project_dir" br create "--title=$task_title" --type=task --priority=2 --silent) ||
@@ -580,14 +682,15 @@ open_in_ntm() {
         fi
         printf 'Created task %s. It remains in Beads even if workspace launch fails.\n' "$created_task"
     fi
-    if ! session=$(newproj_start_ntm "$project_dir" "$session" "$cc" "$cod" "$agy" "$work"); then
+    if ! session=$(newproj_start_ntm "$project_dir" "$session" "$work" "${counts[@]}"); then
         return 1
     fi
+    ntm_binary=$(newproj_agent_binary ntm) || return 1
     printf '\nWorkspace started. Reconnect later with: ntm attach %q\n' "$session"
     echo "Detach with Ctrl-b then d. Agents keep running after you disconnect."
     prepare_success_exec
     newproj_enter_launch_project "$project_dir" || return 1
-    exec ntm attach "$session"
+    exec "$ntm_binary" attach "$session"
 }
 
 # Handle input for success screen

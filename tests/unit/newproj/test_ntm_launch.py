@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 REPO = Path(__file__).resolve().parents[3]
@@ -19,6 +20,20 @@ SCREEN = REPO / "scripts/lib/newproj_screens/screen_success.sh"
 BASH = shutil.which("bash")
 JQ = shutil.which("jq")
 GIT = shutil.which("git")
+TIMEOUT = shutil.which("timeout") or shutil.which("gtimeout")
+SLEEP = shutil.which("sleep")
+CAT = shutil.which("cat")
+
+PROVIDERS = (
+    ("claude", "agents.claude", "cc"),
+    ("codex", "agents.codex", "cod"),
+    ("agy-locked", "agents.antigravity", "agy"),
+    ("opencode", "agents.opencode", "oc"),
+    ("omp", "agents.omp", "omp"),
+    ("grok", "agents.grok", "grok"),
+    ("gemini", "agents.gemini", "gmi"),
+    ("pi", "stack.pi_agent_rust", "pi"),
+)
 
 PROJECT_SELECTORS = (
     "GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE",
@@ -35,6 +50,47 @@ NTM = r'''
 import json, os, subprocess, sys
 from pathlib import Path
 args = sys.argv[1:]
+provider_types = {"cc": "claude", "cod": "codex", "agy": "antigravity", "oc": "oc",
+                  "omp": "omp", "grok": "grok", "gmi": "gemini", "pi": "pi"}
+if args == ["--help"]:
+    help_calls = Path(os.environ["HELP_CALLS"])
+    number = int(help_calls.read_text()) + 1 if help_calls.exists() else 1
+    help_calls.write_text(str(number))
+    if os.environ.get("NTM_HELP_FAIL"):
+        print("cannot inspect installed NTM", file=sys.stderr)
+        sys.exit(2)
+    if os.environ.get("NTM_HELP_HANG"):
+        import signal, time
+        deadline = time.monotonic() + 8
+        if os.fork() == 0:
+            signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        elif os.environ["NTM_HELP_HANG"] == "orphan":
+            sys.exit(0)
+        while time.monotonic() < deadline:
+            time.sleep(0.1)
+        help_calls.with_suffix(".late").write_text("descendant survived")
+        sys.exit(0)
+    flags = {"robot-spawn", "spawn-dir", "spawn-safety", "robot-format", "spawn-assign-work"}
+    flags.update("spawn-" + provider for provider in provider_types)
+    missing = set(os.environ.get("NTM_MISSING_FLAGS", "").split(","))
+    if number > int(os.environ.get("NTM_HIDE_AFTER", "999")):
+        missing.update(os.environ.get("NTM_HIDE_LATE_FLAGS", "").split(","))
+    if number == 3 and os.environ.get("NTM_CHANGE_WORK_CONTEXT"):
+        if os.environ["NTM_CHANGE_WORK_CONTEXT"] == "selection":
+            checkpoint = Path(os.environ["ACFS_HOME"]) / "state.json"
+            state = json.loads(checkpoint.read_text())
+            state["module_selection"]["selected_modules"] = [
+                module for module in state["module_selection"]["selected_modules"]
+                if module not in ("stack.beads_rust", "stack.beads_viewer")]
+            checkpoint.write_text(json.dumps(state))
+        else:
+            beads = Path(os.environ["PROJECT"]) / ".beads"
+            saved = beads.with_name(".beads.saved")
+            beads.rename(saved)
+            beads.symlink_to(saved, target_is_directory=True)
+    print("Flags:\n" + "\n".join("      --" + flag + " string" for flag in sorted(flags - missing)))
+    print(os.environ.get("NTM_HELP_DECOYS", ""))
+    sys.exit(0)
 with open(os.environ["CALLS"], "a") as log:
     log.write(json.dumps({"argv": args, "cwd": os.getcwd()}) + "\n")
 if os.environ.get("SCOPE_LOG") and args and args[0] != "attach":
@@ -59,10 +115,13 @@ if mode == "invalid":
     print("not JSON")
     sys.exit(0)
 values = dict(arg[2:].split("=", 1) for arg in args if "=" in arg)
-count = sum(int(values.get("spawn-" + agent, "0")) for agent in ("cc", "cod", "agy"))
+# NTM includes the operator's shell in agents unless --spawn-no-user is set.
+agents = [{"type": "user", "ready": True}] + [
+    {"type": kind} for flag, kind in provider_types.items()
+    for _ in range(int(values.get("spawn-" + flag, "0")))]
 response = {
     "success": True, "session": values["robot-spawn"],
-    "working_dir": values["spawn-dir"], "agents": [{} for _ in range(count)]
+    "working_dir": values["spawn-dir"], "agents": agents
 }
 if mode == "false": response["success"] = False
 if mode == "string_success": response["success"] = "true"
@@ -71,7 +130,13 @@ if mode == "wrong_dir": response["working_dir"] = "/another-project"
 if mode == "partial": response["agents"].pop()
 if mode == "error": response["error"] = "provider failed"
 if mode == "dry_run": response["dry_run"] = True
-if mode == "agent_error": response["agents"][0]["error"] = "agent failed"
+if mode == "agent_error": response["agents"][1]["error"] = "agent failed"
+if mode == "wrong_provider": response["agents"][1]["type"] = "unexpected"
+if mode == "missing_provider": del response["agents"][1]["type"]
+if mode == "wrong_mix": response["agents"][1]["type"] = response["agents"][-1]["type"]
+if mode == "missing_user": response["agents"] = response["agents"][1:]
+if mode == "duplicate_user": response["agents"].append({"type": "user"})
+if mode == "user_error": response["agents"][0]["error"] = "shell failed"
 if mode == "multiple": print(json.dumps({"success": False}))
 if "--spawn-assign-work" in args:
     assignment = os.environ.get("ASSIGN_MODE", "ok")
@@ -124,7 +189,7 @@ render_success_screen() { :; }
 TUI_WARNING='' TUI_PRIMARY='' TUI_NC=''
 '''
 
-@unittest.skipUnless(BASH and JQ, "Bash and jq are required")
+@unittest.skipUnless(BASH and JQ and TIMEOUT and SLEEP and CAT, "Bash, jq, timeout, sleep and cat are required")
 class LaunchTests(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp(prefix="acfs-ntm-launch-"))
@@ -136,16 +201,20 @@ class LaunchTests(unittest.TestCase):
         self.acfs = self.home / ".acfs"
         self.acfs.mkdir(parents=True)
         self.calls = self.root / "calls.jsonl"
+        self.help_calls = self.root / "help-calls"
         self.events = self.root / "events"
         self.executable("ntm", "#!" + sys.executable + "\n" + NTM)
         self.executable("tmux", "#!" + BASH + "\nexit 0\n")
         self.bin.joinpath("jq").symlink_to(JQ)
+        self.bin.joinpath("timeout").symlink_to(TIMEOUT)
+        self.bin.joinpath("sleep").symlink_to(SLEEP)
+        self.bin.joinpath("cat").symlink_to(CAT)
         for agent in ("claude", "codex", "agy", "agy-locked"):
             self.executable(agent, "#!" + BASH + "\nprintf 'UNEXPECTED PROVIDER EXECUTION' >&2\nexit 91\n")
         self.env = {
             **os.environ, "PATH": str(self.bin), "SCREEN": str(SCREEN),
             "PROJECT": str(self.project), "PROJECT_NAME": "my-app",
-            "CALLS": str(self.calls), "EVENTS": str(self.events),
+            "CALLS": str(self.calls), "EVENTS": str(self.events), "HELP_CALLS": str(self.help_calls),
             "FAKE_NTM_MODE": "ok", "LC_ALL": "C",
             "TARGET_HOME": str(self.home), "ACFS_HOME": str(self.acfs),
             "PROJECT_SELECTORS": ":".join(PROJECT_SELECTORS),
@@ -228,7 +297,7 @@ with open(os.environ["EVENTS"], "a") as log:
         return [json.loads(line) for line in self.calls.read_text().splitlines()] if self.calls.exists() else []
 
     def start(self, **env):
-        return self.run_bash('newproj_start_ntm "$PROJECT" acfs-my-app 1 1 1', **env)
+        return self.run_bash('newproj_start_ntm "$PROJECT" acfs-my-app false 1 1 1 0 0 0 0 0', **env)
 
     def test_exact_workspace_and_explicit_counts(self):
         result = self.start()
@@ -249,7 +318,7 @@ with open(os.environ["EVENTS"], "a") as log:
         self.assertFalse(self.events.exists())
 
     def test_unconfirmed_or_partial_receipts_never_authorize_attach(self):
-        for mode in ("invalid", "false", "string_success", "wrong_session", "wrong_dir", "partial", "error", "dry_run", "agent_error", "multiple"):
+        for mode in ("invalid", "false", "string_success", "wrong_session", "wrong_dir", "partial", "error", "dry_run", "agent_error", "multiple", "wrong_provider", "missing_provider", "wrong_mix"):
             with self.subTest(mode=mode):
                 result = self.run_bash('open_in_ntm', "\n\n\n\nyes\n", FAKE_NTM_MODE=mode)
                 self.assertNotEqual(result.returncode, 0)
@@ -260,12 +329,12 @@ with open(os.environ["EVENTS"], "a") as log:
     def test_invalid_mix_never_executes_ntm(self):
         for mix in ("0 0 0", "4 4 4", "5 0 0", "-1 1 0", "08 1 0", "x 1 0", "1 1.0 0"):
             with self.subTest(mix=mix):
-                result = self.run_bash('newproj_start_ntm "$PROJECT" acfs-my-app ' + mix)
+                result = self.run_bash('newproj_start_ntm "$PROJECT" acfs-my-app false ' + mix + ' 0 0 0 0 0')
                 self.assertNotEqual(result.returncode, 0)
         self.assertEqual(self.invocations(), [])
 
     def test_arithmetic_injection_is_data(self):
-        result = self.run_bash('newproj_start_ntm "$PROJECT" acfs-my-app "$BAD_COUNT" 1 0', BAD_COUNT='1+$(touch injected)')
+        result = self.run_bash('newproj_start_ntm "$PROJECT" acfs-my-app false "$BAD_COUNT" 1 0 0 0 0 0 0', BAD_COUNT='1+$(touch injected)')
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(self.invocations(), [])
         self.assertFalse((self.root / "injected").exists())
@@ -273,7 +342,7 @@ with open(os.environ["EVENTS"], "a") as log:
     def test_session_validation_precedes_execution(self):
         for name in ("", "-option", "bad.name", "bad:name", "a" * 65, "a\nline", "$(touch injected)"):
             with self.subTest(name=name):
-                result = self.run_bash('newproj_start_ntm "$PROJECT" "$NAME" 1 1 0', NAME=name)
+                result = self.run_bash('newproj_start_ntm "$PROJECT" "$NAME" false 1 1 0 0 0 0 0 0', NAME=name)
                 self.assertNotEqual(result.returncode, 0)
         self.assertEqual(self.invocations(), [])
 
@@ -312,7 +381,7 @@ with open(os.environ["EVENTS"], "a") as log:
         self.assertEqual(result.stdout, str(self.project) + "\n")
 
     def test_spawn_leaves_caller_directory_and_streams_intact(self):
-        result = self.run_bash('newproj_start_ntm "$PROJECT" acfs-my-app 1 1 0; pwd; echo diagnostic >&2')
+        result = self.run_bash('newproj_start_ntm "$PROJECT" acfs-my-app false 1 1 0 0 0 0 0 0; pwd; echo diagnostic >&2')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(result.stdout.endswith(str(self.root) + "\n"))
         self.assertIn("diagnostic", result.stderr)
@@ -345,23 +414,256 @@ with open(os.environ["EVENTS"], "a") as log:
         self.assertEqual(result.returncode, 0, result.stderr)
         args = self.invocations()[0]["argv"]
         self.assertIn("--spawn-cc=2", args)
-        self.assertIn("--spawn-cod=0", args)
-        self.assertIn("--spawn-agy=0", args)
+        self.assertFalse(any(arg.startswith(("--spawn-cod=", "--spawn-agy=")) for arg in args))
 
     def test_scoped_defaults_ignore_other_installed_providers(self):
         self.select_modules(["agents.codex", "stack.ntm"])
         result = self.run_bash('open_in_ntm', "\n\nyes\n")
         self.assertEqual(result.returncode, 0, result.stderr)
         args = self.invocations()[0]["argv"]
-        self.assertIn("--spawn-cc=0", args)
         self.assertIn("--spawn-cod=2", args)
-        self.assertIn("--spawn-agy=0", args)
+        self.assertFalse(any(arg.startswith(("--spawn-cc=", "--spawn-agy=")) for arg in args))
+
+    def test_each_selected_provider_can_start_its_own_workspace(self):
+        for binary, module, flag in PROVIDERS:
+            with self.subTest(provider=binary):
+                self.record_provider(binary)
+                self.select_modules([module, "stack.ntm"])
+                result = self.run_bash('open_in_ntm', "\n\nyes\n")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                spawn, attach = self.invocations()[-2:]
+                expected = ["--robot-spawn=acfs-my-app", "--spawn-dir=" + str(self.project),
+                            "--spawn-safety", "--robot-format=json", "--spawn-" + flag + "=2"]
+                self.assertEqual(spawn, {"argv": expected, "cwd": str(self.project)})
+                self.assertEqual(attach["argv"], ["attach", "acfs-my-app"])
+        self.assertEqual(self.events.read_text(), "cleanup\nfinalize\n" * len(PROVIDERS))
+
+    def test_mixed_workspace_honors_all_counts_and_disabled_provider(self):
+        for binary, _, _ in PROVIDERS:
+            self.record_provider(binary)
+        self.select_modules([module for _, module, _ in PROVIDERS] + ["stack.ntm"])
+        result = self.run_bash('open_in_ntm', "mixed-team\n1\n0\n1\n2\n1\n1\n1\n1\nyes\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.invocations()[0]["argv"], [
+            "--robot-spawn=mixed-team", "--spawn-dir=" + str(self.project),
+            "--spawn-safety", "--robot-format=json", "--spawn-cc=1", "--spawn-agy=1",
+            "--spawn-oc=2", "--spawn-omp=1", "--spawn-grok=1", "--spawn-gmi=1", "--spawn-pi=1",
+        ])
+        self.assertEqual(self.invocations()[-1]["argv"], ["attach", "mixed-team"])
+        self.assertEqual(self.events.read_text(), "cleanup\nfinalize\n")
+
+    def test_new_providers_must_be_selected_and_installed(self):
+        for index, (binary, module, _) in enumerate(PROVIDERS[3:], start=3):
+            with self.subTest(provider=binary):
+                counts = ["0"] * len(PROVIDERS)
+                counts[index] = "1"
+                command = 'newproj_start_ntm "$PROJECT" acfs-my-app false ' + " ".join(counts)
+                self.record_provider(binary)
+                self.select_modules(["agents.codex", "stack.ntm"])
+                excluded = self.run_bash(command)
+                self.assertNotEqual(excluded.returncode, 0)
+                self.assertIn("not selected", excluded.stderr)
+                self.select_modules([module, "stack.ntm"])
+                self.bin.joinpath(binary).rename(self.bin / (binary + ".disabled"))
+                missing = self.run_bash(command)
+                self.assertNotEqual(missing.returncode, 0)
+                self.assertIn("acfs doctor", missing.stderr)
+        self.assertEqual(self.invocations(), [])
+        self.assertFalse(self.events.exists())
+
+    def test_new_provider_counts_are_validated_before_arithmetic_or_execution(self):
+        for index in range(3, len(PROVIDERS)):
+            for count in ("5", "-1", "08", "1.0", "1+$(touch injected)"):
+                with self.subTest(provider=PROVIDERS[index][0], count=count):
+                    counts = ["0"] * len(PROVIDERS)
+                    counts[index] = '"$BAD_COUNT"'
+                    result = self.run_bash('newproj_start_ntm "$PROJECT" acfs-my-app false ' + " ".join(counts),
+                                           BAD_COUNT=count)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("0-4 agents", result.stderr)
+        too_many = self.run_bash('newproj_start_ntm "$PROJECT" acfs-my-app false 0 0 0 4 4 1 0 0')
+        self.assertNotEqual(too_many.returncode, 0)
+        self.assertIn("1-8 agents", too_many.stderr)
+        self.assertFalse((self.root / "injected").exists())
+        self.assertEqual(self.invocations(), [])
+        self.assertFalse(self.help_calls.exists())
+
+    def test_unsupported_selected_provider_never_creates_a_task_or_workspace(self):
+        self.enable_work(ready=[])
+        for binary, module, flag in PROVIDERS[3:]:
+            with self.subTest(provider=binary):
+                self.record_provider(binary)
+                self.select_modules([module, "stack.ntm", "stack.beads_rust", "stack.beads_viewer"])
+                result = self.run_bash('open_in_ntm true', "\n\nFirst task\nyes\n",
+                                       NTM_MISSING_FLAGS="spawn-" + flag)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("Update NTM or open it directly", result.stderr)
+        self.assertEqual(self.bead_invocations(), [])
+        self.assertEqual(self.invocations(), [])
+        self.assertFalse(self.events.exists())
+        self.assertEqual(json.loads(self.queue.read_text()), [])
+
+    def test_old_ntm_can_launch_supported_mix_without_unknown_zero_flags(self):
+        self.record_provider("opencode")
+        self.select_modules(["agents.opencode", "agents.codex", "stack.ntm"])
+        result = self.run_bash('open_in_ntm', "\n\nyes\n",
+                               NTM_MISSING_FLAGS="spawn-oc,spawn-omp,spawn-grok,spawn-gmi,spawn-pi")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("OpenCode is selected, but this NTM cannot launch it", result.stderr)
+        self.assertEqual(self.invocations()[0]["argv"], [
+            "--robot-spawn=acfs-my-app", "--spawn-dir=" + str(self.project),
+            "--spawn-safety", "--robot-format=json", "--spawn-cod=2",
+        ])
+
+    def test_missing_ntm_control_flag_blocks_task_creation(self):
+        self.enable_work(ready=[])
+        self.select_modules(["agents.codex", "stack.ntm", "stack.beads_rust", "stack.beads_viewer"])
+        for flag in ("spawn-safety", "robot-format", "spawn-assign-work"):
+            with self.subTest(flag=flag):
+                result = self.run_bash('open_in_ntm true', "\n\nFirst task\nyes\n", NTM_MISSING_FLAGS=flag)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("does not support --" + flag, result.stderr)
+        self.assertEqual(self.bead_invocations(), [])
+        self.assertEqual(self.invocations(), [])
+        self.assertFalse(self.events.exists())
+
+    def test_unreadable_ntm_capabilities_block_launch(self):
+        result = self.run_bash('open_in_ntm', "\n\n\n\nyes\n", NTM_HELP_FAIL="1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Cannot inspect NTM launch support", result.stderr)
+        self.assertEqual(self.invocations(), [])
+        self.assertFalse(self.events.exists())
+
+    def test_capability_probe_requires_deadline_tools(self):
+        for tool in ("timeout", "sleep", "cat"):
+            with self.subTest(tool=tool):
+                path = self.bin / tool
+                saved = self.bin / (tool + ".disabled")
+                path.rename(saved)
+                try:
+                    result = self.run_bash('open_in_ntm', "\n\n\n\nyes\n")
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("bounded NTM capability check", result.stderr)
+                finally:
+                    saved.rename(path)
+        self.assertFalse(self.help_calls.exists())
+        self.assertEqual(self.invocations(), [])
+        self.assertFalse(self.events.exists())
+
+    @unittest.skipUnless(hasattr(os, "fork"), "process-group timeout requires POSIX")
+    def test_capability_deadline_kills_term_resistant_descendant(self):
+        started = time.monotonic()
+        result = self.run_bash('open_in_ntm', "\n\n\n\nyes\n", NTM_HELP_HANG="1")
+        self.assertLess(time.monotonic() - started, 7.5)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Cannot inspect NTM launch support", result.stderr)
+        self.assertEqual(self.invocations(), [])
+        self.assertFalse(self.events.exists())
+
+    @unittest.skipUnless(hasattr(os, "fork"), "process-group timeout requires POSIX")
+    def test_capability_deadline_waits_for_orphaned_output(self):
+        started = time.monotonic()
+        result = self.run_bash('open_in_ntm', "\n\n\n\nyes\n", NTM_HELP_HANG="orphan")
+        self.assertLess(time.monotonic() - started, 7.5)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Cannot inspect NTM launch support", result.stderr)
+        self.assertFalse(self.help_calls.with_suffix(".late").exists())
+        self.assertEqual(self.invocations(), [])
+        self.assertFalse(self.events.exists())
+
+    def test_relative_path_uses_same_ntm_for_capabilities_spawn_and_attach(self):
+        project_bin = self.project / "bin"
+        project_bin.mkdir()
+        shadow = project_bin / "ntm"
+        shadow.write_text("#!" + BASH + '\nprintf "WRONG NTM\\n" >> "$EVENTS"\nexit 91\n')
+        shadow.chmod(0o755)
+        result = self.run_bash('open_in_ntm', "\n\n\n\nyes\n", PATH="bin")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(self.invocations()), 2)
+        self.assertEqual(self.invocations()[-1]["argv"], ["attach", "acfs-my-app"])
+        self.assertEqual(self.events.read_text(), "cleanup\nfinalize\n")
+
+    def test_help_examples_and_similarly_named_flags_do_not_advertise_support(self):
+        self.record_provider("opencode")
+        self.select_modules(["agents.opencode", "stack.ntm"])
+        result = self.run_bash('open_in_ntm', "\n\nyes\n", NTM_MISSING_FLAGS="spawn-oc",
+                               NTM_HELP_DECOYS="      --spawn-oc-extra string\nExample: ntm --spawn-oc=2")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("this NTM cannot launch it", result.stderr)
+        self.assertEqual(self.invocations(), [])
+
+    def test_capability_is_rechecked_after_consent_before_first_task(self):
+        self.enable_work(ready=[])
+        self.record_provider("opencode")
+        self.select_modules(["agents.opencode", "stack.ntm", "stack.beads_rust", "stack.beads_viewer"])
+        result = self.run_bash('open_in_ntm true', "\n\nFirst feature\nyes\n",
+                               NTM_HIDE_AFTER="2", NTM_HIDE_LATE_FLAGS="spawn-oc")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("does not support --spawn-oc", result.stderr)
+        self.assertEqual(self.bead_invocations(), [{"argv": ["ready", "--json"], "cwd": str(self.project)}])
+        self.assertEqual(json.loads(self.queue.read_text()), [])
+        self.assertEqual(self.invocations(), [])
+        self.assertFalse(self.events.exists())
+
+    def test_work_selection_is_rechecked_before_first_task_creation(self):
+        self.enable_work(ready=[])
+        self.select_modules(["agents.codex", "stack.ntm", "stack.beads_rust", "stack.beads_viewer"])
+        result = self.run_bash('open_in_ntm true', "\n\nFirst feature\nyes\n", NTM_CHANGE_WORK_CONTEXT="selection")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("not selected", result.stderr)
+        self.assertEqual(self.bead_invocations(), [{"argv": ["ready", "--json"], "cwd": str(self.project)}])
+        self.assertEqual(json.loads(self.queue.read_text()), [])
+        self.assertEqual(self.invocations(), [])
+        self.assertFalse(self.events.exists())
+
+    def test_beads_directory_is_rechecked_before_first_task_creation(self):
+        self.enable_work(ready=[])
+        self.select_modules(["agents.codex", "stack.ntm", "stack.beads_rust", "stack.beads_viewer"])
+        result = self.run_bash('open_in_ntm true', "\n\nFirst feature\nyes\n", NTM_CHANGE_WORK_CONTEXT="symlink")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("own initialized .beads directory", result.stderr)
+        self.assertEqual(self.bead_invocations(), [{"argv": ["ready", "--json"], "cwd": str(self.project)}])
+        self.assertEqual(json.loads(self.queue.read_text()), [])
+        self.assertEqual(self.invocations(), [])
+        self.assertFalse(self.events.exists())
+
+    def test_matching_total_with_wrong_provider_mix_never_authorizes_attach(self):
+        self.record_provider("opencode")
+        self.select_modules(["agents.codex", "agents.opencode", "stack.ntm"])
+        result = self.run_bash('open_in_ntm', "\n1\n2\nyes\n", FAKE_NTM_MODE="wrong_mix")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("did not confirm the requested workspace", result.stderr)
+        self.assertEqual(len(self.invocations()), 1)
+        self.assertFalse(self.events.exists())
+
+    def test_ntm_receipt_requires_exactly_one_user_pane_without_errors(self):
+        for mode in ("missing_user", "duplicate_user", "user_error"):
+            with self.subTest(mode=mode):
+                result = self.start(FAKE_NTM_MODE=mode)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("did not confirm the requested workspace", result.stderr)
+        self.assertFalse(self.events.exists())
+
+    def test_new_provider_workspace_keeps_canonical_task_handoff(self):
+        self.enable_work()
+        for binary in ("opencode", "pi"):
+            self.record_provider(binary)
+        self.select_modules(["agents.opencode", "stack.pi_agent_rust", "stack.ntm",
+                             "stack.beads_rust", "stack.beads_viewer"])
+        result = self.run_bash('open_in_ntm true', "\n\n\nyes\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.invocations()[0]["argv"], [
+            "--robot-spawn=acfs-my-app", "--spawn-dir=" + str(self.project),
+            "--spawn-safety", "--robot-format=json", "--spawn-oc=1", "--spawn-pi=1", "--spawn-assign-work",
+        ])
+        self.assertIn("NTM confirmed 1 delivered task", result.stderr)
+        self.assertEqual(self.events.read_text(), "cleanup\nfinalize\n")
 
     def test_scoped_ntm_validation_refuses_excluded_provider_or_coordinator(self):
         for modules in (["agents.codex", "stack.ntm"], ["agents.claude", "agents.codex"]):
             with self.subTest(modules=modules):
                 self.select_modules(modules)
-                result = self.run_bash('newproj_start_ntm "$PROJECT" acfs-my-app 1 1 0')
+                result = self.run_bash('newproj_start_ntm "$PROJECT" acfs-my-app false 1 1 0 0 0 0 0 0')
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("not selected", result.stderr)
                 self.assertEqual(self.invocations(), [])
@@ -416,7 +718,7 @@ with open(os.environ["EVENTS"], "a") as log:
     def test_ntm_requires_the_antigravity_policy_launcher(self):
         self.select_modules(["agents.antigravity", "stack.ntm"])
         self.bin.joinpath("agy-locked").rename(self.bin / "agy-locked.disabled")
-        result = self.run_bash('newproj_start_ntm "$PROJECT" acfs-my-app 0 0 1')
+        result = self.run_bash('newproj_start_ntm "$PROJECT" acfs-my-app false 0 0 1 0 0 0 0 0')
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("acfs doctor", result.stderr)
         self.assertEqual(self.invocations(), [])
@@ -512,7 +814,7 @@ with open(os.environ["EVENTS"], "a") as log:
                                      "module_selection": {"schema_version": 1, "selected_modules": ["agents.codex"]}})):
             with self.subTest(contents=contents):
                 checkpoint.write_text(contents)
-                for body in ('open_in_agent codex', 'newproj_start_ntm "$PROJECT" acfs-my-app 0 1 0'):
+                for body in ('open_in_agent codex', 'newproj_start_ntm "$PROJECT" acfs-my-app false 0 1 0 0 0 0 0 0'):
                     result = self.run_bash(body)
                     self.assertNotEqual(result.returncode, 0)
                     self.assertIn("selection", result.stderr)
@@ -558,7 +860,7 @@ open_in_agent codex
         args = self.invocations()[0]["argv"]
         self.assertIn("--robot-spawn=review-team", args)
         self.assertIn("--spawn-cc=2", args)
-        self.assertIn("--spawn-cod=0", args)
+        self.assertFalse(any(arg.startswith("--spawn-cod=") for arg in args))
         self.assertEqual(self.invocations()[-1]["argv"], ["attach", "review-team"])
 
     def test_no_agents_gives_actionable_failure(self):
@@ -566,7 +868,8 @@ open_in_agent codex
             self.bin.joinpath(agent).rename(self.bin / (agent + ".disabled"))
         result = self.run_bash('open_in_ntm')
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("Install Claude Code", result.stderr)
+        self.assertIn("No selected agent", result.stderr)
+        self.assertIn("acfs doctor", result.stderr)
         self.assertEqual(self.invocations(), [])
 
     def test_success_screen_eof_does_not_open_shell(self):
@@ -738,7 +1041,8 @@ open_in_agent codex
         result = self.run_bash('open_in_ntm true', "\n\n\n\nFirst task\nyes\n", SCOPE_LOG=str(scope_log), **overrides)
         self.assertEqual(result.returncode, 0, result.stderr)
         scopes = [json.loads(line) for line in scope_log.read_text().splitlines()]
-        self.assertEqual(len(scopes), 4)  # ready, create, ready, spawn
+        self.assertEqual([call["argv"][0] for call in self.bead_invocations()], ["ready", "ready", "create", "ready"])
+        self.assertEqual(len(scopes), 5)  # preview, post-consent recheck, create, ready, spawn
         for scope in scopes:
             self.assertEqual(scope.pop("BEADS_DIR"), str(self.project / ".beads"))
             self.assertTrue(all(value is None for value in scope.values()))
@@ -766,7 +1070,7 @@ open_in_agent codex
         self.assertNotIn("--spawn-assign-work", self.invocations()[0]["argv"])
 
     def test_work_mode_must_be_explicit_boolean(self):
-        result = self.run_bash('newproj_start_ntm "$PROJECT" acfs-my-app 1 1 0 maybe')
+        result = self.run_bash('newproj_start_ntm "$PROJECT" acfs-my-app maybe 1 1 0 0 0 0 0 0')
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(self.invocations(), [])
 
