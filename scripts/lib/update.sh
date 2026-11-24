@@ -9113,12 +9113,11 @@ update_migrate_bun_claude() {
     return 0
 }
 
-# Bun's global package exposes a Node-shebang command. The installer separately
-# supplies a Bun launcher, since Codex does not require the optional Node module.
-# Restore that launcher after package maintenance and verify it before reporting
-# success. Stage as the target account so a failed probe preserves its old entry.
-update_reconcile_codex_launcher() {
-    local bun_bin="$1" primary_bin="" utility="" utility_path=""
+# Bun-managed CLIs may have a Node shebang even on a Bun-only installation.
+# Resolve the installed package in the target account and verify its launcher
+# before publishing. A failed probe leaves the previous entry in place.
+update_reconcile_bun_launcher() {
+    local bun_bin="$1" tool="$2" primary_bin="" utility="" utility_path=""
     local -a utility_paths=()
     primary_bin="$(update_runtime_primary_bin_dir)" || return 1
     for utility in bash mkdir mktemp chmod mv rm; do
@@ -9127,12 +9126,13 @@ update_reconcile_codex_launcher() {
     done
 
     local repair_script=""
-    read -r -d '' repair_script <<'CODEX_REPAIR' || true
+    read -r -d '' repair_script <<'BUN_LAUNCHER' || true
 set -euo pipefail
 unset BASH_ENV ENV
 bun_bin="$1" primary_bin="$2" force="$3"
 mkdir_bin="$4" mktemp_bin="$5" chmod_bin="$6" mv_bin="$7" rm_bin="$8"
-launcher="$primary_bin/codex"
+tool="$9"
+launcher="$primary_bin/$tool"
 global_bin="" package=""
 staged=""
 trap '[[ -z "$staged" ]] || "$rm_bin" -f -- "$staged"' EXIT
@@ -9142,11 +9142,11 @@ trap 'exit 143' TERM
 
 # Keep a healthy custom launcher on ordinary updates. --force explicitly
 # rebuilds the managed binding, including one whose version probe hangs.
-if [[ "$force" != true && -x "$launcher" ]] && "$launcher" --version; then
+if [[ "$tool" == codex && "$force" != true && -x "$launcher" ]] && "$launcher" --version; then
     exit 0
 fi
 if [[ -e "$launcher" && ! -f "$launcher" && ! -L "$launcher" ]]; then
-    printf 'Codex launcher destination is not a file or symlink: %s\n' "$launcher" >&2
+    printf '%s launcher destination is not a file or symlink: %s\n' "${tool^}" "$launcher" >&2
     exit 1
 fi
 # Ask Bun in the same account, home and environment used for installation.
@@ -9159,33 +9159,48 @@ global_bin="$("$bun_bin" pm bin -g)" || {
 }
 if [[ "$global_bin" != /* || "$global_bin" == *$'\n'* || "$global_bin" == *$'\r'* \
       || ! -d "$global_bin" || "$global_bin" -ef / ]]; then
-    printf 'Bun returned an invalid global bin directory; keeping the existing Codex launcher.\n' >&2
+    printf 'Bun returned an invalid global bin directory; keeping the existing %s launcher.\n' "${tool^}" >&2
     exit 1
 fi
-package="$global_bin/codex"
-if [[ "$primary_bin" -ef "$global_bin" ]]; then
-    printf 'Cannot replace the Codex package with its launcher; choose a primary bin outside %s.\n' "$global_bin" >&2
-    exit 1
-fi
+package="$global_bin/$tool"
 if [[ ! -f "$package" ]]; then
-    printf 'Bun reported success but the Codex package command is missing: %s\n' "$package" >&2
+    printf 'Bun reported success but the %s package command is missing: %s\n' "${tool^}" "$package" >&2
     exit 1
 fi
 
+# Prefer a cloud CLI's own interpreter when its installed entry works.
+# Its bin directory may be off PATH, in which case bind that exact entry.
+use_native=false
+if [[ "$tool" != codex && -x "$package" ]] && "$package" --version; then
+    active="$(type -P "$tool" || true)"
+    [[ -z "$active" || ! "$active" -ef "$package" ]] || exit 0
+    use_native=true
+fi
+if [[ "$primary_bin" -ef "$global_bin" ]]; then
+    printf 'Cannot replace the %s package with its launcher; choose a primary bin outside %s.\n' "${tool^}" "$global_bin" >&2
+    exit 1
+fi
 "$mkdir_bin" -p -- "$primary_bin"
-staged="$("$mktemp_bin" "$primary_bin/.acfs-codex.XXXXXX")"
-printf '#!/bin/bash\nexec %q %q "$@"\n' "$bun_bin" "$package" > "$staged"
+staged="$("$mktemp_bin" "$primary_bin/.acfs-$tool.XXXXXX")"
+if [[ "$use_native" == true ]]; then
+    printf '#!/bin/bash\nexec %q "$@"\n' "$package" > "$staged"
+else
+    printf '#!/bin/bash\nexec %q %q "$@"\n' "$bun_bin" "$package" > "$staged"
+fi
 "$chmod_bin" 0755 "$staged"
 "$staged" --version
+if [[ "$tool" != codex && "$force" != true && -x "$launcher" ]] && "$launcher" --version; then
+    exit 0
+fi
 "$mv_bin" -fT -- "$staged" "$launcher"
 staged=""
-CODEX_REPAIR
+BUN_LAUNCHER
 
     # The existing smoke runner bounds the whole reconciliation, detaches stdin
     # and preserves target-account failures. -p ignores inherited Bash startup
     # files/functions; the filesystem tools above use trusted system paths.
     update_run_smoke_probe "${utility_paths[0]}" --noprofile --norc -p -c \
-        "$repair_script" _ "$bun_bin" "$primary_bin" "$FORCE_MODE" "${utility_paths[@]:1}"
+        "$repair_script" _ "$bun_bin" "$primary_bin" "$FORCE_MODE" "${utility_paths[@]:1}" "$tool"
 }
 
 update_agents() {
@@ -9338,7 +9353,7 @@ update_agents() {
             
             if [[ "$success" == "true" ]]; then
                 local codex_verify_status=0
-                output="$(update_reconcile_codex_launcher "$bun_bin" 2>&1)" || codex_verify_status=$?
+                output="$(update_reconcile_bun_launcher "$bun_bin" codex 2>&1)" || codex_verify_status=$?
                 [[ -z "$output" ]] || log_to_file "Codex launcher verification: $output"
                 if [[ "$codex_verify_status" -eq 0 ]]; then
                     update_finish_cmd_ok "Codex CLI"
@@ -9771,6 +9786,19 @@ fi
 EOF
 }
 
+update_bun_cloud_package() {
+    local bun_bin="$1" package="$2" status=0
+    local tool="${package%@latest}"
+    update_run_bounded_in_target_context "$bun_bin" install -g --trust "$package" || return $?
+    update_reconcile_bun_launcher "$bun_bin" "$tool" || status=$?
+    if (( status != 0 )); then
+        # The registry operation succeeded. A launcher failure is terminal,
+        # even if the version probe printed a transient-looking diagnostic.
+        printf 'POST-INSTALL VERIFICATION FAILED for %s (exit %s)\n' "$tool" "$status" >&2
+    fi
+    return "$status"
+}
+
 update_cloud() {
     if [[ "$UPDATE_CLOUD" != "true" ]]; then
         return 0
@@ -9791,7 +9819,7 @@ update_cloud() {
         :
     elif update_binary_exists wrangler || [[ "$FORCE_MODE" == "true" ]]; then
         if [[ "$has_bun" == "true" ]]; then
-            run_cmd_bun_with_retry "Wrangler (Cloudflare)" update_run_bounded_in_target_context "$bun_bin" install -g --trust wrangler@latest
+            run_cmd_bun_with_retry "Wrangler (Cloudflare)" update_bun_cloud_package "$bun_bin" wrangler@latest
         elif update_missing_runtime_install_is_previewed lang.bun bun; then
             run_cmd "Wrangler (Cloudflare, after Bun installation)" update_run_bounded_in_target_context \
                 bun install -g --trust wrangler@latest
@@ -9832,7 +9860,7 @@ update_cloud() {
         :
     elif update_binary_exists vercel || [[ "$FORCE_MODE" == "true" ]]; then
         if [[ "$has_bun" == "true" ]]; then
-            run_cmd_bun_with_retry "Vercel CLI" update_run_bounded_in_target_context "$bun_bin" install -g --trust vercel@latest
+            run_cmd_bun_with_retry "Vercel CLI" update_bun_cloud_package "$bun_bin" vercel@latest
         elif update_missing_runtime_install_is_previewed lang.bun bun; then
             run_cmd "Vercel CLI (after Bun installation)" update_run_bounded_in_target_context \
                 bun install -g --trust vercel@latest

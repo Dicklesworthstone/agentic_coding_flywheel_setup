@@ -1382,6 +1382,7 @@ update_run_rust_in_target_context() {
     if [[ "$*" == *"toolchain list" ]]; then printf 'stable-fixture\n'; fi
 }
 update_run_maintenance_in_target_context() { fixture_record "maintenance:$*"; }
+update_reconcile_bun_launcher() { fixture_record "launcher:$2"; }
 update_install_agy_locked_launchers() { fixture_record "launchers:agy"; }
 update_omz() { fixture_record "shell:omz"; }
 update_p10k() { fixture_record "shell:p10k"; }
@@ -1644,6 +1645,7 @@ printf 'MINISIGN:%s\n' "$UPDATE_MINISIGN_STATUS"
             f"native:{self.bin}/bun install -g --trust vercel@latest",
             f"native:{self.bin}/uv self update",
         ])
+        self.assertIn("launcher:vercel", self.events())
         self.assertNotIn("launchers:agy", self.events())
 
     def test_antigravity_launcher_failure_is_counted_and_other_selected_agents_continue(self):
@@ -1766,6 +1768,7 @@ printf 'COUNTS:%s:%s\n' "$SUCCESS_COUNT" "$FAIL_COUNT"
         self.shell("update_cloud\n", TEST_PRESENT="bun,vercel,gcloud")
         self.assertEqual(self.events(), [
             f"native:{self.bin}/bun install -g --trust vercel@latest",
+            "launcher:vercel",
         ])
 
     def test_legacy_cloud_update_keeps_external_google_cloud_sdk_maintenance(self):

@@ -2192,6 +2192,17 @@ class MissingRuntimeRepairTests(unittest.TestCase):
     COMMAND = r'''#!/bin/bash
 set -eu
 printf 'command:%s:%s\n' "${0##*/}" "$*" >> "$TEST_ROOT/events"
+if [[ "${0##*/}" == bun ]]; then
+    case "$*" in
+        'install -g --trust vercel@latest')
+            cp "$TEST_ROOT/fixture-command" "$BUN_INSTALL/bin/vercel"
+            chmod 0755 "$BUN_INSTALL/bin/vercel"
+            exit 0 ;;
+        'pm bin -g')
+            printf '%s\n' "$BUN_INSTALL/bin"
+            exit 0 ;;
+    esac
+fi
 if [[ "${0##*/}" == rustup && "${1:-}" == run ]]; then
     [[ "${2:-}" == nightly && "${RUSTUP_AUTO_INSTALL:-}" == 0 ]] || exit 17
     [[ "${TEST_NIGHTLY_PRESENT:-true}" == true ]] || exit 18
@@ -2477,6 +2488,7 @@ printf 'OUTCOME=%s,%s\n' "$SUCCESS_COUNT" "$FAIL_COUNT"
 ''')
         self.assertIn("OUTCOME=2,0", output)
         self.assertIn("command:bun:install -g --trust vercel@latest", self.events())
+        self.assertIn("command:vercel:--version", self.events())
         self.assertEqual([event for event in self.events() if event.startswith("install:")],
                          ["install:bun"])
 

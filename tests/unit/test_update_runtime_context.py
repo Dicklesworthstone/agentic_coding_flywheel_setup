@@ -3038,12 +3038,14 @@ if [[ -f "$fixture/reported-global-bin" ]]; then
     IFS= read -r global_bin < "$fixture/reported-global-bin"
 fi
 case "$*" in
-    'install -g --trust @openai/codex'*)
+    'install -g --trust @openai/codex'*|'install -g --trust wrangler@latest'|'install -g --trust vercel@latest')
+        name="${4%@*}"
+        [[ "$name" == wrangler || "$name" == vercel ]] || name=codex
         [[ ! -f "$fixture/missing-package" ]] || exit 0
         mkdir -p -- "$global_bin"
         printf '%s\n' "$global_bin" > "$fixture/installed-global-bin"
-        printf '#!/usr/bin/env node\nconsole.log("codex-cli 1.2.3-fixture");\n' > "$global_bin/codex"
-        chmod 0755 "$global_bin/codex"
+        printf '#!/usr/bin/env node\nconsole.log("%s-cli 1.2.3-fixture");\n' "$name" > "$global_bin/$name"
+        chmod 0755 "$global_bin/$name"
         ;;
     'pm bin -g')
         [[ ! -f "$fixture/failed-bin-query" ]] || exit 42
@@ -3057,11 +3059,12 @@ case "$*" in
     *)
         [[ -f "$fixture/installed-global-bin" ]] || exit 64
         IFS= read -r global_bin < "$fixture/installed-global-bin"
-        [[ $# == 2 && "$1" == "$global_bin/codex" && "$2" == --version ]] || exit 64
-        [[ -f "$global_bin/codex" ]] || exit 127
+        name="${1##*/}"
+        [[ $# == 2 && "$1" == "$global_bin/$name" && "$2" == --version ]] || exit 64
+        [[ -f "$1" ]] || exit 127
         [[ ! -f "$fixture/failed-package" ]] || { printf 'broken package fixture\n' >&2; exit 42; }
         [[ ! -f "$fixture/hung-package" ]] || /bin/sleep 5
-        printf 'codex-cli 1.2.3-fixture\n'
+        printf '%s-cli 1.2.3-fixture\n' "$name"
         ;;
 esac
 ''')
@@ -3187,13 +3190,16 @@ esac
             self.skipTest("Bun is required for the offline native configuration check")
         global_bin = self.home / "native configured bin"
         self.owned_dir(global_bin)
+        global_store = self.home / ".bun/install/global"
+        self.owned_dir(global_store)
+        self.write_input(global_store / "package.json", '{"private":true}\n')
         self.write_input(self.home / ".bunfig.toml",
                          "[install]\nglobalBinDir = " + json.dumps(str(global_bin)) + "\n")
         self.write_input(global_bin / "codex", 'console.log("codex-cli 1.2.3-fixture");\n')
         # No registry/package installation: real Bun resolves its own account
         # config and executes the local JavaScript package through the launcher.
         self.run_update(command=(
-            "FORCE_MODE=true; update_reconcile_codex_launcher " + shlex.quote(native_bun)))
+            "FORCE_MODE=true; update_reconcile_bun_launcher " + shlex.quote(native_bun) + " codex"))
         self.assert_codex_launcher_works(self.home / ".local/bin/codex")
         self.assertFalse((self.home / ".bun/bin/codex").exists())
 
@@ -3256,6 +3262,48 @@ esac
         self.assertIn("Failed: Wrangler (Cloudflare) (exit code: 124 after 1 attempts)", log)
         self.assertIn("Failed: Vercel CLI (exit code: 124 after 1 attempts)", log)
         self.assertEqual(list(self.caller.iterdir()), [])
+
+    def test_cloud_force_makes_custom_bun_global_packages_runnable_without_node(self):
+        self.write_codex_package_fixture()
+        self.write_selection(["lang.bun", "cloud.wrangler", "cloud.vercel"])
+        global_bin = self.home / "Bun's global bin"
+        self.write_input(self.base / "reported-global-bin", str(global_bin) + "\n")
+        output = self.run_update(command="UPDATE_CLOUD=true; FORCE_MODE=true; update_cloud")
+        self.assertIn("COUNTS=2,3,0", output)
+        for tool in ("wrangler", "vercel"):
+            launcher = self.home / ".local/bin" / tool
+            result = subprocess.run([str(launcher), "--version"], text=True,
+                                    capture_output=True, timeout=5)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.strip(), f"{tool}-cli 1.2.3-fixture")
+        self.assertEqual(list(self.caller.iterdir()), [])
+
+    def test_cloud_package_install_success_requires_working_command(self):
+        for mode in ("missing", "failed", "hung"):
+            with self.subTest(mode=mode):
+                self.setUp()
+                self.write_codex_package_fixture(package_mode=mode)
+                self.write_selection(["lang.bun", "cloud.wrangler"])
+                launcher = self.write_native_tool("wrangler")
+                original = launcher.read_bytes()
+                output = self.run_update(command=(
+                    "UPDATE_CLOUD=true; FORCE_MODE=true; UPDATE_SMOKE_TIMEOUT=0.3; update_cloud"))
+                self.assertIn("COUNTS=0,4,1", output)
+                self.assertEqual(launcher.read_bytes(), original)
+                self.assertEqual(list(launcher.parent.glob(".acfs-wrangler.*")), [])
+                self.assertFalse((self.home / ".local/bin/vercel").exists())
+
+    def test_cloud_force_keeps_working_package_when_bin_directories_coincide(self):
+        self.write_codex_package_fixture()
+        self.write_selection(["lang.bun", "cloud.vercel"])
+        primary = self.home / ".local/bin"
+        self.write_input(self.base / "reported-global-bin", str(primary) + "\n")
+        node = primary / "node"
+        node.write_text('#!/bin/bash\n[[ -f "$1" && "$2" == --version ]] || exit 42\nprintf "1.2.3\\n"\n')
+        output = self.run_update(command="UPDATE_CLOUD=true; FORCE_MODE=true; update_cloud")
+        self.assertIn("COUNTS=1,4,0", output)
+        self.assertTrue((primary / "vercel").read_text().startswith("#!/usr/bin/env node\n"))
+        self.assertEqual(list(primary.glob(".acfs-vercel.*")), [])
 
     def test_cloud_package_dry_run_never_installs(self):
         for tool in ("bun", "wrangler", "vercel"):
