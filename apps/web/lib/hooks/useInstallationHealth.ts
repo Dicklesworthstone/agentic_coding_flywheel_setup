@@ -3,7 +3,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { COMMAND_COMPLETION_CHANGED_EVENT, commandCompletionKeys } from "@/components/command-card";
-import { buildInstallCommand } from "@/lib/commandBuilder";
+import { buildInstallCommand, buildInstallCommandDetails } from "@/lib/commandBuilder";
 import { manifestProvenance } from "@/lib/generated/manifest-modules";
 import { isValidIP, normalizeGitRef, normalizeSSHUsername } from "@/lib/inputValidation";
 import {
@@ -70,7 +70,7 @@ export function useCommandAcknowledgement(completionKey: string | null) {
  * acknowledgement keys enter Query/storage; raw host/command/hash inputs and
  * asynchronous checkpoint results remain local component state.
  */
-export function useInstallationHealth() {
+export function useInstallationHealth(keepUbuntuRelease?: string) {
   const [vpsIP, , vpsIPLoaded] = useVPSIP();
   const [sshUsername, , sshUsernameLoaded] = useSSHUsername();
   const [installMode, , installModeLoaded] = useInstallMode();
@@ -100,7 +100,9 @@ export function useInstallationHealth() {
     )
       return null;
     try {
-      const command = buildInstallCommand(installMode, acfsRef, sshUsername, moduleSelection);
+      const command = keepUbuntuRelease
+        ? buildInstallCommandDetails(installMode, acfsRef, sshUsername, moduleSelection, keepUbuntuRelease).command
+        : buildInstallCommand(installMode, acfsRef, sshUsername, moduleSelection);
       if (
         session?.status === "active" &&
         (!session.installation || command !== session.installation.command)
@@ -110,7 +112,7 @@ export function useInstallationHealth() {
     } catch {
       return null;
     }
-  }, [ready, selectedPlan, vpsIP, sshUsername, installMode, acfsRef, moduleSelection, session]);
+  }, [ready, selectedPlan, vpsIP, sshUsername, installMode, acfsRef, moduleSelection, session, keepUbuntuRelease]);
   const checkpointInput = useMemo<DoctorCheckpointInput | null>(
     () =>
       reinstallCommand && vpsIP

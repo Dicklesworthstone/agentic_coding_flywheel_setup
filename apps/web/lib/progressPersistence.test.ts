@@ -27,10 +27,13 @@ import {
 import {
   ACFS_REF_KEY,
   CREATE_VPS_CHECKLIST_KEY,
+  EXISTING_VPS,
+  EXISTING_VPS_ADMIN,
   getACFSRef,
   getCheckedServices,
   getCreateVPSChecklist,
   getInstallMode,
+  getInPlaceUbuntuRelease,
   getSavedModuleSelection,
   getSSHUsername,
   getVPSIP,
@@ -324,6 +327,39 @@ describe("progress persistence guards", () => {
     expect(isCreateVPSChecklistComplete(["region", "ubuntu", "created", "password", "extra"])).toBe(
       true,
     );
+  });
+
+  test("existing servers require their own supported release and admin access", () => {
+    const purchased = ["ubuntu", "region", "password", "created"];
+    expect(isCreateVPSChecklistComplete([EXISTING_VPS, ...purchased])).toBe(false);
+    expect(isCreateVPSChecklistComplete([EXISTING_VPS, "24.04"])).toBe(false);
+    for (const invalid of [[], ["25.10"], ["22.04", "24.04"]]) {
+      expect(isCreateVPSChecklistComplete([EXISTING_VPS, EXISTING_VPS_ADMIN, ...invalid])).toBe(false);
+    }
+    const older = [EXISTING_VPS, EXISTING_VPS_ADMIN, "24.04"];
+    expect(isCreateVPSChecklistComplete(older)).toBe(true);
+    expect(getInPlaceUbuntuRelease(older)).toBe("24.04");
+    expect(getInPlaceUbuntuRelease([...older, "upgrade-22.04-to-26.04"])).toBe("24.04");
+    expect(getInPlaceUbuntuRelease([...older, "upgrade-24.04-to-26.04"])).toBeNull();
+    expect(getInPlaceUbuntuRelease([EXISTING_VPS, "26.04"])).toBeNull();
+  });
+
+  test("an existing host's release reaches installation review without inheriting a purchase estimate", () => {
+    installMockBrowser({ url: "https://example.com/wizard/create-vps" });
+    setVPSReadinessSelection({
+      providerId: "contabo", planName: "custom plan", region: "not-listed",
+      ubuntuVersion: "26.04", workloadId: "heavy", targetAgents: 25,
+    });
+    const purchase = getVPSReadinessSelection();
+    setCreateVPSChecklist([EXISTING_VPS]);
+    expect(getVPSReadinessSelection()?.ubuntuVersion).toBe("unknown");
+    setCreateVPSChecklist([EXISTING_VPS, EXISTING_VPS_ADMIN, "24.04"]);
+    expect(getVPSReadinessSelection()).toEqual({
+      providerId: "other", planName: "custom plan", region: "not-listed",
+      ubuntuVersion: "24.04", workloadId: "heavy", targetAgents: 25,
+    });
+    setCreateVPSChecklist([]);
+    expect(getVPSReadinessSelection()).toEqual(purchase);
   });
 
   test("checked services persistence normalizes values and only emits on success", () => {

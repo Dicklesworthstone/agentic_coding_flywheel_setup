@@ -17,10 +17,12 @@ import {
   SimplerGuide,
 } from "@/components/simpler-guide";
 import { Button } from "@/components/ui/button";
+import { ExistingServerReconnect } from "@/components/wizard/existing-server-reconnect";
+import { useInstallationHealth } from "@/lib/hooks/useInstallationHealth";
 import { SshRehearsal } from "@/components/wizard/SshRehearsal";
 import { formatSshHost, formatSshTarget } from "@/lib/commandBuilder";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
-import { useUserOS, useVPSIP } from "@/lib/userPreferences";
+import { EXISTING_VPS, getInPlaceUbuntuRelease, useCreateVPSChecklist, useUserOS, useVPSIP } from "@/lib/userPreferences";
 import { cn, withCurrentSearch } from "@/lib/utils";
 import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
 
@@ -125,13 +127,49 @@ function TroubleshootingSection({
   );
 }
 
+function InPlaceInstallation({ release }: { release: string }) {
+  const { ready, reinstallCommand, selectedPlan, sshUsername, vpsIP } = useInstallationHealth(release);
+  if (!ready) return <p role="status">Loading your installation choices…</p>;
+  if (!reinstallCommand || !selectedPlan?.selectedCount || !vpsIP) {
+    return <AlertCard variant="warning" title="Review the installation choices">
+      The current host or selected profile cannot be used for this installation. If a reviewed
+      team profile requests a release upgrade, discard it before using the in-place command.
+    </AlertCard>;
+  }
+  const modules = new Set(selectedPlan.included.map((entry) => entry.id));
+  return (
+    <section className="space-y-5">
+      <h2 className="text-xl font-semibold">Install ACFS on Ubuntu {release} LTS</h2>
+      <p>
+        This command uses your saved mode, modules, and source revision. The regular installer
+        keeps the current Ubuntu release. Run it from the root shell on your VPS.
+      </p>
+      <CommandCard command={reinstallCommand} description="Install ACFS on the current release" runLocation="vps" />
+      {modules.has("users.ubuntu") && <ExistingServerReconnect username={sshUsername} host={vpsIP} />}
+      {modules.has("acfs.doctor") ? (
+        <>
+          <p>Once installation finishes, check the setup in the target account&apos;s terminal.</p>
+          <CommandCard command="acfs doctor" description="Check your installation" runLocation="vps" />
+        </>
+      ) : (
+        <p>Your selection omits ACFS Doctor. Use the verification commands in the installer&apos;s final summary.</p>
+      )}
+      {modules.has("acfs.onboard") && (
+        <CommandCard command="onboard" description="Start the terminal tutorial after checking the installation" runLocation="vps" />
+      )}
+    </section>
+  );
+}
+
 export default function SSHConnectPage() {
   const router = useRouter();
   const [vpsIP, , vpsIPLoaded] = useVPSIP();
   const [os, , osLoaded] = useUserOS();
   const [expandedError, setExpandedError] = useState<string | null>(null);
   const [isNavigating, setIsNavigating] = useState(false);
-  const ready = vpsIPLoaded && osLoaded;
+  const [checklist, , checklistLoaded] = useCreateVPSChecklist();
+  const ready = vpsIPLoaded && osLoaded && checklistLoaded;
+  const inPlaceRelease = getInPlaceUbuntuRelease(checklist);
 
   // Analytics tracking for this wizard step
   const { markComplete } = useWizardAnalytics({
@@ -152,23 +190,60 @@ export default function SSHConnectPage() {
   }, [ready, vpsIP, os, router]);
 
   const handleContinue = useCallback(() => {
+    if (!ready || inPlaceRelease) return;
     markComplete();
     markStepComplete(6);
     setIsNavigating(true);
     router.push(withCurrentSearch("/wizard/accounts"));
-  }, [router, markComplete]);
+  }, [router, markComplete, ready, inPlaceRelease]);
 
   const forwardCtaRef = useWizardForwardNav({
     onContinue: handleContinue,
-    disabled: isNavigating,
+    disabled: !ready || !!inPlaceRelease || isNavigating,
     loading: isNavigating,
-    label: "I'm connected, continue",
+    label: inPlaceRelease ? "Follow the in-place installation below" : "I'm connected, continue",
   });
 
   if (!ready || !vpsIP || !os) {
     return (
       <div className="flex items-center justify-center py-12">
         <Terminal className="h-8 w-8 animate-pulse text-muted-foreground" />
+      </div>
+    );
+  }
+
+  const continueButton = (
+      <div className="flex justify-end pt-4">
+        <Button
+          ref={forwardCtaRef}
+          data-wizard-primary-cta
+          onClick={handleContinue}
+          disabled={isNavigating}
+          size="lg"
+          disableMotion
+        >
+          {isNavigating ? "Loading..." : "I'm connected, continue"}
+        </Button>
+      </div>
+  );
+
+  if (checklist.includes(EXISTING_VPS)) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold tracking-tight">Connect to your existing VPS</h1>
+        <p>
+          Open a terminal on your laptop and connect to <strong>{vpsIP}</strong> with
+          the SSH command, account, and key you already use for this server.
+          Keep this session open through the preflight check.
+        </p>
+        <CommandCard command="hostname" description="Confirm this is your VPS" runLocation="vps" />
+        <p>
+          Check the hostname against your server. If you signed in with a sudo account,
+          open a root shell for the installation.
+        </p>
+        <CommandCard command="sudo -i" description="Become root if needed" runLocation="vps" />
+        <CommandCard command="whoami" description="Confirm the result is root" runLocation="vps" />
+        {inPlaceRelease ? <InPlaceInstallation release={inPlaceRelease} /> : continueButton}
       </div>
     );
   }
@@ -549,18 +624,7 @@ export default function SSHConnectPage() {
       </SimplerGuide>
 
       {/* Continue button */}
-      <div className="flex justify-end pt-4">
-        <Button
-          ref={forwardCtaRef}
-          data-wizard-primary-cta
-          onClick={handleContinue}
-          disabled={isNavigating}
-          size="lg"
-          disableMotion
-        >
-          {isNavigating ? "Loading..." : "I'm connected, continue"}
-        </Button>
-      </div>
+      {continueButton}
     </div>
   );
 }

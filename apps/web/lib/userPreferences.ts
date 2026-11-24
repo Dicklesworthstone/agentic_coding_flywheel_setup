@@ -19,7 +19,13 @@ import {
   stripSensitiveQueryState,
   urlContainsSensitiveState,
 } from "./utils";
-import { VPS_PROVIDERS, validateUbuntuImage, type WorkloadId } from "./vpsProviders";
+import {
+  ACFS_RECOMMENDED_UBUNTU,
+  VPS_PROVIDERS,
+  VPS_UBUNTU_IMAGE_OPTIONS,
+  validateUbuntuImage,
+  type WorkloadId,
+} from "./vpsProviders";
 import { useInstallationPreference, useWizardInstallation } from "./wizardInstallation";
 
 export { isValidIP, normalizeGitRef, normalizeSSHUsername } from "./inputValidation";
@@ -53,6 +59,8 @@ export const CREATE_VPS_REQUIRED_CHECKLIST_ITEMS = [
   "password",
   "created",
 ] as const;
+export const EXISTING_VPS = "existing-vps";
+export const EXISTING_VPS_ADMIN = "existing-admin-access";
 export type CreateVPSChecklistItemId = (typeof CREATE_VPS_REQUIRED_CHECKLIST_ITEMS)[number];
 
 const OS_QUERY_KEY = "os";
@@ -361,8 +369,40 @@ export function setVPSIP(ip: string): boolean {
   return true;
 }
 
-export function getVPSReadinessSelection(): VPSReadinessSelection | null {
+function getPurchasePlannerSelection(): VPSReadinessSelection | null {
   return normalizeVPSReadinessSelection(getPrivateJSONPreference(VPS_READINESS_SELECTION_KEY));
+}
+
+export function getExistingVPSRelease(items: readonly string[]): string | null {
+  const releases = VPS_UBUNTU_IMAGE_OPTIONS.filter((version) => items.includes(version));
+  return releases.length === 1 ? releases[0] : null;
+}
+
+export function getInPlaceUbuntuRelease(items: readonly string[]): string | null {
+  const release = getExistingVPSRelease(items);
+  return items.includes(EXISTING_VPS) && release && release !== ACFS_RECOMMENDED_UBUNTU &&
+    !items.includes(`upgrade-${release}-to-${ACFS_RECOMMENDED_UBUNTU}`) ? release : null;
+}
+
+function resolveVPSReadinessSelection(
+  planner: VPSReadinessSelection | null,
+  checklist: readonly string[],
+): VPSReadinessSelection | null {
+  if (!checklist.includes(EXISTING_VPS)) return planner;
+  // A purchase estimate describes a different machine. Only the workload
+  // preferences carry across to a host the visitor already operates.
+  return {
+    providerId: "other",
+    planName: "custom plan",
+    region: "not-listed",
+    ubuntuVersion: getExistingVPSRelease(checklist) ?? "unknown",
+    targetAgents: planner?.targetAgents ?? 10,
+    workloadId: planner?.workloadId ?? "standard",
+  };
+}
+
+export function getVPSReadinessSelection(): VPSReadinessSelection | null {
+  return resolveVPSReadinessSelection(getPurchasePlannerSelection(), getCreateVPSChecklist());
 }
 
 export function setVPSReadinessSelection(selection: VPSReadinessSelection): boolean {
@@ -456,17 +496,18 @@ export async function updateVPSReadinessQuery(
   }
 }
 
-export function useVPSReadinessSelection(): [
+export function useVPSReadinessSelection(source: "installation" | "purchase" = "installation"): [
   VPSReadinessSelection | null,
   (selection: VPSReadinessSelection) => void,
   boolean,
 ] {
   const queryClient = useQueryClient();
   usePreferenceSync(userPreferencesKeys.vpsReadinessSelection);
+  const [checklist, , checklistLoaded] = useCreateVPSChecklist();
 
   const { data, status } = useQuery({
     queryKey: userPreferencesKeys.vpsReadinessSelection,
-    queryFn: getVPSReadinessSelection,
+    queryFn: getPurchasePlannerSelection,
     staleTime: 0,
     gcTime: Infinity,
   });
@@ -476,7 +517,11 @@ export function useVPSReadinessSelection(): [
     [queryClient],
   );
 
-  return [data ?? null, setReadinessSelection, status === "success"];
+  const selection = useMemo(
+    () => source === "purchase" ? data ?? null : resolveVPSReadinessSelection(data ?? null, checklist),
+    [source, data, checklist],
+  );
+  return [selection, setReadinessSelection, status === "success" && checklistLoaded];
 }
 
 export function getCreateVPSChecklist(): string[] {
@@ -485,6 +530,9 @@ export function getCreateVPSChecklist(): string[] {
 
 export function isCreateVPSChecklistComplete(items: readonly string[]): boolean {
   const selectedItems = new Set(normalizeStringList(items));
+  if (selectedItems.has(EXISTING_VPS)) {
+    return selectedItems.has(EXISTING_VPS_ADMIN) && getExistingVPSRelease(items) !== null;
+  }
   return CREATE_VPS_REQUIRED_CHECKLIST_ITEMS.every((item) => selectedItems.has(item));
 }
 

@@ -1927,6 +1927,46 @@ test.describe("Step 13: Launch Onboarding Page", () => {
 // =============================================================================
 // CREATE VPS - Button Disabled State Tests
 // =============================================================================
+test("existing VPS skips purchase and preserves the server's real release through SSH", async ({ page }) => {
+  await setupWizardState(page, { os: "mac", completedSteps: [1, 2, 3] });
+  await page.goto("/wizard/rent-vps");
+  await page.getByRole("button", { name: "Use a VPS I already have" }).click();
+  await expect(page.getByRole("heading", { name: "Set up your existing VPS" })).toBeVisible();
+
+  const next = page.locator("[data-wizard-primary-cta]");
+  await page.getByLabel("IP address", { exact: true }).fill("203.0.113.42");
+  await page.getByLabel("I can sign in to this server with root or sudo access").click();
+  await expect(next).toBeDisabled();
+  await page.getByLabel("Which Ubuntu LTS release is running on this server?").selectOption("24.04");
+  await expect(page.getByText("Continue to SSH for an installation that keeps Ubuntu 24.04 LTS.")).toBeVisible();
+  await clickWizardForward(page);
+  await expect(page.getByRole("heading", { name: "Connect to your existing VPS" })).toBeVisible();
+  await expect(page.getByText("203.0.113.42", { exact: true })).toBeVisible();
+  await expect(page.getByText("Which password to use")).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Connect to your existing VPS" })).toBeVisible();
+  expect(await page.evaluate((key) => JSON.parse(localStorage.getItem(key) ?? "[]"), COMPLETED_STEPS_KEY))
+    .toEqual([1, 2, 3, 4, 5]);
+  await expect(page.getByRole("heading", { name: "Install ACFS on Ubuntu 24.04 LTS" })).toBeVisible();
+  const command = page.locator("code").filter({ hasText: "install.sh" }).first();
+  await expect(command).toContainText("--mode");
+  await expect(command).toContainText("--skip-ubuntu-upgrade");
+  await expect(command).not.toContainText("--target-ubuntu");
+  await expect(page.getByText("acfs doctor", { exact: true }).first()).toBeVisible();
+  await expect(page.locator("[data-wizard-primary-cta]")).toHaveCount(0);
+  await page.goto("/wizard/create-vps");
+  await page.getByLabel(/Upgrade this server to Ubuntu/).click();
+  await clickWizardForward(page);
+  await expect(page.getByRole("heading", { name: "Connect to your existing VPS" })).toBeVisible();
+  await clickWizardForward(page);
+  await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/accounts"));
+
+  await page.goto("/wizard/rent-vps");
+  await page.locator("[data-wizard-primary-cta]").click();
+  await expect(createVpsCheckboxes(page)).toHaveCount(4);
+  await expect(page.locator("[data-wizard-primary-cta]")).toBeDisabled();
+});
+
 test.describe("Create VPS - Button Disabled States", () => {
   test.beforeEach(async ({ page }) => {
     await setupWizardState(page, { os: "mac" });

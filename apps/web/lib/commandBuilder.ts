@@ -566,6 +566,17 @@ export function formatScpTarget(username: string, host: string): string {
     : target;
 }
 
+/** Enroll one pasted public key from an already authenticated root terminal. */
+export function buildRootSessionKeyRepairCommand(username: string): string {
+  const account = normalizeSSHUsername(username);
+  if (!account) throw new Error("A valid non-root SSH account is required");
+  return [
+    "(IFS= read -r key",
+    "&& printf '%s\\n' \"$key\" | ssh-keygen -lf - >/dev/null",
+    `&& printf '%s\\n' "$key" | sh -c '${buildRootKeyRepairRemoteScript(account)}')`,
+  ].join(" ");
+}
+
 export function buildRootKeyRepairCommand(username: string, host: string): string {
   const safeUsername = normalizeSSHUsername(username) ?? "ubuntu";
   const rootTarget = formatSshTarget("root", host);
@@ -723,6 +734,7 @@ export function buildInstallCommandDetails(
   ref: string | null,
   username?: string | null,
   moduleSelection?: ModuleSelectionInput,
+  keepUbuntuRelease?: string,
 ): InstallCommandDetails {
   const safeRef = normalizeGitRef(ref);
   const safeUsername = normalizeInstallUsername(username);
@@ -732,16 +744,19 @@ export function buildInstallCommandDetails(
   const selectorArgs = buildInstallSelectorArgs(moduleSelection);
   const selectorArgSuffix = selectorArgs.length > 0 ? ` ${selectorArgs.join(" ")}` : "";
   const installerUrl = `${INSTALL_SCRIPT_BASE_URL}/${installRef}/install.sh`;
+  const upgradeArg = keepUbuntuRelease
+    ? " --skip-ubuntu-upgrade"
+    : ` --target-ubuntu=${ACFS_RECOMMENDED_UBUNTU}`;
 
   return {
-    command: `curl -fsSL "${installerUrl}" | ${userEnv}bash -s -- --yes --mode ${mode} --target-ubuntu=${ACFS_RECOMMENDED_UBUNTU}${refArg}${selectorArgSuffix}`,
+    command: `curl -fsSL "${installerUrl}" | ${userEnv}bash -s -- --yes --mode ${mode}${upgradeArg}${refArg}${selectorArgSuffix}`,
     mode,
     installRef,
     pinned: safeRef !== null,
     targetUser: safeUsername,
     usesTargetUserPrefix: safeUsername !== null,
     selectorArgs,
-    targetUbuntu: ACFS_RECOMMENDED_UBUNTU,
+    targetUbuntu: keepUbuntuRelease ?? ACFS_RECOMMENDED_UBUNTU,
   };
 }
 

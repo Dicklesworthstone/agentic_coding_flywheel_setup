@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Jargon } from "@/components/jargon";
 import {
   GuideCaution,
@@ -26,7 +26,10 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
 import {
-  CREATE_VPS_REQUIRED_CHECKLIST_ITEMS,
+  EXISTING_VPS,
+  EXISTING_VPS_ADMIN,
+  getExistingVPSRelease,
+  getInPlaceUbuntuRelease,
   type CreateVPSChecklistItemId,
   isCreateVPSChecklistComplete,
   isValidIP,
@@ -40,8 +43,9 @@ import {
   describePlan,
   VPS_PROVIDERS,
   VPS_TOP_PICK,
+  VPS_UBUNTU_IMAGE_OPTIONS,
 } from "@/lib/vpsProviders";
-import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
+import { getCompletedSteps, markStepComplete, setCompletedSteps, useWizardForwardNav } from "@/lib/wizardSteps";
 
 type ScreenshotSpec = {
   file: string;
@@ -92,8 +96,9 @@ const CHECKLIST_ITEMS = [
   { id: "created", label: "Created the VPS and waited for it to start" },
 ] as const satisfies readonly { id: CreateVPSChecklistItemId; label: string }[];
 
-type ChecklistItemId = CreateVPSChecklistItemId;
-const CHECKLIST_ITEM_IDS = new Set<ChecklistItemId>(CREATE_VPS_REQUIRED_CHECKLIST_ITEMS);
+const EXISTING_CHECKLIST_ITEMS = [
+  { id: EXISTING_VPS_ADMIN, label: "I can sign in to this server with root or sudo access" },
+] as const;
 
 interface ProviderGuideProps {
   name: string;
@@ -202,15 +207,10 @@ export default function CreateVPSPage() {
   const [storedChecklist, setStoredChecklist] = useCreateVPSChecklist();
   const [expandedProvider, setExpandedProvider] = useState<string | null>(null);
   const [isNavigating, setIsNavigating] = useState(false);
-  const checkedItems = useMemo(() => {
-    const next = new Set<ChecklistItemId>();
-    for (const item of storedChecklist) {
-      if (CHECKLIST_ITEM_IDS.has(item as ChecklistItemId)) {
-        next.add(item as ChecklistItemId);
-      }
-    }
-    return next;
-  }, [storedChecklist]);
+  const existingServer = storedChecklist.includes(EXISTING_VPS);
+  const checklistItems = existingServer ? EXISTING_CHECKLIST_ITEMS : CHECKLIST_ITEMS;
+  const checkedItems = new Set(storedChecklist);
+  const release = getExistingVPSRelease(storedChecklist);
   const allChecked = isCreateVPSChecklistComplete(storedChecklist);
 
   // Analytics tracking for this wizard step
@@ -238,6 +238,9 @@ export default function CreateVPSPage() {
 
       markCompleteRef.current({ ip_entered: true });
       setStoredIP(normalizedIP);
+      if (getInPlaceUbuntuRelease(storedChecklist)) {
+        setCompletedSteps(getCompletedSteps().filter((step) => step < 6));
+      }
       markStepComplete(5);
       setIsNavigating(true);
       router.push(withCurrentSearch("/wizard/ssh-connect"));
@@ -268,14 +271,18 @@ export default function CreateVPSPage() {
     }
   }, [storedIP, form]);
 
-  const handleCheckItem = (itemId: ChecklistItemId, checked: boolean) => {
-    const next = new Set(checkedItems);
-    if (checked) {
-      next.add(itemId);
-    } else {
-      next.delete(itemId);
-    }
-    setStoredChecklist(CHECKLIST_ITEMS.filter((item) => next.has(item.id)).map((item) => item.id));
+  const handleCheckItem = (itemId: string, checked: boolean) => {
+    const next = storedChecklist.filter((id) => id !== itemId);
+    if (checked) next.push(itemId);
+    setStoredChecklist(next);
+  };
+
+  const setExistingRelease = (version: string) => {
+    setStoredChecklist([
+      EXISTING_VPS,
+      ...(checkedItems.has(EXISTING_VPS_ADMIN) ? [EXISTING_VPS_ADMIN] : []),
+      ...VPS_UBUNTU_IMAGE_OPTIONS.filter((option) => option === version),
+    ]);
   };
 
   return (
@@ -288,18 +295,17 @@ export default function CreateVPSPage() {
           </div>
           <div>
             <h1 className="bg-gradient-to-r from-foreground via-foreground to-muted-foreground bg-clip-text text-2xl font-bold tracking-tight text-transparent sm:text-3xl">
-              Create your{" "}
-              <Jargon term="vps" gradientHeading>
-                VPS
-              </Jargon>{" "}
-              instance
+              {existingServer ? "Set up your existing VPS" : (
+                <>Create your <Jargon term="vps" gradientHeading>VPS</Jargon> instance</>
+              )}
             </h1>
             <p className="text-sm text-muted-foreground">~5 min</p>
           </div>
         </div>
         <p className="text-muted-foreground">
-          You have an account with your VPS provider. Now let&apos;s create the actual server (the
-          VPS instance) that will run your development environment.
+          {existingServer
+            ? "Use the IP address and Linux release of the server where you plan to install ACFS."
+            : "Use your provider account to create the server that will run your development environment."}
         </p>
       </div>
 
@@ -338,11 +344,48 @@ export default function CreateVPSPage() {
                 allChecked ? "bg-green/15 text-green" : "bg-muted text-muted-foreground",
               )}
             >
-              {checkedItems.size} of {CHECKLIST_ITEMS.length}
+              {checklistItems.filter((item) => checkedItems.has(item.id)).length + (existingServer && release ? 1 : 0)} of {checklistItems.length + (existingServer ? 1 : 0)}
             </div>
           </div>
           <div className="space-y-3">
-            {CHECKLIST_ITEMS.map((item) => (
+            {existingServer && (
+              <div className="space-y-2">
+                <label htmlFor="existing-vps-release" className="block text-sm font-medium">
+                  Which Ubuntu LTS release is running on this server?
+                </label>
+                <select
+                  id="existing-vps-release"
+                  value={release ?? ""}
+                  onChange={(event) => setExistingRelease(event.target.value)}
+                  className="min-h-11 rounded-md border bg-background px-3 text-sm"
+                >
+                  <option value="">Select the installed release</option>
+                  {VPS_UBUNTU_IMAGE_OPTIONS.map((version) => (
+                    <option key={version} value={version}>Ubuntu {version} LTS</option>
+                  ))}
+                </select>
+                <p className="text-sm text-muted-foreground">
+                  Check <code>cat /etc/os-release</code> on the VPS. This wizard supports the
+                  listed releases on a development server you administer.
+                </p>
+                {release && release !== ACFS_RECOMMENDED_UBUNTU && (
+                  <div className="space-y-2 text-sm">
+                    <p>Continue to SSH for an installation that keeps Ubuntu {release} LTS.</p>
+                    <label className="flex min-h-11 items-center gap-3">
+                      <Checkbox
+                        checked={!getInPlaceUbuntuRelease(storedChecklist)}
+                        onCheckedChange={(checked) =>
+                          handleCheckItem(`upgrade-${release}-to-${ACFS_RECOMMENDED_UBUNTU}`, checked === true)
+                        }
+                      />
+                      Upgrade this server to Ubuntu {ACFS_RECOMMENDED_UBUNTU} LTS during guided
+                      installation. I have backed up my data and can allow downtime for reboots.
+                    </label>
+                  </div>
+                )}
+              </div>
+            )}
+            {checklistItems.map((item) => (
               <label
                 key={item.id}
                 // 44px minimum touch target around the 16px checkbox.
@@ -382,8 +425,7 @@ export default function CreateVPSPage() {
               Your VPS IP address
             </h2>
             <p className="text-sm text-muted-foreground">
-              Enter the IP address of your new VPS. You&apos;ll find this in your provider&apos;s
-              control panel after the VPS is created.
+              Enter the server&apos;s IP address from your provider&apos;s control panel.
             </p>
           </div>
 
@@ -531,6 +573,8 @@ export default function CreateVPSPage() {
           </form.Field>
         </div>
 
+        {!existingServer && (
+          <div className="space-y-8">
         {/* Region selection tip - prominent placement */}
         <div className="rounded-xl border border-primary/30 bg-primary/5 p-4">
           <h3 className="font-medium text-foreground mb-2">💡 Why region matters</h3>
@@ -738,6 +782,8 @@ export default function CreateVPSPage() {
             </GuideCaution>
           </div>
         </SimplerGuide>
+          </div>
+        )}
       </form>
     </div>
   );

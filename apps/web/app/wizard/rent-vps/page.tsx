@@ -31,7 +31,13 @@ import { TrackedLink } from "@/components/tracked-link";
 import { Button } from "@/components/ui/button";
 import { VPSComparison } from "@/components/wizard/VPSComparison";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
-import { useVPSReadinessSelection, type VPSReadinessSelection } from "@/lib/userPreferences";
+import {
+  EXISTING_VPS,
+  getCreateVPSChecklist,
+  setCreateVPSChecklist,
+  useVPSReadinessSelection,
+  type VPSReadinessSelection,
+} from "@/lib/userPreferences";
 import { cn, withCurrentSearch } from "@/lib/utils";
 import {
   ACFS_RECOMMENDED_MIN_RAM_GB,
@@ -49,7 +55,7 @@ import {
   type VPSReadinessStatus,
   validateVPSReadiness,
 } from "@/lib/vpsProviders";
-import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
+import { getCompletedSteps, markStepComplete, setCompletedSteps, useWizardForwardNav } from "@/lib/wizardSteps";
 
 interface ProviderInfo {
   id: string;
@@ -309,7 +315,7 @@ function readinessCopy(status: VPSReadinessStatus): { label: string; className: 
 
 function CapacityPlanner() {
   const [savedVPSReadinessSelection, setVPSReadinessSelection, vpsReadinessSelectionLoaded] =
-    useVPSReadinessSelection();
+    useVPSReadinessSelection("purchase");
   const plannerSelection = savedVPSReadinessSelection ?? DEFAULT_VPS_READINESS_SELECTION;
   const hasLocalPlannerInteraction = useRef(false);
   const hasHydratedPlannerSelection = useRef(false);
@@ -765,12 +771,17 @@ export default function RentVPSPage() {
     setExpandedProvider((prev) => (prev === providerId ? null : providerId));
   }, []);
 
-  const handleContinue = useCallback(() => {
+  const continueWithServer = useCallback((existing: boolean) => {
+    if (existing !== getCreateVPSChecklist().includes(EXISTING_VPS)) {
+      setCreateVPSChecklist(existing ? [EXISTING_VPS] : []);
+      setCompletedSteps(getCompletedSteps().filter((step) => step < 5));
+    }
     markComplete({ expanded_provider: expandedProvider });
     markStepComplete(4);
     setIsNavigating(true);
     router.push(withCurrentSearch("/wizard/create-vps"));
   }, [router, markComplete, expandedProvider]);
+  const handleContinue = useCallback(() => continueWithServer(false), [continueWithServer]);
 
   const forwardCtaRef = useWizardForwardNav({
     onContinue: handleContinue,
@@ -804,6 +815,15 @@ export default function RentVPSPage() {
           <Jargon term="ai-agents">coding agents</Jargon> will live.
         </p>
       </div>
+
+      <Button
+        type="button"
+        variant="outline"
+        disabled={isNavigating}
+        onClick={() => continueWithServer(true)}
+      >
+        Use a VPS I already have
+      </Button>
 
       <CapacityPlanner />
 

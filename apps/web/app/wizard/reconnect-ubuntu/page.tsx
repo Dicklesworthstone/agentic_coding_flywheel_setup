@@ -21,7 +21,8 @@ import {
   SSH_KEY_PATH_WINDOWS_POWERSHELL,
 } from "@/lib/commandBuilder";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
-import { useSSHUsername, useVPSIP } from "@/lib/userPreferences";
+import { ExistingServerReconnect } from "@/components/wizard/existing-server-reconnect";
+import { EXISTING_VPS, useCreateVPSChecklist, useSSHUsername, useVPSIP } from "@/lib/userPreferences";
 import { withCurrentSearch } from "@/lib/utils";
 import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
 
@@ -30,7 +31,8 @@ export default function ReconnectUbuntuPage() {
   const [vpsIP, , vpsIPLoaded] = useVPSIP();
   const [sshUsername, , sshUsernameLoaded] = useSSHUsername();
   const [isNavigating, setIsNavigating] = useState(false);
-  const ready = vpsIPLoaded && sshUsernameLoaded;
+  const [checklist, , checklistLoaded] = useCreateVPSChecklist();
+  const ready = vpsIPLoaded && sshUsernameLoaded && checklistLoaded;
 
   // Analytics tracking for this wizard step
   const { markComplete } = useWizardAnalytics({
@@ -79,6 +81,22 @@ export default function ReconnectUbuntuPage() {
   }
 
   const effectiveUsername = sshUsername.trim() || "ubuntu";
+  if (checklist.includes(EXISTING_VPS)) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold">Reconnect to your existing VPS</h1>
+        <ExistingServerReconnect username={effectiveUsername} host={vpsIP} />
+        <Button
+          ref={forwardCtaRef}
+          data-wizard-primary-cta
+          disabled={isNavigating}
+          onClick={handleContinue}
+        >
+          {forwardLabel}
+        </Button>
+      </div>
+    );
+  }
   const userPrompt = `${effectiveUsername}@`;
   // Both shell dialects come from the command builder: the Windows form is
   // the PowerShell spelling ($HOME), never the %USERPROFILE% form that only

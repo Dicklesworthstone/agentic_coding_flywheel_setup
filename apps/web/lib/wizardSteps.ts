@@ -13,6 +13,7 @@ import { isRenderedCheckpointComplete } from "./installerCheckpoint";
 import {
   detectOS,
   getCreateVPSChecklist,
+  getInPlaceUbuntuRelease,
   getUserOS,
   getVPSIP,
   isCreateVPSChecklistComplete,
@@ -142,6 +143,9 @@ export const WIZARD_STEPS: WizardStep[] = [
     title: "SSH Into Your VPS",
     description: "Connect to your VPS for the first time",
     slug: "ssh-connect",
+    validate: () => getInPlaceUbuntuRelease(getCreateVPSChecklist())
+      ? { valid: false, errors: ["Follow the in-place installation instructions on this page."] }
+      : { valid: true, errors: [] },
   },
   {
     id: 7,
