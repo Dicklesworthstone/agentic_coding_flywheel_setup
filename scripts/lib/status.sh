@@ -1253,8 +1253,8 @@ _status_print() {
 # provider identifiers never cross this interface. No commands are executed
 # from generated advice. The live path reuses only the NTM/tmux collector.
 _status_editor_json() {
-    local state_file="$1" tool_count="$2" health="$3" jq_bin="$4"
-    local state_json='{}' state_status=missing live_status=not_requested
+    local state_json="$1" tool_count="$2" health="$3" jq_bin="$4" install_status="$5"
+    local state_status=ok live_status=not_requested
     local live_json='{}' output="" generated_at="" timeout_bin="" bash_bin=""
     local date_bin="" collector_script="$_STATUS_SCRIPT_DIR/swarm_status.sh"
 
@@ -1264,14 +1264,7 @@ _status_editor_json() {
     fi
     date_bin="$(_status_system_binary_path date 2>/dev/null || true)"
     [[ -z "$date_bin" ]] || generated_at="$("$date_bin" -u +%Y-%m-%dT%H:%M:%SZ)"
-    if [[ -f "$state_file" ]]; then
-        state_status=invalid
-        if state_json="$("$jq_bin" -ce 'select(type == "object")' "$state_file" 2>/dev/null)"; then
-            state_status=ok
-        else
-            state_json='{}'
-        fi
-    fi
+    case "$install_status" in missing|invalid) state_status="$install_status" ;; esac
     if [[ "$_STATUS_LIVE" == true ]]; then
         live_status=unavailable
         timeout_bin="$(_status_system_binary_path timeout 2>/dev/null || true)"
@@ -1289,24 +1282,19 @@ _status_editor_json() {
         fi
     fi
 
-    "$jq_bin" -n --argjson state "$state_json" --argjson live "$live_json" \
+    "$jq_bin" --arg install_status "$install_status" --argjson live "$live_json" \
         --arg state_status "$state_status" --arg live_status "$live_status" \
         --arg generated_at "$generated_at" --arg health "${health,,}" \
         --argjson tool_count "$tool_count" '
         def phase: . as $v | if ["base_deps","user_setup","filesystem","shell_setup","cli_tools","languages","agents","cloud_db","stack","finalize"] | index($v) then $v else null end;
         def count: if type == "number" and . >= 0 and floor == . then . else null end;
         def stamp: if type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-][0-9]{2}:[0-9]{2})$") then . else null end;
+        . as $state |
         ($state.completed_phases | if type == "array" then map(phase) | map(select(. != null)) | unique else [] end) as $completed |
         ($state.provider // $state.vps_provider // null) as $provider_raw |
         ($provider_raw as $p | if ["hetzner","ovh","contabo","digitalocean","aws","gcp","azure","local","other"] | index($p) then $p else null end) as $provider |
-        (if $state_status != "ok" then $state_status
-         elif ($state.failed_phase != null and $state.failed_phase != "") then "failed"
-         elif $state.current_phase != null then "partial"
-         elif ($completed | index("finalize")) != null then "complete"
-         elif ($completed | length) > 0 then "partial"
-         else "unknown" end) as $install_status |
         (if $live_status == "ok" and $live.tmux_query_ok != true then "warn" else $live_status end) as $sessions_status |
-        (if $install_status == "failed" or $state_status != "ok" then "error"
+        (if $install_status == "failed" or $state_status != "ok" or $health == "error" then "error"
          elif $install_status != "complete" or $health != "ok" or ($sessions_status != "ok" and $sessions_status != "not_requested") then "warn" else "ok" end) as $status |
         {
           schema_version: 1, kind: "acfs.editor_status", status: $status,
@@ -1328,7 +1316,7 @@ _status_editor_json() {
             elif $status != "ok" then [{command_id: "sessions", reason: "session_query_unavailable"}] else [] end),
           support: {help_command_id: "support_help", bundle_argv: ["acfs","support"], creates_files: true, redacted_by_default: true},
           execute_automatically: false
-        }'
+        }' <<< "$state_json"
 }
 
 # Use the library beside this status entry point, not code selected by state.
@@ -1370,6 +1358,7 @@ status_main() {
 _status_main_body() {
     local parse_status=0
     local _state_file=""
+    local _install_status=missing _state_json='{}'
     local -a _warnings=()
     local -a _errors=()
     local -a _CORE_TOOLS=(zsh git tmux bun cargo go rg claude)
@@ -1422,9 +1411,34 @@ _status_main_body() {
     if [[ ! -f "$_state_file" ]]; then
         _errors+=("state file missing")
     elif [[ ! -s "$_state_file" ]]; then
+        _install_status=invalid
         _errors+=("state file empty")
-    elif [[ -n "$_jq_bin" ]] && ! "$_jq_bin" -e . "$_state_file" >/dev/null 2>&1; then
-        _errors+=("state file invalid JSON")
+    elif [[ -n "$_jq_bin" ]]; then
+        # Read one checkpoint for both output formats. Older installers numbered
+        # their phases 1..9; interpret them without migrating the file on disk.
+        if _state_json="$("$_jq_bin" -ces '
+            select(length == 1 and (.[0] | type) == "object") | .[0] |
+            if (.schema_version // 1) == 1 and (.completed_phases | type) == "array" then
+                [null,"user_setup","filesystem","shell_setup","cli_tools","languages","agents","cloud_db","stack","finalize"] as $phases |
+                .completed_phases |= map(if type == "number" and . == floor and . >= 1 and . <= 9 then $phases[.] else . end)
+            else . end' -- "$_state_file" 2>/dev/null)"; then
+            _install_status="$("$_jq_bin" -r '
+                if .failed_phase != null and .failed_phase != "" then "failed"
+                elif .current_phase != null then "partial"
+                elif (.partial_phases | (type == "array" or type == "object") and length > 0) then "partial"
+                elif (.completed_phases | type) != "array" then "unknown"
+                elif (.completed_phases | index("finalize")) != null then "complete"
+                elif (.completed_phases | length) > 0 then "partial"
+                else "unknown" end' <<< "$_state_json")"
+            case "$_install_status" in
+                failed) _errors+=("installation failed; run acfs doctor") ;;
+                partial) _warnings+=("installation incomplete; run acfs doctor") ;;
+            esac
+        else
+            _install_status=invalid
+            _state_json='{}'
+            _errors+=("state file invalid JSON")
+        fi
     fi
 
     _status_prime_bin_dir_cache
@@ -1500,7 +1514,7 @@ _status_main_body() {
 
     if [[ "$_STATUS_IDE" == true ]]; then
         local editor_output="" editor_status=""
-        editor_output="$(_status_editor_json "$_state_file" "$_tool_count" "$_status_word" "$_jq_bin")" || {
+        editor_output="$(_status_editor_json "$_state_json" "$_tool_count" "$_status_word" "$_jq_bin" "$_install_status")" || {
             printf '%s\n' "$editor_output"
             return 2
         }
@@ -1545,6 +1559,10 @@ _status_main_body() {
         if [[ ${#_errors[@]} -gt 0 ]]; then
             _msg="$_msg, ${#_errors[@]} error(s)"
         fi
+        case "$_install_status" in
+            failed) _msg+="; installation failed" ;;
+            partial) _msg+="; installation incomplete" ;;
+        esac
 
         if [[ ${#_warnings[@]} -gt 0 ]]; then
             for w in "${_warnings[@]}"; do

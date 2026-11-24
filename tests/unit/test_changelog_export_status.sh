@@ -12184,6 +12184,30 @@ test_status_editor_active_phase_beats_prior_completion() {
     else harness_fail "active install phase takes precedence over prior completion"; fi
 }
 
+test_status_recovery_checkpoints_across_formats() {
+    status_protocol_setup recovery
+    local state="$PROTOCOL_HOME/.acfs/state.json" kind="" status="" expected="" actual="" output=""
+    for kind in partial legacy-partial failed complete legacy-complete; do
+        case "$kind" in
+            partial) status=partial; expected=1; printf '%s\n' '{"completed_phases":["finalize"],"partial_phases":["agents"]}' > "$state" ;;
+            legacy-partial) status=partial; expected=1; printf '%s\n' '{"completed_phases":["finalize"],"partial_phases":{"agents":{"error":"fixture-private"}}}' > "$state" ;;
+            failed) status=failed; expected=2; printf '%s\n' '{"completed_phases":["finalize"],"failed_phase":"agents","partial_phases":["agents"]}' > "$state" ;;
+            complete) status=complete; expected=0; jq -n '{completed_phases:["finalize"],partial_phases:[],details:("x"*160000)}' > "$state" ;;
+            legacy-complete) status=complete; expected=0; printf '%s\n' '{"schema_version":1,"completed_phases":[1,2,3,4,5,6,7,8,9]}' > "$state" ;;
+        esac
+        actual=0
+        output="$(TARGET_USER=acfs_proto_fixture TARGET_HOME="$PROTOCOL_HOME" ACFS_HOME="$PROTOCOL_HOME/.acfs" \
+            ACFS_SYSTEM_STATE_FILE="$PROTOCOL_HOME/missing-system-state.json" bash "$STATUS_SH" --json)" || actual=$?
+        if [[ "$actual" == "$expected" ]] && jq -e --argjson rc "$expected" \
+            '.status == (["ok","warn","error"][$rc])' <<< "$output" >/dev/null &&
+            status_protocol_run "$expected" "recovery-$kind" --ide &&
+            jq -e --arg status "$status" '.install.status == $status' "$PROTOCOL_OUTPUT" >/dev/null &&
+            ! grep -Fq fixture-private "$PROTOCOL_OUTPUT"; then
+            harness_pass "both status formats report $kind recovery checkpoint"
+        else harness_fail "both status formats report $kind recovery checkpoint"; fi
+    done
+}
+
 test_status_editor_live_counts_skip_unrelated_tools() {
     status_protocol_setup live
     printf '%s\n' '{"completed_phases":["finalize"]}' > "$PROTOCOL_HOME/.acfs/state.json"
@@ -12334,6 +12358,7 @@ run_status_protocol_tests() {
     test_status_editor_partial_and_failed_snapshots
     test_status_editor_missing_and_invalid_state
     test_status_editor_active_phase_beats_prior_completion
+    test_status_recovery_checkpoints_across_formats
     test_status_editor_live_counts_skip_unrelated_tools
     test_status_editor_advice_is_constant_and_not_executed
     test_status_editor_options_do_not_affect_legacy_output
