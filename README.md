@@ -49,8 +49,8 @@ The installer is **idempotent**—if interrupted, simply re-run it. Resume revis
 
 > **Production environments:** For stable, reproducible installs, pin to a tagged release or specific commit:
 > ```bash
-> # Preferred: use a tagged release (e.g., v0.11.5)
-> curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/v0.11.5/install.sh" | bash -s -- --yes --mode vibe --ref v0.11.5
+> # Preferred: use a tagged release (e.g., v0.11.6)
+> curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/v0.11.6/install.sh" | bash -s -- --yes --mode vibe --ref v0.11.6
 >
 > # Alternative: pin to a specific commit SHA
 > curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/abc1234/install.sh" | bash -s -- --yes --mode vibe --ref abc1234
@@ -6106,10 +6106,10 @@ curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_f
 curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/abc1234/install.sh" | bash -s -- --yes --mode vibe --ref abc1234
 
 # Pin installer version but use latest checksums (avoid stale hash mismatches)
-curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/v0.11.5/install.sh" | bash -s -- --yes --mode vibe --ref v0.11.5 --checksums-ref main
+curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/v0.11.6/install.sh" | bash -s -- --yes --mode vibe --ref v0.11.6 --checksums-ref main
 ```
 
-> **Tip:** Always match the URL path with `--ref` so the initial script and all subsequently fetched scripts come from the same ref. If you use environment variables in a pipeline, attach them to `bash`, not `curl`: `curl ... | ACFS_REF=v0.11.5 bash -s -- --yes --mode vibe`.
+> **Tip:** Always match the URL path with `--ref` so the initial script and all subsequently fetched scripts come from the same ref. If you use environment variables in a pipeline, attach them to `bash`, not `curl`: `curl ... | ACFS_REF=v0.11.6 bash -s -- --yes --mode vibe`.
 > **Tip:** For pinned installs (tags/SHAs), checksums default to `main` to avoid stale installer hashes. Override with `ACFS_CHECKSUMS_REF` if you want checksums pinned to the same ref.
 
 ### Complete Installer CLI Options

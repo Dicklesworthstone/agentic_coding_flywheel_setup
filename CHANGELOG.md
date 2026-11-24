@@ -8,7 +8,22 @@ Each version links to its GitHub Release (where one exists) or to the tag compar
 
 ---
 
-## [Unreleased](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/compare/v0.11.5...HEAD)
+## [Unreleased](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/compare/v0.11.6...HEAD)
+
+## [v0.11.6](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/compare/v0.11.5...v0.11.6) -- 2026-11-24
+
+> Source-only installer release, matching the existing ACFS publication venue (no uploaded binary assets).
+
+### Agent Mail, Doctor & CLI Reliability
+
+- **Harden Agent Mail readiness probes, detached fallback, and two-binary symlink repair** (`eb35b9fb`, `d9edccfa`, `290866b8`) -- hardened `/health/readiness` retry/probe paths across `scripts/lib/stack.sh`, `scripts/lib/acfs-services.sh`, `scripts/lib/doctor.sh`, and `acfs.manifest.yaml`; detached `doctor_fix.sh` non-systemd fallback launches via `setsid`; added two-binary (`am` + `mcp-agent-mail`) symlink repair, merged backup metadata, accurate per-link journal/fix summaries, target verification after fresh installation, and subshell-wrapped `--undo` rollback commands in `scripts/lib/doctor_fix.sh`.
+- **Wire `zstd` and `minisign` into `cli.modern`** (`eb35b9fb`) -- ensured modern CLI bootstrap installs both `zstd` and `minisign` alongside archive/verification tooling (regenerated into `scripts/generated/install_cli.sh`, `scripts/generated/doctor_checks.sh`, and `scripts/generated/manifest_index.sh`).
+
+### Installation-Intent Binding, Status & Wizard Hardening
+
+- **Bind diagnosis, repair, daemon lifecycle, updates, and `newproj` to saved installation intent** (`b5db8910`..`455bd6a4`) -- preserved Safe vs. Vibe installation mode and target-account ownership across resume/repair flows, `acfs doctor` / `doctor --fix` / `--undo`, `acfs services`, Bun/native agent updates, and `newproj` workspace handoffs; kept refused recovery and preview commands from recording failure state; reported failed and partial installation checkpoints across status output formats; and added release-preserving existing-VPS wizard setup with SSH handoff.
+- **Align clean-Ubuntu unit suites with hardened fail-closed semantics** (`290866b8`) -- updated clean-Ubuntu unit test fixtures and source-contract assertions (`test_ubuntu_upgrade_main.py`, `test_resume_state_gate.py`, `test_changelog_export_status.sh`, `test_bun_install_env.bats`, `test_update.bats`, `test_doctor_fix.sh`) without weakening assertions.
+- **Regenerated manifest & 122-entry internal script checksums** -- zero manifest drift across all 75 modules, 464 semantic drift contract checks, and 48/48 verified upstream installer pins.
 
 ## [v0.11.5](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/compare/v0.11.4...v0.11.5) -- 2026-11-23
 

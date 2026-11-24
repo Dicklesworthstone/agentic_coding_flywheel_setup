@@ -1,6 +1,6 @@
 {
   "name": "agentic-coding-flywheel-setup",
-  "version": "0.11.5",
+  "version": "0.11.6",
   "private": true,
   "workspaces": [
     "apps/*",
