@@ -341,6 +341,7 @@ setup_system_state_target_home_env() {
 
     mkdir -p \
         "$TEST_ROOT_HOME" \
+        "$TEST_INSTALLED_ACFS/scripts/lib" \
         "$TEST_INSTALLED_ACFS/onboard/lessons" \
         "$TEST_TARGET_HOME/.oh-my-zsh" \
         "$TEST_TARGET_HOME/.local/bin" \
@@ -350,6 +351,8 @@ setup_system_state_target_home_env() {
         "$TEST_TARGET_HOME/.atuin/bin" \
         "$TEST_FAKE_BIN" \
         "$(dirname "$TEST_SYSTEM_STATE_FILE")"
+
+    cp "$REPO_ROOT/scripts/lib/state.sh" "$TEST_INSTALLED_ACFS/scripts/lib/state.sh"
 
     cat > "$TEST_INSTALLED_ACFS/state.json" <<'JSON'
 {
@@ -5469,8 +5472,17 @@ EOF
     cleanup_mock_env
 }
 
+mark_state_checkpoint_complete() {
+    local sf=""
+    for sf in "$@"; do
+        [[ -f "$sf" ]] || continue
+        jq 'del(.current_phase, .current_step) | .completed_phases = ["finalize"]' "$sf" > "$sf.tmp" && mv "$sf.tmp" "$sf"
+    done
+}
+
 test_status_uses_installed_layout_under_root_home() {
     setup_installed_layout_env
+    mark_state_checkpoint_complete "$TEST_INSTALLED_ACFS/state.json"
     setup_poisoned_acfs_home
 
     local output
@@ -5617,8 +5629,7 @@ test_status_uses_persisted_bin_dir_over_poisoned_env_bin_dir() {
   "bin_dir": "$custom_bin",
   "started_at": "2026-03-09T08:00:00Z",
   "last_updated": "2026-03-10T12:34:56Z",
-  "current_phase": { "id": "bootstrap" },
-  "current_step": "Installing tools"
+  "completed_phases": ["finalize"]
 }
 EOF
 
@@ -5758,6 +5769,7 @@ EOF
 
 test_status_uses_system_state_when_user_state_missing() {
     setup_system_state_only_env
+    mark_state_checkpoint_complete "$TEST_SYSTEM_STATE_FILE"
 
     local output
     output=$(HOME="$TEST_ROOT_HOME" PATH="$TEST_FAKE_BIN:/usr/bin:/bin" \
@@ -5775,6 +5787,7 @@ test_status_uses_system_state_when_user_state_missing() {
 
 test_status_uses_system_state_target_home_when_getent_unavailable() {
     setup_system_state_target_home_env
+    mark_state_checkpoint_complete "$TEST_INSTALLED_ACFS/state.json" "$TEST_SYSTEM_STATE_FILE"
 
     local output=""
     output=$(HOME="$TEST_ROOT_HOME" ACFS_SYSTEM_STATE_FILE="$TEST_SYSTEM_STATE_FILE" PATH="$TEST_FAKE_BIN:/usr/bin:/bin" \
@@ -5791,6 +5804,7 @@ test_status_uses_system_state_target_home_when_getent_unavailable() {
 
 test_status_repo_local_ignores_poisoned_explicit_acfs_home() {
     setup_system_state_target_home_env
+    mark_state_checkpoint_complete "$TEST_INSTALLED_ACFS/state.json" "$TEST_SYSTEM_STATE_FILE"
     setup_poisoned_acfs_home
 
     local output=""
@@ -5898,7 +5912,7 @@ test_status_resolves_the_bin_dir_once_per_run() {
     setup_mock_env
 
     local calls_file="$TEST_HOME/bin-dir-calls" output=""
-    output=$(HOME="$TEST_HOME" ACFS_HOME="$TEST_ACFS" TEST_STATUS_SCRIPT="$STATUS_SH" CALLS_FILE="$calls_file" \
+    output=$(HOME="$TEST_HOME" TARGET_HOME="$TEST_HOME" ACFS_HOME="$TEST_ACFS" TEST_STATUS_SCRIPT="$STATUS_SH" CALLS_FILE="$calls_file" \
         bash -c '
             source "$TEST_STATUS_SCRIPT"
             eval "$(declare -f _status_preferred_bin_dir | sed "1s/_status_preferred_bin_dir/_real_preferred_bin_dir/")"
@@ -8525,16 +8539,23 @@ test_doctor_uses_system_state_target_home_when_installed_state_is_stale() {
     cp "$DOCTOR_SH" "$TEST_INSTALLED_ACFS/bin/acfs"
     chmod +x "$TEST_INSTALLED_ACFS/bin/acfs"
 
+    # Conflicting explicit target_home in canonical state.json fails closed (e1325fbe).
+    local conflict_output="" conflict_rc=0
+    conflict_output=$(HOME="$TEST_ROOT_HOME" PATH="$TEST_FAKE_BIN:/usr/bin:/bin"         ACFS_SYSTEM_STATE_FILE="$TEST_SYSTEM_STATE_FILE"         bash "$TEST_INSTALLED_ACFS/bin/acfs" doctor --json 2>/dev/null) || conflict_rc=$?
+
+    # Historical canonical checkpoint without target_home uses system-state target_home.
+    jq 'del(.target_home)' "$TEST_INSTALLED_ACFS/state.json" > "$TEST_INSTALLED_ACFS/state.json.tmp"         && mv "$TEST_INSTALLED_ACFS/state.json.tmp" "$TEST_INSTALLED_ACFS/state.json"
+
     local output=""
     output=$(HOME="$TEST_ROOT_HOME" PATH="$TEST_FAKE_BIN:/usr/bin:/bin"         ACFS_SYSTEM_STATE_FILE="$TEST_SYSTEM_STATE_FILE"         bash "$TEST_INSTALLED_ACFS/bin/acfs" doctor --json)
 
-    if printf '%s\n' "$output" | jq -e --arg live_path "$TEST_TARGET_HOME/.local/bin/claude" '
+    if [[ "$conflict_rc" -ne 0 ]]         && printf '%s\n' "$conflict_output" | jq -e '.summary.fail == 1 and .checks[0].id == "config.module_selection"' >/dev/null 2>&1         && printf '%s\n' "$output" | jq -e --arg live_path "$TEST_TARGET_HOME/.local/bin/claude" '
         ([.checks[] | select(.id == "agent.path.claude") | .details] | first) == ("native (" + $live_path + ")") and
         ([.checks[] | select(.id == "agent.claude") | .status] | first) == "pass"
     ' >/dev/null 2>&1; then
         harness_pass "doctor prefers system-state target_home over stale installed state"
     else
-        harness_fail "doctor prefers system-state target_home over stale installed state" "$output"
+        harness_fail "doctor prefers system-state target_home over stale installed state" "conflict_rc=$conflict_rc conflict=$conflict_output output=$output"
     fi
 
     cleanup_mock_env
@@ -9224,16 +9245,18 @@ printf 'HOME=%s TARGET_HOME=%s ACFS_HOME=%s ARG1=%s\n' "$HOME" "${TARGET_HOME:-}
 EOF
     chmod +x "$TEST_TARGET_HOME/.acfs/scripts/lib/update.sh"
 
-    local output=""
+    local output="" rc=0
     output=$(HOME="$TEST_ROOT_HOME" ACFS_HOME="$TEST_ROOT_HOME/.acfs" TARGET_HOME="$TEST_ROOT_HOME" \
         ACFS_STATE_FILE="relative-state.json" PATH="$TEST_FAKE_BIN:/usr/bin:/bin" \
         ACFS_SYSTEM_STATE_FILE="$TEST_SYSTEM_STATE_FILE" \
-        bash "$TEST_HOME/probe/acfs-update" --dry-run 2>&1)
+        bash "$TEST_HOME/probe/acfs-update" --dry-run 2>&1) || rc=$?
 
-    if [[ "$output" == "HOME=$TEST_TARGET_HOME TARGET_HOME=$TEST_TARGET_HOME ACFS_HOME=$TEST_INSTALLED_ACFS ARG1=--dry-run" ]]; then
-        harness_pass "acfs-update wrapper discards invalid env state file on direct exec"
+    if [[ "$rc" -ne 0 ]] \
+        && [[ "$output" == *"ACFS_STATE_FILE must name an absolute checkpoint file"* ]] \
+        && [[ "$output" != *"ARG1=--dry-run"* ]]; then
+        harness_pass "acfs-update wrapper rejects invalid env state file on direct exec"
     else
-        harness_fail "acfs-update wrapper discards invalid env state file on direct exec" "$output"
+        harness_fail "acfs-update wrapper rejects invalid env state file on direct exec" "rc=$rc output=$output"
     fi
 
     cleanup_mock_env
@@ -9824,16 +9847,21 @@ printf 'ACFS_BIN_DIR=%s TARGET_HOME=%s\n' "${ACFS_BIN_DIR:-}" "${TARGET_HOME:-}"
 EOF
     chmod +x "$TEST_TARGET_HOME/.acfs/bin/acfs"
 
-    local output=""
+    local output="" explicit_output=""
     output=$(HOME="$TEST_ROOT_HOME" ACFS_HOME="$TEST_ROOT_HOME/.acfs" TARGET_HOME="$TEST_ROOT_HOME" \
+        ACFS_STATE_FILE="" PATH="$TEST_FAKE_BIN:/usr/bin:/bin" \
+        ACFS_SYSTEM_STATE_FILE="$TEST_SYSTEM_STATE_FILE" \
+        bash "$TEST_HOME/probe/acfs" version 2>&1)
+    explicit_output=$(HOME="$TEST_ROOT_HOME" ACFS_HOME="$TEST_ROOT_HOME/.acfs" TARGET_HOME="$TEST_ROOT_HOME" \
         ACFS_STATE_FILE="$TEST_ROOT_HOME/.acfs/state.json" PATH="$TEST_FAKE_BIN:/usr/bin:/bin" \
         ACFS_SYSTEM_STATE_FILE="$TEST_SYSTEM_STATE_FILE" \
         bash "$TEST_HOME/probe/acfs" version 2>&1)
 
-    if [[ "$output" == "ACFS_BIN_DIR=$custom_bin TARGET_HOME=$TEST_TARGET_HOME" ]]; then
+    if [[ "$output" == "ACFS_BIN_DIR=$custom_bin TARGET_HOME=$TEST_TARGET_HOME" ]] \
+        && [[ "$explicit_output" == "ACFS_BIN_DIR= TARGET_HOME=$TEST_TARGET_HOME" ]]; then
         harness_pass "global acfs wrapper passes persisted bin_dir from state"
     else
-        harness_fail "global acfs wrapper passes persisted bin_dir from state" "$output"
+        harness_fail "global acfs wrapper passes persisted bin_dir from state" "default=[$output] explicit=[$explicit_output]"
     fi
 
     cleanup_mock_env
@@ -9864,7 +9892,7 @@ EOF
 
     local output=""
     output=$(HOME="$TEST_ROOT_HOME" ACFS_HOME="$TEST_ROOT_HOME/.acfs" TARGET_HOME="$TEST_ROOT_HOME" \
-        ACFS_STATE_FILE="$TEST_ROOT_HOME/.acfs/state.json" ACFS_BIN_DIR="$poisoned_bin" \
+        ACFS_STATE_FILE="" ACFS_BIN_DIR="$poisoned_bin" \
         PATH="$TEST_FAKE_BIN:/usr/bin:/bin" ACFS_SYSTEM_STATE_FILE="$TEST_SYSTEM_STATE_FILE" \
         bash "$TEST_HOME/probe/acfs" version 2>&1)
 
@@ -9985,16 +10013,18 @@ printf 'HOME=%s TARGET_HOME=%s ACFS_HOME=%s ARG1=%s\n' "$HOME" "${TARGET_HOME:-}
 EOF
     chmod +x "$TEST_TARGET_HOME/.local/bin/acfs"
 
-    local output=""
+    local output="" rc=0
     output=$(HOME="$TEST_ROOT_HOME" ACFS_HOME="$TEST_ROOT_HOME/.acfs" TARGET_HOME="$TEST_ROOT_HOME" \
         ACFS_STATE_FILE="relative-state.json" PATH="$TEST_FAKE_BIN:/usr/bin:/bin" \
         ACFS_SYSTEM_STATE_FILE="$TEST_SYSTEM_STATE_FILE" \
-        bash "$TEST_HOME/probe/acfs" version 2>&1)
+        bash "$TEST_HOME/probe/acfs" version 2>&1) || rc=$?
 
-    if [[ "$output" == "HOME=$TEST_TARGET_HOME TARGET_HOME=$TEST_TARGET_HOME ACFS_HOME=$TEST_INSTALLED_ACFS ARG1=version" ]]; then
-        harness_pass "global acfs wrapper discards invalid env state file on direct exec"
+    if [[ "$rc" -ne 0 ]] \
+        && [[ "$output" == *"ACFS_STATE_FILE must be an absolute non-root path"* ]] \
+        && [[ "$output" != *"ARG1=version"* ]]; then
+        harness_pass "global acfs wrapper rejects invalid env state file on direct exec"
     else
-        harness_fail "global acfs wrapper discards invalid env state file on direct exec" "$output"
+        harness_fail "global acfs wrapper rejects invalid env state file on direct exec" "rc=$rc output=$output"
     fi
 
     cleanup_mock_env
@@ -10828,18 +10858,21 @@ JSON
     write_fake_command "$TEST_FAKE_BIN/dcg" "dcg stale"
     write_fake_command "$TEST_FAKE_BIN/rch" "rch stale"
 
-    local output=""
-    output=$(HOME="$TEST_ROOT_HOME" ACFS_STATE_FILE="$stale_state_file" ACFS_BIN_DIR="$TEST_FAKE_BIN" PATH="$TEST_FAKE_BIN:/usr/bin:/bin" bash "$TEST_INSTALLED_ACFS/bin/acfs" doctor --json)
+    local output="" foreign_output="" foreign_rc=0
+    output=$(HOME="$TEST_ROOT_HOME" ACFS_STATE_FILE="" ACFS_BIN_DIR="$TEST_FAKE_BIN" PATH="$TEST_FAKE_BIN:/usr/bin:/bin" bash "$TEST_INSTALLED_ACFS/bin/acfs" doctor --json)
+    foreign_output=$(HOME="$TEST_ROOT_HOME" ACFS_STATE_FILE="$stale_state_file" ACFS_BIN_DIR="$TEST_FAKE_BIN" PATH="$TEST_FAKE_BIN:/usr/bin:/bin" bash "$TEST_INSTALLED_ACFS/bin/acfs" doctor --json 2>/dev/null) || foreign_rc=$?
 
     if printf '%s\n' "$output" | jq -e --arg custom_path "$custom_bin/claude" --arg stale_path "$TEST_FAKE_BIN/claude" '
         ([.checks[] | select(.id == "agent.path.claude") | .details] | first) == $custom_path and
         ([.checks[] | select(.id == "agent.path.claude") | .details] | first) != $stale_path and
         ([.checks[] | select(.id == "stack.dcg") | .status] | first) == "pass" and
         ([.checks[] | select(.id == "stack.rch") | .status] | first) == "pass"
+    ' >/dev/null 2>&1 && [[ "$foreign_rc" -ne 0 ]] && printf '%s\n' "$foreign_output" | jq -e '
+        .summary.fail == 1 and (.checks[0].id == "config.module_selection")
     ' >/dev/null 2>&1; then
         harness_pass "doctor agent checks prefer persisted bin_dir over poisoned env bin_dir"
     else
-        harness_fail "doctor agent checks prefer persisted bin_dir over poisoned env bin_dir" "$output"
+        harness_fail "doctor agent checks prefer persisted bin_dir over poisoned env bin_dir" "output=$output foreign_rc=$foreign_rc foreign=$foreign_output"
     fi
 
     cleanup_mock_env
@@ -10971,6 +11004,7 @@ test_info_reads_skipped_tools_without_jq() {
 
 test_onboard_cli_aliases_work_in_zero_lessons_mode() {
     setup_mock_env
+    jq '.mode = "vibe"' "$TEST_ACFS/state.json" > "$TEST_ACFS/state.json.tmp" && mv "$TEST_ACFS/state.json.tmp" "$TEST_ACFS/state.json"
 
     local empty_lessons_dir
     empty_lessons_dir="$(mktemp -d)"
@@ -11007,6 +11041,7 @@ test_onboard_cli_aliases_work_in_zero_lessons_mode() {
 
 test_onboard_repairs_malformed_progress_before_showing_lesson() {
     setup_mock_env
+    jq '.mode = "vibe"' "$TEST_ACFS/state.json" > "$TEST_ACFS/state.json.tmp" && mv "$TEST_ACFS/state.json.tmp" "$TEST_ACFS/state.json"
 
     local progress_file="$TEST_HOME/bad-progress.json"
     printf '{not valid json\n' > "$progress_file"
@@ -11027,6 +11062,7 @@ test_onboard_repairs_malformed_progress_before_showing_lesson() {
 
 test_onboard_accepts_sparse_lesson_numbers() {
     setup_mock_env
+    jq '.mode = "vibe"' "$TEST_ACFS/state.json" > "$TEST_ACFS/state.json.tmp" && mv "$TEST_ACFS/state.json.tmp" "$TEST_ACFS/state.json"
 
     local progress_file="$TEST_HOME/progress.json"
 
@@ -12648,14 +12684,16 @@ test_credential_support_is_collected_by_real_bundle_cli() {
 
 credential_doctor_setup() {
     credential_report_setup "$1"
+    local fixture_user="acfs_credential_fixture"
+    [[ "$EUID" -eq 0 ]] && fixture_user="root"
     mkdir -p "$PROTOCOL_HOME/.acfs/bin" "$PROTOCOL_HOME/.acfs/scripts/lib"
     cp "$SERVICES_SETUP_SH" "$PROTOCOL_HOME/.acfs/scripts/services-setup.sh"
-    cp "$REPO_ROOT/scripts/lib/logging.sh" "$REPO_ROOT/scripts/lib/gum_ui.sh" "$PROTOCOL_HOME/.acfs/scripts/lib/"
+    cp "$REPO_ROOT/scripts/lib/logging.sh" "$REPO_ROOT/scripts/lib/gum_ui.sh" "$REPO_ROOT/scripts/lib/state.sh" "$PROTOCOL_HOME/.acfs/scripts/lib/"
     cp "$DOCTOR_SH" "$PROTOCOL_HOME/.acfs/bin/acfs"
     # Existing doctor tests source its real definitions without the final main.
     sed '$d' "$DOCTOR_SH" > "$PROTOCOL_HOME/.acfs/scripts/lib/sourceable-doctor.sh"
-    jq -n --arg home "$PROTOCOL_HOME" \
-        '{target_user:"acfs_credential_fixture",target_home:$home,bin_dir:($home+"/.local/bin"),mode:"safe"}' \
+    jq -n --arg user "$fixture_user" --arg home "$PROTOCOL_HOME" \
+        '{target_user:$user,target_home:$home,bin_dir:($home+"/.local/bin"),mode:"safe"}' \
         > "$PROTOCOL_HOME/.acfs/state.json"
 }
 

@@ -134,7 +134,7 @@ confirm_resume() { trace normal_install_ready; exit 0; }
             SKIP_PREFLIGHT='false', SKIP_UBUNTU_UPGRADE='false', ACFS_CLI_PROFILE='',
             ACFS_EXPLICIT_TARGETED_SELECTION='false', TARGET_UBUNTU_VERSION='26.04',
             TARGET_UBUNTU_VERSION_EXPLICIT='false', ACFS_REF='main',
-            ACFS_CHECKSUMS_REF='main', ACFS_DISTRO_FAMILY='debian',
+            ACFS_CHECKSUMS_REF='main', ACFS_DISTRO_FAMILY='ubuntu',
             ACFS_REPO_OWNER='fixture', ACFS_REPO_NAME='fixture', YELLOW='', NC='',
             TEST_OS='ubuntu', TEST_OS_STATUS='0', TEST_STAGE='not_started',
             TEST_CHECKPOINT_STATUS='0', TEST_UPGRADE_STATUS='0', TEST_UPGRADE_EXITS='false',
@@ -171,7 +171,7 @@ confirm_resume() { trace normal_install_ready; exit 0; }
     def test_declined_fresh_install_never_reaches_base_dependencies(self):
         # On Arch, ensure_base_deps' first package install is a full
         # `pacman -Syu`; an interactive user who declines must not get it.
-        for family in ('debian', 'arch'):
+        for family in ('ubuntu', 'arch'):
             with self.subTest(family=family):
                 result, events, _ = self.run_main(
                     overrides={'YES_MODE': 'false', 'ACFS_DISTRO_FAMILY': family},

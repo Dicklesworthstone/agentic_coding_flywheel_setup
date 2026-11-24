@@ -4505,6 +4505,19 @@ EOF
         return 1
     fi
 
+    local symlink_desc=""
+    symlink_desc="$(jq -r 'select(.category == "symlink") | .description' "$ACFS_CHANGES_FILE" | tail -n 1)"
+    if [[ "$symlink_desc" != "Ensured mcp-agent-mail resolves to installed Rust server CLI" ]]; then
+        echo "  Expected server-only symlink description, got: $symlink_desc"
+        cleanup_test_env
+        return 1
+    fi
+    if ! printf '%s\n' "${FIXES_APPLIED[@]}" | grep -Fq 'fix.stack.mcp_agent_mail.symlink|Ensured mcp-agent-mail resolves to installed Rust server CLI'; then
+        echo "  FIXES_APPLIED missing accurate server-only symlink description"
+        cleanup_test_env
+        return 1
+    fi
+
     cleanup_test_env
     return 0
 )
@@ -4650,11 +4663,23 @@ EOF
         return 1
     fi
 
-    local chg_id="" backup_count=""
+    local chg_id="" backup_count="" chg_desc="" chg_undo=""
     chg_id="$(jq -r 'select(.category == "symlink") | .id' "$ACFS_CHANGES_FILE" | tail -n 1)"
     backup_count="$(jq -r --arg id "$chg_id" 'select(.id == $id) | (.backups | length)' "$ACFS_CHANGES_FILE" | tail -n 1)"
+    chg_desc="$(jq -r --arg id "$chg_id" 'select(.id == $id) | .description' "$ACFS_CHANGES_FILE" | tail -n 1)"
+    chg_undo="$(jq -r --arg id "$chg_id" 'select(.id == $id) | .undo_command' "$ACFS_CHANGES_FILE" | tail -n 1)"
     if [[ -z "$chg_id" || "$backup_count" != "2" ]]; then
         echo "  Expected symlink change with 2 backups, got chg_id=$chg_id backups=$backup_count"
+        cleanup_test_env
+        return 1
+    fi
+    if [[ "$chg_desc" != "Ensured am and mcp-agent-mail resolve to installed Rust CLIs" ]]; then
+        echo "  Expected combined symlink description, got: $chg_desc"
+        cleanup_test_env
+        return 1
+    fi
+    if [[ "$chg_undo" != "("*")" ]]; then
+        echo "  Expected subshell-wrapped undo_command so interactive/eval replay cannot exit caller shell, got: $chg_undo"
         cleanup_test_env
         return 1
     fi

@@ -1644,7 +1644,8 @@ class SudoPolicyResumeTests(unittest.TestCase):
             ["acfs_configure_sudo_policy"])
 
     def run_policy(self, mode, *, family="ubuntu", content=None, completed=False,
-                   fail_validation=False, custom_kind=None, target_user="ubuntu"):
+                   fail_validation=False, custom_kind=None, target_user="ubuntu",
+                   stub_ubuntu_uid=True):
         folder = Path(tempfile.mkdtemp(prefix="acfs-sudo-policy-"))
         policy_dir = folder / "etc/sudoers.d"
         policy_dir.mkdir(parents=True)
@@ -1673,7 +1674,8 @@ class SudoPolicyResumeTests(unittest.TestCase):
             "[[ \"${TEST_VISUDO_FAIL:-false}\" != true ]]\n")
         (folder / "bin/id").write_text(
             "#!/bin/bash\nif [[ \"$*\" == '-u ubuntu' ]]; then printf '42424\\n'; "
-            "else /usr/bin/id \"$@\"; fi\n")
+            "else /usr/bin/id \"$@\"; fi\n"
+            if stub_ubuntu_uid else "#!/bin/bash\nexec /usr/bin/id \"$@\"\n")
         for path in (folder / "bin").iterdir():
             path.chmod(0o755)
         fixture_source = self.installer.replace("/etc/sudoers", str(folder / "etc/sudoers"))
@@ -1817,7 +1819,8 @@ stat() { "$TEST_ROOT/bin/stat" "$@"; }
         user = subprocess.check_output(["/usr/bin/id", "-un"], text=True, timeout=10).strip()
         original = f"{user} ALL=(ALL) NOPASSWD:ALL\n"
         result, policy, state, events = self.run_policy(
-            "safe", target_user=user, content=original, completed=True)
+            "safe", target_user=user, content=original, completed=True,
+            stub_ubuntu_uid=False)
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("requires a root installer process", result.stderr)
         self.assertEqual(policy.read_text(), original)

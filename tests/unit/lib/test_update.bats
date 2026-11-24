@@ -1410,19 +1410,19 @@ EOF
     run grep -F 'bun_runtime_home="$(update_runtime_shell_home 2>/dev/null || true)"' "$update"
     assert_success
 
-    run grep -F 'output=$(update_run_in_target_context "" "$bun_bin" install -g --trust "$pkg" 2>&1)' "$update"
+    run grep -F 'if output=$(update_run_bounded_in_target_context "$bun_bin" install -g --trust "$pkg" 2>&1); then' "$update"
     assert_success
 
     run grep -F 'output=$("$bun_bin" install -g --trust "$pkg" 2>&1)' "$update"
     assert_failure
 
-    run grep -F 'run_cmd "Antigravity CLI" update_run_in_target_context "" "$agy_bin" update' "$update"
+    run grep -F 'run_cmd "Antigravity CLI" update_native_agent_and_verify "$agy_bin" "${UPDATE_CMD_TIMEOUT:-1800}" update' "$update"
     assert_success
 
-    run grep -F 'run_cmd_bun_with_retry "Wrangler (Cloudflare)" update_run_in_target_context "" "$bun_bin" install -g --trust wrangler@latest' "$update"
+    run grep -F 'run_cmd_bun_with_retry "Wrangler (Cloudflare)" update_bun_cloud_package "$bun_bin" wrangler@latest' "$update"
     assert_success
 
-    run grep -F 'run_cmd_bun_with_retry "Vercel CLI" update_run_in_target_context "" "$bun_bin" install -g --trust vercel@latest' "$update"
+    run grep -F 'run_cmd_bun_with_retry "Vercel CLI" update_bun_cloud_package "$bun_bin" vercel@latest' "$update"
     assert_success
 
     run grep -F 'run_cmd_bun_with_retry "Gemini CLI" update_run_in_target_context "" "$bun_bin" install -g --trust @google/gemini-cli@latest' "$update"

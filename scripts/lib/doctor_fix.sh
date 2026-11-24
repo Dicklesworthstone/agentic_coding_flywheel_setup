@@ -3389,7 +3389,7 @@ fix_mcp_agent_mail() {
                         }
                     fi
 
-                    symlink_restore_command="acfs_restore_rc=0; { $am_restore_command; } || acfs_restore_rc=\$?; { $server_restore_command; } || acfs_restore_rc=\$?; exit \$acfs_restore_rc"
+                    symlink_restore_command="( acfs_restore_rc=0; { $am_restore_command; } || acfs_restore_rc=\$?; { $server_restore_command; } || acfs_restore_rc=\$?; exit \$acfs_restore_rc )"
                     symlink_files_json="$(doctor_fix_files_json "$am_dst" "$mcp_server_dst")"
                     if [[ "$am_backup_json" == '[]' && "$server_backup_json" == '[]' ]]; then
                         symlink_backup_json='[]'
@@ -3445,10 +3445,17 @@ fix_mcp_agent_mail() {
                     return 1
                 fi
 
+                local symlink_fix_desc="Ensured am resolves to installed Rust CLI"
+                if [[ "$need_am_link" == "true" && "$need_server_link" == "true" ]]; then
+                    symlink_fix_desc="Ensured am and mcp-agent-mail resolve to installed Rust CLIs"
+                elif [[ "$need_am_link" != "true" && "$need_server_link" == "true" ]]; then
+                    symlink_fix_desc="Ensured mcp-agent-mail resolves to installed Rust server CLI"
+                fi
+
                 if ! doctor_fix_record_change_or_rollback \
                     "$symlink_restore_command" \
                     false \
-                    "symlink" "Ensured am resolves to installed Rust CLI" \
+                    "symlink" "$symlink_fix_desc" \
                     "$symlink_restore_command" \
                     false "info" "$symlink_files_json" "$symlink_backup_json" "[]"; then
                     FIX_FAILED=$((FIX_FAILED + 1))
@@ -3456,8 +3463,8 @@ fix_mcp_agent_mail() {
                 fi
 
                 hash -r
-                doctor_fix_log INFO "Ensured am resolves to the installed Rust CLI"
-                FIXES_APPLIED+=("fix.stack.mcp_agent_mail.symlink|Ensured am resolves to installed Rust CLI")
+                doctor_fix_log INFO "$symlink_fix_desc"
+                FIXES_APPLIED+=("fix.stack.mcp_agent_mail.symlink|$symlink_fix_desc")
                 FIX_APPLIED=$((FIX_APPLIED + 1))
                 fixed_any=true
             fi
@@ -3489,6 +3496,19 @@ fix_mcp_agent_mail() {
                 doctor_fix_log ERROR "Installed MCP Agent Mail CLI but failed to repair am symlink"
                 FIX_FAILED=$((FIX_FAILED + 1))
                 return 1
+            fi
+            if [[ -x "$mcp_server_src" ]]; then
+                local installed_server_cli=""
+                local installed_server_target=""
+                local installed_server_src_target=""
+                installed_server_cli="$(doctor_fix_agent_mail_server_cli_path 2>/dev/null || true)"
+                installed_server_target="$(doctor_fix_resolve_path_target "$installed_server_cli" 2>/dev/null || true)"
+                installed_server_src_target="$(doctor_fix_resolve_path_target "$mcp_server_src" 2>/dev/null || true)"
+                if [[ -z "$installed_server_target" || "$installed_server_target" != "$installed_server_src_target" ]]; then
+                    doctor_fix_log ERROR "Installed MCP Agent Mail CLI but failed to repair mcp-agent-mail symlink"
+                    FIX_FAILED=$((FIX_FAILED + 1))
+                    return 1
+                fi
             fi
             am_bin="$(doctor_fix_agent_mail_bin 2>/dev/null || true)"
             if [[ -n "$am_bin" ]]; then

@@ -39,7 +39,14 @@ teardown() {
 }
 
 @test "update and doctor-fix runners pin BUN_INSTALL to the target home" {
-    grep -Eq '^[[:space:]]*local -a env_args=\(.*"BUN_INSTALL=\$target_home/\.bun".*\)$' "$PROJECT_ROOT/scripts/lib/update.sh" \
+    local update_body=""
+    update_body="$(awk '
+        /^update_run_in_target_context\(\) \{/ { capture=1 }
+        capture { print }
+        capture && /^\}$/ { exit }
+    ' "$PROJECT_ROOT/scripts/lib/update.sh")"
+    [[ -n "$update_body" ]] || fail "update_run_in_target_context not found in scripts/lib/update.sh"
+    grep -Eq '^[[:space:]]*(local -a )?env_args\+?\=\(.*"BUN_INSTALL=\$target_home/\.bun".*\)$' <<< "$update_body" \
         || fail "update_run_in_target_context does not pin BUN_INSTALL"
     grep -Fq '"BUN_INSTALL=$runtime_home/.bun"' "$PROJECT_ROOT/scripts/lib/doctor_fix.sh" \
         || fail "doctor_fix_build_runtime_env_args does not pin BUN_INSTALL"
