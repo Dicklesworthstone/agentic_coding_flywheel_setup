@@ -1184,7 +1184,9 @@ test("a complete toolset retains the original beginner guide", async () => {
   const commands = view.cards.map((card) => card.props.command);
   assert.ok(commands.includes("cc"));
   assert.ok(commands.includes("ntm new myproject"));
-  assert.match(view.text(), /Your First 5 Minutes/);
+  assert.ok(commands.includes("acfs newproj --guided"));
+  assert.match(view.text(), /Your Daily Workflow/);
+  assert.match(view.text(), /Finding Your Way Around/);
 });
 
 for (const missing of [
@@ -1196,7 +1198,8 @@ for (const missing of [
     f.select(fullGuideModules.filter((id) => id !== missing));
     const view = await completedOnboarding(f);
     assert.match(view.text(), /Continue with your selected setup/);
-    assert.doesNotMatch(view.text(), /Your First 5 Minutes/);
+    assert.doesNotMatch(view.text(), /Your Daily Workflow/);
+    assert.doesNotMatch(view.text(), /Finding Your Way Around/);
   });
 }
 

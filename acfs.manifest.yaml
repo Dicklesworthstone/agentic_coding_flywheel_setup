@@ -436,9 +436,9 @@ modules:
     pre_install_check:
       run_as: current
       command: 'command -v apt-get >/dev/null 2>&1 && [[ "${ACFS_DISTRO_FAMILY:-ubuntu}" != arch ]]'
-      skip_message: "installs with apt-get on Debian/Ubuntu only. Install the CLI tools with your package manager instead (Arch: sudo pacman -S --needed ripgrep tmux fzf direnv jq github-cli git-lfs lsof bind openbsd-netcat strace rsync), then re-run"
+      skip_message: "installs with apt-get on Debian/Ubuntu only. Install the CLI tools with your package manager instead (Arch: sudo pacman -S --needed ripgrep tmux fzf direnv jq github-cli git-lfs lsof bind openbsd-netcat strace rsync zstd minisign), then re-run"
     install:
-      - apt-get -o DPkg::Lock::Timeout=120 install -y ripgrep tmux fzf direnv jq gh git-lfs lsof dnsutils netcat-openbsd strace rsync
+      - apt-get -o DPkg::Lock::Timeout=120 install -y ripgrep tmux fzf direnv jq gh git-lfs lsof dnsutils netcat-openbsd strace rsync zstd minisign
       - apt-get -o DPkg::Lock::Timeout=120 install -y lsd || true
       - apt-get -o DPkg::Lock::Timeout=120 install -y eza || true
       - apt-get -o DPkg::Lock::Timeout=120 install -y bat || apt-get -o DPkg::Lock::Timeout=120 install -y batcat || true
@@ -460,6 +460,8 @@ modules:
       - command -v lsof
       - command -v dig
       - command -v nc
+      - command -v zstd
+      - command -v minisign
       - command -v lsd || command -v eza || true
 
   - id: tools.lazygit
@@ -2015,16 +2017,24 @@ modules:
           }
 
           agent_mail_readiness_ready() {
+            local max_attempts="${1:-1}"
+            local attempt=0
             local readiness_body=""
             local readiness_url=""
 
-            for readiness_url in \
-              http://127.0.0.1:8765/health/readiness \
-              http://127.0.0.1:8765/health
-            do
-              readiness_body="$(agent_mail_service_curl -fsS --max-time 5 "$readiness_url" 2>/dev/null)" || continue
-              if printf '%s\n' "$readiness_body" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ready"([[:space:]]*[,}])'; then
-                return 0
+            while (( attempt < max_attempts )); do
+              attempt=$((attempt + 1))
+              for readiness_url in \
+                http://127.0.0.1:8765/health/readiness \
+                http://127.0.0.1:8765/health
+              do
+                readiness_body="$(agent_mail_service_curl -fsS --max-time 5 "$readiness_url" 2>/dev/null)" || continue
+                if printf '%s\n' "$readiness_body" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ready"([[:space:]]*[,}])'; then
+                  return 0
+                fi
+              done
+              if (( attempt < max_attempts )); then
+                sleep 1
               fi
             done
 
@@ -2080,7 +2090,7 @@ modules:
 
           launch_agent_mail_fallback() {
             if agent_mail_service_curl -fsS --max-time 5 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1 && \
-               agent_mail_readiness_ready; then
+               agent_mail_readiness_ready 4; then
               return 0
             fi
 

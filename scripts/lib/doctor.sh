@@ -4110,7 +4110,9 @@ check_stack() {
                         break 2
                     fi
                 done
-                [[ "$am_ready_attempt" -lt 4 ]] && sleep 1
+                if [[ "$am_ready_attempt" -lt 4 ]]; then
+                    sleep 1
+                fi
             done
         fi
 

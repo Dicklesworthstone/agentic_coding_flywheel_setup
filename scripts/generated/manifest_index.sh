@@ -6,7 +6,7 @@
 # ============================================================
 # Data-only manifest index. Safe to source.
 
-ACFS_MANIFEST_SHA256="031ad0c2b4f8c04750e8c309bf8ebdf5bed07f0972938f3ecd232ae6a7c4f06e"
+ACFS_MANIFEST_SHA256="7782b916105c4e4c6603f99f39e0192e1317b15d2eb3c102dacf6d69f734e772"
 
 ACFS_MODULES_IN_ORDER=(
   "base.system"
@@ -1037,7 +1037,7 @@ declare -gA ACFS_MODULE_VERIFY_COUNT=(
   ['shell.zsh']="1"
   ['shell.login']="1"
   ['shell.omz']="4"
-  ['cli.modern']="12"
+  ['cli.modern']="14"
   ['tools.lazygit']="1"
   ['tools.lazydocker']="1"
   ['network.tailscale']="2"
@@ -1319,6 +1319,8 @@ user_login_shell_configured'
   ['cli.modern.9']='command -v lsof'
   ['cli.modern.10']='command -v dig'
   ['cli.modern.11']='command -v nc'
+  ['cli.modern.12']='command -v zstd'
+  ['cli.modern.13']='command -v minisign'
   ['tools.lazygit.0']='lazygit --version'
   ['tools.lazydocker.0']='lazydocker --version'
   ['network.tailscale.0']='tailscale version'

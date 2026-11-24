@@ -2809,7 +2809,8 @@ fix_ssh_keepalive() {
 # Fixer: MCP Agent Mail (fix.stack.mcp_agent_mail)
 # ============================================================
 
-doctor_fix_agent_mail_cli_path() {
+doctor_fix_agent_mail_command_path() {
+    local command_name="${1:-am}"
     local runtime_home=""
     local primary_bin=""
     local candidate=""
@@ -2819,13 +2820,13 @@ doctor_fix_agent_mail_cli_path() {
 
     primary_bin="$(doctor_fix_runtime_bin_dir)"
     for candidate in \
-        "$primary_bin/am" \
-        "$runtime_home/.local/bin/am" \
-        "$runtime_home/.acfs/bin/am" \
-        "$runtime_home/.cargo/bin/am" \
-        "$runtime_home/.bun/bin/am" \
-        "$runtime_home/.atuin/bin/am" \
-        "$runtime_home/go/bin/am"; do
+        "$primary_bin/$command_name" \
+        "$runtime_home/.local/bin/$command_name" \
+        "$runtime_home/.acfs/bin/$command_name" \
+        "$runtime_home/.cargo/bin/$command_name" \
+        "$runtime_home/.bun/bin/$command_name" \
+        "$runtime_home/.atuin/bin/$command_name" \
+        "$runtime_home/go/bin/$command_name"; do
         if [[ -x "$candidate" ]]; then
             printf '%s\n' "$candidate"
             return 0
@@ -2833,6 +2834,14 @@ doctor_fix_agent_mail_cli_path() {
     done
 
     return 1
+}
+
+doctor_fix_agent_mail_cli_path() {
+    doctor_fix_agent_mail_command_path "am"
+}
+
+doctor_fix_agent_mail_server_cli_path() {
+    doctor_fix_agent_mail_command_path "mcp-agent-mail"
 }
 
 doctor_fix_resolve_path_target() {
@@ -3024,16 +3033,24 @@ agent_mail_fix_wait_for_health() {
 }
 
 agent_mail_fix_readiness_ready() {
+    local max_attempts="${1:-4}"
+    local attempt=0
     local readiness_body=""
     local readiness_url=""
 
-    for readiness_url in \
-        http://127.0.0.1:8765/health/readiness \
-        http://127.0.0.1:8765/health
-    do
-        readiness_body="$(doctor_fix_system_curl -fsS --max-time 5 "$readiness_url" 2>/dev/null)" || continue
-        if printf '%s\n' "$readiness_body" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ready"([[:space:]]*[,}])'; then
-            return 0
+    while (( attempt < max_attempts )); do
+        attempt=$((attempt + 1))
+        for readiness_url in \
+            http://127.0.0.1:8765/health/readiness \
+            http://127.0.0.1:8765/health
+        do
+            readiness_body="$(doctor_fix_system_curl -fsS --max-time 5 "$readiness_url" 2>/dev/null)" || continue
+            if printf '%s\n' "$readiness_body" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ready"([[:space:]]*[,}])'; then
+                return 0
+            fi
+        done
+        if (( attempt < max_attempts )); then
+            sleep 1
         fi
     done
 
@@ -3103,6 +3120,7 @@ agent_mail_fix_launch_fallback() {
     local db_url=""
     local env_bin=""
     local nohup_bin=""
+    local setsid_bin=""
 
     am_bin="$(doctor_fix_agent_mail_bin 2>/dev/null || true)"
     [[ -n "$am_bin" ]] || return 1
@@ -3115,6 +3133,7 @@ agent_mail_fix_launch_fallback() {
 
     env_bin="$(doctor_fix_lifecycle_binary_path env 2>/dev/null || true)"
     nohup_bin="$(doctor_fix_lifecycle_binary_path nohup 2>/dev/null || true)"
+    setsid_bin="$(doctor_fix_system_binary_path setsid 2>/dev/null || true)"
     if [[ -z "$env_bin" || -z "$nohup_bin" ]]; then
         doctor_fix_log ERROR "Cannot launch the Agent Mail fallback because env or nohup is unavailable"
         return 1
@@ -3129,13 +3148,23 @@ agent_mail_fix_launch_fallback() {
         agent_mail_fix_stop_fallback || return 1
     fi
 
-    "$nohup_bin" "$env_bin" \
-        RUST_LOG=info \
-        STORAGE_ROOT="$storage_root" \
-        DATABASE_URL="$db_url" \
-        HTTP_ALLOW_LOCALHOST_UNAUTHENTICATED=true \
-        "$am_bin" serve-http --no-tui --host 127.0.0.1 --port 8765 --path "$am_mcp_path" \
-        >>"$fallback_log_file" 2>&1 < /dev/null &
+    if [[ -n "$setsid_bin" ]]; then
+        "$setsid_bin" "$nohup_bin" "$env_bin" \
+            RUST_LOG=info \
+            STORAGE_ROOT="$storage_root" \
+            DATABASE_URL="$db_url" \
+            HTTP_ALLOW_LOCALHOST_UNAUTHENTICATED=true \
+            "$am_bin" serve-http --no-tui --host 127.0.0.1 --port 8765 --path "$am_mcp_path" \
+            >>"$fallback_log_file" 2>&1 < /dev/null &
+    else
+        "$nohup_bin" "$env_bin" \
+            RUST_LOG=info \
+            STORAGE_ROOT="$storage_root" \
+            DATABASE_URL="$db_url" \
+            HTTP_ALLOW_LOCALHOST_UNAUTHENTICATED=true \
+            "$am_bin" serve-http --no-tui --host 127.0.0.1 --port 8765 --path "$am_mcp_path" \
+            >>"$fallback_log_file" 2>&1 < /dev/null &
+    fi
     echo $! > "$fallback_pid_file"
 }
 
@@ -3241,6 +3270,8 @@ fix_mcp_agent_mail() {
     local runtime_user=""
     local am_src=""
     local am_dst=""
+    local mcp_server_src=""
+    local mcp_server_dst=""
     local storage_root=""
     local unit_file=""
     local runtime_probe_bin=""
@@ -3248,6 +3279,8 @@ fix_mcp_agent_mail() {
     runtime_user="$(doctor_fix_runtime_user)"
     am_src="$runtime_home/mcp_agent_mail/am"
     am_dst="$runtime_home/.local/bin/am"
+    mcp_server_src="$runtime_home/mcp_agent_mail/mcp-agent-mail"
+    mcp_server_dst="$runtime_home/.local/bin/mcp-agent-mail"
     storage_root="$runtime_home/.mcp_agent_mail_git_mailbox_repo"
     unit_file="$runtime_home/.config/systemd/user/agent-mail.service"
 
@@ -3273,26 +3306,52 @@ fix_mcp_agent_mail() {
         local resolved_am_cli=""
         local resolved_am_target=""
         local am_src_target=""
+        local resolved_server_cli=""
+        local resolved_server_target=""
+        local mcp_server_src_target=""
+        local need_am_link=false
+        local need_server_link=false
+
         resolved_am_cli="$(doctor_fix_agent_mail_cli_path 2>/dev/null || true)"
         resolved_am_target="$(doctor_fix_resolve_path_target "$resolved_am_cli" 2>/dev/null || true)"
         am_src_target="$(doctor_fix_resolve_path_target "$am_src" 2>/dev/null || true)"
         if [[ -z "$resolved_am_target" || "$resolved_am_target" != "$am_src_target" ]]; then
+            need_am_link=true
+        fi
+
+        if [[ -x "$mcp_server_src" ]]; then
+            resolved_server_cli="$(doctor_fix_agent_mail_server_cli_path 2>/dev/null || true)"
+            resolved_server_target="$(doctor_fix_resolve_path_target "$resolved_server_cli" 2>/dev/null || true)"
+            mcp_server_src_target="$(doctor_fix_resolve_path_target "$mcp_server_src" 2>/dev/null || true)"
+            if [[ -z "$resolved_server_target" || "$resolved_server_target" != "$mcp_server_src_target" ]]; then
+                need_server_link=true
+            fi
+        fi
+
+        if [[ "$need_am_link" == "true" || "$need_server_link" == "true" ]]; then
             if [[ "$DOCTOR_FIX_DRY_RUN" == "true" ]]; then
                 FIXES_DRY_RUN+=("fix.stack.mcp_agent_mail.symlink|Ensure am symlink points at installed Rust CLI|$am_dst|ln -sf $am_src $am_dst")
                 doctor_fix_log DRY "Ensure am symlink points at $am_src"
             else
                 local symlink_backup_json='[]'
+                local am_backup_json='[]'
+                local server_backup_json='[]'
+                local am_restore_command=""
+                local server_restore_command=""
                 local symlink_restore_command=""
+                local symlink_files_json=""
+                local jq_bin=""
+
                 if [[ -e "$am_dst" || -L "$am_dst" ]]; then
-                    symlink_backup_json="$(create_backup "$am_dst" "doctor-fix-agent-mail-symlink" 2>/dev/null || echo '[]')"
-                    symlink_restore_command="$(autofix_backup_restore_command "$symlink_backup_json" 2>/dev/null || true)"
-                    if [[ -z "$symlink_restore_command" || "$symlink_backup_json" == '[]' ]]; then
+                    am_backup_json="$(create_backup "$am_dst" "doctor-fix-agent-mail-symlink" 2>/dev/null || echo '[]')"
+                    am_restore_command="$(autofix_backup_restore_command "$am_backup_json" 2>/dev/null || true)"
+                    if [[ -z "$am_restore_command" || "$am_backup_json" == '[]' ]]; then
                         doctor_fix_log ERROR "Failed to back up existing am entry before repairing CLI symlink"
                         FIX_FAILED=$((FIX_FAILED + 1))
                         return 1
                     fi
                 else
-                    symlink_restore_command="$(doctor_fix_build_remove_path_rollback \
+                    am_restore_command="$(doctor_fix_build_remove_path_rollback \
                         "$am_dst" \
                         "$(doctor_fix_nearest_existing_parent "$am_dst")")" || {
                         doctor_fix_log ERROR "Failed to build rollback command for new Agent Mail CLI symlink"
@@ -3301,10 +3360,47 @@ fix_mcp_agent_mail() {
                     }
                 fi
 
+                symlink_restore_command="$am_restore_command"
+                symlink_backup_json="$am_backup_json"
+                symlink_files_json="$(doctor_fix_files_json "$am_dst")"
+
+                if [[ -x "$mcp_server_src" ]]; then
+                    if [[ -e "$mcp_server_dst" || -L "$mcp_server_dst" ]]; then
+                        server_backup_json="$(create_backup "$mcp_server_dst" "doctor-fix-agent-mail-server-symlink" 2>/dev/null || echo '[]')"
+                        server_restore_command="$(autofix_backup_restore_command "$server_backup_json" 2>/dev/null || true)"
+                        if [[ -z "$server_restore_command" || "$server_backup_json" == '[]' ]]; then
+                            doctor_fix_log ERROR "Failed to back up existing mcp-agent-mail entry before repairing CLI symlink"
+                            FIX_FAILED=$((FIX_FAILED + 1))
+                            return 1
+                        fi
+                    else
+                        server_restore_command="$(doctor_fix_build_remove_path_rollback \
+                            "$mcp_server_dst" \
+                            "$(doctor_fix_nearest_existing_parent "$mcp_server_dst")")" || {
+                            doctor_fix_log ERROR "Failed to build rollback command for new mcp-agent-mail CLI symlink"
+                            FIX_FAILED=$((FIX_FAILED + 1))
+                            return 1
+                        }
+                    fi
+
+                    symlink_restore_command="$am_restore_command; $server_restore_command"
+                    symlink_files_json="$(doctor_fix_files_json "$am_dst" "$mcp_server_dst")"
+                    jq_bin="$(doctor_fix_system_binary_path jq 2>/dev/null || true)"
+                    if [[ -n "$jq_bin" ]]; then
+                        symlink_backup_json="$("$jq_bin" -cn \
+                            --argjson am_b "$am_backup_json" \
+                            --argjson srv_b "$server_backup_json" \
+                            '[$am_b, $srv_b] | map(select(type == "object"))' 2>/dev/null || echo '[]')"
+                    fi
+                fi
+
                 if ! ACFS_STACK_TRUST_TARGET_HOME=true TARGET_USER="$runtime_user" TARGET_HOME="$runtime_home" _stack_repair_agent_mail_cli_symlink; then
                     doctor_fix_log ERROR "Failed to repair Agent Mail CLI symlink"
-                    if ! doctor_fix_run_rollback_command "$symlink_restore_command" false; then
+                    if ! doctor_fix_run_rollback_command "$am_restore_command" false; then
                         doctor_fix_log ERROR "Failed to restore the prior Agent Mail CLI entry"
+                    fi
+                    if [[ -n "$server_restore_command" ]] && ! doctor_fix_run_rollback_command "$server_restore_command" false; then
+                        doctor_fix_log ERROR "Failed to restore the prior mcp-agent-mail CLI entry"
                     fi
                     FIX_FAILED=$((FIX_FAILED + 1))
                     return 1
@@ -3313,10 +3409,21 @@ fix_mcp_agent_mail() {
                 hash -r
                 resolved_am_cli="$(doctor_fix_agent_mail_cli_path 2>/dev/null || true)"
                 resolved_am_target="$(doctor_fix_resolve_path_target "$resolved_am_cli" 2>/dev/null || true)"
-                if [[ -z "$resolved_am_target" || "$resolved_am_target" != "$am_src_target" ]]; then
-                    doctor_fix_log ERROR "Agent Mail CLI symlink repair completed but am still resolves away from $am_src"
-                    if ! doctor_fix_run_rollback_command "$symlink_restore_command" false; then
+                local server_verify_failed=false
+                if [[ -x "$mcp_server_src" ]]; then
+                    resolved_server_cli="$(doctor_fix_agent_mail_server_cli_path 2>/dev/null || true)"
+                    resolved_server_target="$(doctor_fix_resolve_path_target "$resolved_server_cli" 2>/dev/null || true)"
+                    if [[ -z "$resolved_server_target" || "$resolved_server_target" != "$mcp_server_src_target" ]]; then
+                        server_verify_failed=true
+                    fi
+                fi
+                if [[ -z "$resolved_am_target" || "$resolved_am_target" != "$am_src_target" || "$server_verify_failed" == "true" ]]; then
+                    doctor_fix_log ERROR "Agent Mail CLI symlink repair completed but commands still resolve away from $runtime_home/mcp_agent_mail"
+                    if ! doctor_fix_run_rollback_command "$am_restore_command" false; then
                         doctor_fix_log ERROR "Failed to restore the prior Agent Mail CLI entry"
+                    fi
+                    if [[ -n "$server_restore_command" ]] && ! doctor_fix_run_rollback_command "$server_restore_command" false; then
+                        doctor_fix_log ERROR "Failed to restore the prior mcp-agent-mail CLI entry"
                     fi
                     FIX_FAILED=$((FIX_FAILED + 1))
                     return 1
@@ -3327,7 +3434,7 @@ fix_mcp_agent_mail() {
                     false \
                     "symlink" "Ensured am resolves to installed Rust CLI" \
                     "$symlink_restore_command" \
-                    false "info" "$(doctor_fix_files_json "$am_dst")" "$symlink_backup_json" "[]"; then
+                    false "info" "$symlink_files_json" "$symlink_backup_json" "[]"; then
                     FIX_FAILED=$((FIX_FAILED + 1))
                     return 1
                 fi

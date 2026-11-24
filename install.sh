@@ -10758,16 +10758,24 @@ NTM_CONFIG_EOF
                             "$curl_bin" "$@"
                         }
                         agent_mail_readiness_ready() {
+                            local max_attempts="${1:-1}"
+                            local attempt=0
                             local readiness_body=""
                             local readiness_url=""
 
-                            for readiness_url in \
-                                http://127.0.0.1:8765/health/readiness \
-                                http://127.0.0.1:8765/health
-                            do
-                                readiness_body="$(agent_mail_service_curl -fsS --max-time 5 "$readiness_url" 2>/dev/null)" || continue
-                                if printf "%s\n" "$readiness_body" | grep -Eq "\"status\"[[:space:]]*:[[:space:]]*\"ready\"([[:space:]]*[,}])"; then
-                                    return 0
+                            while (( attempt < max_attempts )); do
+                                attempt=$((attempt + 1))
+                                for readiness_url in \
+                                    http://127.0.0.1:8765/health/readiness \
+                                    http://127.0.0.1:8765/health
+                                do
+                                    readiness_body="$(agent_mail_service_curl -fsS --max-time 5 "$readiness_url" 2>/dev/null)" || continue
+                                    if printf "%s\n" "$readiness_body" | grep -Eq "\"status\"[[:space:]]*:[[:space:]]*\"ready\"([[:space:]]*[,}])"; then
+                                        return 0
+                                    fi
+                                done
+                                if (( attempt < max_attempts )); then
+                                    sleep 1
                                 fi
                             done
 
@@ -11007,7 +11015,7 @@ UNIT_EOF
                             systemctl --user is-active --quiet agent-mail.service >/dev/null 2>&1
                         else
                             if agent_mail_service_curl -fsS --max-time 5 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1 && \
-                               agent_mail_readiness_ready; then
+                               agent_mail_readiness_ready 4; then
                                 :
                             else
                                 if [[ -f "$fallback_pid_file" ]]; then

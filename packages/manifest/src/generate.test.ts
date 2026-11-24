@@ -557,7 +557,7 @@ describe("Generated manifest_index.sh content", () => {
     const checks = cli.verify.filter((command) => !isOptionalVerifyCommand(command));
     for (const command of ["rg --version", "tmux -V", "fzf --version", "direnv version", "jq --version",
       "gh --version", "git-lfs version", "rsync --version", "strace --version",
-      "command -v lsof", "command -v dig", "command -v nc"]) {
+      "command -v lsof", "command -v dig", "command -v nc", "command -v zstd", "command -v minisign"]) {
       expect(checks).toContain(command);
     }
   });

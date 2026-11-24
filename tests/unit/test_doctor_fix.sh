@@ -4052,6 +4052,19 @@ esac
 EOF
     chmod +x "$TARGET_HOME/mcp_agent_mail/am"
 
+    cat > "$TARGET_HOME/mcp_agent_mail/mcp-agent-mail" <<'EOF'
+#!/usr/bin/env bash
+case "${1:-}" in
+    --version)
+        echo "mcp-agent-mail 1.0.0"
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+EOF
+    chmod +x "$TARGET_HOME/mcp_agent_mail/mcp-agent-mail"
+
     cat > "$TARGET_HOME/.local/bin/systemctl" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$HOME" >> "${TARGET_HOME}/systemctl-home.log"
@@ -4096,6 +4109,18 @@ EOF
 
     if [[ "$(readlink "$TARGET_HOME/.local/bin/am")" != "$TARGET_HOME/mcp_agent_mail/am" ]]; then
         echo "  Agent Mail symlink did not point at the installed Rust CLI"
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ ! -L "$TARGET_HOME/.local/bin/mcp-agent-mail" ]]; then
+        echo "  mcp-agent-mail companion symlink was not created"
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ "$(readlink "$TARGET_HOME/.local/bin/mcp-agent-mail")" != "$TARGET_HOME/mcp_agent_mail/mcp-agent-mail" ]]; then
+        echo "  mcp-agent-mail companion symlink did not point at the installed Rust server binary"
         cleanup_test_env
         return 1
     fi
@@ -4389,9 +4414,169 @@ EOF
         return 1
     fi
 
+    doctor_fix_clear_stack_agent_mail_helpers
     cleanup_test_env
     return 0
 }
+
+test_fix_mcp_agent_mail_repairs_missing_server_symlink_when_am_already_linked() (
+    setup_test_env
+
+    export TARGET_HOME="$ACFS_STATE_DIR/target-home"
+    mkdir -p "$TARGET_HOME/.local/bin" "$TARGET_HOME/mcp_agent_mail"
+    export PATH="$TARGET_HOME/.local/bin:$PATH"
+
+    start_autofix_session >/dev/null || {
+        echo "  Failed to start autofix session"
+        cleanup_test_env
+        return 1
+    }
+
+    cat > "$TARGET_HOME/mcp_agent_mail/am" <<'EOF'
+#!/usr/bin/env bash
+case "${1:-}" in
+    --version)
+        echo "am 1.0.0"
+        ;;
+    doctor)
+        case "${2:-}" in
+            drain)
+                echo '{"safe_to_mutate":true}'
+                ;;
+            repair|fix)
+                exit 0
+                ;;
+            check)
+                echo '{"healthy":true}'
+                ;;
+            *)
+                exit 1
+                ;;
+        esac
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+EOF
+    chmod +x "$TARGET_HOME/mcp_agent_mail/am"
+
+    cat > "$TARGET_HOME/mcp_agent_mail/mcp-agent-mail" <<'EOF'
+#!/usr/bin/env bash
+case "${1:-}" in
+    --version)
+        echo "mcp-agent-mail 1.0.0"
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+EOF
+    chmod +x "$TARGET_HOME/mcp_agent_mail/mcp-agent-mail"
+
+    # am symlink is already correct, but mcp-agent-mail symlink is missing
+    ln -s "$TARGET_HOME/mcp_agent_mail/am" "$TARGET_HOME/.local/bin/am"
+
+    cat > "$TARGET_HOME/.local/bin/systemctl" <<'EOF'
+#!/usr/bin/env bash
+case "${2:-}" in
+    show-environment|daemon-reload|enable|restart|is-active)
+        exit 0
+        ;;
+    *)
+        exit 1
+        ;;
+esac
+EOF
+    chmod +x "$TARGET_HOME/.local/bin/systemctl"
+
+    stub_doctor_fix_agent_mail_health_ready
+
+    if ! fix_mcp_agent_mail "fix.stack.mcp_agent_mail" >/dev/null 2>&1; then
+        echo "  fix_mcp_agent_mail should repair a missing mcp-agent-mail symlink even when am is already linked"
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ ! -L "$TARGET_HOME/.local/bin/mcp-agent-mail" ]] ||
+       [[ "$(readlink "$TARGET_HOME/.local/bin/mcp-agent-mail")" != "$TARGET_HOME/mcp_agent_mail/mcp-agent-mail" ]]; then
+        echo "  mcp-agent-mail symlink was not repaired to point at $TARGET_HOME/mcp_agent_mail/mcp-agent-mail"
+        cleanup_test_env
+        return 1
+    fi
+
+    cleanup_test_env
+    return 0
+)
+
+test_fix_mcp_agent_mail_restores_server_cli_entry_when_symlink_repair_fails() (
+    setup_test_env
+
+    export TARGET_HOME="$ACFS_STATE_DIR/target-home"
+    mkdir -p "$TARGET_HOME/.local/bin" "$TARGET_HOME/mcp_agent_mail"
+    export PATH="$TARGET_HOME/.local/bin:$PATH"
+
+    start_autofix_session >/dev/null || {
+        echo "  Failed to start autofix session"
+        cleanup_test_env
+        return 1
+    }
+
+    cat > "$TARGET_HOME/mcp_agent_mail/am" <<'EOF'
+#!/usr/bin/env bash
+echo "am 1.0.0"
+EOF
+    chmod +x "$TARGET_HOME/mcp_agent_mail/am"
+
+    cat > "$TARGET_HOME/mcp_agent_mail/mcp-agent-mail" <<'EOF'
+#!/usr/bin/env bash
+echo "mcp-agent-mail 1.0.0"
+EOF
+    chmod +x "$TARGET_HOME/mcp_agent_mail/mcp-agent-mail"
+
+    ln -s "$TARGET_HOME/mcp_agent_mail/am" "$TARGET_HOME/.local/bin/am"
+
+    cat > "$TARGET_HOME/.local/bin/mcp-agent-mail" <<'EOF'
+#!/usr/bin/env bash
+echo "original-server-binary"
+EOF
+    chmod +x "$TARGET_HOME/.local/bin/mcp-agent-mail"
+    local original_server_checksum=""
+    original_server_checksum="$(calculate_backup_checksum "$TARGET_HOME/.local/bin/mcp-agent-mail")"
+
+    doctor_fix_source_stack_lib || {
+        echo "  Failed to load stack helpers before stubbing symlink failure"
+        cleanup_test_env
+        return 1
+    }
+
+    _stack_repair_agent_mail_cli_symlink() {
+        ln -sfn "$TARGET_HOME/mcp_agent_mail/mcp-agent-mail" "$TARGET_HOME/.local/bin/mcp-agent-mail"
+        return 1
+    }
+
+    if fix_mcp_agent_mail "fix.stack.mcp_agent_mail" >/dev/null 2>&1; then
+        echo "  fix_mcp_agent_mail should fail when symlink repair returns nonzero"
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ -s "$ACFS_CHANGES_FILE" ]]; then
+        echo "  fix_mcp_agent_mail should not record changes when symlink repair fails"
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ -L "$TARGET_HOME/.local/bin/mcp-agent-mail" ]] ||
+       [[ "$(calculate_backup_checksum "$TARGET_HOME/.local/bin/mcp-agent-mail")" != "$original_server_checksum" ]]; then
+        echo "  fix_mcp_agent_mail did not restore the original mcp-agent-mail entry after a failed symlink repair"
+        cleanup_test_env
+        return 1
+    fi
+
+    cleanup_test_env
+    return 0
+)
 
 # ============================================================
 # Test: dispatch_fix routing
@@ -5329,6 +5514,8 @@ main() {
     run_test test_fix_mcp_agent_mail_uses_target_home_for_systemctl_env
     run_test test_fix_mcp_agent_mail_dry_run_reports_symlink_and_repair
     run_test test_fix_mcp_agent_mail_fails_when_symlink_repair_fails
+    run_test test_fix_mcp_agent_mail_repairs_missing_server_symlink_when_am_already_linked
+    run_test test_fix_mcp_agent_mail_restores_server_cli_entry_when_symlink_repair_fails
 
     # dispatch_fix tests
     run_test test_dispatch_fix_skips_pass

@@ -691,16 +691,24 @@ _stack_agent_mail_liveness() {
 }
 
 _stack_agent_mail_readiness() {
+    local max_attempts="${1:-1}"
+    local attempt=0
     local readiness_body=""
     local readiness_url=""
 
-    for readiness_url in \
-        http://127.0.0.1:8765/health/readiness \
-        http://127.0.0.1:8765/health
-    do
-        readiness_body="$(_stack_system_curl -fsS --max-time 10 "$readiness_url" 2>/dev/null)" || continue
-        if printf '%s\n' "$readiness_body" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ready"([[:space:]]*[,}])'; then
-            return 0
+    while (( attempt < max_attempts )); do
+        attempt=$((attempt + 1))
+        for readiness_url in \
+            http://127.0.0.1:8765/health/readiness \
+            http://127.0.0.1:8765/health
+        do
+            readiness_body="$(_stack_system_curl -fsS --max-time 10 "$readiness_url" 2>/dev/null)" || continue
+            if printf '%s\n' "$readiness_body" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ready"([[:space:]]*[,}])'; then
+                return 0
+            fi
+        done
+        if (( attempt < max_attempts )); then
+            sleep 1
         fi
     done
 
@@ -1171,14 +1179,19 @@ if ! stack_service_curl -fsS --max-time 10 http://127.0.0.1:8765/health/liveness
     exit 1
 fi
 
-for readiness_url in \
-    http://127.0.0.1:8765/health/readiness \
-    http://127.0.0.1:8765/health
-do
-    readiness_body="\$(stack_service_curl -fsS --max-time 10 "\$readiness_url" 2>/dev/null)" || continue
-    if printf '%s\n' "\$readiness_body" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ready"([[:space:]]*[,}])'; then
-        readiness_ok=true
-        break
+for readiness_attempt in 1 2 3 4; do
+    for readiness_url in \
+        http://127.0.0.1:8765/health/readiness \
+        http://127.0.0.1:8765/health
+    do
+        readiness_body="\$(stack_service_curl -fsS --max-time 10 "\$readiness_url" 2>/dev/null)" || continue
+        if printf '%s\n' "\$readiness_body" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ready"([[:space:]]*[,}])'; then
+            readiness_ok=true
+            break 2
+        fi
+    done
+    if [[ "\$readiness_attempt" -lt 4 ]]; then
+        sleep 1
     fi
 done
 [[ "\${readiness_ok:-false}" == "true" ]] || exit 1
@@ -1873,20 +1886,28 @@ agent_mail_endpoint_alive() {
 }
 
 agent_mail_endpoint_ready() {
-    agent_mail_endpoint_alive && agent_mail_readiness_ready
+    agent_mail_endpoint_alive && agent_mail_readiness_ready 4
 }
 
 agent_mail_readiness_ready() {
+    local max_attempts="${1:-1}"
+    local attempt=0
     local readiness_body=""
     local readiness_url=""
 
-    for readiness_url in \
-        http://127.0.0.1:8765/health/readiness \
-        http://127.0.0.1:8765/health
-    do
-        readiness_body="$(stack_service_curl -fsS --max-time 5 "$readiness_url" 2>/dev/null)" || continue
-        if printf '%s\n' "$readiness_body" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ready"([[:space:]]*[,}])'; then
-            return 0
+    while (( attempt < max_attempts )); do
+        attempt=$((attempt + 1))
+        for readiness_url in \
+            http://127.0.0.1:8765/health/readiness \
+            http://127.0.0.1:8765/health
+        do
+            readiness_body="$(stack_service_curl -fsS --max-time 5 "$readiness_url" 2>/dev/null)" || continue
+            if printf '%s\n' "$readiness_body" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ready"([[:space:]]*[,}])'; then
+                return 0
+            fi
+        done
+        if (( attempt < max_attempts )); then
+            sleep 1
         fi
     done
 
@@ -2025,7 +2046,7 @@ EOF
     # answers healthy and ready right now (probed here, with this caller's
     # probes; anything else means the service script restarts it as before).
     local am_already_ready=0
-    if _stack_agent_mail_healthy && _stack_agent_mail_readiness; then
+    if _stack_agent_mail_healthy && _stack_agent_mail_readiness 4; then
         am_already_ready=1
     fi
     service_cmd="export ACFS_FORCE_AGENT_MAIL_UNIT=$(printf %q "${ACFS_FORCE_AGENT_MAIL_UNIT:-0}"); export ACFS_AM_ALREADY_READY=$am_already_ready; $service_cmd"

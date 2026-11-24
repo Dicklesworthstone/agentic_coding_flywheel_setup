@@ -353,6 +353,8 @@ _http_url_host() {
 # readiness probe gets 10s -- a busy Agent Mail (e.g. SQLite maintenance)
 # can legitimately take >3s to answer readiness without being down (#362).
 _agent_mail_is_healthy() {
+    local max_attempts="${1:-4}"
+    local attempt=0
     local url_host=""
     local readiness_body=""
     local readiness_path=""
@@ -362,11 +364,17 @@ _agent_mail_is_healthy() {
     "$_CURL_BIN" -fsS --max-time 3 \
         "http://${url_host}:${ACFS_AGENT_MAIL_PORT}/health/liveness" >/dev/null 2>&1 || return 1
 
-    for readiness_path in /health/readiness /health; do
-        readiness_body="$("$_CURL_BIN" -fsS --max-time 10 \
-            "http://${url_host}:${ACFS_AGENT_MAIL_PORT}${readiness_path}" 2>/dev/null)" || continue
-        if [[ "$readiness_body" =~ \"status\"[[:space:]]*:[[:space:]]*\"ready\"([[:space:]]*[,\}]) ]]; then
-            return 0
+    while (( attempt < max_attempts )); do
+        attempt=$((attempt + 1))
+        for readiness_path in /health/readiness /health; do
+            readiness_body="$("$_CURL_BIN" -fsS --max-time 10 \
+                "http://${url_host}:${ACFS_AGENT_MAIL_PORT}${readiness_path}" 2>/dev/null)" || continue
+            if [[ "$readiness_body" =~ \"status\"[[:space:]]*:[[:space:]]*\"ready\"([[:space:]]*[,\}]) ]]; then
+                return 0
+            fi
+        done
+        if (( attempt < max_attempts )); then
+            sleep 1
         fi
     done
     return 2
@@ -390,7 +398,7 @@ _wait_for_agent_mail() {
     local waited=0
 
     while true; do
-        _agent_mail_is_healthy && return 0
+        _agent_mail_is_healthy 1 && return 0
         (( waited >= max_wait )) && return 1
         sleep 1
         waited=$((waited + 1))

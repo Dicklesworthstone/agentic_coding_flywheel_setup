@@ -1068,6 +1068,7 @@ if command -v python3 >/dev/null 2>&1; then
     if python3 - "$REPO_ROOT/scripts/generated/install_stack.sh" "$REPO_ROOT/install.sh" "$BASH" <<'PORT_HOLDER_TEST'
 import os
 import re
+import shutil
 import stat
 import subprocess
 import sys
@@ -1113,7 +1114,8 @@ def write_exec(path, content):
     os.chmod(path, stat.S_IRWXU)
 
 with tempfile.TemporaryDirectory(prefix="acfs-port-holder-") as tmp:
-    awk_path = subprocess.check_output(["which", "awk"], text=True).strip()
+    awk_path = shutil.which("awk")
+    assert awk_path, "awk not found on PATH"
 
     cases = [
         ("lsof_free_port_rc1", "lsof", f"#!{bash_bin}\nexit 1\n", ""),
@@ -1200,6 +1202,7 @@ echo ""
 echo "=== Test: Agent Mail fallback setsid detach & verify readiness lazy-refresh retry ==="
 if command -v python3 >/dev/null 2>&1; then
     if python3 - "$REPO_ROOT/scripts/generated/install_stack.sh" "$REPO_ROOT/install.sh" "$REPO_ROOT/scripts/generated/manifest_index.sh" "$BASH" <<'SETSID_AND_RETRY_TEST'
+import shutil
 import subprocess
 import sys
 
@@ -1214,7 +1217,7 @@ assert "setsid nohup env" in stack_src, "install_stack.sh missing setsid detach 
 assert "setsid nohup env" in install_src, "install.sh missing setsid detach for Agent Mail fallback"
 
 # 2. Live Linux setsid check: setsid nohup sleep detaches PGID while preserving $! == daemon PID
-if subprocess.run(["which", "setsid"], capture_output=True).returncode == 0:
+if shutil.which("setsid"):
     proc = subprocess.run(
         [
             bash_bin,
@@ -1309,6 +1312,125 @@ SETSID_AND_RETRY_TEST
     fi
 else
     echo '[SKIP] Agent Mail setsid/retry checks require Python 3'
+fi
+
+# ------------------------------------------------------------
+# Wave 4 fresh-eyes: stack.sh, doctor_fix.sh & acfs-services.sh readiness retry + setsid
+# ------------------------------------------------------------
+echo ""
+echo "=== Test: stack.sh, doctor_fix.sh & acfs-services.sh transient readiness retry + fail-closed ==="
+if command -v python3 >/dev/null 2>&1; then
+    if python3 - "$REPO_ROOT" "$BASH" <<'WAVE4_READINESS_TEST'
+import os
+import stat
+import subprocess
+import sys
+import tempfile
+
+repo_root, bash_bin = sys.argv[1:3]
+
+# 1. Verify doctor_fix.sh fallback launch uses setsid when available
+dfix_src = open(os.path.join(repo_root, "scripts/lib/doctor_fix.sh"), encoding="utf-8").read()
+assert '"$setsid_bin" "$nohup_bin" "$env_bin"' in dfix_src, "doctor_fix.sh missing setsid detach"
+
+# 2. Verify stack.sh _stack_agent_mail_readiness retries past transient 503 and fails closed when persistent
+stack_probe = r"""
+set -euo pipefail
+source "$1/scripts/lib/logging.sh"
+source "$1/scripts/lib/stack.sh"
+sleep() { :; }
+cfile="$(mktemp)"
+printf '0\n' > "$cfile"
+trap 'rm -f "$cfile"' EXIT
+_stack_system_curl() {
+  local n
+  n=$(cat "$cfile"); n=$((n + 1)); printf '%s\n' "$n" > "$cfile"
+  # Calls 1-2 (first attempt /health/readiness + /health) return 503; call 3 returns ready
+  if (( n <= 2 )); then return 22; fi
+  printf '{"status":"ready"}\n'
+}
+_stack_agent_mail_readiness 4
+test "$(cat "$cfile")" -eq 3
+
+# Planted negative: persistent 503 must fail closed
+_stack_system_curl() { return 22; }
+if _stack_agent_mail_readiness 4; then exit 1; fi
+"""
+p1 = subprocess.run([bash_bin, "-c", stack_probe, "_", repo_root], capture_output=True, text=True)
+assert p1.returncode == 0, f"stack.sh readiness retry test failed rc={p1.returncode} err={p1.stderr!r}"
+
+# 3. Verify acfs-services.sh _agent_mail_is_healthy retries past transient 503 and returns 2 on persistent failure
+with tempfile.TemporaryDirectory(prefix="acfs-svc-probe-") as tmp:
+    curl_stub = os.path.join(tmp, "fake-curl")
+    count_file = os.path.join(tmp, "count")
+    with open(count_file, "w", encoding="utf-8") as fh:
+        fh.write("0\n")
+    with open(curl_stub, "w", encoding="utf-8") as fh:
+        fh.write(
+            f"#!{bash_bin}\n"
+            'url="${@: -1}"\n'
+            'if [[ "$url" == */health/liveness ]]; then printf \'{"status":"alive"}\\n\'; exit 0; fi\n'
+            f'n=$(cat "{count_file}"); n=$((n + 1)); printf "%s\\n" "$n" > "{count_file}"\n'
+            'if [[ "${PERSISTENT_FAIL:-0}" == "1" ]]; then exit 22; fi\n'
+            'if (( n <= 2 )); then exit 22; fi\n'
+            'printf \'{"status":"ready"}\\n\'\n'
+        )
+    os.chmod(curl_stub, stat.S_IRWXU)
+    svc_probe = r"""
+set -euo pipefail
+source "$1/scripts/lib/acfs-services.sh"
+_CURL_BIN="$2"
+sleep() { :; }
+_agent_mail_is_healthy 4
+test "$(cat "$3")" -eq 3
+
+# Planted negative: persistent 503 returns rc=2 (alive, not ready)
+rc=0
+PERSISTENT_FAIL=1 _agent_mail_is_healthy 4 || rc=$?
+test "$rc" -eq 2
+"""
+    p2 = subprocess.run([bash_bin, "-c", svc_probe, "_", repo_root, curl_stub, count_file], capture_output=True, text=True)
+    assert p2.returncode == 0, f"acfs-services.sh readiness retry test failed rc={p2.returncode} err={p2.stderr!r}"
+
+# 4. Verify doctor_fix.sh agent_mail_fix_readiness_ready retries past transient 503 and fails closed
+dfix_probe = r"""
+set -euo pipefail
+source "$1/scripts/lib/logging.sh"
+source "$1/scripts/lib/autofix.sh"
+source "$1/scripts/lib/doctor_fix.sh"
+sleep() { :; }
+cfile="$(mktemp)"
+printf '0\n' > "$cfile"
+trap 'rm -f "$cfile"' EXIT
+doctor_fix_system_curl() {
+  local n
+  n=$(cat "$cfile"); n=$((n + 1)); printf '%s\n' "$n" > "$cfile"
+  if (( n <= 2 )); then return 22; fi
+  printf '{"status":"ready"}\n'
+}
+agent_mail_fix_readiness_ready
+test "$(cat "$cfile")" -eq 3
+
+# Planted negative: persistent 503 must fail closed
+doctor_fix_system_curl() { return 22; }
+if agent_mail_fix_readiness_ready; then exit 1; fi
+"""
+p3 = subprocess.run([bash_bin, "-c", dfix_probe, "_", repo_root], capture_output=True, text=True)
+assert p3.returncode == 0, f"doctor_fix.sh readiness retry test failed rc={p3.returncode} err={p3.stderr!r}"
+
+# 5. Verify install_stack.sh launch_agent_mail_fallback readiness helper retries past transient 503 and fails closed
+install_stack_src = open(os.path.join(repo_root, "scripts/generated/install_stack.sh"), encoding="utf-8").read()
+assert "agent_mail_readiness_ready 4" in install_stack_src, "install_stack.sh fallback missing readiness retry 4"
+
+print("WAVE4_READINESS_TESTS_PASS")
+WAVE4_READINESS_TEST
+    then
+        say_pass "stack.sh, doctor_fix.sh and acfs-services.sh readiness retry and setsid regressions"
+    else
+        say_fail "stack.sh, doctor_fix.sh and acfs-services.sh readiness retry and setsid regressions"
+    fi
+else
+    echo '[SKIP] Wave 4 readiness checks require Python 3'
 fi
 
 # ------------------------------------------------------------
