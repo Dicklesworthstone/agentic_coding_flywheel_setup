@@ -302,11 +302,14 @@ network_hints() {
 }
 
 @test "check_cloud prints its SSH server and Tailscale hints through the distro-aware helpers (#477)" {
-    local body=""
+    local body="" tailscale_body=""
     body="$(sed -n '/^check_cloud() {$/,/^}$/p' "$DOCTOR_SH")"
     [[ -n "$body" ]] || fail "check_cloud not found"
+    tailscale_body="$(sed -n '/^check_tailscale() {$/,/^}$/p' "$DOCTOR_SH")"
+    [[ -n "$tailscale_body" ]] || fail "check_tailscale not found"
 
-    [[ "$body" == *'"Install: $(doctor_tailscale_install_hint)"'* ]]
+    [[ "$body" == *'    check_tailscale'* ]]
+    [[ "$tailscale_body" == *'"Install: $(doctor_tailscale_install_hint)"'* ]]
     [[ "$body" == *'"$(doctor_ssh_server_start_hint)"'* ]]
     [[ "$body" == *'"$(doctor_ssh_server_install_hint)"'* ]]
     run grep -E 'apt-get|enable --now ssh"' <<<"$body"

@@ -984,6 +984,237 @@ EOF
     [ ! -e "$DOCTOR_TEST_PROBES" ]
 }
 
+doctor_dcg_settings_fixture() {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["stack.dcg","agents.claude"]}}'
+    doctor_selection_binary dcg
+    doctor_selection_binary claude
+    unset CLAUDE_CONFIG_DIR
+    mkdir -p "$TARGET_HOME/.claude"
+    printf '{}\n' > "$TARGET_HOME/.claude/settings.json"
+}
+
+doctor_dcg_registered_settings() {
+    mkdir -p "$1"
+    printf '%s\n' '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"dcg"}]}]}}' > "$1/settings.json"
+}
+
+@test "doctor DCG settings: the configured same-account directory is authoritative" {
+    doctor_dcg_settings_fixture
+    export CLAUDE_CONFIG_DIR="$BATS_TEST_TMPDIR/custom Claude configuration"
+    doctor_dcg_registered_settings "$CLAUDE_CONFIG_DIR"
+
+    check_dcg_hook_status
+    [ "$PASS_COUNT:$WARN_COUNT" = 1:0 ]
+
+    # A hook in the inactive default cannot hide a broken selected profile.
+    doctor_dcg_registered_settings "$TARGET_HOME/.claude"
+    printf '{}\n' > "$CLAUDE_CONFIG_DIR/settings.json"
+    check_dcg_hook_status
+    [ "$PASS_COUNT:$WARN_COUNT" = 1:1 ]
+    doctor_selection_json | jq -e '
+        .[0].status == "pass" and .[1].status == "warn" and
+        (.[1].details | contains("hook not registered"))' >/dev/null
+}
+
+@test "doctor DCG settings: relative and home-relative config paths match the repair location" {
+    doctor_dcg_settings_fixture
+    cd "$BATS_TEST_TMPDIR"
+    local config=""
+    for config in 'relative Claude configuration' '~/.custom Claude configuration'; do
+        export CLAUDE_CONFIG_DIR="$config"
+        case "$config" in
+            \~/*) doctor_dcg_registered_settings "$TARGET_HOME/${config#\~/}" ;;
+            *) doctor_dcg_registered_settings "$PWD/$config" ;;
+        esac
+        check_dcg_hook_status
+    done
+    [ "$PASS_COUNT:$WARN_COUNT" = 2:0 ]
+}
+
+@test "doctor DCG settings: invoking-home hooks cannot certify another target" {
+    doctor_dcg_settings_fixture
+    local caller_home="$BATS_TEST_TMPDIR/caller-home"
+    doctor_dcg_registered_settings "$caller_home/.claude"
+    # No target settings file: only the caller has a registered hook.
+    TARGET_HOME="$BATS_TEST_TMPDIR/target-without-settings"
+    mkdir -p "$TARGET_HOME"
+
+    HOME="$caller_home" check_dcg_hook_status
+    [ "$PASS_COUNT:$WARN_COUNT" = 0:1 ]
+    doctor_selection_json | jq -e '.[0].status == "warn" and (.[0].details | contains("settings.json missing"))' >/dev/null
+}
+
+@test "doctor DCG settings: another account's override is ignored and invalid same-account selectors cannot authorize repairs" {
+    doctor_dcg_settings_fixture
+    doctor_dcg_registered_settings "$TARGET_HOME/.claude"
+    export CLAUDE_CONFIG_DIR="$BATS_TEST_TMPDIR/foreign-config"
+    _acfs_doctor_resolve_current_user() { printf '%s\n' other-account; }
+    check_dcg_hook_status
+    [ "$PASS_COUNT:$WARN_COUNT" = 1:0 ]
+
+    _acfs_doctor_resolve_current_user() { printf '%s\n' "$TARGET_USER"; }
+    CLAUDE_CONFIG_DIR="$BATS_TEST_TMPDIR/custom"$'\nRU_NON_INTERACTIVE=1'
+    FIX_MODE=true
+    DOCTOR_FIX_SCOPED=true
+    check_dcg_hook_status
+    [ "$PASS_COUNT:$WARN_COUNT" = 1:1 ]
+    [ "${#DOCTOR_FIX_PENDING_IDS[@]}" -eq 0 ]
+    doctor_selection_json | jq -e '.[1].status == "warn" and (.[1].details | contains("configuration directory"))' >/dev/null
+}
+
+doctor_tailscale_fixture() {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["network.tailscale","lang.bun"],"requested_modules":["network.tailscale"]}}'
+    ACFS_DOCTOR_CI=false
+    # This fixture exercises only Tailscale; keep SSH service discovery local
+    # and avoid querying the runner's service manager.
+    _acfs_doctor_system_binary_path() {
+        case "$1" in sshd|systemctl) return 1 ;; esac
+        [[ -x "/usr/bin/$1" ]] || return 1
+        printf '/usr/bin/%s\n' "$1"
+    }
+    cat > "$DOCTOR_TEST_BIN/tailscale" <<'EOF'
+#!/bin/bash
+printf 'tailscale %s\n' "$*" >> "$DOCTOR_TEST_PROBES"
+case "$DOCTOR_TAILSCALE_CASE" in
+    running) printf '{"BackendState":"Running"}\n' ;;
+    login) printf '{"BackendState":"NeedsLogin"}\n' ;;
+    failed) printf '{"BackendState":"Running"}\n'; exit 42 ;;
+    malformed) printf 'not JSON\n' ;;
+    stalled)
+        trap '' TERM
+        sleep 12 &
+        printf '%s\n' "$!" > "$DOCTOR_TEST_CHILD_PID"
+        wait
+        printf escaped >> "$DOCTOR_TEST_ESCAPED"
+        printf '{"BackendState":"Running"}\n'
+        ;;
+    orphaned)
+        (
+            trap '' TERM
+            sleep 12
+            printf escaped >> "$DOCTOR_TEST_ESCAPED"
+            printf '{"BackendState":"Running"}\n'
+        ) &
+        printf '%s\n' "$!" > "$DOCTOR_TEST_CHILD_PID"
+        exit 0
+        ;;
+esac
+EOF
+    chmod +x "$DOCTOR_TEST_BIN/tailscale"
+    export DOCTOR_TAILSCALE_CASE=running
+}
+
+@test "doctor Tailscale: requested missing and nonzero launchers cannot pass as installed" {
+    doctor_tailscale_fixture
+    export DOCTOR_TAILSCALE_CASE=failed
+    FIX_MODE=true
+    DOCTOR_FIX_SCOPED=true
+    check_cloud
+    doctor_selection_json | jq -e '
+        any(.[]; .id == "network.tailscale" and .status == "fail" and
+            (.details | contains("exit 42")))' >/dev/null
+
+    DOCTOR_TEST_BIN="$BATS_TEST_TMPDIR/no-tailscale"
+    mkdir -p "$DOCTOR_TEST_BIN"
+    check_cloud
+    doctor_selection_json | jq -e '
+        [.[] | select(.id == "network.tailscale")] | length == 2 and
+        all(.status == "fail") and (.[1].fix | contains("--only network.tailscale"))' >/dev/null
+}
+
+@test "doctor Tailscale: successful status distinguishes connected from login-required and malformed output" {
+    doctor_tailscale_fixture
+    FIX_MODE=true
+    DOCTOR_FIX_SCOPED=true
+    local mode=""
+    for mode in running login malformed; do
+        export DOCTOR_TAILSCALE_CASE="$mode"
+        check_cloud
+    done
+    doctor_selection_json | jq -e '
+        [.[] | select(.id == "network.tailscale")] |
+        .[0].status == "pass" and .[0].details == "connected" and
+        .[1].status == "warn" and .[1].details == "needs login" and
+        .[2].status == "warn" and (.[2].details | contains("invalid status"))' >/dev/null
+    # Login requires user action. Invalid output must not authorize a repair.
+    [[ " ${DOCTOR_FIX_PENDING_IDS[*]} " != *' network.tailscale '* ]] \
+        || fail "an inconclusive or authentication-only result queued a repair"
+}
+
+@test "doctor Tailscale: a TERM-resistant status child is bounded and does not block later checks or authorize repair" {
+    doctor_tailscale_fixture
+    export DOCTOR_TAILSCALE_CASE=stalled
+    export DOCTOR_TEST_CHILD_PID="$BATS_TEST_TMPDIR/tailscale-child"
+    export DOCTOR_TEST_ESCAPED="$BATS_TEST_TMPDIR/tailscale-escaped"
+    FIX_MODE=true
+    DOCTOR_FIX_SCOPED=true
+
+    check_cloud
+    [ -s "$DOCTOR_TEST_CHILD_PID" ]
+    [ ! -e "$DOCTOR_TEST_ESCAPED" ]
+    local child_state=""
+    child_state="$(ps -o stat= -p "$(cat "$DOCTOR_TEST_CHILD_PID")" 2>/dev/null || true)"
+    [[ -z "$child_state" || "$child_state" == Z* ]] || fail "status child is still running: $child_state"
+    [[ " ${DOCTOR_FIX_PENDING_IDS[*]} " != *' network.tailscale '* ]] \
+        || fail "timeout queued a repair"
+    doctor_selection_json | jq -e '
+        any(.[]; .id == "network.tailscale" and .status == "timeout" and
+            (.details | contains("deadline")))' >/dev/null
+
+    doctor_selection_binary bun
+    check_command tool.bun Bun bun "install bun"
+    doctor_selection_json | jq -e '.[-1].id == "tool.bun" and .[-1].status == "pass"' >/dev/null
+}
+
+@test "doctor Tailscale: an exited launcher cannot leave an orphaned output writer past the deadline" {
+    doctor_tailscale_fixture
+    export DOCTOR_TAILSCALE_CASE=orphaned
+    export DOCTOR_TEST_CHILD_PID="$BATS_TEST_TMPDIR/tailscale-child"
+    export DOCTOR_TEST_ESCAPED="$BATS_TEST_TMPDIR/tailscale-escaped"
+    FIX_MODE=true
+    DOCTOR_FIX_SCOPED=true
+
+    check_cloud
+    [ -s "$DOCTOR_TEST_CHILD_PID" ]
+    [ ! -e "$DOCTOR_TEST_ESCAPED" ]
+    local child_state=""
+    child_state="$(ps -o stat= -p "$(cat "$DOCTOR_TEST_CHILD_PID")" 2>/dev/null || true)"
+    [[ -z "$child_state" || "$child_state" == Z* ]] || fail "orphaned output writer is still running: $child_state"
+    [[ " ${DOCTOR_FIX_PENDING_IDS[*]} " != *' network.tailscale '* ]] \
+        || fail "orphaned output writer queued a repair"
+    doctor_selection_json | jq -e '
+        any(.[]; .id == "network.tailscale" and .status == "timeout" and
+            (.details | contains("deadline")))' >/dev/null
+
+    doctor_selection_binary bun
+    check_command tool.bun Bun bun "install bun"
+    doctor_selection_json | jq -e '.[-1].id == "tool.bun" and .[-1].status == "pass"' >/dev/null
+}
+
+@test "doctor Tailscale: missing timeout support refuses execution and excluded tools remain unprobed" {
+    doctor_tailscale_fixture
+    _acfs_doctor_system_binary_path() {
+        case "$1" in timeout|sshd|systemctl) return 1 ;; esac
+        [[ -x "/usr/bin/$1" ]] || return 1
+        printf '/usr/bin/%s\n' "$1"
+    }
+    FIX_MODE=true
+    DOCTOR_FIX_SCOPED=true
+    check_cloud
+    [ ! -e "$DOCTOR_TEST_PROBES" ]
+    [[ " ${DOCTOR_FIX_PENDING_IDS[*]} " != *' network.tailscale '* ]] \
+        || fail "missing timeout support queued a repair"
+    doctor_selection_json | jq -e '
+        any(.[]; .id == "network.tailscale" and .status == "fail" and
+            (.details | contains("verification unavailable")))' >/dev/null
+
+    ACFS_STATE_SELECTED_MODULES=(lang.bun)
+    check_cloud
+    [ ! -e "$DOCTOR_TEST_PROBES" ]
+    doctor_selection_json | jq -e '
+        [.[] | select(.id == "network.tailscale")] | .[-1].status == "skip" and .[-1].fix == null' >/dev/null
+}
+
 @test "doctor selection: default-selected missing stack tools keep their warning policy" {
     doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["stack.dcg","stack.mcp_agent_mail","stack.ru","stack.beads_rust","stack.meta_skill","stack.rch"]}}'
     FIX_MODE=true

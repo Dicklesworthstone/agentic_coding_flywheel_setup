@@ -3679,18 +3679,34 @@ check_dcg_hook_status() {
 
     local settings_file=""
     local settings_home=""
+    local current_user="" config_dir=""
     settings_home="$(doctor_runtime_home)"
-    if [[ -f "$settings_home/.claude/settings.json" ]]; then
+    current_user="$(_acfs_doctor_resolve_current_user 2>/dev/null || true)"
+    if [[ -n "${CLAUDE_CONFIG_DIR:-}" && -n "$current_user" \
+        && "${TARGET_USER:-$current_user}" == "$current_user" ]]; then
+        # Match the repair's profile selection. An explicit directory is
+        # authoritative even when its settings are absent or unregistered;
+        # a hook in an inactive default profile cannot protect this profile.
+        case "$CLAUDE_CONFIG_DIR" in
+            '~') config_dir="$settings_home" ;;
+            \~/*) config_dir="$settings_home/${CLAUDE_CONFIG_DIR#\~/}" ;;
+            /*) config_dir="$CLAUDE_CONFIG_DIR" ;;
+            *) config_dir="$PWD/$CLAUDE_CONFIG_DIR" ;;
+        esac
+        config_dir="${config_dir%/}"
+        if [[ -z "$config_dir" || "$config_dir" == / || "$config_dir" == *$'\n'* || "$config_dir" == *$'\r'* ]]; then
+            check "stack.dcg" "DCG ($version)" "warn" \
+                "cannot verify an invalid Claude configuration directory" "" false
+            return 0
+        fi
+        settings_file="$config_dir/settings.json"
+    elif [[ -f "$settings_home/.claude/settings.json" ]]; then
         settings_file="$settings_home/.claude/settings.json"
     elif [[ -f "$settings_home/.config/claude/settings.json" ]]; then
         settings_file="$settings_home/.config/claude/settings.json"
-    elif [[ "$settings_home" != "$HOME" ]] && [[ -f "$HOME/.claude/settings.json" ]]; then
-        settings_file="$HOME/.claude/settings.json"
-    elif [[ "$settings_home" != "$HOME" ]] && [[ -f "$HOME/.config/claude/settings.json" ]]; then
-        settings_file="$HOME/.config/claude/settings.json"
     fi
 
-    if [[ -z "$settings_file" ]]; then
+    if [[ -z "$settings_file" || ! -f "$settings_file" ]]; then
         check "stack.dcg" "DCG ($version)" "warn" "hook not registered (settings.json missing)" \
             "Run: dcg install"
         return
@@ -3764,6 +3780,96 @@ check_credential_sources() {
     blank_line
 }
 
+# Probe Tailscale before interpreting its status body. A failing process can
+# still print plausible JSON; neither that body nor an unbounded fallback may
+# certify a working install. Login and inconclusive probes remain manual.
+check_tailscale() {
+    doctor_skip_unselected_check "network.tailscale" "Tailscale" && return 0
+    local doctor_ci="${ACFS_DOCTOR_CI:-false}"
+    local tailscale_bin="" timeout_bin="" jq_bin="" bash_bin="" cat_bin=""
+    local status_body="" backend_state="" probe_status=0
+    local failure_status=""
+    failure_status="$(doctor_optional_failure_status network.tailscale warn)"
+    tailscale_bin="$(doctor_binary_path tailscale 2>/dev/null || true)"
+
+    if [[ -z "$tailscale_bin" ]]; then
+        if [[ "$doctor_ci" == true && "${ACFS_STATE_SELECTION_MODE:-legacy}" != scoped ]]; then
+            check "network.tailscale" "Tailscale (not installed)" "pass" "ok in CI"
+        else
+            check "network.tailscale" "Tailscale" "$failure_status" "not installed" \
+                "Install: $(doctor_tailscale_install_hint)"
+        fi
+        return 0
+    fi
+
+    timeout_bin="$(_acfs_doctor_system_binary_path timeout 2>/dev/null || true)"
+    jq_bin="$(_acfs_doctor_system_binary_path jq 2>/dev/null || true)"
+    bash_bin="$(_acfs_doctor_system_binary_path bash 2>/dev/null || true)"
+    cat_bin="$(_acfs_doctor_system_binary_path cat 2>/dev/null || true)"
+    if [[ -z "$timeout_bin" || -z "$jq_bin" || -z "$bash_bin" || -z "$cat_bin" ]]; then
+        check "network.tailscale" "Tailscale" "fail" \
+            "status verification unavailable (system timeout, jq, bash and cat are required)" "" false
+        return 0
+    fi
+
+    # Preserve the five-second status deadline and the producer's exit code.
+    # Keep its output pipe inside the guardian too: a launcher can exit while
+    # its descendants retain stdout. The guardian kills the entire pipeline
+    # after a further five-second grace, including TERM-resistant children.
+    status_body="$(_acfs_doctor_run_bounded "$timeout_bin" 5 \
+        "$bash_bin" --noprofile --norc -p -o pipefail -c '
+            cat_bin=$1
+            shift
+            "$@" | "$cat_bin"
+        ' _ "$cat_bin" "$tailscale_bin" status --json 2>/dev/null)" || probe_status=$?
+    case "$probe_status" in
+        0) ;;
+        124|137|143)
+            check_with_timeout_status "network.tailscale" "Tailscale" timeout \
+                "status verification exceeded its 5s deadline or was terminated" \
+                "Inspect tailscaled before retrying: sudo systemctl status tailscaled"
+            return 0
+            ;;
+        2|125|126|127)
+            check "network.tailscale" "Tailscale" "fail" \
+                "status verification unavailable (exit $probe_status); verify system timeout, bash, sleep and the Tailscale executable" "" false
+            return 0
+            ;;
+        *)
+            check "network.tailscale" "Tailscale" "$failure_status" \
+                "status verification failed (exit $probe_status)" \
+                "Inspect tailscaled before retrying: sudo systemctl status tailscaled" false
+            return 0
+            ;;
+    esac
+
+    if ! backend_state="$(printf '%s' "$status_body" | "$jq_bin" -er -s '
+        if length == 1 and (.[0] | type) == "object" then
+            .[0].BackendState | select(type == "string" and length > 0)
+        else empty end
+    ' 2>/dev/null)"; then
+        check "network.tailscale" "Tailscale" "warn" \
+            "invalid status response; connection state could not be verified" "" false
+        return 0
+    fi
+
+    case "$backend_state" in
+        Running)
+            check "network.tailscale" "Tailscale" "pass" "connected"
+            ;;
+        NeedsLogin)
+            if [[ "$doctor_ci" == true ]]; then
+                check "network.tailscale" "Tailscale (needs login)" "pass" "expected in CI"
+            else
+                check "network.tailscale" "Tailscale" "warn" "needs login" "Run: sudo tailscale up" false
+            fi
+            ;;
+        *)
+            check "network.tailscale" "Tailscale" "warn" "$backend_state" "Run: sudo tailscale up" false
+            ;;
+    esac
+}
+
 # Check cloud tools
 check_cloud() {
     section "Cloud/DB"
@@ -3776,56 +3882,7 @@ check_cloud() {
     check_optional_command "cloud.supabase" "Supabase CLI" "supabase" "acfs update --cloud-only --force"
     check_optional_command "cloud.vercel" "Vercel CLI" "vercel" "bun install -g --trust vercel@latest"
 
-    # Tailscale VPN (bt5)
-    local tailscale_bin=""
-    tailscale_bin="$(doctor_binary_path tailscale 2>/dev/null || true)"
-    if doctor_skip_unselected_check "network.tailscale" "Tailscale"; then
-        :
-    elif [[ -n "$tailscale_bin" ]]; then
-        local ts_status
-        # `tailscale status --json` talks to tailscaled over its socket and
-        # can hang indefinitely when the daemon is wedged; cap it so doctor
-        # always finishes. (No head -n1 here: the JSON is multi-line.)
-        local ts_probe_cmd=("$tailscale_bin" status --json)
-        local ts_timeout_bin=""
-        ts_timeout_bin="$(_acfs_doctor_system_binary_path timeout 2>/dev/null || true)"
-        if [[ -n "$ts_timeout_bin" ]]; then
-            ts_probe_cmd=("$ts_timeout_bin" 5 "$tailscale_bin" status --json)
-        fi
-        if command -v jq &>/dev/null; then
-            ts_status=$("${ts_probe_cmd[@]}" 2>/dev/null | jq -r '.BackendState // "unknown"' 2>/dev/null || echo "unknown")
-            # jq emits nothing (not "unknown") when the probe produced no JSON
-            ts_status="${ts_status:-unknown}"
-        else
-            ts_status=$("${ts_probe_cmd[@]}" 2>/dev/null | sed -n 's/.*"BackendState"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
-            ts_status="${ts_status:-unknown}"
-        fi
-        case "$ts_status" in
-            "Running")
-                check "network.tailscale" "Tailscale" "pass" "connected"
-                ;;
-            "NeedsLogin")
-                if [[ "$doctor_ci" == "true" ]]; then
-                    check "network.tailscale" "Tailscale (needs login)" "pass" "expected in CI"
-                else
-                    check "network.tailscale" "Tailscale" "warn" "needs login" "Run: sudo tailscale up"
-                fi
-                ;;
-            *)
-                if [[ "$doctor_ci" == "true" ]]; then
-                    check "network.tailscale" "Tailscale ($ts_status)" "pass" "expected in CI"
-                else
-                    check "network.tailscale" "Tailscale" "warn" "$ts_status" "Run: sudo tailscale up"
-                fi
-                ;;
-        esac
-    else
-        if [[ "$doctor_ci" == "true" ]]; then
-            check "network.tailscale" "Tailscale (not installed)" "pass" "ok in CI"
-        else
-            check "network.tailscale" "Tailscale" "warn" "not installed (optional)" "Install: $(doctor_tailscale_install_hint)"
-        fi
-    fi
+    check_tailscale
 
     # SSH server installed and running (fixes #161)
     # Fresh installs (WSL, VM, containers) may not have openssh-server
