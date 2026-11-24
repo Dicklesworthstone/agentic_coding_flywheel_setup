@@ -42,12 +42,23 @@ teardown() {
     
     # Mock openssl for password gen (optional but good to avoid dependency)
     stub_command "openssl" "randpass"
+
+    local expected_shell
+    expected_shell="$(user_select_initial_login_shell bash)"
+    user_login_passwd_entry() {
+        [[ "${1:-}" == "testuser" && -f "$STUB_DIR/useradd.log" ]] || return 1
+        printf "testuser:x:1001:1001::%s:%s\n" "$TARGET_HOME" "$expected_shell"
+    }
+    user_local_passwd_entry() { user_login_passwd_entry "$@"; }
+    user_shell_executable_by_account() {
+        [[ "${1:-}" == "$expected_shell" && "${2:-}" == "testuser" ]]
+    }
     
     run ensure_user
     assert_success
     
     run cat "$STUB_DIR/useradd.log"
-    assert_output --partial "-m -s /bin/bash -G sudo testuser"
+    assert_output --partial "-m -s $expected_shell -G sudo testuser"
 }
 
 @test "_generate_random_password: urandom fallback survives pipefail SIGPIPE" {
@@ -74,12 +85,23 @@ teardown() {
         return 1
     }
 
+    local expected_shell
+    expected_shell="$(user_select_initial_login_shell bash)"
+    user_login_passwd_entry() {
+        [[ "${1:-}" == "testuser" && -f "$STUB_DIR/useradd.log" ]] || return 1
+        printf "testuser:x:1001:1001::%s:%s\n" "$TARGET_HOME" "$expected_shell"
+    }
+    user_local_passwd_entry() { user_login_passwd_entry "$@"; }
+    user_shell_executable_by_account() {
+        [[ "${1:-}" == "$expected_shell" && "${2:-}" == "testuser" ]]
+    }
+
     run ensure_user
     assert_success
     assert_output --partial "Could not generate password for testuser"
 
     run cat "$STUB_DIR/useradd.log"
-    assert_output --partial "-m -s /bin/bash -G sudo testuser"
+    assert_output --partial "-m -s $expected_shell -G sudo testuser"
 }
 
 @test "ensure_user: skips if exists" {
@@ -389,7 +411,7 @@ EOF
     assert_output "$current_home"
 }
 
-@test "set_default_shell: external handoff uses passwd home over stale TARGET_HOME" {
+@test "set_default_shell: externally managed accounts fail closed without mutating .bashrc" {
     local managed_user="acfs-managed-user"
     local stale_home
     local resolved_home
@@ -403,20 +425,20 @@ EOF
         [[ "${1:-}" == "$managed_user" ]] || return 1
         printf '%s:x:1000:1000::%s:/bin/bash\n' "$managed_user" "$resolved_home"
     }
-    # These cases isolate home-path handling; the hermetic login-shell suite
-    # exercises the real approval and privilege boundaries.
+    user_local_passwd_entry() { return 1; }
     user_select_login_shell() { printf '/bin/bash\n'; }
     user_shell_is_approved() { [[ "$1" == /bin/bash ]]; }
     user_run_as_account() { shift; "$@"; }
 
     run set_default_shell /bin/bash
-    assert_success
+    assert_failure
+    assert_output --partial "Shell for acfs-managed-user is externally managed. ACFS will not treat a .bashrc handoff as a login-shell change"
 
-    grep -q 'ACFS externally-managed shell handoff' "$resolved_home/.bashrc"
+    [[ ! -f "$resolved_home/.bashrc" ]]
     [[ ! -f "$stale_home/.bashrc" ]]
 }
 
-@test "set_default_shell: external handoff ignores marker-only comments" {
+@test "set_default_shell: externally managed account leaves existing .bashrc comments untouched" {
     local managed_user="acfs-managed-user"
     local stale_home
     local resolved_home
@@ -435,14 +457,16 @@ EOF
         [[ "${1:-}" == "$managed_user" ]] || return 1
         printf '%s:x:1000:1000::%s:/bin/bash\n' "$managed_user" "$resolved_home"
     }
+    user_local_passwd_entry() { return 1; }
     user_select_login_shell() { printf '/bin/bash\n'; }
     user_shell_is_approved() { [[ "$1" == /bin/bash ]]; }
     user_run_as_account() { shift; "$@"; }
 
     run set_default_shell /bin/bash
-    assert_success
+    assert_failure
+    assert_output --partial "Shell for acfs-managed-user is externally managed. ACFS will not treat a .bashrc handoff as a login-shell change"
 
-    grep -Fq 'exec "$(command -v zsh)" -l' "$resolved_home/.bashrc"
+    ! grep -Fq 'exec "$(command -v zsh)" -l' "$resolved_home/.bashrc"
     [[ ! -f "$stale_home/.bashrc" ]]
 }
 

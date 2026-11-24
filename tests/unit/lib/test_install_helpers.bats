@@ -292,19 +292,27 @@ use_spy_sudo() {
     assert_equal "${ACFS_PLAN_REASON[mod2]}" "explicitly requested"
 }
 
-@test "acfs_resolve_selection: saved scope retains dependency closure and skip conflicts" {
+@test "acfs_resolve_selection: saved scope preserves exact scope while enforcing skip conflicts and explicit expansion" {
     ACFS_SAVED_SELECTION_ACTIVE=true
     ACFS_SAVED_SELECTION_MODULES=("mod3")
     ACFS_MODULE_DEPS["mod3"]="mod1"
 
+    local warn_out=""
+    warn_out="$(acfs_resolve_selection 2>&1)"
     acfs_resolve_selection
-    assert_equal "${ACFS_EFFECTIVE_PLAN[*]}" "mod1 mod3"
-    assert_equal "${ACFS_PLAN_REASON[mod1]}" "dependency of mod3"
+    assert_equal "${ACFS_EFFECTIVE_PLAN[*]}" "mod3"
+    [[ "$warn_out" == *"outside the saved installation"* ]]
 
     SKIP_MODULES=("mod1")
     if acfs_resolve_selection 2>/dev/null; then
         fail "saved scope must not bypass dependency conflicts"
     fi
+
+    SKIP_MODULES=()
+    ONLY_MODULES=("mod3")
+    acfs_resolve_selection
+    assert_equal "${ACFS_EFFECTIVE_PLAN[*]}" "mod1 mod3"
+    assert_equal "${ACFS_PLAN_REASON[mod1]}" "dependency of mod3"
 }
 
 @test "run_as_current_shell: executes command" {
@@ -1509,6 +1517,7 @@ _acfs_system_binary_path() {
 }
 # This is an identity fixture, not evidence of a real privilege transition.
 run_as_target() { HOME="$ACFS_VERIFY_FIXTURE_ROOT/target-home" "$@"; }
+run_as_root_shell() { _run_shell_with_strict_mode "$1" "$(_acfs_privileged_path_export_source)"; }
 ACFS_MANIFEST_INDEX_LOADED=true
 ACFS_FORCE_REINSTALL=false
 declare -A ACFS_MODULE_INSTALLED_CHECK=([fixture]="$2")

@@ -3905,7 +3905,8 @@ EOF
     }
 
     run sync_acfs_profile_paths
-    assert_success
+    assert_failure
+    assert_output --partial "Unable to resolve the target installation's module selection"
 
     run cat "$current_home/.profile"
     refute_output --partial '.atuin/bin'
@@ -5046,7 +5047,7 @@ EOF
     assert_success
     run grep -F 'target_home="/home/$target_user"' "$doctor"
     assert_failure
-    run grep -F '"$sudo_bin" -n "$env_bin" TARGET_USER="$target_user" PATH="$system_path_prefix" "$bash_bin" -e -o pipefail -c "$cmd"' "$doctor"
+    run grep -F '"$sudo_bin" -n "$env_bin" MODE="$check_mode" TARGET_USER="$target_user" PATH="$system_path_prefix" "$bash_bin" -e -o pipefail -c "$cmd"' "$doctor"
     assert_success
     run grep -F 'export PATH="$prefix${current_path:+:$current_path}"' "$doctor"
     assert_success
@@ -6006,6 +6007,9 @@ EOF
                     [[ "$path_value" == /* ]] || return 1
                     [[ "$path_value" != "/" ]] || return 1
                     printf "%s\n" "$path_value"
+                }
+                resolve_current_user() {
+                    printf "root\n"
                 }
                 is_valid_username() {
                     [[ "${1:-}" =~ ^[a-z_][a-z0-9._-]*$ ]]
@@ -10513,7 +10517,7 @@ EOF
     local block=""
     local finalize_block=""
 
-    block="$(sed -n '/if acfs_use_generated_category "acfs"/,/^    # Copy tmux config/p' "$installer")"
+    block="$(sed -n '/if acfs_use_generated_category "acfs"/,/^[[:space:]]*# Copy tmux config/p' "$installer")"
     finalize_block="$(sed -n '/^finalize()/,/^}$/p' "$installer")"
 
     [[ "$block" == *'acfs_run_generated_category_phase "acfs" "10" || return 1'* ]]
@@ -11169,22 +11173,22 @@ EOF
     run grep -F 'binary_path() {' "$installer"
     assert_success
 
-    run grep -F 'if ! binary_installed "zsh"; then' "$installer"
+    run grep -F 'if acfs_legacy_module_selected "shell.zsh" && ! binary_installed "zsh"; then' "$installer"
     assert_success
 
-    run grep -F 'if ! acfs_should_skip_module "lang.go"; then' "$installer"
+    run grep -F 'if acfs_legacy_module_selected "lang.go" && ! acfs_should_skip_module "lang.go"; then' "$installer"
     assert_success
 
     run grep -F 'executable="$(binary_path go 2>/dev/null)" || executable="/usr/local/go/bin/go"' "$installer"
     assert_success
 
-    run grep -F 'if acfs_should_skip_module "lang.uv"; then' "$installer"
+    run grep -F 'elif acfs_should_skip_module "lang.uv"; then' "$installer"
     assert_success
 
-    run grep -F 'if acfs_should_skip_module "tools.atuin"; then' "$installer"
+    run grep -F 'elif acfs_should_skip_module "tools.atuin"; then' "$installer"
     assert_success
 
-    run grep -F 'if acfs_should_skip_module "tools.zoxide"; then' "$installer"
+    run grep -F 'elif acfs_should_skip_module "tools.zoxide"; then' "$installer"
     assert_success
 
     run grep -F 'if binary_installed "gum"; then' "$installer"
@@ -11205,7 +11209,7 @@ EOF
     run grep -F 'elif acfs_should_skip_module "tools.vault"; then' "$installer"
     assert_success
 
-    run grep -F 'binary_installed "go" || missing_lang+=("go")' "$installer"
+    run grep -F 'binary_installed go || missing_lang+=(go)' "$installer"
     assert_success
 
     run grep -F 'gh_bin="$(binary_path gh 2>/dev/null || true)"' "$installer"
@@ -13044,10 +13048,10 @@ SECURITY
     run grep -F '[[ "$victim_pid" =~ ^[1-9][0-9]*$ ]] || return 0' "$stack_lib"
     assert_success
 
-    run grep -F '[[ "$victim_args" =~ (^|[[:space:]])serve-http([[:space:]]|$) ]] || return 0' "$stack_lib"
+    run grep -F '[[ "$victim_args" =~ (^|[[:space:]])serve-http([[:space:]]|$) ]] || return 1' "$stack_lib"
     assert_success
 
-    run grep -F '[[ "$victim_args" =~ (^|[[:space:]])--port(=|[[:space:]]+)8765([[:space:]]|$) ]] || return 0' "$stack_lib"
+    run grep -F '[[ "$victim_args" =~ (^|[[:space:]])--port(=|[[:space:]]+)8765([[:space:]]|$) ]] || return 1' "$stack_lib"
     assert_success
 
     run grep -F 'kill -9 "$victim_pid"' "$stack_lib"
@@ -14070,10 +14074,10 @@ EOF
     run grep -E '(Fix:|re-run:|Re-run:|Install bun first:).*--only-phase' "$installer" "$smoke_lib"
     assert_failure
 
-    run grep -F 'acfs_smoke_install_fix_command lang.bun lang.uv lang.rust lang.go' "$installer"
+    run grep -F 'acfs_smoke_install_fix_command "${selected_lang_modules[@]}"' "$installer"
     assert_success
 
-    run grep -F 'acfs_smoke_install_fix_command agents.claude agents.codex agents.antigravity' "$installer"
+    run grep -F 'acfs_smoke_install_fix_command "${selected_agent_modules[@]}"' "$installer"
     assert_success
 
     run grep -F 'acfs_smoke_install_fix_command stack.ntm' "$installer"
@@ -14396,7 +14400,9 @@ EOF
     stale_home="$(create_temp_dir)"
 
     eval "$(sed -n '/^_acfs_doctor_system_binary_path()/,/^}$/p' "$doctor_lib")"
+    eval "$(sed -n '/^_acfs_doctor_run_bounded()/,/^}$/p' "$doctor_lib")"
     eval "$(sed -n '/^_doctor_run_manifest_check()/,/^}/p' "$doctor_lib")"
+    DEEP_CHECK_TIMEOUT=15
 
     _acfs_doctor_sanitize_abs_nonroot_path() {
         local path_value="${1:-}"
@@ -17833,7 +17839,9 @@ EOF
 }
 
 _run_drift_report() {
-    run bash -c '
+    local fake_acfs_home="$1"
+    local fake_target_home="${fake_acfs_home%/*}"
+    run env HOME="$fake_target_home" TARGET_HOME="$fake_target_home" ACFS_HOME="$fake_acfs_home" bash -c '
         source "$1"
         set +e
         fake_home="$2"
@@ -17841,11 +17849,11 @@ _run_drift_report() {
         DRY_RUN=false
         update_report_service_binary_drift
         echo "RC=$?"
-    ' _ "$PROJECT_ROOT/scripts/lib/update.sh" "$1"
+    ' _ "$PROJECT_ROOT/scripts/lib/update.sh" "$fake_acfs_home"
 }
 
 @test "drift report restarts only the stale services named in ACFS_UPDATE_RESTART_SERVICES (#464)" {
-    local fake_home="$BATS_TEST_TMPDIR/acfs-home-464"
+    local fake_home="$BATS_TEST_TMPDIR/acfs-home-464/.acfs"
     _write_drift_restart_fake "$fake_home"
 
     ACFS_UPDATE_RESTART_SERVICES="cm, agent-mail cm" _run_drift_report "$fake_home"
@@ -17886,7 +17894,7 @@ _run_drift_report() {
 }
 
 @test "drift report says when an opted-in restart fails (#464)" {
-    local fake_home="$BATS_TEST_TMPDIR/acfs-home-464-fail"
+    local fake_home="$BATS_TEST_TMPDIR/acfs-home-464-fail/.acfs"
     _write_drift_restart_fake "$fake_home" 3
 
     ACFS_UPDATE_RESTART_SERVICES="cass" _run_drift_report "$fake_home"

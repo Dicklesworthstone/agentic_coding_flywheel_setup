@@ -4688,7 +4688,12 @@ _doctor_run_manifest_check() {
     # Supplemental checks execute third-party CLIs and service probes too.
     # Bound the entire transport, including runuser/sudo, so a selected tool
     # cannot hold the health report open or outlive its verification deadline.
-    local -a bounded_probe=(_acfs_doctor_run_bounded "$timeout_bin" "$DEEP_CHECK_TIMEOUT")
+    local -a bounded_probe=(_acfs_doctor_run_bounded "$timeout_bin" "${DEEP_CHECK_TIMEOUT:-15}")
+    local check_mode="${ACFS_MODE:-vibe}"
+    case "$check_mode" in
+        safe|vibe) ;;
+        *) check_mode="vibe" ;;
+    esac
 
     if [[ "$cmd" == *"acfs_generated_"* ]]; then
         local helper_prelude=""
@@ -4749,22 +4754,22 @@ _doctor_run_manifest_check() {
             target_path="$target_path_prefix${PATH:+:$PATH}"
             local -a target_check_argv=("$bash_bin" -c 'cd "$HOME" || exit 1; exec "$@"' _ "$bash_bin" -e -o pipefail -c "$cmd")
             if [[ "$(_acfs_doctor_resolve_current_user 2>/dev/null || true)" == "$target_user" ]]; then
-                "${bounded_probe[@]}" "$env_bin" TARGET_USER="$target_user" TARGET_HOME="$target_home" HOME="$target_home" PATH="$target_path" "${target_check_argv[@]}"
+                "${bounded_probe[@]}" "$env_bin" MODE="$check_mode" TARGET_USER="$target_user" TARGET_HOME="$target_home" HOME="$target_home" PATH="$target_path" "${target_check_argv[@]}"
                 return $?
             fi
             runuser_bin="$(_acfs_doctor_system_binary_path runuser 2>/dev/null || true)"
             if [[ $EUID -eq 0 && -n "$runuser_bin" ]]; then
-                "${bounded_probe[@]}" "$runuser_bin" -u "$target_user" -- "$env_bin" TARGET_USER="$target_user" TARGET_HOME="$target_home" HOME="$target_home" PATH="$target_path" "${target_check_argv[@]}"
+                "${bounded_probe[@]}" "$runuser_bin" -u "$target_user" -- "$env_bin" MODE="$check_mode" TARGET_USER="$target_user" TARGET_HOME="$target_home" HOME="$target_home" PATH="$target_path" "${target_check_argv[@]}"
                 return $?
             fi
             sudo_bin="$(_acfs_doctor_system_binary_path sudo 2>/dev/null || true)"
             if [[ -n "$sudo_bin" ]]; then
-                "${bounded_probe[@]}" "$sudo_bin" -n -u "$target_user" "$env_bin" TARGET_USER="$target_user" TARGET_HOME="$target_home" HOME="$target_home" PATH="$target_path" "${target_check_argv[@]}"
+                "${bounded_probe[@]}" "$sudo_bin" -n -u "$target_user" "$env_bin" MODE="$check_mode" TARGET_USER="$target_user" TARGET_HOME="$target_home" HOME="$target_home" PATH="$target_path" "${target_check_argv[@]}"
                 return $?
             fi
             su_bin="$(_acfs_doctor_system_binary_path su 2>/dev/null || true)"
             if [[ $EUID -eq 0 && -n "$su_bin" ]]; then
-                "${bounded_probe[@]}" "$su_bin" "$target_user" -c "$(printf '%q' "$env_bin") TARGET_USER=$(printf '%q' "$target_user") TARGET_HOME=$(printf '%q' "$target_home") HOME=$(printf '%q' "$target_home") PATH=$(printf '%q' "$target_path") $(printf '%q ' "${target_check_argv[@]}")"
+                "${bounded_probe[@]}" "$su_bin" "$target_user" -c "$(printf '%q' "$env_bin") MODE=$(printf '%q' "$check_mode") TARGET_USER=$(printf '%q' "$target_user") TARGET_HOME=$(printf '%q' "$target_home") HOME=$(printf '%q' "$target_home") PATH=$(printf '%q' "$target_path") $(printf '%q ' "${target_check_argv[@]}")"
                 return $?
             fi
             return 1
@@ -4772,9 +4777,9 @@ _doctor_run_manifest_check() {
         root)
             if [[ $EUID -eq 0 ]]; then
                 if [[ -n "$target_home" ]] && [[ "$target_home" == /* ]] && [[ "$target_home" != "/" ]]; then
-                    "${bounded_probe[@]}" "$env_bin" TARGET_USER="$target_user" TARGET_HOME="$target_home" PATH="$system_path_prefix" "$bash_bin" -e -o pipefail -c "$cmd"
+                    "${bounded_probe[@]}" "$env_bin" MODE="$check_mode" TARGET_USER="$target_user" TARGET_HOME="$target_home" PATH="$system_path_prefix" "$bash_bin" -e -o pipefail -c "$cmd"
                 else
-                    "${bounded_probe[@]}" "$env_bin" TARGET_USER="$target_user" PATH="$system_path_prefix" "$bash_bin" -e -o pipefail -c "$cmd"
+                    "${bounded_probe[@]}" "$env_bin" MODE="$check_mode" TARGET_USER="$target_user" PATH="$system_path_prefix" "$bash_bin" -e -o pipefail -c "$cmd"
                 fi
                 return $?
             fi
@@ -4791,9 +4796,9 @@ _doctor_run_manifest_check() {
             fi
             if [[ "$sudo_status" -eq 0 ]]; then
                 if [[ -n "$target_home" ]] && [[ "$target_home" == /* ]] && [[ "$target_home" != "/" ]]; then
-                    "${bounded_probe[@]}" "$sudo_bin" -n "$env_bin" TARGET_USER="$target_user" TARGET_HOME="$target_home" PATH="$system_path_prefix" "$bash_bin" -e -o pipefail -c "$cmd"
+                    "${bounded_probe[@]}" "$sudo_bin" -n "$env_bin" MODE="$check_mode" TARGET_USER="$target_user" TARGET_HOME="$target_home" PATH="$system_path_prefix" "$bash_bin" -e -o pipefail -c "$cmd"
                 else
-                    "${bounded_probe[@]}" "$sudo_bin" -n "$env_bin" TARGET_USER="$target_user" PATH="$system_path_prefix" "$bash_bin" -e -o pipefail -c "$cmd"
+                    "${bounded_probe[@]}" "$sudo_bin" -n "$env_bin" MODE="$check_mode" TARGET_USER="$target_user" PATH="$system_path_prefix" "$bash_bin" -e -o pipefail -c "$cmd"
                 fi
                 return $?
             fi
@@ -4803,17 +4808,17 @@ _doctor_run_manifest_check() {
             # current user rather than reporting every one of them as a false
             # FAIL. Tools the target user runs verify as target_user (#461).
             if [[ -n "$target_home" ]] && [[ "$target_home" == /* ]] && [[ "$target_home" != "/" ]]; then
-                "${bounded_probe[@]}" "$env_bin" TARGET_USER="$target_user" TARGET_HOME="$target_home" PATH="$system_path_prefix:$PATH" "$bash_bin" -e -o pipefail -c "$cmd"
+                "${bounded_probe[@]}" "$env_bin" MODE="$check_mode" TARGET_USER="$target_user" TARGET_HOME="$target_home" PATH="$system_path_prefix:$PATH" "$bash_bin" -e -o pipefail -c "$cmd"
             else
-                "${bounded_probe[@]}" "$env_bin" TARGET_USER="$target_user" PATH="$system_path_prefix:$PATH" "$bash_bin" -e -o pipefail -c "$cmd"
+                "${bounded_probe[@]}" "$env_bin" MODE="$check_mode" TARGET_USER="$target_user" PATH="$system_path_prefix:$PATH" "$bash_bin" -e -o pipefail -c "$cmd"
             fi
             return $?
             ;;
         current|*)
             if [[ -n "$target_home" ]] && [[ "$target_home" == /* ]] && [[ "$target_home" != "/" ]]; then
-                "${bounded_probe[@]}" "$env_bin" TARGET_USER="$target_user" TARGET_HOME="$target_home" "$bash_bin" -e -o pipefail -c "$cmd"
+                "${bounded_probe[@]}" "$env_bin" MODE="$check_mode" TARGET_USER="$target_user" TARGET_HOME="$target_home" "$bash_bin" -e -o pipefail -c "$cmd"
             else
-                "${bounded_probe[@]}" "$env_bin" TARGET_USER="$target_user" "$bash_bin" -e -o pipefail -c "$cmd"
+                "${bounded_probe[@]}" "$env_bin" MODE="$check_mode" TARGET_USER="$target_user" "$bash_bin" -e -o pipefail -c "$cmd"
             fi
             ;;
     esac

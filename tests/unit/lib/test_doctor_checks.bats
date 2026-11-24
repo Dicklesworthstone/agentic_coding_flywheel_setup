@@ -1134,7 +1134,7 @@ EOF
 }
 
 @test "doctor selection: Antigravity runs its generated locked-settings and hook verification" {
-    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["agents.antigravity"]}}'
+    doctor_selection_fixture '{"mode":"vibe","module_selection":{"schema_version":1,"selected_modules":["agents.antigravity"]}}'
     export ACFS_BIN_DIR="$TARGET_HOME/.local/bin"
     mkdir -p "$ACFS_BIN_DIR"
     local binary="" entry="" agy_check=""
@@ -1166,6 +1166,48 @@ EOF
 
     # A working --version is insufficient after hook registration is lost.
     printf '{}\n' > "$TARGET_HOME/.gemini/config/hooks.json"
+    check_manifest_supplemental
+    [ "$PASS_COUNT:$FAIL_COUNT" = 1:1 ]
+    [ "${DOCTOR_FIX_PENDING_IDS[*]}" = agents.antigravity ]
+    doctor_selection_json | jq -e '
+        .[0].id == "agents.antigravity" and .[0].status == "pass" and
+        .[1].id == "agents.antigravity" and .[1].status == "fail" and
+        (.[1].fix | contains("--only agents.antigravity"))' >/dev/null
+}
+
+@test "doctor selection: Antigravity honors saved Safe mode in generated manifest checks" {
+    doctor_selection_fixture '{"mode":"safe","module_selection":{"schema_version":1,"selected_modules":["agents.antigravity"]}}'
+    export ACFS_BIN_DIR="$TARGET_HOME/.local/bin"
+    mkdir -p "$ACFS_BIN_DIR"
+    local binary="" entry="" agy_check=""
+    for binary in agy agy-locked agy-real gmi; do
+        printf '#!/bin/bash\nprintf "agy fixture 1.0\\n"\n' > "$ACFS_BIN_DIR/$binary"
+        chmod +x "$ACFS_BIN_DIR/$binary"
+    done
+    # Resolve the target account to this isolated home while retaining the
+    # real target-user transport and the unmodified generated verification.
+    _acfs_doctor_getent_passwd_entry() {
+        printf '%s:x:%s:%s::%s:/bin/bash\n' "$TARGET_USER" "$UID" "$(id -g)" "$TARGET_HOME"
+    }
+    for entry in "${MANIFEST_CHECKS[@]}"; do
+        if [[ "$entry" == agents.antigravity$'\t'* ]]; then
+            agy_check="$entry"
+            break
+        fi
+    done
+    [[ -n "$agy_check" ]] || fail "generated Antigravity verification was not found"
+    MANIFEST_CHECKS=("$agy_check")
+    FIX_MODE=true
+    DOCTOR_FIX_SCOPED=true
+
+    # The actual shipped launcher establishes the expected settings and hook.
+    HOME="$TARGET_HOME" /usr/bin/python3 "$PROJECT_ROOT/scripts/lib/agy_locked.py" --acfs-prime-settings
+    check_manifest_supplemental
+    [ "$PASS_COUNT:$FAIL_COUNT" = 1:0 ]
+    [ "${#DOCTOR_FIX_PENDING_IDS[@]}" -eq 0 ]
+
+    # A working --version is insufficient after hook registration is lost.
+    sed -i 's/"request-review"/"always-proceed"/' "$TARGET_HOME/.gemini/antigravity-cli/settings.json"
     check_manifest_supplemental
     [ "$PASS_COUNT:$FAIL_COUNT" = 1:1 ]
     [ "${DOCTOR_FIX_PENDING_IDS[*]}" = agents.antigravity ]

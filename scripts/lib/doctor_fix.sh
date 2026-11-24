@@ -2528,10 +2528,14 @@ doctor_fix_atuin_start_daemon() {
         (cd / && "$atuin_bin" daemon >/dev/null 2>&1 < /dev/null &)
     fi
 
+    local sleep_bin=""
+    sleep_bin="$(doctor_fix_lifecycle_binary_path sleep 2>/dev/null || true)"
+    [[ -n "$sleep_bin" ]] || return 1
+
     local attempt=0
     while [[ $attempt -lt 30 ]]; do
         [[ -S "$socket_path" ]] && return 0
-        sleep 0.1
+        "$sleep_bin" 0.1
         attempt=$((attempt + 1))
     done
     return 1
@@ -3037,6 +3041,14 @@ agent_mail_fix_readiness_ready() {
     local attempt=0
     local readiness_body=""
     local readiness_url=""
+    local grep_bin=""
+    local sleep_bin=""
+
+    grep_bin="$(doctor_fix_lifecycle_binary_path grep 2>/dev/null || true)"
+    sleep_bin="$(doctor_fix_lifecycle_binary_path sleep 2>/dev/null || true)"
+    if [[ -z "$grep_bin" || -z "$sleep_bin" ]]; then
+        return 1
+    fi
 
     while (( attempt < max_attempts )); do
         attempt=$((attempt + 1))
@@ -3045,12 +3057,12 @@ agent_mail_fix_readiness_ready() {
             http://127.0.0.1:8765/health
         do
             readiness_body="$(doctor_fix_system_curl -fsS --max-time 5 "$readiness_url" 2>/dev/null)" || continue
-            if printf '%s\n' "$readiness_body" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ready"([[:space:]]*[,}])'; then
+            if printf '%s\n' "$readiness_body" | "$grep_bin" -Eq '"status"[[:space:]]*:[[:space:]]*"ready"([[:space:]]*[,}])'; then
                 return 0
             fi
         done
         if (( attempt < max_attempts )); then
-            sleep 1
+            "$sleep_bin" 1
         fi
     done
 

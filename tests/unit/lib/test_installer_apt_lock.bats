@@ -49,10 +49,19 @@ EOF
 
 @test "installer: canonical manifest apt-get commands wait for the dpkg lock" {
     run bash -c '
-        grep "apt-get" acfs.manifest.yaml | \
-            grep -v "^[[:space:]]*#" | \
-            grep -v "DPkg::Lock::Timeout=120" || true
-    '
+        invocations=$(
+            sed "s/command -v apt-get//g" "$1" | \
+                grep -Ev "^[[:space:]]*(#|skip_message:)" | \
+                tr ";|&" "\n" | \
+                grep -E "(^|[[:space:]\"-])apt-get([[:space:]]|$)" || true
+        )
+        count=$(printf "%s\n" "$invocations" | grep -c "apt-get" || true)
+        if [[ "$count" -lt 10 ]]; then
+            echo "Expected at least 10 apt-get invocations, found $count"
+            exit 2
+        fi
+        printf "%s\n" "$invocations" | grep -v "DPkg::Lock::Timeout=120" || true
+    ' _ "$PROJECT_ROOT/acfs.manifest.yaml"
     assert_success
     assert_output ""
 }

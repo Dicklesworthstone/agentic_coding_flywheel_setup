@@ -1152,7 +1152,7 @@ main() {
         # after runuser/sudo changes identity. Same-account dispatch below keeps
         # its explicit configuration, and ACFS runtime selectors stay intact.
         unset CLAUDE_CONFIG_DIR DATABASE_URL STORAGE_ROOT XDG_CONFIG_HOME XDG_DATA_HOME
-        if [[ "$requested_command" == update ]]; then
+        if [[ "${requested_command:-}" == update ]]; then
             # acfs-update will already be the target account after this exec.
             # Apply its account-boundary policy here too, before caller-owned
             # stores can be mistaken for deliberate same-account overrides.
