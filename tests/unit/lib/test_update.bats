@@ -14225,6 +14225,10 @@ EOF
 @test "doctor.sh: fix suggestions do not emit malicious pinned refs from state" {
     local doctor_lib="$PROJECT_ROOT/scripts/lib/doctor.sh"
     local fixture_state_file="$BATS_TEST_TMPDIR/doctor-state.json"
+    TARGET_USER=doctor_target
+    TARGET_HOME="$BATS_TEST_TMPDIR/doctor-target"
+    ACFS_BIN_DIR="$TARGET_HOME/.local/bin"
+    ACFS_STATE_FILE="$fixture_state_file"
 
     cat > "$fixture_state_file" <<'EOF'
 {
@@ -14232,6 +14236,10 @@ EOF
 }
 EOF
 
+    # shellcheck disable=SC1090
+    eval "$(sed -n '/^_acfs_doctor_assign_abs_nonroot_path()/,/^}$/p' "$doctor_lib")"
+    # shellcheck disable=SC1090
+    eval "$(sed -n '/^_acfs_doctor_validate_bin_dir_for_home()/,/^}$/p' "$doctor_lib")"
     # shellcheck disable=SC1090
     eval "$(sed -n '/^_acfs_doctor_system_binary_path()/,/^}$/p' "$doctor_lib")"
     # shellcheck disable=SC1090
@@ -14254,7 +14262,7 @@ EOF
     assert_output --partial "--mode vibe"
     refute_output --partial "ACFS_REF="
     refute_output --partial "touch /tmp/acfs-pwned"
-    refute_output --partial "--ref"
+    assert_output --partial "--ref main"
 
     cat > "$fixture_state_file" <<'EOF'
 {
@@ -14277,8 +14285,8 @@ EOF
 
     run build_fix_suggestion "stack.ntm"
     assert_success
-    assert_output --partial "curl -fsSL https://agent-flywheel.com/install | bash -s --"
-    refute_output --partial "--ref"
+    assert_output --partial "curl -fsSL https://agent-flywheel.com/install | env "
+    assert_output --partial "--ref main"
 }
 
 @test "doctor.sh: passwd target home repairs stale inherited TARGET_HOME" {

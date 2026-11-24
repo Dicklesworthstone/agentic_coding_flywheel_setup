@@ -448,6 +448,237 @@ doctor_custom_checkpoint_fixture() {
         '{target_home:$home,target_user:$user,module_selection:{schema_version:1,selected_modules:["lang.bun"]}}' > "$ACFS_STATE_FILE"
 }
 
+doctor_checkpoint_startup_fixture() {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["lang.bun"]}}'
+    DOCTOR_CONTEXT_HOME="$BATS_TEST_TMPDIR/doctor context"
+    DOCTOR_CONTEXT_USER=acfs_context_target
+    DOCTOR_CONTEXT_CHECKPOINT="$BATS_TEST_TMPDIR/selected checkpoint.json"
+    DOCTOR_TEST_STATE="$DOCTOR_CONTEXT_HOME/.acfs/state.json"
+    mkdir -p "$DOCTOR_CONTEXT_HOME/.acfs" "$DOCTOR_CONTEXT_HOME/canonical-bin" \
+        "$DOCTOR_CONTEXT_HOME/selected-bin" "$DOCTOR_CONTEXT_HOME/.local/bin"
+    jq -n --arg home "$DOCTOR_CONTEXT_HOME" --arg user "$DOCTOR_CONTEXT_USER" \
+        '{target_home:$home,target_user:$user,bin_dir:($home+"/canonical-bin"),mode:"vibe",
+          module_selection:{schema_version:1,selected_modules:["lang.bun","agents.claude"]}}' > "$DOCTOR_TEST_STATE"
+    jq -n --arg home "$DOCTOR_CONTEXT_HOME" --arg user "$DOCTOR_CONTEXT_USER" \
+        '{target_home:$home,target_user:$user,bin_dir:($home+"/selected-bin"),mode:"safe",
+          module_selection:{schema_version:1,selected_modules:["lang.bun"]}}' > "$DOCTOR_CONTEXT_CHECKPOINT"
+    local bin=""
+    for bin in canonical-bin selected-bin .local/bin; do
+        printf '#!/bin/bash\nprintf "%%s\\n" %q\n' "$bin" > "$DOCTOR_CONTEXT_HOME/$bin/bun"
+        chmod +x "$DOCTOR_CONTEXT_HOME/$bin/bun"
+    done
+    # Exercise the unmodified production startup block with an isolated NSS
+    # account. This is the path that chooses the bin directory before the
+    # scope loader runs; loading scope functions alone misses its precedence.
+    _acfs_doctor_getent_passwd_entry() {
+        [[ $# -eq 0 || "$1" == "$DOCTOR_CONTEXT_USER" ]] || return 1
+        printf '%s:x:12345:12345::%s:/bin/bash\n' "$DOCTOR_CONTEXT_USER" "$DOCTOR_CONTEXT_HOME"
+    }
+    # Restore the production lookup overridden by doctor_selection_fixture.
+    eval "$(sed -n '/^doctor_binary_path()/,/^}$/p' "$DOCTOR_SH")"
+    ACFS_STATE_FILE="$DOCTOR_CONTEXT_CHECKPOINT"
+}
+
+doctor_checkpoint_startup() {
+    _ACFS_DOCTOR_ENV_TARGET_USER_WAS_SET=true
+    _ACFS_DOCTOR_ENV_TARGET_USER="$DOCTOR_CONTEXT_USER"
+    _ACFS_DOCTOR_ENV_TARGET_HOME="$DOCTOR_CONTEXT_HOME"
+    _ACFS_DOCTOR_ENV_BIN_DIR=""
+    _acfs_doctor_current_home="$DOCTOR_CONTEXT_HOME"
+    _acfs_doctor_script_acfs_home=""
+    _ACFS_DOCTOR_STATE_PATHS=()
+    _ACFS_DOCTOR_STATE_VALUES=()
+    ACFS_HOME="$DOCTOR_CONTEXT_HOME/.acfs"
+    ACFS_BIN_DIR=""
+    eval "$(sed -n '/^# Prefer authoritative installed\/system state/,/^export ACFS_HOME$/p' "$DOCTOR_SH")"
+    doctor_load_module_selection
+}
+
+@test "doctor context: custom checkpoint bin controls real command discovery after startup" {
+    doctor_checkpoint_startup_fixture
+    doctor_checkpoint_startup
+    [[ "$TARGET_USER" == "$DOCTOR_CONTEXT_USER" && "$TARGET_HOME" == "$DOCTOR_CONTEXT_HOME" ]]
+    [[ "$ACFS_MODE" == safe ]]
+    state_module_is_selected lang.bun
+    if state_module_is_selected agents.claude; then fail "canonical scope replaced custom scope"; fi
+    run get_version_line bun
+    assert_success
+    [[ "$output" == selected-bin ]] || fail "custom scope probed the wrong installation: $output"
+}
+
+@test "doctor context: custom checkpoint without bin metadata never borrows canonical custom bin" {
+    doctor_checkpoint_startup_fixture
+    jq -n --arg home "$DOCTOR_CONTEXT_HOME" --arg user "$DOCTOR_CONTEXT_USER" \
+        '{target_home:$home,target_user:$user,mode:"safe",
+          module_selection:{schema_version:1,selected_modules:["lang.bun"]}}' > "$DOCTOR_CONTEXT_CHECKPOINT"
+    doctor_checkpoint_startup
+    run get_version_line bun
+    assert_success
+    [[ "$output" == .local/bin ]] || fail "custom checkpoint inherited unrelated bin metadata: $output"
+}
+
+@test "doctor context: canonical startup retains installed bin metadata and mode" {
+    doctor_checkpoint_startup_fixture
+    ACFS_STATE_FILE=""
+    doctor_checkpoint_startup
+    [[ "$ACFS_MODE" == vibe ]]
+    state_module_is_selected agents.claude
+    run get_version_line bun
+    assert_success
+    [[ "$output" == canonical-bin ]] || fail "$output"
+}
+
+@test "doctor context: resolved target checkpoint owns bin discovery before runtime-relative metadata" {
+    doctor_checkpoint_startup_fixture
+    ACFS_STATE_FILE=""
+    DOCTOR_TEST_STATE="$BATS_TEST_TMPDIR/other-runtime-state.json"
+    jq -n --arg home "$DOCTOR_CONTEXT_HOME" --arg user "$DOCTOR_CONTEXT_USER" \
+        '{target_home:$home,target_user:$user,bin_dir:($home+"/selected-bin"),mode:"safe"}' > "$DOCTOR_TEST_STATE"
+    doctor_checkpoint_startup
+    [[ "$ACFS_MODE" == vibe ]]
+    run get_version_line bun
+    assert_success
+    [[ "$output" == canonical-bin ]] || fail "runtime metadata replaced the resolved target bin: $output"
+}
+
+doctor_capture_repair_command() {
+    local repair="$1"
+    local capture_bin="$BATS_TEST_TMPDIR/repair-capture-bin"
+    export DOCTOR_REPAIR_URL_CAPTURE="$BATS_TEST_TMPDIR/repair-url"
+    export DOCTOR_REPAIR_ARGV_CAPTURE="$BATS_TEST_TMPDIR/repair-argv"
+    export DOCTOR_REPAIR_SOURCE_CAPTURE="$BATS_TEST_TMPDIR/repair-source"
+    mkdir -p "$capture_bin"
+    cat > "$capture_bin/curl" <<'EOF'
+#!/bin/bash
+printf '%s\n' "$@" > "$DOCTOR_REPAIR_URL_CAPTURE"
+cat <<'INSTALLER'
+printf '%s\0' "${TARGET_USER:-}" "${TARGET_HOME:-}" "${ACFS_HOME:-}" \
+    "${ACFS_STATE_FILE:-}" "${ACFS_BIN_DIR:-}" "$@" > "$DOCTOR_REPAIR_ARGV_CAPTURE"
+printf '%s\0' "${ACFS_REPO_OWNER:-}" "${ACFS_REPO_NAME:-}" \
+    "${ACFS_CHECKSUMS_REF-unset}" > "$DOCTOR_REPAIR_SOURCE_CAPTURE"
+INSTALLER
+EOF
+    chmod +x "$capture_bin/curl"
+    # Execute the rendered command itself against a non-installing transport.
+    # A root/admin shell or the next session can have unrelated exported hints.
+    (
+        cd "$BATS_TEST_TMPDIR"
+        env PATH="$capture_bin:/usr/bin:/bin" TARGET_USER=unrelated_caller \
+            TARGET_HOME=/unrelated/caller ACFS_HOME=/unrelated/runtime \
+            ACFS_STATE_FILE=/unrelated/checkpoint.json ACFS_BIN_DIR=/unrelated/bin ACFS_REF=unrelated/source \
+            ACFS_REPO_OWNER=unrelated-owner ACFS_REPO_NAME=unrelated-repository ACFS_CHECKSUMS_REF=unrelated/checksums \
+            bash --noprofile --norc -c "$repair"
+    )
+    mapfile -d '' -t DOCTOR_REPAIR_CAPTURED < "$DOCTOR_REPAIR_ARGV_CAPTURE"
+    mapfile -d '' -t DOCTOR_REPAIR_SOURCE_CAPTURED < "$DOCTOR_REPAIR_SOURCE_CAPTURE"
+}
+
+@test "doctor repair handoff: rendered command preserves validated custom scope source and target" {
+    doctor_custom_checkpoint_fixture
+    TARGET_HOME="$BATS_TEST_TMPDIR/"'repair $(touch injected) `touch backtick` ; home'
+    ACFS_HOME="$TARGET_HOME/.acfs"
+    ACFS_BIN_DIR="$TARGET_HOME/selected bin"
+    ACFS_STATE_FILE="$BATS_TEST_TMPDIR/"'selected $(touch checkpoint-injected).json'
+    mkdir -p "$ACFS_HOME" "$ACFS_BIN_DIR"
+    jq -n --arg home "$TARGET_HOME" --arg user "$TARGET_USER" --arg bin "$ACFS_BIN_DIR" \
+        '{target_home:$home,target_user:$user,bin_dir:$bin,mode:"safe",pinned_ref:"selected/revision",
+          module_selection:{schema_version:1,selected_modules:["lang.bun"]}}' > "$ACFS_STATE_FILE"
+    # Installed metadata deliberately names a different source revision.
+    printf '%s\n' '{"pinned_ref":"canonical-revision"}' > "$DOCTOR_TEST_STATE"
+    doctor_load_module_selection
+    local repair=""
+    repair="$(build_fix_suggestion lang.bun)"
+    doctor_capture_repair_command "$repair"
+    [[ "${DOCTOR_REPAIR_CAPTURED[0]}" == "$TARGET_USER" ]] || fail "repair lost target user"
+    [[ "${DOCTOR_REPAIR_CAPTURED[1]}" == "$TARGET_HOME" ]] || fail "repair lost target home"
+    [[ "${DOCTOR_REPAIR_CAPTURED[2]}" == "$TARGET_HOME/.acfs" ]] || fail "repair inherited caller runtime"
+    [[ "${DOCTOR_REPAIR_CAPTURED[3]}" == "$ACFS_STATE_FILE" ]] || fail "repair lost custom checkpoint"
+    [[ "${DOCTOR_REPAIR_CAPTURED[4]}" == "$ACFS_BIN_DIR" ]] || fail "repair lost custom bin directory"
+    [[ "${DOCTOR_REPAIR_CAPTURED[*]:5}" == '--yes --force-reinstall --mode safe --only lang.bun --ref selected/revision' ]] \
+        || fail "unexpected installer arguments: ${DOCTOR_REPAIR_CAPTURED[*]:5}"
+    [[ "$(tail -n 1 "$DOCTOR_REPAIR_URL_CAPTURE")" == https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/selected/revision/install.sh ]]
+    [[ "${DOCTOR_REPAIR_SOURCE_CAPTURED[0]}" == Dicklesworthstone ]] || fail "repair inherited an unrelated repository owner"
+    [[ "${DOCTOR_REPAIR_SOURCE_CAPTURED[1]}" == agentic_coding_flywheel_setup ]] || fail "repair inherited an unrelated repository name"
+    [[ "${DOCTOR_REPAIR_SOURCE_CAPTURED[2]}" == "" ]] || fail "repair inherited an explicit checksum source"
+    [[ ! -e "$BATS_TEST_TMPDIR/injected" && ! -e "$BATS_TEST_TMPDIR/backtick" && ! -e "$BATS_TEST_TMPDIR/checkpoint-injected" ]]
+}
+
+@test "doctor repair handoff: canonical phase repairs retain resolved account even in an unrelated shell" {
+    doctor_checkpoint_startup_fixture
+    ACFS_STATE_FILE=""
+    doctor_checkpoint_startup
+    local repair=""
+    repair="$(build_fix_suggestion "" --phase 6)"
+    doctor_capture_repair_command "$repair"
+    [[ "${DOCTOR_REPAIR_CAPTURED[0]}" == "$DOCTOR_CONTEXT_USER" ]] || fail "repair targeted the invoking shell account"
+    [[ "${DOCTOR_REPAIR_CAPTURED[1]}" == "$DOCTOR_CONTEXT_HOME" ]]
+    [[ "${DOCTOR_REPAIR_CAPTURED[2]}" == "$DOCTOR_CONTEXT_HOME/.acfs" ]]
+    [[ "${DOCTOR_REPAIR_CAPTURED[3]}" == "$DOCTOR_TEST_STATE" ]]
+    [[ "${DOCTOR_REPAIR_CAPTURED[4]}" == "$DOCTOR_CONTEXT_HOME/canonical-bin" ]]
+    [[ "${DOCTOR_REPAIR_CAPTURED[*]:5}" == '--yes --force-reinstall --mode vibe --only-phase 6 --ref main' ]]
+    [[ "$(tail -n 1 "$DOCTOR_REPAIR_URL_CAPTURE")" == https://agent-flywheel.com/install ]]
+    [[ "${DOCTOR_REPAIR_SOURCE_CAPTURED[0]}" == Dicklesworthstone && "${DOCTOR_REPAIR_SOURCE_CAPTURED[1]}" == agentic_coding_flywheel_setup ]]
+    [[ "${DOCTOR_REPAIR_SOURCE_CAPTURED[2]}" == "" ]] || fail "canonical repair inherited an explicit checksum source"
+}
+
+@test "doctor repair handoff: a missing saved bin directory is retained as the repair destination" {
+    doctor_checkpoint_startup_fixture
+    jq -n --arg home "$DOCTOR_CONTEXT_HOME" --arg user "$DOCTOR_CONTEXT_USER" \
+        '{target_home:$home,target_user:$user,bin_dir:($home+"/missing bin"),mode:"safe",
+          module_selection:{schema_version:1,selected_modules:["lang.bun"]}}' > "$DOCTOR_CONTEXT_CHECKPOINT"
+    doctor_checkpoint_startup
+    [[ ! -d "$DOCTOR_CONTEXT_HOME/missing bin" ]]
+    local repair=""
+    repair="$(build_fix_suggestion lang.bun)"
+    doctor_capture_repair_command "$repair"
+    [[ "${DOCTOR_REPAIR_CAPTURED[4]}" == "$DOCTOR_CONTEXT_HOME/missing bin" ]] || fail "repair changed the saved bin destination"
+    [[ ! -d "$DOCTOR_CONTEXT_HOME/missing bin" ]] || fail "rendering the repair created an installation directory"
+}
+
+@test "doctor repair handoff: custom runtime roots are preserved without inheriting another account's runtime" {
+    doctor_custom_checkpoint_fixture
+    ACFS_HOME="$BATS_TEST_TMPDIR/shared runtime"
+    doctor_load_module_selection
+    local repair=""
+    repair="$(build_fix_suggestion lang.bun)"
+    doctor_capture_repair_command "$repair"
+    [[ "${DOCTOR_REPAIR_CAPTURED[2]}" == "$ACFS_HOME" ]] || fail "repair relocated the custom runtime"
+
+    # The runtime used to inspect a different target can live under another
+    # account. Do not copy that source location into the target's repair.
+    ACFS_HOME=/root/.acfs
+    repair="$(build_fix_suggestion lang.bun)"
+    doctor_capture_repair_command "$repair"
+    [[ "${DOCTOR_REPAIR_CAPTURED[2]}" == "$TARGET_HOME/.acfs" ]] || fail "repair inherited another account's runtime"
+}
+
+@test "doctor repair handoff: failed custom validation clears the accepted checkpoint and emits no repair" {
+    doctor_custom_checkpoint_fixture
+    doctor_load_module_selection
+    ACFS_STATE_FILE="$BATS_TEST_TMPDIR/missing-custom-checkpoint.json"
+    if doctor_load_module_selection; then fail "missing custom checkpoint was accepted"; fi
+    [[ -z "$DOCTOR_SELECTION_STATE_FILE" ]] || fail "an earlier accepted checkpoint survived validation failure"
+    run build_fix_suggestion lang.bun
+    assert_failure
+    assert_output ""
+}
+
+@test "doctor repair handoff: an absent canonical checkpoint retains legacy defaults without borrowing another pin" {
+    doctor_custom_checkpoint_fixture
+    printf '%s\n' '{"pinned_ref":"unrelated/revision"}' > "$DOCTOR_TEST_STATE"
+    ACFS_STATE_FILE="$ACFS_HOME/state.json"
+    ACFS_BIN_DIR=""
+    doctor_load_module_selection
+    [[ "$ACFS_STATE_SELECTION_MODE" == legacy ]]
+    local repair=""
+    repair="$(build_fix_suggestion lang.bun)"
+    doctor_capture_repair_command "$repair"
+    [[ "${DOCTOR_REPAIR_CAPTURED[3]}" == "$ACFS_STATE_FILE" ]]
+    [[ "${DOCTOR_REPAIR_CAPTURED[4]}" == "$TARGET_HOME/.local/bin" ]]
+    [[ "${DOCTOR_REPAIR_CAPTURED[*]:5}" == '--yes --force-reinstall --mode vibe --only lang.bun --ref main' ]]
+    [[ "$(tail -n 1 "$DOCTOR_REPAIR_URL_CAPTURE")" == https://agent-flywheel.com/install ]]
+}
+
 @test "doctor selection: an explicit custom checkpoint overrides installed scope for the resolved account" {
     doctor_custom_checkpoint_fixture
     doctor_load_module_selection

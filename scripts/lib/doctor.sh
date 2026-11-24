@@ -823,30 +823,6 @@ if [[ "$_ACFS_DOCTOR_ENV_TARGET_USER_WAS_SET" != true ]]; then
         unset _acfs_doctor_ambient_target_user
     fi
 fi
-for _acfs_doctor_state_file in "${_acfs_doctor_state_files[@]}"; do
-    [[ -f "$_acfs_doctor_state_file" ]] || continue
-    _acfs_doctor_assign_state_string ACFS_BIN_DIR "$_acfs_doctor_state_file" bin_dir 2>/dev/null || true
-    ACFS_BIN_DIR="$(_acfs_doctor_existing_abs_nonroot_dir "${ACFS_BIN_DIR:-}" 2>/dev/null || true)"
-    ACFS_BIN_DIR="$(_acfs_doctor_validate_bin_dir_for_home "${ACFS_BIN_DIR:-}" "${TARGET_HOME:-}" 2>/dev/null || true)"
-    [[ -n "${ACFS_BIN_DIR:-}" ]] && break
-done
-if [[ -z "${ACFS_BIN_DIR:-}" ]]; then
-    _acfs_doctor_ambient_target_user=""
-    for _acfs_doctor_state_file in "${_acfs_doctor_ambient_state_files[@]}"; do
-        [[ -f "$_acfs_doctor_state_file" ]] || continue
-        _acfs_doctor_assign_state_string _acfs_doctor_ambient_target_user "$_acfs_doctor_state_file" target_user 2>/dev/null || true
-        [[ "${_acfs_doctor_ambient_target_user:-}" == "$TARGET_USER" ]] || continue
-        _acfs_doctor_assign_state_string ACFS_BIN_DIR "$_acfs_doctor_state_file" bin_dir 2>/dev/null || true
-        ACFS_BIN_DIR="$(_acfs_doctor_existing_abs_nonroot_dir "${ACFS_BIN_DIR:-}" 2>/dev/null || true)"
-        ACFS_BIN_DIR="$(_acfs_doctor_validate_bin_dir_for_home "${ACFS_BIN_DIR:-}" "${TARGET_HOME:-}" 2>/dev/null || true)"
-        [[ -n "${ACFS_BIN_DIR:-}" ]] && break
-    done
-    unset _acfs_doctor_ambient_target_user
-fi
-if [[ -z "${ACFS_BIN_DIR:-}" ]]; then
-    ACFS_BIN_DIR="$(_acfs_doctor_validate_bin_dir_for_home "$_ACFS_DOCTOR_ENV_BIN_DIR" "${TARGET_HOME:-}" 2>/dev/null || true)"
-fi
-
 _acfs_doctor_resolved_target_home=""
 if [[ "$TARGET_USER" == "root" ]]; then
     _acfs_doctor_resolved_target_home="/root"
@@ -878,7 +854,44 @@ if [[ -z "${TARGET_HOME:-}" ]]; then
     fi
 fi
 
-ACFS_BIN_DIR="$(_acfs_doctor_validate_bin_dir_for_home "${ACFS_BIN_DIR:-}" "${TARGET_HOME:-}" 2>/dev/null || true)"
+# Resolve the account home before validating its bin directory. An explicit
+# TARGET_USER leaves TARGET_HOME empty until the passwd lookup; validating
+# earlier incorrectly rejects that account's own saved bin path.
+# Use the same checkpoint priority as the scope loader. An explicit checkpoint
+# or the resolved account's canonical checkpoint supplies the bin metadata too.
+_acfs_doctor_bin_state_files=("${_acfs_doctor_state_files[@]}")
+_acfs_doctor_bin_checkpoint="${ACFS_STATE_FILE:-}"
+if [[ -z "$_acfs_doctor_bin_checkpoint" && -n "${TARGET_HOME:-}" ]] &&
+   [[ -e "$TARGET_HOME/.acfs/state.json" || -L "$TARGET_HOME/.acfs/state.json" ]]; then
+    _acfs_doctor_bin_checkpoint="$TARGET_HOME/.acfs/state.json"
+fi
+if [[ -n "$_acfs_doctor_bin_checkpoint" ]]; then
+    _acfs_doctor_bin_state_files=("$_acfs_doctor_bin_checkpoint")
+fi
+for _acfs_doctor_state_file in "${_acfs_doctor_bin_state_files[@]}"; do
+    [[ -f "$_acfs_doctor_state_file" ]] || continue
+    _acfs_doctor_assign_state_string ACFS_BIN_DIR "$_acfs_doctor_state_file" bin_dir 2>/dev/null || true
+    # A missing directory is repairable: retain its validated location so a
+    # suggested reinstall recreates it instead of changing installation paths.
+    ACFS_BIN_DIR="$(_acfs_doctor_validate_bin_dir_for_home "${ACFS_BIN_DIR:-}" "${TARGET_HOME:-}" 2>/dev/null || true)"
+    [[ -n "${ACFS_BIN_DIR:-}" ]] && break
+done
+if [[ -z "${ACFS_BIN_DIR:-}" && -z "$_acfs_doctor_bin_checkpoint" ]]; then
+    _acfs_doctor_ambient_target_user=""
+    for _acfs_doctor_state_file in "${_acfs_doctor_ambient_state_files[@]}"; do
+        [[ -f "$_acfs_doctor_state_file" ]] || continue
+        _acfs_doctor_assign_state_string _acfs_doctor_ambient_target_user "$_acfs_doctor_state_file" target_user 2>/dev/null || true
+        [[ "${_acfs_doctor_ambient_target_user:-}" == "$TARGET_USER" ]] || continue
+        _acfs_doctor_assign_state_string ACFS_BIN_DIR "$_acfs_doctor_state_file" bin_dir 2>/dev/null || true
+        ACFS_BIN_DIR="$(_acfs_doctor_validate_bin_dir_for_home "${ACFS_BIN_DIR:-}" "${TARGET_HOME:-}" 2>/dev/null || true)"
+        [[ -n "${ACFS_BIN_DIR:-}" ]] && break
+    done
+    unset _acfs_doctor_ambient_target_user
+fi
+if [[ -z "${ACFS_BIN_DIR:-}" ]]; then
+    ACFS_BIN_DIR="$(_acfs_doctor_validate_bin_dir_for_home "$_ACFS_DOCTOR_ENV_BIN_DIR" "${TARGET_HOME:-}" 2>/dev/null || true)"
+fi
+unset _acfs_doctor_bin_state_files _acfs_doctor_bin_checkpoint
 
 export TARGET_USER
 export TARGET_HOME
@@ -987,7 +1000,7 @@ _acfs_doctor_source_first "doctor_fix.sh" || true
 # Fix Suggestion Builder (bd-31ps.5.2)
 # ============================================================
 # Builds copy-pasteable fix suggestions that respect the current
-# install mode (vibe/safe) and pinned ref when known.
+# installation context, mode (vibe/safe), and pinned ref when known.
 # ============================================================
 
 # Build a fix suggestion command for a given module
@@ -1032,25 +1045,67 @@ build_fix_suggestion() {
         flag_args+=(--only "$module_id")
     fi
 
-    # Build the command
-    # Check if we have a pinned ref from state.json
-    local state_file=""
-    state_file="$(_acfs_doctor_find_project_path "state.json" 2>/dev/null || true)"
+    # Bind the repair to the installation Doctor actually checked. A copied
+    # command may run in a fresh or administrative shell with unrelated exported
+    # hints; the installer's side of the pipeline must carry the resolved target
+    # and exact checkpoint rather than rediscovering another account or scope.
+    [[ -z "${DOCTOR_SELECTION_ERROR:-}" && "${ACFS_STATE_SELECTION_MODE:-}" != invalid ]] || return 1
+    local target_user="${TARGET_USER:-}"
+    local target_home=""
+    local runtime_dir=""
+    local bin_dir=""
+    local state_file="${DOCTOR_SELECTION_STATE_FILE:-${ACFS_STATE_FILE:-}}"
+    local environment=""
+    local -a environment_args=()
+    [[ "$target_user" =~ ^[a-z_][a-z0-9._-]*$ ]] || return 1
+    _acfs_doctor_assign_abs_nonroot_path target_home "${TARGET_HOME:-}" || return 1
+    if [[ -z "$state_file" ]]; then
+        state_file="$(_acfs_doctor_find_project_path "state.json" 2>/dev/null || true)"
+    fi
+    [[ -n "$state_file" ]] || state_file="$target_home/.acfs/state.json"
+    _acfs_doctor_assign_abs_nonroot_path state_file "$state_file" || return 1
+    # The installer supports custom runtime roots. Preserve Doctor's resolved
+    # runtime while applying the same cross-account path rejection as bin
+    # destinations: a runtime used only as a foreign source must not relocate
+    # the target installation when the suggestion is executed.
+    runtime_dir="$(_acfs_doctor_validate_bin_dir_for_home "${ACFS_HOME:-}" "$target_home" 2>/dev/null || true)"
+    [[ -n "$runtime_dir" ]] || runtime_dir="$target_home/.acfs"
+    bin_dir="$(_acfs_doctor_validate_bin_dir_for_home "${ACFS_BIN_DIR:-}" "$target_home" 2>/dev/null || true)"
+    [[ -n "$bin_dir" ]] || bin_dir="$target_home/.local/bin"
+    environment_args=(
+        "TARGET_USER=$target_user"
+        "TARGET_HOME=$target_home"
+        "ACFS_HOME=$runtime_dir"
+        "ACFS_STATE_FILE=$state_file"
+        "ACFS_BIN_DIR=$bin_dir"
+        # Match the source fetched above even in a shell configured for a fork.
+        "ACFS_REPO_OWNER=Dicklesworthstone"
+        "ACFS_REPO_NAME=agentic_coding_flywheel_setup"
+        # Let --ref select the installer's normal checksum policy. An unrelated
+        # inherited override would otherwise be treated as an explicit pin.
+        "ACFS_CHECKSUMS_REF="
+    )
+
+    # The accepted checkpoint also owns the source revision. Looking up the
+    # installed default here would pair custom scope with an unrelated source.
+    local pinned_ref=""
     if [[ -f "$state_file" ]]; then
-        local pinned_ref=""
         pinned_ref="$(_acfs_doctor_read_json_string_key "$state_file" "pinned_ref" 2>/dev/null || true)"
         pinned_ref="$(_acfs_doctor_normalize_ref "$pinned_ref" 2>/dev/null || true)"
         if [[ -n "$pinned_ref" && "$pinned_ref" != "main" ]]; then
             install_url="https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/${pinned_ref}/install.sh"
-            flag_args+=(--ref "$pinned_ref")
         fi
     fi
+    # Also bind the default explicitly: otherwise an inherited ACFS_REF in the
+    # shell running the command can change the source after the initial fetch.
+    flag_args+=(--ref "${pinned_ref:-main}")
 
     printf -v flags '%q ' "${flag_args[@]}"
     flags="${flags% }"
     printf -v install_url_q '%q' "$install_url"
+    printf -v environment '%q ' "${environment_args[@]}"
 
-    echo "curl -fsSL $install_url_q | bash -s -- $flags"
+    printf 'curl -fsSL %s | env %sbash -s -- %s\n' "$install_url_q" "$environment" "$flags"
 }
 
 # Shorthand for common fix patterns
@@ -2121,6 +2176,7 @@ doctor_check_module_id() {
 # selection policy and must never hide a selected tool's failure.
 doctor_load_module_selection() {
     DOCTOR_SELECTION_ERROR=""
+    DOCTOR_SELECTION_STATE_FILE=""
     ACFS_STATE_SELECTION_MODE=invalid
     ACFS_STATE_SELECTED_MODULES=()
     local state_script=""
@@ -2197,6 +2253,7 @@ doctor_load_module_selection() {
         ACFS_MODE="$ACFS_STATE_INSTALL_MODE"
         export ACFS_MODE
     fi
+    DOCTOR_SELECTION_STATE_FILE="$state_file"
 }
 
 # Return success only when this check was emitted as an intentional skip.
