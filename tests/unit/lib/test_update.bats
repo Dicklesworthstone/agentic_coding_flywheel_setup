@@ -17033,6 +17033,321 @@ esac'
 # (issues #381, #382, #383)
 # ============================================================
 
+_svc_selection_fixture() {
+    export ACFS_STATE_FILE="$BATS_TEST_TMPDIR/service-selection.json"
+    local owner=""
+    owner="$(id -un)"
+    jq -n --arg home "$HOME" --arg user "$owner" --args \
+        '{target_home:$home,target_user:$user,mode:"safe",module_selection:{schema_version:1,selected_modules:$ARGS.positional}}' \
+        "$@" > "$ACFS_STATE_FILE"
+}
+
+@test "acfs services selection: CASS-only start does not require or probe omitted services" {
+    _svc_selection_fixture stack.cass
+    run bash -c '
+        source "$1"
+        _initialize_bins() {
+            _TMUX_BIN=/usr/bin/true; _CURL_BIN=""; _AM_BIN=""; _CM_BIN=""; _CASS_BIN=/usr/bin/true
+        }
+        _session_exists() { return 1; }
+        _agent_mail_is_healthy() { echo UNSELECTED_AGENT_MAIL_PROBE >&2; return 1; }
+        _native_agent_mail_unit_available() { echo UNSELECTED_AGENT_MAIL_UNIT >&2; return 1; }
+        _port_is_listening() { echo UNSELECTED_PORT_PROBE >&2; return 1; }
+        ACFS_AGENT_MAIL_HOST="bad host"; ACFS_CM_PORT=invalid
+        main start --dry-run
+    ' _ "$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+    assert_success
+    assert_output --partial "cass:"
+    refute_output --partial "UNSELECTED_"
+    refute_output --partial "Missing binary:"
+    refute_output --partial "cm:"
+}
+
+@test "acfs services selection: status and drift inspect only the saved services" {
+    _svc_selection_fixture stack.cass
+    run bash -c '
+        source "$1"
+        _initialize_bins() { _TMUX_BIN=/usr/bin/true; }
+        _session_exists() { return 0; }
+        _pane_service_is_running() { [[ "$1" == cass ]] || { echo UNSELECTED_PANE >&2; return 1; }; }
+        _agent_mail_is_healthy() { echo UNSELECTED_HTTP >&2; return 1; }
+        _native_agent_mail_is_active() { echo UNSELECTED_NATIVE >&2; return 1; }
+        _port_is_listening() { echo UNSELECTED_PORT >&2; return 1; }
+        _service_binary_drift() { printf "%s|ok|current\n" "$1"; }
+        cmd_status && cmd_drift --robot
+    ' _ "$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+    assert_success
+    assert_output --partial "cass|ok|current"
+    refute_output --partial "UNSELECTED_"
+    refute_output --partial "agent-mail|"
+    refute_output --partial "cm|"
+}
+
+@test "acfs services selection: explicit excluded targets fail before any probes" {
+    _svc_selection_fixture stack.cass
+    run bash -c '
+        source "$1"
+        _initialize_bins() { echo PROBED; }
+        for operation in restart repair logs; do
+            status=0
+            main "$operation" cm || status=$?
+            [[ "$status" != 0 ]] || exit 31
+        done
+    ' _ "$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+    assert_success
+    assert_output --partial "not selected"
+    refute_output --partial "PROBED"
+}
+
+@test "acfs services selection: invalid or foreign custom checkpoints block all service operations" {
+    _svc_selection_fixture stack.cass
+    local valid="$BATS_TEST_TMPDIR/service-selection-valid.json"
+    cp "$ACFS_STATE_FILE" "$valid"
+    run bash -c '
+        source "$1"
+        _initialize_bins() { echo PROBED; }
+        valid="$2"
+        for variant in missing malformed foreign unknown symlink; do
+            export ACFS_STATE_FILE="${valid}.${variant}"
+            case "$variant" in
+                malformed) printf "{" > "$ACFS_STATE_FILE" ;;
+                foreign) jq ".target_user = \"another-account\"" "$valid" > "$ACFS_STATE_FILE" ;;
+                unknown) jq ".module_selection.selected_modules = [\"stack.unknown_tool\"]" "$valid" > "$ACFS_STATE_FILE" ;;
+                symlink) ln -s "$valid" "$ACFS_STATE_FILE" ;;
+            esac
+            for operation in start stop status restart repair drift logs; do
+                status=0
+                main "$operation" || status=$?
+                [[ "$status" != 0 ]] || { echo "ACCEPTED:$variant:$operation"; exit 32; }
+            done
+        done
+    ' _ "$PROJECT_ROOT/scripts/lib/acfs-services.sh" "$valid"
+    assert_success
+    refute_output --partial "PROBED"
+    refute_output --partial "ACCEPTED:"
+}
+
+@test "acfs services selection: installations without daemons need no service tools" {
+    _svc_selection_fixture agents.codex
+    run bash -c '
+        source "$1"
+        _initialize_bins() { echo PROBED; return 1; }
+        for operation in start stop status restart repair drift logs; do
+            main "$operation" || exit 33
+        done
+    ' _ "$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+    assert_success
+    assert_output --partial "No background services are selected"
+    refute_output --partial "PROBED"
+}
+
+@test "acfs services selection: missing selected binaries remain actionable failures" {
+    _svc_selection_fixture stack.cass
+    run bash -c '
+        source "$1"
+        _initialize_bins() { _TMUX_BIN=/usr/bin/true; _CASS_BIN=""; }
+        _session_exists() { return 1; }
+        main start --dry-run
+    ' _ "$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+    assert_failure
+    assert_output --partial "Missing binary: cass"
+    refute_output --partial "Missing binary: am"
+    refute_output --partial "Missing binary: cm"
+}
+
+@test "acfs services selection: custom checkpoint overrides default service scope" {
+    _svc_selection_fixture stack.cass
+    mkdir -p "$HOME/.acfs"
+    jq '.module_selection.selected_modules = ["stack.cm"]' "$ACFS_STATE_FILE" > "$HOME/.acfs/state.json"
+    run bash -c '
+        source "$1"
+        _initialize_bins() { _TMUX_BIN=/usr/bin/true; }
+        _service_binary_drift() { printf "%s|ok|current\n" "$1"; }
+        cmd_drift --robot
+        ACFS_STATE_FILE="$HOME/.acfs/state.json"
+        cmd_drift --robot
+    ' _ "$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+    assert_success
+    assert_output $'cass|ok|current\ncm|ok|current'
+}
+
+@test "acfs services restart preserves a failed start exit status" {
+    run bash -c '
+        source "$1"
+        _initialize_bins() { _TMUX_BIN=/usr/bin/true; }
+        _native_agent_mail_is_active() { return 0; }
+        _preflight_services() { return 0; }
+        cmd_stop() { return 0; }
+        cmd_start() { return 23; }
+        cmd_restart
+    ' _ "$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+    assert_failure 23
+    [[ "$status" -eq 23 ]] || fail "restart did not preserve the failed start exit status"
+    assert_output --partial "start exit 23"
+}
+
+@test "acfs services selection: native Agent Mail lifecycle works without tmux or other daemons" {
+    _svc_selection_fixture stack.mcp_agent_mail
+    local systemctl_fixture="$BATS_TEST_TMPDIR/native-service-systemctl"
+    export ACFS_SVC_TEST_NATIVE_STATE="$BATS_TEST_TMPDIR/native-state"
+    export ACFS_SVC_TEST_NATIVE_CALLS="$BATS_TEST_TMPDIR/native-calls"
+    cat > "$systemctl_fixture" <<'NATIVE_UNIT'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$ACFS_SVC_TEST_NATIVE_CALLS"
+case "$*" in
+    '--user start agent-mail.service'|'--user restart agent-mail.service')
+        printf 'running\n' > "$ACFS_SVC_TEST_NATIVE_STATE" ;;
+    '--user stop agent-mail.service')
+        printf 'stopped\n' > "$ACFS_SVC_TEST_NATIVE_STATE" ;;
+    *) exit 71 ;;
+esac
+NATIVE_UNIT
+    chmod +x "$systemctl_fixture"
+    run bash -c '
+        source "$1"
+        unit_fixture="$2"
+        _initialize_bins() {
+            _TMUX_BIN=""; _CURL_BIN=/usr/bin/true; _SYSTEMCTL_BIN="$unit_fixture"
+            _JOURNALCTL_BIN=/usr/bin/true; _AM_BIN=""; _CM_BIN=""; _CASS_BIN=""
+        }
+        _agent_mail_is_healthy() { [[ -f "$ACFS_SVC_TEST_NATIVE_STATE" && "$(< "$ACFS_SVC_TEST_NATIVE_STATE")" == running ]]; }
+        _native_agent_mail_unit_available() { return 0; }
+        _native_agent_mail_is_active() { _agent_mail_is_healthy; }
+        _wait_for_agent_mail() { _agent_mail_is_healthy; }
+        _port_is_listening() { return 1; }
+        _report_binary_drift() { return 0; }
+        cmd_start || exit 41
+        cmd_status || exit 42
+        printf "stopped\n" > "$ACFS_SVC_TEST_NATIVE_STATE"
+        cmd_repair || exit 43
+        cmd_restart || exit 44
+        printf "stopped\n" > "$ACFS_SVC_TEST_NATIVE_STATE"
+        cmd_restart || exit 47
+        main logs --dry-run || exit 45
+        _DRY_RUN=false
+        cmd_stop || exit 46
+    ' _ "$PROJECT_ROOT/scripts/lib/acfs-services.sh" "$systemctl_fixture"
+    assert_success
+    assert_output --partial "All selected services are ready"
+    assert_output --partial "Would follow journalctl logs"
+    refute_output --partial "tmux is not installed"
+    run cat "$ACFS_SVC_TEST_NATIVE_CALLS"
+    assert_success
+    assert_output $'--user start agent-mail.service\n--user start agent-mail.service\n--user restart agent-mail.service\n--user restart agent-mail.service\n--user stop agent-mail.service'
+}
+
+@test "acfs services selection: stop preserves excluded services and unknown panes" {
+    _svc_selection_fixture stack.cass
+    local tmux_fixture="$BATS_TEST_TMPDIR/service-selection-tmux"
+    export ACFS_SVC_TEST_CALLS="$BATS_TEST_TMPDIR/service-selection-tmux-calls"
+    printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "$ACFS_SVC_TEST_CALLS"\n' > "$tmux_fixture"
+    chmod +x "$tmux_fixture"
+    run bash -c '
+        source "$1"
+        fixture_tmux="$2"
+        _initialize_bins() { _TMUX_BIN="$fixture_tmux"; }
+        _session_exists() { return 0; }
+        _native_agent_mail_is_active() { echo UNSELECTED_NATIVE; return 0; }
+        _agent_mail_is_healthy() { echo UNSELECTED_HTTP; return 0; }
+        _get_pane_ids() { printf "%%1\n%%2\n%%3\n%%9\n"; }
+        _pane_id_for_service() {
+            case "$1" in agent-mail) printf "%%1\n" ;; cm) printf "%%2\n" ;; cass) printf "%%3\n" ;; esac
+        }
+        _pane_service_is_running() { return 1; }
+        cmd_stop
+    ' _ "$PROJECT_ROOT/scripts/lib/acfs-services.sh" "$tmux_fixture"
+    assert_success
+    refute_output --partial "UNSELECTED_"
+    run cat "$ACFS_SVC_TEST_CALLS"
+    assert_success
+    assert_output "send-keys -t %3 C-c"
+}
+
+@test "acfs services selection: whole restart preserves omitted services and the shared session" {
+    _svc_selection_fixture stack.cass
+    run bash -c '
+        source "$1"
+        _initialize_bins() { _TMUX_BIN=/usr/bin/true; _CASS_BIN=/usr/bin/true; _CURL_BIN=""; }
+        _native_agent_mail_is_active() { echo UNSELECTED_NATIVE; return 0; }
+        cmd_stop() { echo STOPPED_WHOLE_SESSION; return 1; }
+        cmd_start() { echo STARTED_WHOLE_SESSION; return 1; }
+        _restart_one_service() { printf "RESTARTED:%s\n" "$1"; }
+        cmd_status() { return 0; }
+        cmd_restart
+    ' _ "$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+    assert_success
+    assert_output --partial "RESTARTED:cass"
+    refute_output --partial "UNSELECTED_"
+    refute_output --partial "WHOLE_SESSION"
+    refute_output --partial "RESTARTED:cm"
+    refute_output --partial "RESTARTED:agent-mail"
+}
+
+@test "acfs services selection: native-only repair leaves an unrelated tmux layout alone" {
+    _svc_selection_fixture stack.mcp_agent_mail
+    local tmux_fixture="$BATS_TEST_TMPDIR/native-repair-unrelated-tmux"
+    export ACFS_SVC_TEST_CALLS="$BATS_TEST_TMPDIR/native-repair-tmux-calls"
+    printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "$ACFS_SVC_TEST_CALLS"\n' > "$tmux_fixture"
+    chmod +x "$tmux_fixture"
+    run bash -c '
+        source "$1"
+        fixture_tmux="$2"
+        _initialize_bins() { _TMUX_BIN="$fixture_tmux"; _SYSTEMCTL_BIN=/usr/bin/true; }
+        _agent_mail_is_healthy() { return 1; }
+        _native_agent_mail_unit_available() { return 0; }
+        _session_exists() { return 0; }
+        _wait_for_service_ready() { [[ "$1" == agent-mail ]]; }
+        cmd_repair
+    ' _ "$PROJECT_ROOT/scripts/lib/acfs-services.sh" "$tmux_fixture"
+    assert_success
+    assert_output --partial "Starting native Agent Mail user service"
+    [[ ! -e "$ACFS_SVC_TEST_CALLS" ]] || fail "native-only repair changed the unrelated tmux session"
+}
+
+@test "acfs services selection: inactive native restart refuses external endpoint owners" {
+    _svc_selection_fixture stack.mcp_agent_mail
+    local systemctl_fixture="$BATS_TEST_TMPDIR/external-owner-systemctl"
+    export ACFS_SVC_TEST_CALLS="$BATS_TEST_TMPDIR/external-owner-systemctl-calls"
+    printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "$ACFS_SVC_TEST_CALLS"\n' > "$systemctl_fixture"
+    chmod +x "$systemctl_fixture"
+    run bash -c '
+        source "$1"
+        unit_fixture="$2"
+        _initialize_bins() { _TMUX_BIN=""; _SYSTEMCTL_BIN="$unit_fixture"; _CURL_BIN=/usr/bin/true; }
+        _native_agent_mail_unit_available() { return 0; }
+        _native_agent_mail_is_active() { return 1; }
+        _agent_mail_is_healthy() { return "$health"; }
+        _port_is_listening() { [[ "$health" == 1 ]]; }
+        for health in 0 2 1; do
+            status=0
+            cmd_restart || status=$?
+            [[ "$status" != 0 ]] || exit 48
+        done
+    ' _ "$PROJECT_ROOT/scripts/lib/acfs-services.sh" "$systemctl_fixture"
+    assert_success
+    assert_output --partial "owned by another listener"
+    [[ ! -e "$ACFS_SVC_TEST_CALLS" ]] || fail "restart touched an inactive unit despite an external endpoint owner"
+}
+
+@test "acfs services selection: targeted CASS maintenance ignores other selected service endpoints" {
+    _svc_selection_fixture stack.mcp_agent_mail stack.cm stack.cass
+    run bash -c '
+        source "$1"
+        _initialize_bins() { _TMUX_BIN=/usr/bin/true; _CASS_BIN=/usr/bin/true; _CURL_BIN=""; }
+        _session_exists() { return 0; }
+        _native_agent_mail_is_active() { echo UNRELATED_NATIVE_PROBE; return 0; }
+        _agent_mail_is_healthy() { echo UNRELATED_HTTP_PROBE; return 0; }
+        ACFS_AGENT_MAIL_HOST="bad host"; ACFS_CM_PORT=invalid
+        main restart cass --dry-run || exit 49
+        main repair cass --dry-run || exit 50
+    ' _ "$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+    assert_success
+    assert_output --partial "Would restart: cass"
+    assert_output --partial "Would relaunch these services if they are not running: cass"
+    refute_output --partial "UNRELATED_"
+    refute_output --partial "not a valid"
+}
+
 # Build a self-contained fixture: an isolated tmux server (its own socket, so a
 # test can never touch a live session) plus fake am/cm/cass binaries that exec
 # a non-shell process, exactly like a real service pane.

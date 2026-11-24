@@ -45,6 +45,10 @@ ACFS_CM_HOST="${ACFS_CM_HOST:-$ACFS_DEFAULT_CM_HOST}"
 ACFS_CM_PORT="${ACFS_CM_PORT:-$ACFS_DEFAULT_CM_PORT}"
 
 readonly -a ACFS_SERVICE_NAMES=("agent-mail" "cm" "cass")
+_ACFS_SVC_LIB_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+readonly _ACFS_SVC_LIB_DIR
+_SERVICE_SELECTION_MODE=legacy
+_SELECTED_SERVICES=("${ACFS_SERVICE_NAMES[@]}")
 
 # --- State ---
 _DRY_RUN=false
@@ -77,6 +81,100 @@ _info()  { printf '%s[acfs-services]%s %s\n' "$_C_CYAN" "$_C_RESET" "$*" >&2; }
 _ok()    { printf '%s[acfs-services]%s %s%s%s\n' "$_C_CYAN" "$_C_RESET" "$_C_GREEN" "$*" "$_C_RESET" >&2; }
 _warn()  { printf '%s[acfs-services]%s %s%s%s\n' "$_C_CYAN" "$_C_RESET" "$_C_YELLOW" "$*" "$_C_RESET" >&2; }
 _err()   { printf '%s[acfs-services]%s %s%s%s\n' "$_C_CYAN" "$_C_RESET" "$_C_RED" "$*" "$_C_RESET" >&2; }
+
+# The global ACFS dispatcher already enters the installation owner's account.
+# Bind service scope to that effective account and its HOME; a checkpoint must
+# never choose a different user for a daemon command. Use the installer's
+# canonical reader in a clean child shell so its state globals cannot leak into
+# the service lifecycle, and never source a caller-selected checkpoint.
+_load_service_selection() {
+    _SERVICE_SELECTION_MODE=invalid
+    _SELECTED_SERVICES=()
+    local home_dir="${HOME:-}" state_file="" default_state=""
+    local owner="" id_bin="" bash_bin="" parsed="" policy=""
+    local -a records=()
+
+    if [[ "$home_dir" != /* || "$home_dir" == / ]]; then
+        _err "Cannot resolve the current account's home for service selection."
+        return 1
+    fi
+    home_dir="${home_dir%/}"
+    default_state="$home_dir/.acfs/state.json"
+    state_file="${ACFS_STATE_FILE:-${ACFS_HOME:-$home_dir/.acfs}/state.json}"
+    if [[ "$state_file" != /* || "$state_file" == / ]]; then
+        _err "ACFS_STATE_FILE must name an absolute checkpoint file."
+        return 1
+    fi
+    if [[ "$state_file" == "$default_state" ]]; then
+        policy=allow-legacy-identity
+        if [[ ! -e "$state_file" && ! -L "$state_file" ]]; then
+            _SERVICE_SELECTION_MODE=legacy
+            _SELECTED_SERVICES=("${ACFS_SERVICE_NAMES[@]}")
+            return 0
+        fi
+    fi
+    id_bin="$(_system_binary_path id)" || return 1
+    bash_bin="$(_system_binary_path bash)" || return 1
+    owner="$("$id_bin" -un)" || return 1
+    if [[ ! -r "$_ACFS_SVC_LIB_DIR/state.sh" ]]; then
+        _err "Cannot validate service selection; restore the complete ACFS runtime."
+        return 1
+    fi
+    if ! parsed="$(PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+        "$bash_bin" --noprofile --norc -p -c '
+            source "$1" >/dev/null || exit 1
+            declare -F state_load_module_selection >/dev/null &&
+                declare -F state_validate_module_selection_catalog_file >/dev/null || exit 1
+            args=("$2" "$3" "$4")
+            [[ -z "$5" ]] || args+=("$5")
+            state_load_module_selection "${args[@]}" || exit 1
+            state_validate_module_selection_catalog_file "$6" || exit 1
+            printf "%s\n" "$ACFS_STATE_SELECTION_MODE"
+            for entry in agent-mail:stack.mcp_agent_mail cm:stack.cm cass:stack.cass; do
+                if state_module_is_selected "${entry#*:}"; then
+                    printf "%s\n" "${entry%%:*}"
+                fi
+            done
+        ' _ "$_ACFS_SVC_LIB_DIR/state.sh" "$state_file" "$home_dir" "$owner" "$policy" \
+        "$_ACFS_SVC_LIB_DIR/../generated/manifest_index.sh")"; then
+        _err "Saved service selection is invalid or belongs to another account; no service was probed or changed."
+        return 1
+    fi
+    mapfile -t records <<< "$parsed"
+    case "${records[0]:-}" in
+        legacy|scoped) _SERVICE_SELECTION_MODE="${records[0]}" ;;
+        *) return 1 ;;
+    esac
+    _SELECTED_SERVICES=("${records[@]:1}")
+}
+
+_service_is_selected() {
+    local service=""
+    for service in "${_SELECTED_SERVICES[@]}"; do
+        [[ "$service" != "${1:-}" ]] || return 0
+    done
+    return 1
+}
+
+_validate_service_targets() {
+    local service=""
+    for service in "$@"; do
+        if ! _service_desc "$service" >/dev/null 2>&1; then
+            _err "Unknown service: '$service'"
+            _info "Available services: ${ACFS_SERVICE_NAMES[*]}"
+            return 1
+        fi
+        if ! _service_is_selected "$service"; then
+            _err "Service '$service' is not selected in this installation."
+            return 1
+        fi
+    done
+}
+
+_no_selected_services() {
+    ((${#_SELECTED_SERVICES[@]} == 0)) || return 1
+    _info "No background services are selected in this installation."
+}
 
 _system_binary_path() {
     local name="${1:-}"
@@ -143,9 +241,10 @@ _initialize_bins() {
     _LSOF_BIN="$(_system_binary_path lsof 2>/dev/null || true)"
     _SYSTEMCTL_BIN="$(_system_binary_path systemctl 2>/dev/null || true)"
     _JOURNALCTL_BIN="$(_system_binary_path journalctl 2>/dev/null || true)"
-    _AM_BIN="$(_user_binary_path am 2>/dev/null || true)"
-    _CM_BIN="$(_user_binary_path cm 2>/dev/null || true)"
-    _CASS_BIN="$(_user_binary_path cass 2>/dev/null || true)"
+    _AM_BIN=""; _CM_BIN=""; _CASS_BIN=""
+    if _service_is_selected agent-mail; then _AM_BIN="$(_user_binary_path am 2>/dev/null || true)"; fi
+    if _service_is_selected cm; then _CM_BIN="$(_user_binary_path cm 2>/dev/null || true)"; fi
+    if _service_is_selected cass; then _CASS_BIN="$(_user_binary_path cass 2>/dev/null || true)"; fi
 }
 
 _service_desc() {
@@ -305,15 +404,33 @@ _validate_endpoint_config() {
     local rc=0
     local p
     local h
+    local service="" checks_agent_mail=false checks_cm=false
+    local -a hosts=() ports=()
+    local -a targets=("$@")
 
-    for h in "ACFS_AGENT_MAIL_HOST:$ACFS_AGENT_MAIL_HOST" "ACFS_CM_HOST:$ACFS_CM_HOST"; do
+    ((${#targets[@]})) || targets=("${_SELECTED_SERVICES[@]}")
+    for service in "${targets[@]}"; do
+        case "$service" in
+            agent-mail)
+                checks_agent_mail=true
+                hosts+=("ACFS_AGENT_MAIL_HOST:$ACFS_AGENT_MAIL_HOST")
+                ports+=("ACFS_AGENT_MAIL_PORT:$ACFS_AGENT_MAIL_PORT")
+                ;;
+            cm)
+                checks_cm=true
+                hosts+=("ACFS_CM_HOST:$ACFS_CM_HOST")
+                ports+=("ACFS_CM_PORT:$ACFS_CM_PORT")
+                ;;
+        esac
+    done
+    for h in "${hosts[@]}"; do
         local host_name="${h%%:*}" host_value="${h#*:}"
         if ! _is_valid_host "$host_value"; then
             _err "$host_name='$host_value' is not a valid host name or IP address."
             rc=1
         fi
     done
-    for p in "ACFS_AGENT_MAIL_PORT:$ACFS_AGENT_MAIL_PORT" "ACFS_CM_PORT:$ACFS_CM_PORT"; do
+    for p in "${ports[@]}"; do
         local name="${p%%:*}" val="${p#*:}"
         if ! _is_valid_port "$val"; then
             _err "$name='$val' is not a valid TCP port (1-65535)."
@@ -322,7 +439,8 @@ _validate_endpoint_config() {
     done
     (( rc )) && return 1
 
-    if [[ "$ACFS_AGENT_MAIL_PORT" == "$ACFS_CM_PORT" ]] && \
+    if $checks_agent_mail && $checks_cm && \
+       [[ "$ACFS_AGENT_MAIL_PORT" == "$ACFS_CM_PORT" ]] && \
        _hosts_overlap "$ACFS_AGENT_MAIL_HOST" "$ACFS_CM_HOST"; then
         _err "Agent Mail and CM resolve to the same endpoint ($ACFS_AGENT_MAIL_HOST:$ACFS_AGENT_MAIL_PORT)."
         _err "They cannot share a port. Override with ACFS_AGENT_MAIL_PORT / ACFS_CM_PORT."
@@ -344,12 +462,13 @@ _validate_http_endpoints() {
 
     # A healthy Agent Mail listener is the expected native-service state and is
     # reused. An unidentified listener on its endpoint remains a hard conflict.
-    if _port_is_listening "$ACFS_AGENT_MAIL_HOST" "$ACFS_AGENT_MAIL_PORT" && \
+    if _service_is_selected agent-mail && \
+       _port_is_listening "$ACFS_AGENT_MAIL_HOST" "$ACFS_AGENT_MAIL_PORT" && \
        ! _agent_mail_is_healthy; then
         _err "$ACFS_AGENT_MAIL_HOST:$ACFS_AGENT_MAIL_PORT is occupied by a service that is not a ready Agent Mail server."
         rc=1
     fi
-    if _port_is_listening "$ACFS_CM_HOST" "$ACFS_CM_PORT"; then
+    if _service_is_selected cm && _port_is_listening "$ACFS_CM_HOST" "$ACFS_CM_PORT"; then
         _err "$ACFS_CM_HOST:$ACFS_CM_PORT (CM) is already in use. Stop the other process or set ACFS_CM_PORT."
         rc=1
     fi
@@ -544,20 +663,22 @@ _preflight_services() {
     local -a targets=()
     local service=""
     local rc=0
+    local needs_curl=false
 
     (($#)) && targets=("$@")
-    ((${#targets[@]})) || targets=("${ACFS_SERVICE_NAMES[@]}")
+    ((${#targets[@]})) || targets=("${_SELECTED_SERVICES[@]}")
 
     for service in "${targets[@]}"; do
         _preflight_service_binary "$service" || rc=1
+        [[ "$service" != agent-mail ]] || needs_curl=true
     done
 
-    if [[ -z "$_CURL_BIN" ]]; then
+    if $needs_curl && [[ -z "$_CURL_BIN" ]]; then
         _err "Missing system binary: curl (needed for health checks)"
         rc=1
     fi
 
-    _validate_endpoint_config || rc=1
+    _validate_endpoint_config "${targets[@]}" || rc=1
     return $rc
 }
 
@@ -614,13 +735,19 @@ _tag_and_start_pane() {
 _wait_for_tmux_services() {
     local max_wait="${1:-15}"
     local waited=0
+    local service="" ready=true
 
     while true; do
-        if _pane_service_is_running cm && \
-           _port_is_listening "$ACFS_CM_HOST" "$ACFS_CM_PORT" && \
-           _pane_service_is_running cass; then
-            return 0
-        fi
+        ready=true
+        for service in "${_SELECTED_SERVICES[@]}"; do
+            [[ "$service" != agent-mail ]] || continue
+            if ! _pane_service_is_running "$service"; then
+                ready=false
+            elif [[ "$service" == cm ]] && ! _port_is_listening "$ACFS_CM_HOST" "$ACFS_CM_PORT"; then
+                ready=false
+            fi
+        done
+        $ready && return 0
         (( waited >= max_wait )) && return 1
         sleep 1
         waited=$((waited + 1))
@@ -888,7 +1015,7 @@ _report_binary_drift() {
     local service="" line="" state="" detail=""
     local drift_found=false
 
-    for service in "${ACFS_SERVICE_NAMES[@]}"; do
+    for service in "${_SELECTED_SERVICES[@]}"; do
         line="$(_service_binary_drift "$service")"
         state="${line#*|}"
         detail="${state#*|}"
@@ -929,11 +1056,13 @@ cmd_drift() {
         esac
     done
 
+    _load_service_selection || return 1
+    _no_selected_services && return 0
     _initialize_bins
-    _require_tmux
+    if [[ "$_SERVICE_SELECTION_MODE" == legacy ]]; then _require_tmux || return 1; fi
 
     if $robot; then
-        for service in "${ACFS_SERVICE_NAMES[@]}"; do
+        for service in "${_SELECTED_SERVICES[@]}"; do
             line="$(_service_binary_drift "$service")"
             printf '%s\n' "$line"
             state="${line#*|}"
@@ -953,8 +1082,9 @@ cmd_drift() {
 # --- Commands ---
 
 cmd_start() {
+    _load_service_selection || return 1
+    _no_selected_services && return 0
     _initialize_bins
-    _require_tmux
 
     # Reject bad endpoint configuration before branching on tmux state: the
     # repair path below skipped it under --dry-run and fed the raw value to
@@ -980,33 +1110,57 @@ cmd_start() {
     # Fail fast on bad/duplicate/occupied HTTP ports before touching tmux.
     _validate_http_endpoints || return 1
 
+    local service=""
+    local -a tmux_services=()
+    for service in "${_SELECTED_SERVICES[@]}"; do
+        [[ "$service" == agent-mail ]] || tmux_services+=("$service")
+    done
+    if ((${#tmux_services[@]})); then
+        _require_tmux || return 1
+    fi
+
     if $_DRY_RUN; then
-        _info "[dry-run] Would reuse or start Agent Mail at $ACFS_AGENT_MAIL_HOST:$ACFS_AGENT_MAIL_PORT."
-        _info "[dry-run] Would create tmux session '$ACFS_SVC_SESSION' for:"
-        _info "  cm:   $(_service_cmd cm)"
-        _info "  cass: $(_service_cmd cass)"
+        if _service_is_selected agent-mail; then
+            _info "[dry-run] Would reuse or start Agent Mail at $ACFS_AGENT_MAIL_HOST:$ACFS_AGENT_MAIL_PORT."
+            if _service_needs_own_binary agent-mail; then
+                _require_tmux || return 1
+                tmux_services=(agent-mail "${tmux_services[@]}")
+            fi
+        fi
+        if ((${#tmux_services[@]})); then
+            _info "[dry-run] Would create tmux session '$ACFS_SVC_SESSION' for:"
+            for service in "${tmux_services[@]}"; do
+                _info "  $service: $(_service_cmd "$service")"
+            done
+        fi
         return 0
     fi
 
     local agent_mail_in_tmux=false
-    if _agent_mail_is_healthy; then
-        _info "Reusing healthy Agent Mail at $ACFS_AGENT_MAIL_HOST:$ACFS_AGENT_MAIL_PORT."
-    elif _native_agent_mail_unit_available; then
-        _info "Starting native Agent Mail user service..."
-        if ! "$_SYSTEMCTL_BIN" --user start agent-mail.service >/dev/null 2>&1 || \
-           ! _wait_for_agent_mail 15; then
-            _err "Agent Mail user service did not become ready."
-            _err "Inspect it with: systemctl --user status agent-mail.service"
-            return 1
+    if _service_is_selected agent-mail; then
+        if _agent_mail_is_healthy; then
+            _info "Reusing healthy Agent Mail at $ACFS_AGENT_MAIL_HOST:$ACFS_AGENT_MAIL_PORT."
+        elif _native_agent_mail_unit_available; then
+            _info "Starting native Agent Mail user service..."
+            if ! "$_SYSTEMCTL_BIN" --user start agent-mail.service >/dev/null 2>&1 || \
+               ! _wait_for_agent_mail 15; then
+                _err "Agent Mail user service did not become ready."
+                _err "Inspect it with: systemctl --user status agent-mail.service"
+                return 1
+            fi
+        else
+            agent_mail_in_tmux=true
         fi
-    else
-        agent_mail_in_tmux=true
     fi
 
-    local -a tmux_services=("cm" "cass")
     if $agent_mail_in_tmux; then
         tmux_services=("agent-mail" "${tmux_services[@]}")
     fi
+    if ((${#tmux_services[@]} == 0)); then
+        _ok "All selected services are ready."
+        return 0
+    fi
+    _require_tmux || return 1
 
     _info "Starting ACFS services in tmux session '$ACFS_SVC_SESSION'..."
 
@@ -1043,7 +1197,7 @@ cmd_start() {
     # Select the first pane
     "$_TMUX_BIN" select-pane -t "$first_pane_id"
 
-    if ! _wait_for_agent_mail 15 || ! _wait_for_tmux_services 15; then
+    if { _service_is_selected agent-mail && ! _wait_for_agent_mail 15; } || ! _wait_for_tmux_services 15; then
         _err "One or more services failed readiness checks; the tmux session was left running for diagnosis."
         cmd_status || true
         return 1
@@ -1108,32 +1262,33 @@ cmd_repair() {
     local -a repaired=()
     local service=""
     local rc=0
+    local repaired_tmux=false
 
     (($#)) && targets=("$@")
 
+    _load_service_selection || return 1
+    _validate_service_targets "${targets[@]}" || return 1
+    _no_selected_services && return 0
     _initialize_bins
-    _require_tmux
 
-    ((${#targets[@]})) || targets=("${ACFS_SERVICE_NAMES[@]}")
-    for service in "${targets[@]}"; do  # never empty after the default above
-        if ! _service_desc "$service" >/dev/null 2>&1; then
-            _err "Unknown service: '$service'"
-            _info "Available services: ${ACFS_SERVICE_NAMES[*]}"
+    ((${#targets[@]})) || targets=("${_SELECTED_SERVICES[@]}")
+    for service in "${targets[@]}"; do
+        if [[ "$service" == agent-mail ]] && \
+           { _agent_mail_is_healthy || _native_agent_mail_unit_available; }; then
+            continue
+        fi
+        _require_tmux || return 1
+        if ! _session_exists; then
+            _err "Session '$ACFS_SVC_SESSION' is not running. Start with: acfs services start"
             return 1
         fi
     done
-
-    if ! _session_exists; then
-        _err "Session '$ACFS_SVC_SESSION' is not running. Start with: acfs services start"
-        return 1
-    fi
+    _validate_endpoint_config "${targets[@]}" || return 1
 
     if $_DRY_RUN; then
         _info "[dry-run] Would relaunch these services if they are not running: ${targets[*]}"
         return 0
     fi
-
-    _validate_endpoint_config || return 1
 
     for service in "${targets[@]}"; do
         if [[ "$service" == "agent-mail" ]]; then
@@ -1153,7 +1308,11 @@ cmd_repair() {
 
         _pane_service_is_running "$service" && continue
         repaired+=("$service")
-        _repair_service_pane "$service" || rc=1
+        if _repair_service_pane "$service"; then
+            repaired_tmux=true
+        else
+            rc=1
+        fi
     done
 
     if ((${#repaired[@]} == 0)); then
@@ -1161,7 +1320,9 @@ cmd_repair() {
         return $rc
     fi
 
-    "$_TMUX_BIN" select-layout -t "$ACFS_SVC_SESSION:services" even-vertical >/dev/null 2>&1 || true
+    if $repaired_tmux && _session_exists; then
+        "$_TMUX_BIN" select-layout -t "$ACFS_SVC_SESSION:services" even-vertical >/dev/null 2>&1 || true
+    fi
 
     for service in "${repaired[@]}"; do
         if ! _wait_for_service_ready "$service" 15; then
@@ -1173,12 +1334,22 @@ cmd_repair() {
 }
 
 cmd_stop() {
+    _load_service_selection || return 1
+    _no_selected_services && return 0
     _initialize_bins
-    _require_tmux
+    if [[ "$_SERVICE_SELECTION_MODE" == legacy ]] || _service_is_selected cm || _service_is_selected cass; then
+        _require_tmux || return 1
+    fi
 
     if $_DRY_RUN; then
-        _info "[dry-run] Would stop the native Agent Mail service when active."
-        _info "[dry-run] Would stop tmux session '$ACFS_SVC_SESSION' when present."
+        if _service_is_selected agent-mail; then
+            _info "[dry-run] Would stop the native Agent Mail service when active."
+        fi
+        if [[ "$_SERVICE_SELECTION_MODE" == legacy ]]; then
+            _info "[dry-run] Would stop tmux session '$ACFS_SVC_SESSION' when present."
+        else
+            _info "[dry-run] Would stop only selected managed panes: ${_SELECTED_SERVICES[*]}."
+        fi
         return 0
     fi
 
@@ -1186,7 +1357,7 @@ cmd_stop() {
     local rc=0
     _info "Stopping ACFS services..."
 
-    if _native_agent_mail_is_active; then
+    if _service_is_selected agent-mail && _native_agent_mail_is_active; then
         stopped_any=true
         if ! "$_SYSTEMCTL_BIN" --user stop agent-mail.service >/dev/null 2>&1; then
             _err "Failed to stop native Agent Mail service."
@@ -1195,16 +1366,28 @@ cmd_stop() {
     fi
 
     if _session_exists; then
-        stopped_any=true
-        local pane_id
-        while IFS= read -r pane_id; do
-            [[ -n "$pane_id" ]] || continue
-            "$_TMUX_BIN" send-keys -t "$pane_id" C-c 2>/dev/null || true
-        done < <(_get_pane_ids)
-        sleep 2
-        if ! "$_TMUX_BIN" kill-session -t "$ACFS_SVC_SESSION" 2>/dev/null; then
-            _err "Failed to stop tmux session '$ACFS_SVC_SESSION'."
-            rc=1
+        local pane_id="" service=""
+        if [[ "$_SERVICE_SELECTION_MODE" == legacy ]]; then
+            stopped_any=true
+            while IFS= read -r pane_id; do
+                [[ -n "$pane_id" ]] || continue
+                "$_TMUX_BIN" send-keys -t "$pane_id" C-c 2>/dev/null || true
+            done < <(_get_pane_ids)
+            sleep 2
+            if ! "$_TMUX_BIN" kill-session -t "$ACFS_SVC_SESSION" 2>/dev/null; then
+                _err "Failed to stop tmux session '$ACFS_SVC_SESSION'."
+                rc=1
+            fi
+        else
+            # A scoped installation may share this session with services from
+            # an older selection or user panes. Only its tagged panes are ours
+            # to stop; leave the session and every other pane intact.
+            for service in "${_SELECTED_SERVICES[@]}"; do
+                pane_id="$(_pane_id_for_service "$service" 2>/dev/null || true)"
+                [[ -n "$pane_id" ]] || continue
+                stopped_any=true
+                _stop_pane_service "$service" || rc=1
+            done
         fi
     fi
 
@@ -1214,70 +1397,79 @@ cmd_stop() {
         _ok "All ACFS-managed services stopped."
     fi
 
-    if _agent_mail_is_healthy; then
+    if _service_is_selected agent-mail && _agent_mail_is_healthy; then
         _warn "Agent Mail is still healthy but is not owned by the ACFS native service or tmux session; it was left untouched."
     fi
     return $rc
 }
 
 cmd_status() {
+    _load_service_selection || return 1
+    _no_selected_services && return 0
     _initialize_bins
-    _require_tmux
+    if [[ "$_SERVICE_SELECTION_MODE" == legacy ]]; then _require_tmux || return 1; fi
 
     local rc=0
     local owner="external"
-    if _native_agent_mail_is_active; then
-        owner="native"
-    elif _session_exists && _pane_service_is_running agent-mail; then
-        owner="tmux"
+    if _service_is_selected agent-mail; then
+        if _native_agent_mail_is_active; then
+            owner="native"
+        elif _session_exists && _pane_service_is_running agent-mail; then
+            owner="tmux"
+        fi
+
+        local am_health_rc=0
+        _agent_mail_is_healthy || am_health_rc=$?
+        if (( am_health_rc == 0 )); then
+            printf '  %-12s  %sready%s    %s  (%s)\n' "agent-mail" "$_C_GREEN" "$_C_RESET" \
+                "$ACFS_AGENT_MAIL_HOST:$ACFS_AGENT_MAIL_PORT" "$owner"
+        elif (( am_health_rc == 2 )); then
+            printf '  %-12s  %salive, readiness slow%s  %s  (%s)\n' "agent-mail" "$_C_YELLOW" "$_C_RESET" \
+                "$ACFS_AGENT_MAIL_HOST:$ACFS_AGENT_MAIL_PORT" "$owner"
+            rc=1
+        else
+            printf '  %-12s  %snot ready%s  %s\n' "agent-mail" "$_C_RED" "$_C_RESET" \
+                "$ACFS_AGENT_MAIL_HOST:$ACFS_AGENT_MAIL_PORT"
+            rc=1
+        fi
     fi
 
-    local am_health_rc=0
-    _agent_mail_is_healthy || am_health_rc=$?
-    if (( am_health_rc == 0 )); then
-        printf '  %-12s  %sready%s    %s  (%s)\n' "agent-mail" "$_C_GREEN" "$_C_RESET" \
-            "$ACFS_AGENT_MAIL_HOST:$ACFS_AGENT_MAIL_PORT" "$owner"
-    elif (( am_health_rc == 2 )); then
-        printf '  %-12s  %salive, readiness slow%s  %s  (%s)\n' "agent-mail" "$_C_YELLOW" "$_C_RESET" \
-            "$ACFS_AGENT_MAIL_HOST:$ACFS_AGENT_MAIL_PORT" "$owner"
-        rc=1
-    else
-        printf '  %-12s  %snot ready%s  %s\n' "agent-mail" "$_C_RED" "$_C_RESET" \
-            "$ACFS_AGENT_MAIL_HOST:$ACFS_AGENT_MAIL_PORT"
-        rc=1
+    if _service_is_selected cm; then
+        if _session_exists && _pane_service_is_running cm && \
+           _port_is_listening "$ACFS_CM_HOST" "$ACFS_CM_PORT"; then
+            printf '  %-12s  %sready%s    %s  (tmux)\n' "cm" "$_C_GREEN" "$_C_RESET" \
+                "$ACFS_CM_HOST:$ACFS_CM_PORT"
+        else
+            printf '  %-12s  %snot ready%s  %s\n' "cm" "$_C_RED" "$_C_RESET" \
+                "$ACFS_CM_HOST:$ACFS_CM_PORT"
+            rc=1
+        fi
     fi
 
-    if _session_exists && _pane_service_is_running cm && \
-       _port_is_listening "$ACFS_CM_HOST" "$ACFS_CM_PORT"; then
-        printf '  %-12s  %sready%s    %s  (tmux)\n' "cm" "$_C_GREEN" "$_C_RESET" \
-            "$ACFS_CM_HOST:$ACFS_CM_PORT"
-    else
-        printf '  %-12s  %snot ready%s  %s\n' "cm" "$_C_RED" "$_C_RESET" \
-            "$ACFS_CM_HOST:$ACFS_CM_PORT"
-        rc=1
-    fi
-
-    if _session_exists && _pane_service_is_running cass; then
-        printf '  %-12s  %srunning%s          (tmux)\n' "cass" "$_C_GREEN" "$_C_RESET"
-    else
-        printf '  %-12s  %snot running%s\n' "cass" "$_C_RED" "$_C_RESET"
-        rc=1
+    if _service_is_selected cass; then
+        if _session_exists && _pane_service_is_running cass; then
+            printf '  %-12s  %srunning%s          (tmux)\n' "cass" "$_C_GREEN" "$_C_RESET"
+        else
+            printf '  %-12s  %snot running%s\n' "cass" "$_C_RED" "$_C_RESET"
+            rc=1
+        fi
     fi
 
     printf '\n'
     if _session_exists; then
         _info "Attach: tmux attach -t $ACFS_SVC_SESSION"
     fi
-    _info "Logs:   acfs services logs [agent-mail|cm|cass]"
+    _info "Available logs: acfs services logs [${_SELECTED_SERVICES[*]}]"
     if (( rc != 0 )); then
         # Lifecycle contract (#196, documented per #360): "not running" can be
         # intentional. Say exactly what owns what and what the fix is.
         printf '\n'
-        _info "Lifecycle: only agent-mail persists across reboots (native user service)."
-        _info "cm and cass run in the '$ACFS_SVC_SESSION' tmux session, which does not survive"
-        _info "a reboot and does not restart crashed processes -- run 'acfs services start'"
-        _info "to bring them back. Leaving cm/cass off is fine if you only use 'cm context'/'cm reflect'"
-        _info "or are diagnosing indexing/resource problems."
+        _info "Run 'acfs services start' to bring the selected services back."
+        if _service_is_selected cm || _service_is_selected cass; then
+            _info "cm and cass run in the '$ACFS_SVC_SESSION' tmux session, which does not survive"
+            _info "a reboot and does not restart crashed processes. Leaving them off is fine"
+            _info "when diagnosing indexing/resource problems or using foreground commands."
+        fi
     fi
 
     # A service can be perfectly "ready" and still be executing the binary an
@@ -1312,7 +1504,17 @@ _stop_pane_service() {
 _restart_one_service() {
     local service="$1"
 
-    if [[ "$service" == "agent-mail" ]] && _native_agent_mail_is_active; then
+    if [[ "$service" == "agent-mail" ]] && _native_agent_mail_unit_available; then
+        if ! _native_agent_mail_is_active; then
+            local health_rc=0
+            _agent_mail_is_healthy || health_rc=$?
+            if (( health_rc == 0 || health_rc == 2 )) || \
+               _port_is_listening "$ACFS_AGENT_MAIL_HOST" "$ACFS_AGENT_MAIL_PORT"; then
+                _err "Agent Mail's native unit is stopped, but its endpoint is owned by another listener; refusing to restart it."
+                _err "Inspect the existing service before starting the native unit."
+                return 1
+            fi
+        fi
         _info "Restarting native Agent Mail user service..."
         if ! "$_SYSTEMCTL_BIN" --user restart agent-mail.service >/dev/null 2>&1 || \
            ! _wait_for_agent_mail 15; then
@@ -1351,20 +1553,37 @@ cmd_restart() {
 
     (($#)) && targets=("$@")
 
+    _load_service_selection || return 1
+    _validate_service_targets "${targets[@]}" || return 1
+    _no_selected_services && return 0
     _initialize_bins
-    _require_tmux
 
-    for service in "${targets[@]+"${targets[@]}"}"; do
-        if ! _service_desc "$service" >/dev/null 2>&1; then
-            _err "Unknown service: '$service'"
-            _info "Available services: ${ACFS_SERVICE_NAMES[*]}"
-            return 1
-        fi
-    done
+    # An installation with explicit scope must not tear down omitted services
+    # or untagged user panes in a shared session. Restart its selected services
+    # in place, using the same ownership checks as an explicitly named restart.
+    if [[ "$_SERVICE_SELECTION_MODE" == scoped && ${#targets[@]} -eq 0 ]]; then
+        targets=("${_SELECTED_SERVICES[@]}")
+    fi
+    if ((${#targets[@]} == 0)); then
+        _require_tmux || return 1
+    else
+        for service in "${targets[@]}"; do
+            if [[ "$service" != agent-mail ]]; then _require_tmux || return 1; fi
+        done
+    fi
 
     # A full restart tears down the tmux session, so an Agent Mail fallback
     # pane counts as "will be stopped" and its binary must preflight too.
-    if ((${#targets[@]} == 0)) && ! _native_agent_mail_is_active && \
+    local restarting_agent_mail=false
+    _PREFLIGHT_AGENT_MAIL_WILL_STOP=false
+    if ((${#targets[@]} == 0)); then
+        restarting_agent_mail=true
+    else
+        for service in "${targets[@]}"; do
+            [[ "$service" != agent-mail ]] || restarting_agent_mail=true
+        done
+    fi
+    if $restarting_agent_mail && ! _native_agent_mail_is_active && \
        _session_exists && _pane_service_is_running agent-mail; then
         _PREFLIGHT_AGENT_MAIL_WILL_STOP=true
     fi
@@ -1397,7 +1616,9 @@ cmd_restart() {
         _err "Inspect with 'acfs services status', then run 'acfs services start'."
         return "$stop_rc"
     fi
-    if ! cmd_start; then
+    if cmd_start; then
+        return 0
+    else
         rc=$?
         _err "Services were stopped but did not come back up (start exit $rc)."
         _err "Recover with: acfs services start   (after fixing the errors above)"
@@ -1408,11 +1629,19 @@ cmd_restart() {
 cmd_logs() {
     local target="${1:-}"
 
+    _load_service_selection || return 1
+    if [[ -n "$target" ]]; then _validate_service_targets "$target" || return 1; fi
+    _no_selected_services && return 0
     _initialize_bins
-    _require_tmux
+
+    if [[ -z "$target" && ${#_SELECTED_SERVICES[@]} -eq 1 ]] && \
+       _service_is_selected agent-mail && _native_agent_mail_unit_available; then
+        target=agent-mail
+    fi
 
     # If no target specified, just attach to the session
     if [[ -z "$target" ]]; then
+        _require_tmux || return 1
         if ! _session_exists; then
             _err "Session '$ACFS_SVC_SESSION' is not running. Start with: acfs services start"
             return 1
@@ -1424,17 +1653,10 @@ cmd_logs() {
         exec "$_TMUX_BIN" attach -t "$ACFS_SVC_SESSION"
     fi
 
-    case "$target" in
-        agent-mail|cm|cass) ;;
-        *)
-        _err "Unknown service: '$target'"
-        _info "Available services: ${ACFS_SERVICE_NAMES[*]}"
-        return 1
-        ;;
-    esac
-
-    local pane_id
-    pane_id="$(_pane_id_for_service "$target" 2>/dev/null || true)"
+    local pane_id=""
+    if [[ -n "$_TMUX_BIN" ]]; then
+        pane_id="$(_pane_id_for_service "$target" 2>/dev/null || true)"
+    fi
     if [[ -z "$pane_id" ]]; then
         if [[ "$target" == "agent-mail" ]] && _native_agent_mail_unit_available; then
             if $_DRY_RUN; then
@@ -1468,12 +1690,12 @@ ACFS Services — Unified background daemon management
 Usage: acfs services <command> [options]
 
 Commands:
-  start               Start all ACFS background services. If the session
+  start               Start selected ACFS background services. If the session
                       already exists, relaunch only the services that are
                       not running; healthy panes are never touched.
-  stop                Stop all services (graceful shutdown)
+  stop                Stop selected services (graceful shutdown)
   status              Show which services are running
-  restart [service…]  Restart everything, or only the named services.
+  restart [service…]  Restart selected services, or only the named services.
                       Binaries are validated before anything is stopped.
   repair              Relaunch only the services that are not running
   drift [--robot]     Report managed services still executing a binary that
@@ -1497,18 +1719,20 @@ Options:
   --help, -h      Show this help message
 
 Examples:
-  acfs services start              # Start all daemons (or repair a partial session)
+  acfs services start              # Start selected daemons (or repair a partial session)
   acfs services status             # Quick health check
   acfs services logs agent-mail    # View Agent Mail logs
-  acfs services restart            # Restart everything
+  acfs services restart            # Restart selected services
   acfs services restart cass       # Restart only CASS; Agent Mail stays up
   acfs services drift              # Are the live services on the installed binaries?
   acfs services stop               # Graceful shutdown
 
 CM and CASS run in a dedicated tmux session named 'acfs-svc'. Agent Mail
 reuses the native ACFS user service when it is installed and healthy; otherwise
-it gets its own tmux pane. Start and status return nonzero unless every service
-passes its runtime readiness check.
+it gets its own tmux pane. Start and status return nonzero unless every selected
+service passes its runtime readiness check. Saved module selection is honored by
+all commands; an installation without a selection checkpoint keeps the legacy
+all-services behavior. Explicitly naming an omitted service does not enable it.
 EOF
 }
 
