@@ -55,6 +55,61 @@ newproj_tty_printf() {
     printf "$format" "$@" >&2
 }
 
+# Both project-creation interfaces must honor the same saved policy as cc.
+# Do not use an ambient MODE: an older shell can retain MODE=vibe after the
+# installation changes to Safe mode. Existing project settings are preserved
+# by the callers; this generates defaults only for a new settings file.
+newproj_claude_settings() {
+    if ! command -v python3 >/dev/null 2>&1; then
+        printf '%s\n' 'Error: creating Claude settings requires python3.' >&2
+        return 1
+    fi
+    python3 -I - <<'ACFS_NEWPROJ_CLAUDE_SETTINGS_PY'
+import json
+import os
+from pathlib import Path
+import pwd
+import stat
+import sys
+
+home = Path.home()
+default_state = home / ".acfs" / "state.json"
+acfs_home = Path(os.environ.get("ACFS_HOME") or str(home / ".acfs"))
+state_path = Path(os.environ.get("ACFS_STATE_FILE") or str(acfs_home / "state.json"))
+mode = "safe"
+try:
+    if not state_path.is_absolute():
+        raise ValueError("checkpoint must be absolute")
+    try:
+        descriptor = os.open(state_path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
+        if state_path != default_state:
+            raise ValueError("selected checkpoint is missing") from None
+        mode = "vibe"  # Preserve pre-checkpoint installations' existing behavior.
+    else:
+        with os.fdopen(descriptor, "rb") as stream:
+            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                raise ValueError("checkpoint must be a regular file")
+            raw = stream.read(1024 * 1024 + 1)
+        if len(raw) > 1024 * 1024:
+            raise ValueError("checkpoint is too large")
+        state = json.loads(raw)
+        if not isinstance(state, dict) or state.get("mode") not in ("safe", "vibe"):
+            raise ValueError("checkpoint has no valid installation mode")
+        user = pwd.getpwuid(os.geteuid()).pw_name
+        for key, expected in (("target_home", str(home)), ("target_user", user)):
+            if (key in state or state_path != default_state) and state.get(key) != expected:
+                raise ValueError("checkpoint does not belong to this account")
+        mode = state["mode"]
+except (OSError, ValueError, KeyError):
+    print("ACFS newproj: cannot validate saved installation mode; using safe Claude permissions.", file=sys.stderr)
+
+permissions = ({"allow": ["Read", "Edit", "Write", "Bash"]} if mode == "vibe"
+               else {"defaultMode": "default", "allow": []})
+print(json.dumps({"permissions": permissions}, indent=2))
+ACFS_NEWPROJ_CLAUDE_SETTINGS_PY
+}
+
 # ============================================================
 # Cleanup Registration
 # ============================================================

@@ -2350,14 +2350,7 @@ EOF
 
         if [[ ! -f .claude/settings.local.json ]] && [[ ! -f .claude/settings.toml ]]; then
             echo -e "${GREEN}Creating Claude settings...${NC}"
-            generated_content=$(cat << 'EOF'
-{
-  "permissions": {
-    "allow": ["Read", "Edit", "Write", "Bash"]
-  }
-}
-EOF
-            )
+            generated_content=$(newproj_claude_settings) || return $?
             try_write_file .claude/settings.local.json "$generated_content"$'\n' || return $?
             initial_commit_paths+=(".claude/settings.local.json")
             CREATED_ITEMS+=("Claude settings (.claude/settings.local.json)")

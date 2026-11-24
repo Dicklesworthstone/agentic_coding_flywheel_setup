@@ -450,11 +450,11 @@ venv/
                 return 0
             fi
 
-            local claude_settings='{
-  "permissions": {
-    "allow": ["Read", "Edit", "Write", "Bash"]
-  }
-}'
+            local claude_settings
+            if ! claude_settings=$(newproj_claude_settings); then
+                update_step "$step" "error"
+                return 1
+            fi
             if try_write_file "$project_dir/.claude/settings.local.json" "$claude_settings"; then
                 update_step "$step" "success"
                 return 0

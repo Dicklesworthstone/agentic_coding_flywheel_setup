@@ -8,6 +8,7 @@ are retained for inspection. Run with Python's unittest runner or directly.
 import json
 import os
 from pathlib import Path
+import pwd
 import resource
 import shutil
 import stat
@@ -23,6 +24,7 @@ BEADS_SELECTORS = ("BEADS_DIR", "BEADS_DB", "BD_DB", "BD_DATABASE", "BEADS_JSONL
 
 HARNESS = r'''
 set -euo pipefail
+source "$ERROR_SCRIPT"
 source "$SCRIPT"
 declare -A values=(
     [project_dir]="$PROJECT" [project_name]=myapp [tech_stack]=python
@@ -69,6 +71,7 @@ class RecoveryTests(unittest.TestCase):
         self.project = self.root / "project ' quoted; [literal]"
         self.events = self.root / "events"
         self.env = {**os.environ, "SCRIPT": str(SCRIPT), "PROJECT": str(self.project),
+                    "ERROR_SCRIPT": str(ROOT / "scripts/lib/newproj_errors.sh"),
                     "EVENTS": str(self.events), "ACFS_TEST_MODE": "1"}
 
     def run_shell(self, body, data=""):
@@ -394,7 +397,8 @@ class CLIInitialCommitTests(unittest.TestCase):
         self.config = self.home / "gitconfig"
         self.config.write_text('[user]\n name = Fixture User\n email = fixture@example.invalid\n'
                                '[commit]\n gpgsign = false\n')
-        self.env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+        self.env = {key: value for key, value in os.environ.items()
+                    if not key.startswith("GIT_") and key not in ("ACFS_HOME", "ACFS_STATE_FILE", "MODE")}
         self.env.update(HOME=str(self.home), GIT_CONFIG_GLOBAL=str(self.config),
                         GIT_CONFIG_NOSYSTEM="1", GIT_TEMPLATE_DIR=str(template),
                         GIT_TERMINAL_PROMPT="0", ACFS_TEST_MODE="1",
@@ -491,6 +495,134 @@ sys.exit(result.returncode)
         self.assertTrue((self.project / ".claude/settings.local.json").is_file())
         self.assertTrue((self.project / ".claude/commands").is_dir())
         self.assertEqual(self.git("check-ignore", ".claude/settings.local.json").returncode, 0)
+
+    def installation_checkpoint(self, path, mode, **fields):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"mode": mode, "target_home": str(self.home),
+                                    "target_user": pwd.getpwuid(os.geteuid()).pw_name, **fields}))
+
+    def claude_permissions(self):
+        return json.loads((self.project / ".claude/settings.local.json").read_text())["permissions"]
+
+    def assert_review_required(self):
+        permissions = self.claude_permissions()
+        self.assertEqual(permissions.get("defaultMode"), "default")
+        self.assertEqual(permissions.get("allow"), [])
+
+    def test_safe_installation_keeps_new_project_tool_approvals(self):
+        self.installation_checkpoint(self.home / ".acfs/state.json", "safe")
+        self.env["MODE"] = "vibe"  # A stale install environment is not saved policy.
+        result = self.create()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assert_review_required()
+        self.assertNotIn(".claude/settings.local.json", self.committed())
+
+    def test_vibe_and_pre_checkpoint_installations_keep_existing_project_defaults(self):
+        for mode in (None, "vibe"):
+            with self.subTest(mode=mode):
+                self.project = self.root / ("project-" + str(mode))
+                if mode is not None:
+                    self.installation_checkpoint(self.home / ".acfs/state.json", mode)
+                result = self.create()
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(self.claude_permissions(), {"allow": ["Read", "Edit", "Write", "Bash"]})
+
+    def test_custom_checkpoint_precedence_and_target_binding_control_new_project_permissions(self):
+        self.installation_checkpoint(self.home / ".acfs/state.json", "vibe")
+        selected_home = self.root / "selected-installation"
+        selected_file = self.root / "selected-state.json"
+        self.installation_checkpoint(selected_home / "state.json", "safe")
+        self.installation_checkpoint(selected_file, "safe")
+        for selector, path in (("ACFS_HOME", selected_home), ("ACFS_STATE_FILE", selected_file)):
+            with self.subTest(selector=selector):
+                self.project = self.root / ("project-" + selector)
+                result = self.create(environment=self.env | {selector: str(path), "MODE": "vibe"})
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assert_review_required()
+
+        self.installation_checkpoint(selected_file, "vibe", target_home=str(self.root / "other-account"))
+        self.project = self.root / "foreign-checkpoint-project"
+        result = self.create(environment=self.env | {"ACFS_STATE_FILE": str(selected_file)})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assert_review_required()
+        self.assertIn("using safe", result.stderr.lower())
+
+    def test_invalid_or_missing_selected_checkpoint_never_grants_tool_approvals(self):
+        fixtures = {
+            "malformed": "{not valid JSON", "unknown-mode": '{"mode":"unknown"}',
+            "unbound": '{"mode":"vibe"}', "array": "[]", "missing": None,
+        }
+        for label, content in fixtures.items():
+            with self.subTest(checkpoint=label):
+                selected_file = self.root / (label + ".json")
+                if content is not None:
+                    selected_file.write_text(content)
+                self.project = self.root / ("project-" + label)
+                result = self.create(environment=self.env | {"ACFS_STATE_FILE": str(selected_file)})
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assert_review_required()
+
+    def test_unsafe_checkpoint_objects_do_not_block_or_grant_tool_approvals(self):
+        real_state = self.root / "vibe-state.json"
+        self.installation_checkpoint(real_state, "vibe")
+        for kind in ("symlink", "fifo", "directory"):
+            with self.subTest(kind=kind):
+                selected_file = self.root / (kind + "-state")
+                if kind == "symlink":
+                    selected_file.symlink_to(real_state)
+                elif kind == "fifo":
+                    os.mkfifo(selected_file)
+                else:
+                    selected_file.mkdir()
+                self.project = self.root / ("project-" + kind)
+                result = self.create(environment=self.env | {"ACFS_STATE_FILE": str(selected_file)})
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assert_review_required()
+                self.assertTrue(selected_file.is_symlink() if kind == "symlink" else selected_file.exists())
+
+    def test_tui_creates_the_same_mode_aware_settings_and_preserves_existing_choices(self):
+        environment = self.env | {"NEWPROJ_LIB_DIR": str(ROOT / "scripts/lib")}
+        for mode in ("safe", "vibe"):
+            with self.subTest(mode=mode):
+                self.installation_checkpoint(self.home / ".acfs/state.json", mode)
+                self.project = self.root / ("tui-" + mode)
+                self.project.mkdir()
+                result = subprocess.run([BASH, "-c", '''
+set -euo pipefail
+source "$NEWPROJ_LIB_DIR/newproj_screens.sh"
+source "$NEWPROJ_SCREENS_DIR/screen_progress.sh"
+state_set project_dir "$PROJECT"
+state_set project_name myapp
+log_info() { :; }
+render_progress_screen_best_effort() { :; }
+execute_step create_claude
+[[ "${STEP_STATUS[create_claude]}" == success ]]
+'''], env=environment | {"PROJECT": str(self.project)}, cwd=self.root,
+                    text=True, capture_output=True, timeout=10)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                if mode == "safe":
+                    self.assert_review_required()
+                else:
+                    self.assertEqual(self.claude_permissions(), {"allow": ["Read", "Edit", "Write", "Bash"]})
+
+        settings = self.project / ".claude/settings.local.json"
+        original = '{"permissions":{"allow":["Bash(git status)"]},"userChoice":true}\n'
+        settings.write_text(original)
+        self.installation_checkpoint(self.home / ".acfs/state.json", "safe")
+        result = subprocess.run([BASH, "-c", '''
+set -euo pipefail
+source "$NEWPROJ_LIB_DIR/newproj_screens.sh"
+source "$NEWPROJ_SCREENS_DIR/screen_progress.sh"
+state_set project_dir "$PROJECT"
+state_set project_name myapp
+log_info() { :; }
+render_progress_screen_best_effort() { :; }
+execute_step create_claude
+[[ "${STEP_STATUS[create_claude]}" == success ]]
+'''], env=environment | {"PROJECT": str(self.project)}, cwd=self.root,
+            text=True, capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(settings.read_text(), original)
 
     def test_concurrent_generated_files_are_never_overwritten(self):
         for index, name in enumerate(("README.md", ".gitignore", ".ubsignore")):
