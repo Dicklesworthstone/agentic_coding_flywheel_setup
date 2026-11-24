@@ -4578,6 +4578,158 @@ EOF
     return 0
 )
 
+test_fix_mcp_agent_mail_undo_restores_both_am_and_server_entries() (
+    setup_test_env
+
+    export TARGET_HOME="$ACFS_STATE_DIR/target-home"
+    mkdir -p "$TARGET_HOME/.local/bin" "$TARGET_HOME/mcp_agent_mail"
+    export PATH="$TARGET_HOME/.local/bin:$PATH"
+
+    start_autofix_session >/dev/null || {
+        echo "  Failed to start autofix session"
+        cleanup_test_env
+        return 1
+    }
+
+    cat > "$TARGET_HOME/mcp_agent_mail/am" <<'EOF'
+#!/usr/bin/env bash
+case "${1:-}" in
+    --version) echo "am 1.0.0" ;;
+    doctor)
+        case "${2:-}" in
+            drain) echo '{"safe_to_mutate":true}' ;;
+            repair|fix) exit 0 ;;
+            check) echo '{"healthy":true}' ;;
+            *) exit 1 ;;
+        esac
+        ;;
+    *) exit 0 ;;
+esac
+EOF
+    chmod +x "$TARGET_HOME/mcp_agent_mail/am"
+
+    cat > "$TARGET_HOME/mcp_agent_mail/mcp-agent-mail" <<'EOF'
+#!/usr/bin/env bash
+case "${1:-}" in
+    --version) echo "mcp-agent-mail 1.0.0" ;;
+    *) exit 0 ;;
+esac
+EOF
+    chmod +x "$TARGET_HOME/mcp_agent_mail/mcp-agent-mail"
+
+    cat > "$TARGET_HOME/.local/bin/am" <<'EOF'
+#!/usr/bin/env bash
+echo "legacy-am"
+EOF
+    chmod +x "$TARGET_HOME/.local/bin/am"
+
+    cat > "$TARGET_HOME/.local/bin/mcp-agent-mail" <<'EOF'
+#!/usr/bin/env bash
+echo "legacy-mcp-agent-mail"
+EOF
+    chmod +x "$TARGET_HOME/.local/bin/mcp-agent-mail"
+
+    local orig_am_sum="" orig_srv_sum=""
+    orig_am_sum="$(calculate_backup_checksum "$TARGET_HOME/.local/bin/am")"
+    orig_srv_sum="$(calculate_backup_checksum "$TARGET_HOME/.local/bin/mcp-agent-mail")"
+
+    cat > "$TARGET_HOME/.local/bin/systemctl" <<'EOF'
+#!/usr/bin/env bash
+case "${2:-}" in
+    show-environment|daemon-reload|enable|restart|is-active) exit 0 ;;
+    *) exit 1 ;;
+esac
+EOF
+    chmod +x "$TARGET_HOME/.local/bin/systemctl"
+
+    stub_doctor_fix_agent_mail_health_ready
+
+    if ! fix_mcp_agent_mail "fix.stack.mcp_agent_mail" >/dev/null 2>&1; then
+        echo "  fix_mcp_agent_mail should succeed when replacing both legacy binaries"
+        cleanup_test_env
+        return 1
+    fi
+
+    local chg_id="" backup_count=""
+    chg_id="$(jq -r 'select(.category == "symlink") | .id' "$ACFS_CHANGES_FILE" | tail -n 1)"
+    backup_count="$(jq -r --arg id "$chg_id" 'select(.id == $id) | (.backups | length)' "$ACFS_CHANGES_FILE" | tail -n 1)"
+    if [[ -z "$chg_id" || "$backup_count" != "2" ]]; then
+        echo "  Expected symlink change with 2 backups, got chg_id=$chg_id backups=$backup_count"
+        cleanup_test_env
+        return 1
+    fi
+
+    if ! undo_change "$chg_id" >/dev/null 2>&1; then
+        echo "  undo_change failed for combined am + mcp-agent-mail symlink change $chg_id"
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ -L "$TARGET_HOME/.local/bin/am" ]] ||
+       [[ "$(calculate_backup_checksum "$TARGET_HOME/.local/bin/am")" != "$orig_am_sum" ]]; then
+        echo "  undo_change did not restore original am binary"
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ -L "$TARGET_HOME/.local/bin/mcp-agent-mail" ]] ||
+       [[ "$(calculate_backup_checksum "$TARGET_HOME/.local/bin/mcp-agent-mail")" != "$orig_srv_sum" ]]; then
+        echo "  undo_change did not restore original mcp-agent-mail binary"
+        cleanup_test_env
+        return 1
+    fi
+
+    cleanup_test_env
+    return 0
+)
+
+test_fix_mcp_agent_mail_dry_run_reports_missing_server_symlink_only() (
+    setup_test_env
+
+    export TARGET_HOME="$ACFS_STATE_DIR/target-home"
+    mkdir -p "$TARGET_HOME/.local/bin" "$TARGET_HOME/mcp_agent_mail"
+    export PATH="$TARGET_HOME/.local/bin:$PATH"
+
+    cat > "$TARGET_HOME/mcp_agent_mail/am" <<'EOF'
+#!/usr/bin/env bash
+echo "am 1.0.0"
+EOF
+    chmod +x "$TARGET_HOME/mcp_agent_mail/am"
+
+    cat > "$TARGET_HOME/mcp_agent_mail/mcp-agent-mail" <<'EOF'
+#!/usr/bin/env bash
+echo "mcp-agent-mail 1.0.0"
+EOF
+    chmod +x "$TARGET_HOME/mcp_agent_mail/mcp-agent-mail"
+
+    # am is already linked; only mcp-agent-mail is missing
+    ln -s "$TARGET_HOME/mcp_agent_mail/am" "$TARGET_HOME/.local/bin/am"
+
+    DOCTOR_FIX_DRY_RUN=true
+    FIXES_DRY_RUN=()
+
+    if ! fix_mcp_agent_mail "fix.stack.mcp_agent_mail" >/dev/null 2>&1; then
+        echo "  fix_mcp_agent_mail dry-run should succeed"
+        cleanup_test_env
+        return 1
+    fi
+
+    if ! printf '%s\n' "${FIXES_DRY_RUN[@]}" | grep -Fq 'Ensure mcp-agent-mail symlink points at installed Rust server CLI'; then
+        echo "  dry-run did not report missing mcp-agent-mail symlink"
+        cleanup_test_env
+        return 1
+    fi
+
+    if printf '%s\n' "${FIXES_DRY_RUN[@]}" | grep -Fq 'Ensure am symlink points at installed Rust CLI'; then
+        echo "  dry-run falsely reported am symlink repair when am is already linked"
+        cleanup_test_env
+        return 1
+    fi
+
+    cleanup_test_env
+    return 0
+)
+
 # ============================================================
 # Test: dispatch_fix routing
 # ============================================================
@@ -5516,6 +5668,8 @@ main() {
     run_test test_fix_mcp_agent_mail_fails_when_symlink_repair_fails
     run_test test_fix_mcp_agent_mail_repairs_missing_server_symlink_when_am_already_linked
     run_test test_fix_mcp_agent_mail_restores_server_cli_entry_when_symlink_repair_fails
+    run_test test_fix_mcp_agent_mail_undo_restores_both_am_and_server_entries
+    run_test test_fix_mcp_agent_mail_dry_run_reports_missing_server_symlink_only
 
     # dispatch_fix tests
     run_test test_dispatch_fix_skips_pass

@@ -3330,8 +3330,14 @@ fix_mcp_agent_mail() {
 
         if [[ "$need_am_link" == "true" || "$need_server_link" == "true" ]]; then
             if [[ "$DOCTOR_FIX_DRY_RUN" == "true" ]]; then
-                FIXES_DRY_RUN+=("fix.stack.mcp_agent_mail.symlink|Ensure am symlink points at installed Rust CLI|$am_dst|ln -sf $am_src $am_dst")
-                doctor_fix_log DRY "Ensure am symlink points at $am_src"
+                if [[ "$need_am_link" == "true" ]]; then
+                    FIXES_DRY_RUN+=("fix.stack.mcp_agent_mail.symlink|Ensure am symlink points at installed Rust CLI|$am_dst|ln -sf $am_src $am_dst")
+                    doctor_fix_log DRY "Ensure am symlink points at $am_src"
+                fi
+                if [[ "$need_server_link" == "true" ]]; then
+                    FIXES_DRY_RUN+=("fix.stack.mcp_agent_mail.symlink|Ensure mcp-agent-mail symlink points at installed Rust server CLI|$mcp_server_dst|ln -sf $mcp_server_src $mcp_server_dst")
+                    doctor_fix_log DRY "Ensure mcp-agent-mail symlink points at $mcp_server_src"
+                fi
             else
                 local symlink_backup_json='[]'
                 local am_backup_json='[]'
@@ -3383,14 +3389,24 @@ fix_mcp_agent_mail() {
                         }
                     fi
 
-                    symlink_restore_command="$am_restore_command; $server_restore_command"
+                    symlink_restore_command="acfs_restore_rc=0; { $am_restore_command; } || acfs_restore_rc=\$?; { $server_restore_command; } || acfs_restore_rc=\$?; exit \$acfs_restore_rc"
                     symlink_files_json="$(doctor_fix_files_json "$am_dst" "$mcp_server_dst")"
-                    jq_bin="$(doctor_fix_system_binary_path jq 2>/dev/null || true)"
-                    if [[ -n "$jq_bin" ]]; then
-                        symlink_backup_json="$("$jq_bin" -cn \
+                    if [[ "$am_backup_json" == '[]' && "$server_backup_json" == '[]' ]]; then
+                        symlink_backup_json='[]'
+                    elif [[ "$am_backup_json" == '[]' ]]; then
+                        symlink_backup_json="$server_backup_json"
+                    elif [[ "$server_backup_json" == '[]' ]]; then
+                        symlink_backup_json="$am_backup_json"
+                    else
+                        jq_bin="$(doctor_fix_system_binary_path jq 2>/dev/null || true)"
+                        if [[ -z "$jq_bin" ]] || ! symlink_backup_json="$("$jq_bin" -cn \
                             --argjson am_b "$am_backup_json" \
                             --argjson srv_b "$server_backup_json" \
-                            '[$am_b, $srv_b] | map(select(type == "object"))' 2>/dev/null || echo '[]')"
+                            '[$am_b, $srv_b]' 2>/dev/null)" || [[ -z "$symlink_backup_json" ]]; then
+                            doctor_fix_log ERROR "Failed to combine Agent Mail CLI symlink backup metadata"
+                            FIX_FAILED=$((FIX_FAILED + 1))
+                            return 1
+                        fi
                     fi
                 fi
 
