@@ -569,20 +569,41 @@ export function formatScpTarget(username: string, host: string): string {
 export function buildRootKeyRepairCommand(username: string, host: string): string {
   const safeUsername = normalizeSSHUsername(username) ?? "ubuntu";
   const rootTarget = formatSshTarget("root", host);
-  const targetHome = safeUsername === "root" ? "/root" : `/home/${safeUsername}`;
-  const authorizedKeys = `${targetHome}/.ssh/authorized_keys`;
+  return `cat ~/.ssh/acfs_ed25519.pub | ssh ${rootTarget} '${buildRootKeyRepairRemoteScript(safeUsername)}'`;
+}
 
+/**
+ * Existing users may have a custom home and an unrelated primary group. Read
+ * one authoritative passwd record before making any changes, including the key
+ * tempfile. Never invent /home/<user> or a same-name group during recovery.
+ *
+ * Empty IFS plus disabled globbing keeps each nonempty expansion literal even
+ * when the server's home contains spaces or shell metacharacters. This lets the
+ * same readable, quote-free script survive Windows PowerShell 5.1 native argument
+ * passing as well as POSIX shells. Account fields are validated before use.
+ */
+function buildRootKeyRepairRemoteScript(username: string): string {
+  const sshDir = "$acfs_home/.ssh";
+  const authorizedKeys = `${sshDir}/authorized_keys`;
+  const keyRepair = buildKeyRepairRemoteScriptForPowerShell(sshDir, authorizedKeys, [
+    `&& install -d -m 700 -o $acfs_uid -g $acfs_gid -- ${sshDir}`,
+  ]);
   return [
-    `cat ~/.ssh/acfs_ed25519.pub | ssh ${rootTarget}`,
-    `"read -r acfs_pubkey`,
-    `&& test ! -L ${targetHome}/.ssh`,
-    `&& install -d -m 700 -o ${safeUsername} -g ${safeUsername} ${targetHome}/.ssh`,
-    `&& test ! -L ${authorizedKeys}`,
-    `&& touch ${authorizedKeys}`,
-    `&& { [ ! -s ${authorizedKeys} ] || tail -c 1 ${authorizedKeys} | od -An -t u1 | grep -qw 10 || printf '\\n' >> ${authorizedKeys}; }`,
-    `&& if ! grep -qxF \\"\\$acfs_pubkey\\" ${authorizedKeys}; then printf '%s\\n' \\"\\$acfs_pubkey\\" >> ${authorizedKeys}; fi`,
-    `&& chown ${safeUsername}:${safeUsername} ${authorizedKeys}`,
-    `&& chmod 600 ${authorizedKeys}"`,
+    "set -f; IFS=;",
+    `acfs_account=$(getent passwd ${username})`,
+    "&& case $acfs_account in *[[:cntrl:]]*) false;; *) test ${#acfs_account} -gt 0;; esac",
+    "&& test $(printf %s $acfs_account | tr -cd : | wc -c) -eq 6",
+    `&& test $(printf %s $acfs_account | cut -d: -f1) = ${username}`,
+    "&& acfs_uid=$(printf %s $acfs_account | cut -d: -f3)",
+    "&& acfs_gid=$(printf %s $acfs_account | cut -d: -f4)",
+    "&& case $acfs_uid:$acfs_gid in :*|*:|*[!0-9:]*) false;; *) test $acfs_uid -gt 0 && test $acfs_uid -le 4294967294 && test $acfs_gid -le 4294967294;; esac",
+    "&& acfs_home=$(printf %s $acfs_account | cut -d: -f6)",
+    "&& case $acfs_home in /|/*/) false;; /*) test -d $acfs_home && test ! -L $acfs_home;; *) false;; esac",
+    "&& test $(stat -c %u -- $acfs_home) -eq $acfs_uid",
+    "|| { printf %s\\\\n ACFS-recovery-refused-invalid-target-account >&2; exit 1; };",
+    keyRepair,
+    `&& chown $acfs_uid:$acfs_gid -- ${authorizedKeys}`,
+    `&& chmod 600 ${authorizedKeys}`,
   ].join(" ");
 }
 
@@ -592,14 +613,7 @@ export function buildRootKeyRepairCommand(username: string, host: string): strin
 export function buildRootKeyRepairCommandWindows(username: string, host: string): string {
   const safeUsername = normalizeSSHUsername(username) ?? "ubuntu";
   const rootTarget = formatSshTarget("root", host);
-  const targetHome = safeUsername === "root" ? "/root" : `/home/${safeUsername}`;
-  const sshDir = `${targetHome}/.ssh`;
-  const authorizedKeys = `${sshDir}/authorized_keys`;
-  const remoteScript = buildKeyRepairRemoteScriptForPowerShell(sshDir, authorizedKeys, [
-    `&& install -d -m 700 -o ${safeUsername} -g ${safeUsername} ${sshDir}`,
-  ]);
-
-  return `Get-Content ${SSH_PUBLIC_KEY_PATH_WINDOWS_POWERSHELL} | ssh ${rootTarget} '${remoteScript} && chown ${safeUsername}:${safeUsername} ${authorizedKeys} && chmod 600 ${authorizedKeys}'`;
+  return `Get-Content ${SSH_PUBLIC_KEY_PATH_WINDOWS_POWERSHELL} | ssh ${rootTarget} '${buildRootKeyRepairRemoteScript(safeUsername)}'`;
 }
 
 /**

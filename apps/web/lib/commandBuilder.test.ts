@@ -1,5 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  chownSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -85,20 +96,20 @@ describe("buildRootKeyRepairCommand", () => {
     const command = buildRootKeyRepairCommand("dev-user", "203.0.113.42");
 
     expect(command).toContain("cat ~/.ssh/acfs_ed25519.pub | ssh root@203.0.113.42");
-    expect(command).toContain("read -r acfs_pubkey");
-    expect(command).toContain("test ! -L /home/dev-user/.ssh");
-    expect(command).toContain("tail -c 1 /home/dev-user/.ssh/authorized_keys");
+    expect(command).toContain("getent passwd dev-user");
+    expect(command).toContain("test ! -L $acfs_home/.ssh");
+    expect(command).toContain("tail -c 1 $acfs_home/.ssh/authorized_keys");
     expect(command).toContain("grep -qw 10");
     expect(command).toContain(
-      'if ! grep -qxF \\"\\$acfs_pubkey\\" /home/dev-user/.ssh/authorized_keys; then',
+      "grep -qxFf $acfs_key $acfs_home/.ssh/authorized_keys",
     );
     expect(command).toContain(
-      "printf '%s\\n' \\\"\\$acfs_pubkey\\\" >> /home/dev-user/.ssh/authorized_keys",
+      "|| cat $acfs_key >> $acfs_home/.ssh/authorized_keys",
     );
-    expect(command).not.toContain("cat >> /home/dev-user/.ssh/authorized_keys");
+    expect(command).not.toContain("/home/dev-user");
   });
 
-  test("preserves public key quoting after local shell parsing", () => {
+  test("preserves the remote literal-expansion guards after local shell parsing", () => {
     const command = buildRootKeyRepairCommand("ubuntu", "203.0.113.42");
     const result = Bun.spawnSync({
       cmd: ["bash", "-lc", `ssh() { printf '%s\\n' "$2"; }\n${command}`],
@@ -110,19 +121,18 @@ describe("buildRootKeyRepairCommand", () => {
     expect(result.exitCode).toBe(0);
 
     const remoteCommand = new TextDecoder().decode(result.stdout);
-    expect(remoteCommand).toContain('grep -qxF "$acfs_pubkey" /home/ubuntu/.ssh/authorized_keys');
-    expect(remoteCommand).toContain(
-      "printf '%s\\n' \"$acfs_pubkey\" >> /home/ubuntu/.ssh/authorized_keys",
-    );
-    expect(remoteCommand).not.toContain("grep -qxF $acfs_pubkey");
-    expect(remoteCommand).not.toContain("printf '%s\\n' $acfs_pubkey");
+    expect(remoteCommand).toBe(`${rootRepairScript("powershell", "ubuntu")}\n`);
+    expect(remoteCommand).toContain("set -f; IFS=;");
+    expect(remoteCommand).toContain("grep -qxFf $acfs_key $acfs_home/.ssh/authorized_keys");
+    expect(remoteCommand).toContain("cat $acfs_key >> $acfs_home/.ssh/authorized_keys");
+    expect(remoteCommand).not.toContain("$acfs_pubkey");
   });
 
   test("falls back to ubuntu for usernames the installer would reject", () => {
     const command = buildRootKeyRepairCommand("Bad User", "2001:db8::42");
 
     expect(command).toContain("ssh root@2001:db8::42");
-    expect(command).toContain("/home/ubuntu/.ssh/authorized_keys");
+    expect(command).toContain("getent passwd ubuntu");
     expect(command).not.toContain("Bad User");
   });
 
@@ -130,7 +140,8 @@ describe("buildRootKeyRepairCommand", () => {
     const command = buildRootKeyRepairCommand("root", "203.0.113.42");
 
     expect(command).toContain("ssh root@203.0.113.42");
-    expect(command).toContain("/home/ubuntu/.ssh/authorized_keys");
+    expect(command).toContain("getent passwd ubuntu");
+    expect(command).not.toContain("getent passwd root");
     expect(command).not.toContain("/root/.ssh/authorized_keys");
   });
 });
@@ -203,6 +214,141 @@ function runRemoteScriptLocally(
     exitCode: result.exitCode,
     stderr: new TextDecoder().decode(result.stderr),
   };
+}
+
+function rootRepairScript(platform: "posix" | "powershell", username = "dev-user"): string {
+  if (platform === "powershell") {
+    return remoteScriptOf(buildRootKeyRepairCommandWindows(username, "203.0.113.42"));
+  }
+  // Exercise local shell parsing too: values intended for the VPS must survive
+  // the laptop shell without interpolation or word splitting.
+  const result = Bun.spawnSync({
+    cmd: [
+      "bash", "-c",
+      `cat() { :; }; ssh() { printf '%s' "$2"; }; ${buildRootKeyRepairCommand(username, "203.0.113.42")}`,
+    ],
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  expect(result.exitCode).toBe(0);
+  return new TextDecoder().decode(result.stdout);
+}
+
+function rootRepairFixture(platform: "posix" | "powershell") {
+  const root = mkdtempSync(join(tmpdir(), "acfs-root-key-repair-"));
+  const home = join(root, "existing home 'quoted' [literal] $dollar");
+  const temporary = join(root, "temporary");
+  mkdirSync(home, { mode: 0o700 });
+  mkdirSync(temporary, { mode: 0o700 });
+  // A root test runner can still exercise a non-root target account without
+  // changing the real passwd database or creating any system users.
+  if (process.getuid?.() === 0) chownSync(home, 1001, 1002);
+  const uid = statSync(home).uid;
+  const gid = statSync(home).gid;
+  const account = `dev-user:x:${uid}:${gid}:Fixture account:${home}:/bin/bash`;
+  const script = rootRepairScript(platform);
+  const run = (record = account, input = "ssh-ed25519 AAAAFixtureKey user comment\r\n", getentStatus = 0) => {
+    const result = Bun.spawnSync({
+      cmd: ["bash", "-c", `
+getent() {
+  test "$1" = passwd && test "$2" = dev-user || return 98
+  printf '%s\\n' "$ACFS_TEST_ACCOUNT"
+  return "$ACFS_TEST_GETENT_STATUS"
+}
+install() {
+  test "\${!#}" = "$ACFS_TEST_HOME/.ssh" || return 97
+  command install "$@"
+}
+${script}`],
+      env: {
+        ...process.env,
+        TMPDIR: temporary,
+        ACFS_TEST_HOME: home,
+        ACFS_TEST_ACCOUNT: record,
+        ACFS_TEST_GETENT_STATUS: String(getentStatus),
+      },
+      stdin: new TextEncoder().encode(input),
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    return { code: result.exitCode, error: new TextDecoder().decode(result.stderr) };
+  };
+  return { root, home, temporary, uid, gid, account, run };
+}
+
+for (const platform of ["posix", "powershell"] as const) {
+  describe(`${platform} root key recovery uses the server account`, () => {
+    test("repairs an existing account's nonstandard home with numeric ownership", () => {
+      const fixture = rootRepairFixture(platform);
+      const { home, uid, gid } = fixture;
+      const keyFile = join(home, ".ssh/authorized_keys");
+      const first = fixture.run();
+      expect(first).toEqual({ code: 0, error: "" });
+      expect(readFileSync(keyFile, "utf8")).toBe("ssh-ed25519 AAAAFixtureKey user comment\n");
+      expect(statSync(join(home, ".ssh")).mode & 0o777).toBe(0o700);
+      expect(statSync(keyFile).mode & 0o777).toBe(0o600);
+      expect(statSync(keyFile).uid).toBe(uid);
+      expect(statSync(keyFile).gid).toBe(gid);
+      expect(fixture.run().code).toBe(0);
+      expect(readFileSync(keyFile, "utf8")).toBe("ssh-ed25519 AAAAFixtureKey user comment\n");
+    });
+
+    test("preserves existing keys and repairs a missing trailing newline", () => {
+      const fixture = rootRepairFixture(platform);
+      mkdirSync(join(fixture.home, ".ssh"), { mode: 0o755 });
+      const keyFile = join(fixture.home, ".ssh/authorized_keys");
+      writeFileSync(keyFile, "ssh-ed25519 AAAAOldKey previous user", { mode: 0o644 });
+      expect(fixture.run().code).toBe(0);
+      expect(readFileSync(keyFile, "utf8")).toBe(
+        "ssh-ed25519 AAAAOldKey previous user\nssh-ed25519 AAAAFixtureKey user comment\n",
+      );
+      expect(statSync(join(fixture.home, ".ssh")).mode & 0o777).toBe(0o700);
+      expect(statSync(keyFile).mode & 0o777).toBe(0o600);
+    });
+
+    test("refuses unresolved, malformed or privileged identities before filesystem changes", () => {
+      const fixture = rootRepairFixture(platform);
+      const { home, uid, gid, account } = fixture;
+      for (const record of [
+        "",
+        `other-user:x:${uid}:${gid}::${home}:/bin/bash`,
+        `dev-user:x:0:${gid}::${home}:/bin/bash`,
+        `dev-user:x:invalid:${gid}::${home}:/bin/bash`,
+        `dev-user:x:4294967295:${gid}::${home}:/bin/bash`,
+        `dev-user:x:${uid}:4294967295::${home}:/bin/bash`,
+        `dev-user:x:18446744073709551616:${gid}::${home}:/bin/bash`,
+        `dev-user:x:${uid}:18446744073709551616::${home}:/bin/bash`,
+        `dev-user:x:${uid + 1}:${gid}::${home}:/bin/bash`,
+        `dev-user:x:${uid}:::${home}:/bin/bash`,
+        `dev-user:x:${uid}:${gid}::relative/home:/bin/bash`,
+        `dev-user:x:${uid}:${gid}::/:/bin/bash`,
+        `dev-user:x:${uid}:${gid}::${home}/missing:/bin/bash`,
+        `${account}\n${account}`,
+      ]) {
+        expect(fixture.run(record).code).not.toBe(0);
+        expect(existsSync(join(home, ".ssh"))).toBe(false);
+        expect(readdirSync(fixture.temporary)).toEqual([]);
+      }
+      expect(fixture.run(account, "ssh-ed25519 AAAAFixtureKey\n", 2).code).not.toBe(0);
+      expect(readdirSync(home)).toEqual([]);
+    });
+
+    test("refuses symlinked SSH directories and key files without following them", () => {
+      const directory = rootRepairFixture(platform);
+      const external = join(directory.root, "other-directory");
+      mkdirSync(external);
+      symlinkSync(external, join(directory.home, ".ssh"));
+      expect(directory.run().code).not.toBe(0);
+      expect(readdirSync(external)).toEqual([]);
+      const file = rootRepairFixture(platform);
+      const externalFile = join(file.root, "other-file");
+      writeFileSync(externalFile, "must not change");
+      mkdirSync(join(file.home, ".ssh"), { mode: 0o700 });
+      symlinkSync(externalFile, join(file.home, ".ssh/authorized_keys"));
+      expect(file.run().code).not.toBe(0);
+      expect(readFileSync(externalFile, "utf8")).toBe("must not change");
+    });
+  });
 }
 
 describe("buildUserKeyRepairCommandWindows", () => {
@@ -305,19 +451,21 @@ describe("buildRootKeyRepairCommandWindows", () => {
     expect(command).not.toContain("$acfs_pubkey");
 
     const remoteScript = remoteScriptOf(command);
-    expect(remoteScript).toContain("test ! -L /home/dev-user/.ssh");
-    expect(remoteScript).toContain("install -d -m 700 -o dev-user -g dev-user /home/dev-user/.ssh");
-    expect(remoteScript).toContain("grep -qxFf $acfs_key /home/dev-user/.ssh/authorized_keys");
-    expect(remoteScript).toContain("cat $acfs_key >> /home/dev-user/.ssh/authorized_keys");
-    expect(remoteScript).toContain("chown dev-user:dev-user /home/dev-user/.ssh/authorized_keys");
-    expect(remoteScript).toContain("chmod 600 /home/dev-user/.ssh/authorized_keys");
+    expect(remoteScript).toContain("getent passwd dev-user");
+    expect(remoteScript).toContain("test ! -L $acfs_home/.ssh");
+    expect(remoteScript).toContain("install -d -m 700 -o $acfs_uid -g $acfs_gid -- $acfs_home/.ssh");
+    expect(remoteScript).toContain("grep -qxFf $acfs_key $acfs_home/.ssh/authorized_keys");
+    expect(remoteScript).toContain("cat $acfs_key >> $acfs_home/.ssh/authorized_keys");
+    expect(remoteScript).toContain("chown $acfs_uid:$acfs_gid -- $acfs_home/.ssh/authorized_keys");
+    expect(remoteScript).toContain("chmod 600 $acfs_home/.ssh/authorized_keys");
   });
 
   test("treats root as the bootstrap account, not the ACFS target user", () => {
     const command = buildRootKeyRepairCommandWindows("root", "203.0.113.42");
 
     expect(command).toContain("ssh root@203.0.113.42 '");
-    expect(command).toContain("/home/ubuntu/.ssh/authorized_keys");
+    expect(command).toContain("getent passwd ubuntu");
+    expect(command).not.toContain("getent passwd root");
     expect(command).not.toContain("/root/.ssh/authorized_keys");
   });
 });
@@ -620,7 +768,8 @@ describe("buildHandoffRunbook", () => {
       runLocation: "local",
     });
     expect(rootFallbackRepair?.command).toContain("ssh root@YOUR_VPS_IPV4");
-    expect(rootFallbackRepair?.command).toContain("/home/dev-user/.ssh/authorized_keys");
+    expect(rootFallbackRepair?.command).toContain("getent passwd dev-user");
+    expect(rootFallbackRepair?.command).toContain("$acfs_home/.ssh/authorized_keys");
     expect(runbook.targetHost.kind).toBe("ipv4");
     expect(runbook.targetHost.value).toBe("YOUR_VPS_IPV4");
     expect(runbook.privacy.rawTargetHostIncluded).toBe(false);
@@ -661,7 +810,8 @@ describe("buildHandoffRunbook", () => {
     expect(markdown).toContain("Host kind: ipv6");
     expect(markdown).toContain("ssh root@YOUR_VPS_IPV6");
     expect(markdown).toContain("Copy the ACFS public key through the root fallback");
-    expect(markdown).toContain("/home/ubuntu/.ssh/authorized_keys");
+    expect(markdown).toContain("getent passwd ubuntu");
+    expect(markdown).toContain("$acfs_home/.ssh/authorized_keys");
     expect(markdown).toContain("acfs support-bundle");
     expect(markdown).not.toContain("2001:db8::42");
   });
