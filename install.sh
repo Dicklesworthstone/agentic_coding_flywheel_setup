@@ -2332,6 +2332,15 @@ cleanup() {
     # Capture exit code FIRST, before any other commands can overwrite $?
     local exit_code=$?
     ACFS_CLEANUP_ACTIVE=true
+    # Recovery and inspection commands can fail while pointing at someone
+    # else's checkpoint or while its writer holds the lock. Their EXIT trap
+    # must still release resources, but has no installation to report.
+    local report_install=true
+    if [[ "${RESET_STATE_ONLY:-false}" == true || "${DRY_RUN:-false}" == true \
+        || "${PRINT_MODE:-false}" == true || "${PRINT_PLAN_MODE:-false}" == true \
+        || "${LIST_MODULES:-false}" == true || "${PIN_REF_MODE:-false}" == true ]]; then
+        report_install=false
+    fi
 
     # Cleanup must never abort — disable errexit for the entire function.
     set +e
@@ -2377,13 +2386,13 @@ cleanup() {
 
     # If a signal triggered this cleanup, mark state as interrupted so
     # resume logic does not see a partially-started phase.
-    if [[ -n "${_ACFS_SIGNAL_RECEIVED:-}" ]]; then
+    if [[ "$report_install" == true && -n "${_ACFS_SIGNAL_RECEIVED:-}" ]]; then
         if type -t state_mark_interrupted &>/dev/null; then
             state_mark_interrupted 2>/dev/null || true
         fi
     fi
 
-    if [[ $exit_code -ne 0 && "${ACFS_BOOTSTRAP_SUPERVISOR:-false}" != "true" ]]; then
+    if [[ "$report_install" == true && $exit_code -ne 0 && "${ACFS_BOOTSTRAP_SUPERVISOR:-false}" != "true" ]]; then
         log_error ""
         if [[ "${SMOKE_TEST_FAILED:-false}" == "true" ]]; then
             log_error "ACFS installation completed, but the post-install smoke test failed."
@@ -2434,7 +2443,7 @@ cleanup() {
     # completion (which sets the flag itself) never runs this twice, and by
     # ACFS_INSTALL_RUN_CONFIRMED so benign early exits (--help, --print,
     # dry-run, user declined) never trigger it at all.
-    if [[ "${ACFS_INSTALL_RUN_CONFIRMED:-0}" == "1" ]] && [[ "${ACFS_SKILLS_AND_SUMMARY_DONE:-0}" != "1" ]]; then
+    if [[ "$report_install" == true && "${ACFS_INSTALL_RUN_CONFIRMED:-0}" == "1" && "${ACFS_SKILLS_AND_SUMMARY_DONE:-0}" != "1" ]]; then
         ACFS_SKILLS_AND_SUMMARY_DONE=1
         log_error "Installation ended before reaching normal completion; attempting best-effort skills install + onboarding summary anyway."
         local skills_installer=""

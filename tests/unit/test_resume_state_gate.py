@@ -1027,7 +1027,7 @@ class ScopedInstallerResumeTests(unittest.TestCase):
         cls.harness = _main_fixture.MainUpgradeOrderTests(methodName="runTest")
 
     def run_scoped(self, arguments=(), *, modules=None, requested=("lang.bun",),
-                   alter="", custom=False, completed=True, options=None, execution=""):
+                   alter="", custom=False, completed=True, options=None, execution="", with_cleanup=False):
         modules = self.BASE_SCOPE if modules is None else modules
         installer = (ROOT / "install.sh").read_text()
         setup = [
@@ -1080,6 +1080,21 @@ acfs_verify_phase() { record_scope; exit 0; }
 ''',
             execution,
         ]
+        if with_cleanup:
+            # Exercise the production EXIT handler and its real checkpoint
+            # writes. Keep network and notification destinations inside the fixture.
+            setup += [_main_fixture.definitions(installer, ["cleanup", "print_resume_hint"]), r'''
+BOOTSTRAP_ARCHIVE_FD=""
+acfs_bootstrap_dir_is_owned_temp() { return 1; }
+acfs_file_is_owned_temp() { return 1; }
+generate_resume_hint() { echo "fixture resume"; }
+acfs_summary_emit() { trace failure_summary; }
+webhook_notify() { trace failure_webhook; }
+acfs_notify_install_failure() { trace failure_notification; }
+acfs_release_install_lock() { trace released_lock; }
+acfs_log_close() { :; }
+trap cleanup EXIT
+''']
         return self.harness.run_main(
             overrides={"TEST_MISSING_TOOLS": "false", **(options or {})},
             arguments=arguments, extra="\n".join(setup))
@@ -1257,9 +1272,11 @@ acfs_verify_phase() { record_scope; exit 0; }
         self.assertEqual(backups[0].read_bytes(), (folder / "checkpoint-before.json").read_bytes())
 
     def test_reset_rejects_foreign_custom_checkpoint(self):
-        result, _, folder = self.run_scoped(("--reset-state",), custom=True,
+        result, events, folder = self.run_scoped(("--reset-state",), custom=True, with_cleanup=True,
                                             alter="""state_update '.target_user = "other"'""")
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("released_lock", events)
+        self.assertFalse(any(event.startswith("failure_") for event in events), events)
         self.assert_unchanged(folder, custom=True)
         self.assertTrue((folder / "home/.acfs/state.json").is_file())
         self.assertEqual(list(folder.rglob("*.backup.*")), [])
@@ -1279,13 +1296,16 @@ date() { if [[ "$1" == +%Y%m%d_%H%M%S ]]; then echo 20261124_000000; else comman
                               [b"prior recovery", b"truncated checkpoint"])
 
     def test_reset_respects_the_custom_checkpoint_writer_lock(self):
-        result, _, folder = self.run_scoped(
-            ("--reset-state",), custom=True, execution=r'''
+        result, events, folder = self.run_scoped(
+            ("--reset-state",), custom=True, with_cleanup=True, execution=r'''
 exec 195>>"$ACFS_STATE_FILE.lock"
 flock -xn 195
 ACFS_STATE_LOCK_TIMEOUT=1
+_ACFS_SIGNAL_RECEIVED=TERM
 ''')
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("released_lock", events)
+        self.assertFalse(any(event.startswith("failure_") for event in events), events)
         self.assert_unchanged(folder, custom=True)
         self.assertEqual(list(folder.rglob("*.backup.*")), [])
 
@@ -1293,12 +1313,23 @@ ACFS_STATE_LOCK_TIMEOUT=1
         for flag in ("--dry-run", "--print"):
             for arguments in (("--reset-state", flag), (flag, "--reset-state")):
                 with self.subTest(arguments=arguments):
-                    result, events, folder = self.run_scoped(arguments)
+                    result, events, folder = self.run_scoped(arguments, with_cleanup=True)
                     self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
                     self.assertIn("--reset-state", result.stderr)
                     self.assertNotIn("install_lock", events)
+                    self.assertIn("released_lock", events)
+                    self.assertFalse(any(event.startswith("failure_") for event in events), events)
                     self.assert_unchanged(folder)
                     self.assertEqual(list(folder.rglob("*.backup.*")), [])
+
+    def test_install_failure_still_saves_the_resume_hint_and_notifies(self):
+        result, events, folder = self.run_scoped(
+            ("--resume",), with_cleanup=True, execution="ensure_base_deps() { return 37; }")
+        self.assertEqual(result.returncode, 37, result.stdout + result.stderr)
+        checkpoint = json.loads((folder / "home/.acfs/state.json").read_text())
+        self.assertEqual(checkpoint["resume_hint"], "fixture resume")
+        for event in ("failure_summary", "failure_webhook", "failure_notification", "released_lock"):
+            self.assertIn(event, events)
 
     def test_saved_scope_previews_match_execution_without_privileges_or_checkpoint_writes(self):
         for flag in ("--print-plan", "--dry-run"):
