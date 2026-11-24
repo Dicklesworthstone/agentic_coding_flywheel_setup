@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import pwd
+import runpy
 import shutil
 import subprocess
 import sys
@@ -17,6 +18,7 @@ import unittest
 
 REPO = Path(__file__).resolve().parents[3]
 SCREEN = REPO / "scripts/lib/newproj_screens/screen_success.sh"
+POLICY = REPO / "scripts/lib/ntm_policy.py"
 BASH = shutil.which("bash")
 JQ = shutil.which("jq")
 GIT = shutil.which("git")
@@ -52,6 +54,31 @@ from pathlib import Path
 args = sys.argv[1:]
 provider_types = {"cc": "claude", "cod": "codex", "agy": "antigravity", "oc": "oc",
                   "omp": "omp", "grok": "grok", "gmi": "gemini", "pi": "pi"}
+if args[-2:] == ["config", "validate"]:
+    import runpy
+    mode = os.environ.get("POLICY_VALIDATE_MODE", "ok")
+    if mode == "hang":
+        import signal, time
+        if os.fork() == 0:
+            signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        time.sleep(8)
+        sys.exit(0)
+    if mode == "invalid":
+        print("invalid validation response")
+        sys.exit(0)
+    path = Path(args[args.index("--config") + 1])
+    if os.environ.get("VALIDATION_CALLS"):
+        with open(os.environ["VALIDATION_CALLS"], "a") as log:
+            log.write(json.dumps({"path": str(path), "cwd": os.getcwd(), "home": os.environ.get("HOME")}) + "\n")
+    parser = runpy.run_path(os.environ["POLICY_HELPER"])["toml_parser"]()
+    valid = mode not in ("false", "exit")
+    try:
+        if path.exists():
+            parser.loads(path.read_text())
+    except (ValueError, OSError):
+        valid = False
+    print(json.dumps({"valid": valid} if mode == "legacy" else {"success": valid, "valid": valid}))
+    sys.exit(2 if mode == "exit" else 0)
 if args == ["--help"]:
     help_calls = Path(os.environ["HELP_CALLS"])
     number = int(help_calls.read_text()) + 1 if help_calls.exists() else 1
@@ -216,15 +243,17 @@ class LaunchTests(unittest.TestCase):
             "PROJECT": str(self.project), "PROJECT_NAME": "my-app",
             "CALLS": str(self.calls), "EVENTS": str(self.events), "HELP_CALLS": str(self.help_calls),
             "FAKE_NTM_MODE": "ok", "LC_ALL": "C",
-            "TARGET_HOME": str(self.home), "ACFS_HOME": str(self.acfs),
+            "HOME": str(self.home), "TARGET_HOME": str(self.home), "ACFS_HOME": str(self.acfs),
+            "POLICY_HELPER": str(POLICY),
             "PROJECT_SELECTORS": ":".join(PROJECT_SELECTORS),
         }
-        for key in ("TARGET_USER", "ACFS_STATE_FILE"):
+        for key in ("TARGET_USER", "ACFS_STATE_FILE", "NTM_CONFIG", "XDG_CONFIG_HOME"):
             self.env.pop(key, None)
 
     def select_modules(self, modules):
         state = {
             "target_home": str(self.home), "target_user": pwd.getpwuid(os.getuid()).pw_name,
+            "mode": "vibe",
             "module_selection": {"schema_version": 1, "selected_modules": modules},
         }
         self.acfs.joinpath("state.json").write_text(json.dumps(state))
@@ -1079,6 +1108,329 @@ open_in_agent codex
         result = self.run_bash('handle_success_input', "w\n\n\n\nyes\n")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("--spawn-assign-work", self.invocations()[0]["argv"])
+
+    def saved_policy(self, mode, modules=None):
+        self.select_modules(modules or ["agents.claude", "agents.codex", "agents.antigravity", "stack.ntm"])
+        path = self.acfs / "state.json"
+        value = json.loads(path.read_text())
+        value["mode"] = mode
+        path.write_text(json.dumps(value))
+        return path
+
+    def policy_config(self):
+        path = self.home / ".config/ntm/config.toml"
+        functions = runpy.run_path(str(POLICY))
+        return path, functions["toml_parser"]().loads(path.read_text()), functions
+
+    def policy_provider(self, agent):
+        self.executable(agent, "#!" + sys.executable + r'''
+import json, os, sys
+with open(os.environ["EVENTS"], "a") as output:
+    output.write(json.dumps({"argv": sys.argv[1:], "cwd": os.getcwd(),
+        "account": {key: os.environ.get(key) for key in
+            ("HOME", "USER", "LOGNAME", "TARGET_HOME", "TARGET_USER", "ACFS_HOME", "ACFS_STATE_FILE", "ACFS_BIN_DIR")},
+        "auth": {key: os.environ.get(key) for key in ("CLAUDE_CONFIG_DIR", "CLAUDE_CODE_OAUTH_TOKEN")},
+        "scope": {key: os.environ.get(key) for key in os.environ["PROJECT_SELECTORS"].split(":")},
+        "beads": os.environ.get("BEADS_DIR")}) + "\n")
+''')
+
+    def execute_binding(self, binding, *arguments, **environment):
+        return subprocess.run([sys.executable, "-I", str(POLICY), "launch", "--binding", json.dumps(binding), "--", *arguments],
+                              cwd=self.project, text=True, capture_output=True,
+                              env={**self.env, **environment}, timeout=10)
+
+    def test_managed_defaults_follow_later_mode_changes_and_include_zero_count_providers(self):
+        state_path = self.saved_policy("safe")
+        self.policy_provider("codex")
+        result = self.run_bash('newproj_start_ntm "$PROJECT" acfs-my-app false 1 0 0 0 0 0 0 0')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        _, configuration, functions = self.policy_config()
+        binding = functions["existing_managed"](configuration["agents"]["codex"])
+        self.assertIsNotNone(binding, "zero-count installed providers must also follow later ntm add")
+        self.assertEqual(binding["binary"], str(self.bin / "codex"))
+        original_command = configuration["agents"]["codex"]
+        for mode, expected in (("safe", []), ("vibe", ["--dangerously-bypass-approvals-and-sandbox"]), ("safe", [])):
+            with self.subTest(mode=mode):
+                state = json.loads(state_path.read_text())
+                state["mode"] = mode
+                state_path.write_text(json.dumps(state))
+                result = self.execute_binding(binding, "--model", "literal model", MODE="vibe")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                receipt = json.loads(self.events.read_text().splitlines()[-1])
+                self.assertEqual(receipt["argv"], expected + ["--model", "literal model"])
+        self.assertEqual(self.policy_config()[1]["agents"]["codex"], original_command,
+                         "changing mode must not depend on rerunning newproj or rewriting the template")
+
+    def test_provider_binding_restores_account_and_project_context_but_keeps_ntm_auth(self):
+        state_path = self.saved_policy("safe")
+        self.policy_provider("claude")
+        result = self.start()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        _, configuration, functions = self.policy_config()
+        binding = functions["existing_managed"](configuration["agents"]["claude"])
+        poison = {key: "/different-project/" + key for key in PROJECT_SELECTORS}
+        result = self.execute_binding(binding, "--settings", '{"hooks":{"PreToolUse":[]}}',
+                                      HOME="/another-account", USER="other", LOGNAME="other",
+                                      ACFS_HOME="/another-account/runtime", ACFS_STATE_FILE="/another-account/state",
+                                      ACFS_BIN_DIR="/another-account/bin", CLAUDE_CONFIG_DIR="/pane/private/claude",
+                                      CLAUDE_CODE_OAUTH_TOKEN="fixture-static-token", **poison)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        receipt = json.loads(self.events.read_text().splitlines()[-1])
+        self.assertEqual(receipt["argv"], ["--settings", '{"hooks":{"PreToolUse":[]}}'])
+        self.assertEqual(receipt["account"]["HOME"], str(self.home))
+        self.assertEqual(receipt["account"]["ACFS_STATE_FILE"], str(state_path))
+        self.assertEqual(receipt["account"]["ACFS_HOME"], str(REPO))
+        self.assertEqual(receipt["account"]["ACFS_BIN_DIR"], str(self.home / ".local/bin"))
+        self.assertEqual(receipt["account"]["USER"], pwd.getpwuid(os.getuid()).pw_name)
+        self.assertEqual(receipt["account"]["LOGNAME"], receipt["account"]["USER"])
+        self.assertTrue(all(value is None for value in receipt["scope"].values()))
+        self.assertEqual(receipt["beads"], str(self.project / ".beads"))
+        self.assertEqual(receipt["auth"], {"CLAUDE_CONFIG_DIR": "/pane/private/claude", "CLAUDE_CODE_OAUTH_TOKEN": "fixture-static-token"})
+
+    def test_policy_preserves_custom_settings_and_exact_original_backup(self):
+        self.saved_policy("safe")
+        path = self.home / ".config/ntm/config.toml"
+        path.parent.mkdir(parents=True)
+        original = b'''# Operator's own configuration\nprojects_base = "/custom projects"\n[agent_mail]\nenabled = false\ntoken = "fixture-secret"\n[assign]\noperator_gated_labels = ["manual", "legal"]\n[models]\ndefault_codex = "chosen-model"\n[agents]\nclaude = "claude"\n'''
+        path.write_bytes(original)
+        result = self.start()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        _, data, functions = self.policy_config()
+        self.assertEqual(data["agent_mail"], {"enabled": False, "token": "fixture-secret"})
+        self.assertEqual(data["assign"]["operator_gated_labels"], ["manual", "legal"])
+        self.assertEqual(data["models"]["default_codex"], "chosen-model")
+        self.assertEqual(data["projects_base"], "/custom projects")
+        self.assertFalse(functions["existing_managed"](data["agents"]["claude"])["vibe"])
+        backups = list(path.parent.glob("config.toml.acfs-before-policy-*"))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(backups[0].read_bytes(), original)
+        self.assertEqual(backups[0].stat().st_mode & 0o777, 0o600)
+        self.assertNotIn("fixture-secret", result.stdout + result.stderr)
+        before = path.read_bytes()
+        again = self.start()
+        self.assertEqual(again.returncode, 0, again.stderr)
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual(list(path.parent.glob("config.toml.acfs-before-policy-*")), backups)
+
+    def test_safe_custom_command_refuses_before_task_or_configuration_mutation(self):
+        self.saved_policy("safe", ["agents.claude", "agents.codex", "agents.antigravity", "stack.ntm", "stack.beads_rust", "stack.beads_viewer"])
+        self.enable_work([])
+        path = self.home / ".config/ntm/config.toml"
+        path.parent.mkdir(parents=True)
+        original = '[agents]\ncodex = "custom-proxy --account own codex --dangerously-bypass-approvals-and-sandbox"\n'
+        path.write_text(original)
+        result = self.run_bash('open_in_ntm true', "\n\n\n\nFirst feature\nyes\n")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("custom agents.codex is unchanged", result.stderr)
+        self.assertEqual(path.read_text(), original)
+        self.assertEqual(self.invocations(), [])
+        self.assertEqual(self.bead_invocations(), [])
+        self.assertEqual(list(path.parent.iterdir()), [path])
+
+    def test_vibe_custom_command_is_preserved_and_safe_override_is_not_escalated(self):
+        self.saved_policy("vibe")
+        self.policy_provider("claude")
+        path = self.home / ".config/ntm/config.toml"
+        path.parent.mkdir(parents=True)
+        path.write_text('[agents]\nclaude = "claude"\ncodex = "custom-proxy --account chosen codex"\n')
+        result = self.start()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        _, data, functions = self.policy_config()
+        self.assertEqual(data["agents"]["codex"], "custom-proxy --account chosen codex")
+        binding = functions["existing_managed"](data["agents"]["claude"])
+        result = self.execute_binding(binding)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(self.events.read_text().splitlines()[-1])["argv"], [])
+
+    def test_native_antigravity_safe_override_is_not_escalated_by_locked_wrapper(self):
+        self.saved_policy("vibe")
+        functions = runpy.run_path(str(POLICY))
+        command = functions["native_command"]("agy", False)
+        path = self.home / ".config/ntm/config.toml"
+        path.parent.mkdir(parents=True)
+        path.write_bytes(functions["encode_toml"](
+            {"agents": {"antigravity": command}}, functions["toml_parser"]()))
+        result = self.start()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        _, data, _ = self.policy_config()
+        self.assertEqual(data["agents"]["antigravity"], command)
+        self.assertIsNone(functions["existing_managed"](data["agents"]["antigravity"]))
+        preserved = path.read_bytes()
+        calls = self.invocations()
+        self.saved_policy("safe")
+        result = self.start()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("custom agents.antigravity is unchanged", result.stderr)
+        self.assertEqual(path.read_bytes(), preserved)
+        self.assertEqual(self.invocations(), calls)
+
+    def test_policy_validation_failure_cannot_create_first_task_or_config(self):
+        self.enable_work([])
+        for mode in ("false", "exit", "invalid"):
+            with self.subTest(mode=mode):
+                result = self.run_bash('open_in_ntm true', "\n\n\n\nFirst feature\nyes\n", POLICY_VALIDATE_MODE=mode)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(self.invocations(), [])
+                self.assertEqual(self.bead_invocations(), [])
+                self.assertFalse((self.home / ".config/ntm/config.toml").exists())
+
+    def test_policy_validation_deadline_includes_descendants_holding_output(self):
+        start = time.monotonic()
+        result = self.start(POLICY_VALIDATE_MODE="hang")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("validation timed out", result.stderr)
+        self.assertLess(time.monotonic() - start, 7)
+        self.assertEqual(self.invocations(), [])
+        self.assertFalse((self.home / ".config/ntm/config.toml").exists())
+
+    def test_native_legacy_validation_envelope_is_accepted(self):
+        result = self.start(POLICY_VALIDATE_MODE="legacy")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(self.invocations()), 1)
+
+    def test_config_symlink_keeps_plugins_and_state_at_selected_parent(self):
+        self.saved_policy("safe")
+        path = self.home / ".config/ntm/config.toml"
+        path.parent.mkdir(parents=True)
+        target = self.root / "dotfiles/config.toml"
+        target.parent.mkdir()
+        original = b'projects_base = "/chosen-projects"\n'
+        target.write_bytes(original)
+        path.symlink_to(target)
+        validation = self.root / "validation.jsonl"
+        result = self.start(VALIDATION_CALLS=str(validation))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(path.is_symlink())
+        self.assertEqual(path.resolve(), target)
+        calls = [json.loads(line) for line in validation.read_text().splitlines()]
+        self.assertTrue(calls)
+        self.assertTrue(all(Path(call["path"]).parent == path.parent for call in calls))
+        backups = list(target.parent.glob("config.toml.acfs-before-policy-*"))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(backups[0].read_bytes(), original)
+
+    def test_custom_pi_alias_cannot_shadow_native_provider_in_safe_workspace(self):
+        self.saved_policy("safe", ["stack.pi_agent_rust", "stack.ntm"])
+        self.policy_provider("pi")
+        directory = self.home / ".config/ntm/agents"
+        directory.mkdir(parents=True)
+        plugin = directory / "custom.toml"
+        original = '[agent]\nname = "unrelated"\nalias = "Pi"\ncommand = "custom --auto-approve"\n'
+        plugin.write_text(original)
+        result = self.run_bash('newproj_start_ntm "$PROJECT" acfs-my-app false 0 0 0 0 0 0 0 1')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("shadows Pi", result.stderr)
+        self.assertEqual(plugin.read_text(), original)
+        self.assertEqual(self.invocations(), [])
+
+    def test_managed_command_rejects_later_scope_removal_and_invalid_checkpoint(self):
+        path = self.saved_policy("safe")
+        self.policy_provider("codex")
+        result = self.start()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        _, data, functions = self.policy_config()
+        binding = functions["existing_managed"](data["agents"]["codex"])
+        state = json.loads(path.read_text())
+        state["module_selection"]["selected_modules"].remove("agents.codex")
+        path.write_text(json.dumps(state))
+        result = self.execute_binding(binding)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("no longer selected", result.stderr)
+        self.assertFalse(self.events.exists())
+        state["target_user"] = "another-account"
+        path.write_text(json.dumps(state))
+        result = self.execute_binding(binding)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("does not belong", result.stderr)
+        self.assertFalse(self.events.exists())
+
+    def test_provider_launch_reuses_canonical_catalog_validation_after_checkpoint_changes(self):
+        path = self.saved_policy("safe")
+        self.policy_provider("codex")
+        result = self.start()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        _, data, functions = self.policy_config()
+        binding = functions["existing_managed"](data["agents"]["codex"])
+        state = json.loads(path.read_text())
+        state["module_selection"]["selected_modules"].append("agents.not_in_the_manifest")
+        path.write_text(json.dumps(state))
+        result = self.execute_binding(binding)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("installed ACFS catalogue", result.stderr)
+        self.assertFalse(self.events.exists())
+        state["module_selection"]["selected_modules"].remove("agents.not_in_the_manifest")
+        state["module_selection"]["selected_modules"].remove("stack.ntm")
+        path.write_text(json.dumps(state))
+        result = self.execute_binding(binding)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("NTM is no longer selected", result.stderr)
+        self.assertFalse(self.events.exists())
+
+    def test_damaged_managed_template_is_not_silently_replaced(self):
+        self.saved_policy("safe")
+        result = self.start()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        path, data, functions = self.policy_config()
+        data["agents"]["codex"] += " --user-custom-option"
+        path.write_bytes(functions["encode_toml"](data, functions["toml_parser"]()))
+        original = path.read_bytes()
+        result = self.start()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("custom agents.codex is unchanged", result.stderr)
+        self.assertEqual(path.read_bytes(), original)
+
+    def test_toml_roundtrip_preserves_dates_nested_arrays_and_literal_template_delimiters(self):
+        functions = runpy.run_path(str(POLICY))
+        parser = functions["toml_parser"]()
+        source = '''time = 07:32:00.999\ndate = 1979-05-27\nstamp = 1979-05-27T07:32:00-07:00\nvalue = nan\nnegative_zero = -0.0\n[[nested]]\nname = "literal {{not_a_template}}"\nvalues = [1, "two", { key = true }]\n'''
+        data = parser.loads(source)
+        encoded = functions["encode_toml"](data, parser)
+        parsed = parser.loads(encoded.decode())
+        self.assertTrue(functions["equivalent"](data, parsed))
+        self.assertIn("{{not_a_template}}", parsed["nested"][0]["name"])
+
+    def test_missing_previously_bound_checkpoint_cannot_restore_legacy_vibe(self):
+        checkpoint = self.saved_policy("safe")
+        result = self.start()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        path, _, _ = self.policy_config()
+        original = path.read_bytes()
+        checkpoint.rename(checkpoint.with_suffix(".retained"))
+        result = self.start()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("previously configured installation checkpoint is missing", result.stderr)
+        self.assertEqual(path.read_bytes(), original)
+        self.assertEqual(len(self.invocations()), 1)
+
+    def test_safe_policy_checks_zero_count_installed_custom_provider(self):
+        self.saved_policy("safe")
+        path = self.home / ".config/ntm/config.toml"
+        path.parent.mkdir(parents=True)
+        original = '[agents]\ncodex = "custom-proxy codex --yolo"\n'
+        path.write_text(original)
+        result = self.run_bash('newproj_start_ntm "$PROJECT" acfs-my-app false 1 0 0 0 0 0 0 0')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("custom agents.codex is unchanged", result.stderr)
+        self.assertEqual(path.read_text(), original)
+        self.assertEqual(self.invocations(), [])
+
+    def test_checkpoint_and_config_template_delimiters_are_data(self):
+        checkpoint = self.saved_policy("safe")
+        selected = self.root / 'state {{printf "untrusted"}} \' quoted.json'
+        selected.write_bytes(checkpoint.read_bytes())
+        config = self.root / 'ntm {{printf "untrusted"}} \' quoted/config.toml'
+        config.parent.mkdir()
+        config.write_text('theme = "nord"\n')
+        result = self.start(ACFS_STATE_FILE=str(selected), NTM_CONFIG=str(config))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        functions = runpy.run_path(str(POLICY))
+        data = functions["toml_parser"]().loads(config.read_text())
+        command = data["agents"]["codex"]
+        binding = functions["existing_managed"](command)
+        self.assertEqual(binding["state"], str(selected))
+        self.assertEqual(binding["home"], str(self.home))
+        self.assertIn('{{shellQuote "', command)
+        self.assertEqual(data["theme"], "nord")
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -4125,6 +4125,7 @@ acfs_load_internal_checksums_data() {
         scripts/lib/newproj_screens/screen_tech_stack.sh
         scripts/lib/newproj_screens/screen_welcome.sh
         scripts/lib/newproj_tui.sh
+        scripts/lib/ntm_policy.py
         scripts/lib/notifications.sh
         scripts/lib/policy_lint.sh
         scripts/lib/provenance.sh
@@ -11776,6 +11777,7 @@ finalize() {
     try_step "Installing newproj_logging.sh" install_asset "scripts/lib/newproj_logging.sh" "$ACFS_HOME/scripts/lib/newproj_logging.sh" || return 1
     try_step "Installing newproj_screens.sh" install_asset "scripts/lib/newproj_screens.sh" "$ACFS_HOME/scripts/lib/newproj_screens.sh" || return 1
     try_step "Installing newproj_tui.sh" install_asset "scripts/lib/newproj_tui.sh" "$ACFS_HOME/scripts/lib/newproj_tui.sh" || return 1
+    try_step "Installing NTM launch policy" install_asset "scripts/lib/ntm_policy.py" "$ACFS_HOME/scripts/lib/ntm_policy.py" || return 1
 
     try_step "Creating newproj_screens directory" $SUDO mkdir -p "$ACFS_HOME/scripts/lib/newproj_screens" || return 1
     

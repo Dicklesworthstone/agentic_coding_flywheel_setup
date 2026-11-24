@@ -661,6 +661,21 @@ cp() {
         self.assertEqual(deployed.stat().st_mode & 0o777, 0o755)
         self.assert_runtime_files("scripts/lib/stack.sh")
 
+    def test_ntm_policy_helper_is_deployed_from_the_selected_revision(self):
+        relative = "scripts/lib/ntm_policy.py"
+        source = self.write(self.repo, relative, "print('committed policy')\n")
+        self.commit_source()
+        source.write_text("print('uncommitted policy')\n")
+        deployed = self.write(self.acfs, relative, "print('old policy')\n")
+        before = deployed.stat()
+        self.sync(TEST_SOURCE_REF="HEAD", TEST_DRY_RUN="true")
+        self.assertEqual(deployed.read_text(), "print('old policy')\n")
+        self.assertEqual(deployed.stat().st_ino, before.st_ino)
+        self.sync(TEST_SOURCE_REF="HEAD")
+        self.assertEqual(deployed.read_text(), "print('committed policy')\n")
+        self.assertEqual(source.read_text(), "print('uncommitted policy')\n")
+        self.assert_runtime_files(relative)
+
     def test_dry_run_reports_changes_without_touching_runtime(self):
         self.write(self.repo, "scripts/lib/stack.sh", "new\n")
         self.write(self.repo, "acfs/tmux/tmux.conf", "new config\n")

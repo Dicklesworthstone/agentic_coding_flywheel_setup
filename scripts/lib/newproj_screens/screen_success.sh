@@ -28,6 +28,10 @@ SCREEN_SUCCESS_STEP=9
 # in a separate shell because the installer and wizard both define state_get.
 # Never execute the generated catalogue; state.sh validates it as data.
 _NEWPROJ_LAUNCH_SELECTION_MODE=invalid
+_NEWPROJ_LAUNCH_INSTALL_MODE=invalid
+_NEWPROJ_LAUNCH_HOME=""
+_NEWPROJ_LAUNCH_USER=""
+_NEWPROJ_LAUNCH_STATE=""
 declare -ga _NEWPROJ_LAUNCH_MODULES=()
 declare -ga _NEWPROJ_AGENT_COMMANDS=(claude codex agy opencode omp grok gemini pi)
 declare -gA _NEWPROJ_AGENT_MODULES=(
@@ -50,6 +54,10 @@ declare -gA _NEWPROJ_NTM_PROVIDERS=(
 
 newproj_load_launch_selection() {
     _NEWPROJ_LAUNCH_SELECTION_MODE=invalid
+    _NEWPROJ_LAUNCH_INSTALL_MODE=invalid
+    _NEWPROJ_LAUNCH_HOME=""
+    _NEWPROJ_LAUNCH_USER=""
+    _NEWPROJ_LAUNCH_STATE=""
     _NEWPROJ_LAUNCH_MODULES=()
     local lib_dir parsed
     lib_dir=$(CDPATH='' cd -- "${BASH_SOURCE[0]%/*}/.." && pwd -P) || return 1
@@ -59,14 +67,18 @@ newproj_load_launch_selection() {
         selection_user="${TARGET_USER:-$(state_resolve_current_user)}"
         state_is_valid_username "$selection_user" || exit 1
         selection_file=$(state_get_file) || exit 1
-        [[ "$selection_file" == /* && "$selection_file" != / ]] || exit 1
+        [[ "$selection_file" == /* && "$selection_file" != / && "$selection_file" != *[[:cntrl:]]* ]] || exit 1
         if [[ "$selection_file" == "$selection_home/.acfs/state.json" ]]; then
             state_load_module_selection "$selection_file" "$selection_home" "$selection_user" allow-legacy-identity || exit 1
         else
             state_load_module_selection "$selection_file" "$selection_home" "$selection_user" || exit 1
         fi
         state_validate_module_selection_catalog_file "$1/../generated/manifest_index.sh" || exit 1
-        printf "%s\n" "$ACFS_STATE_SELECTION_MODE"
+        install_mode=${ACFS_STATE_INSTALL_MODE:-safe}
+        if [[ ! -e "$selection_file" && ! -L "$selection_file" ]]; then
+            install_mode=vibe
+        fi
+        printf "%s\n" "$ACFS_STATE_SELECTION_MODE" "$install_mode" "$selection_home" "$selection_user" "$selection_file"
         if [[ "$ACFS_STATE_SELECTION_MODE" == scoped ]]; then
             printf "%s\n" "${ACFS_STATE_SELECTED_MODULES[@]}"
         fi
@@ -80,7 +92,14 @@ newproj_load_launch_selection() {
         legacy|scoped) _NEWPROJ_LAUNCH_SELECTION_MODE="${records[0]}" ;;
         *) return 1 ;;
     esac
-    _NEWPROJ_LAUNCH_MODULES=("${records[@]:1}")
+    case "${records[1]:-}" in
+        safe|vibe) _NEWPROJ_LAUNCH_INSTALL_MODE="${records[1]}" ;;
+        *) return 1 ;;
+    esac
+    _NEWPROJ_LAUNCH_HOME="${records[2]:-}"
+    _NEWPROJ_LAUNCH_USER="${records[3]:-}"
+    _NEWPROJ_LAUNCH_STATE="${records[4]:-}"
+    _NEWPROJ_LAUNCH_MODULES=("${records[@]:5}")
 }
 
 newproj_launch_module_selected() {
@@ -401,6 +420,46 @@ newproj_ntm_help() {
     printf '%s\n' "$help"
 }
 
+# Prepare only recognized NTM defaults. The helper retains the original TOML
+# and binds every managed built-in provider launch to the accepted account/checkpoint,
+# including later ntm add/restart commands from an existing tmux server.
+# Pi retains its plugin and is checked for this guided launch only.
+# "check" is read-only; "configure" is called only after launch consent.
+newproj_ntm_policy() {
+    local operation="$1" project_dir="$2"
+    shift 2
+    local -a counts=("$@") arguments=()
+    local helper python_bin="" candidate agent binary index ntm_binary
+    helper=$(CDPATH='' cd -- "${BASH_SOURCE[0]%/*}/.." && pwd -P) || return 1
+    helper="$helper/ntm_policy.py"
+    if [[ ! -f "$helper" || ${#counts[@]} -ne ${#_NEWPROJ_AGENT_COMMANDS[@]} ]]; then
+        echo "NTM policy support is unavailable. Run acfs update or open an agent directly." >&2
+        return 1
+    fi
+    for candidate in /usr/bin/python3 /usr/local/bin/python3 /opt/homebrew/bin/python3; do
+        if [[ -f "$candidate" && -x "$candidate" ]] && "$candidate" -I "$helper" parser >/dev/null 2>&1; then
+            python_bin="$candidate"
+            break
+        fi
+    done
+    if [[ -z "$python_bin" ]]; then
+        echo "NTM policy setup needs Python 3.11+ or an installed tomli parser. Open an agent directly until it is available." >&2
+        return 1
+    fi
+    ntm_binary=$(newproj_agent_binary ntm) || return 1
+    arguments=("$operation" --project "$project_dir" --state-file "$_NEWPROJ_LAUNCH_STATE"
+        --target-home "$_NEWPROJ_LAUNCH_HOME" --target-user "$_NEWPROJ_LAUNCH_USER" --ntm-binary "$ntm_binary")
+    for index in "${!_NEWPROJ_AGENT_COMMANDS[@]}"; do
+        agent="${_NEWPROJ_AGENT_COMMANDS[$index]}"
+        binary=$(newproj_agent_binary "$agent" 2>/dev/null || true)
+        arguments+=(--binary "$agent=$binary")
+        if ((counts[index] > 0)); then
+            arguments+=(--agent "$agent")
+        fi
+    done
+    newproj_ntm_project_command "$project_dir" "$python_bin" -I "$helper" "${arguments[@]}"
+}
+
 # Counts follow _NEWPROJ_AGENT_COMMANDS. Validate before either task creation or
 # agent launch can mutate the project; no count is evaluated as shell arithmetic
 # until it has matched the single-digit range.
@@ -472,6 +531,7 @@ newproj_validate_ntm_request() {
             return 1
         fi
     done
+    newproj_ntm_policy check "$project_dir" "${counts[@]}" || return 1
 }
 
 # Scope both Beads and NTM's child processes to this project. A terminal can
@@ -524,7 +584,8 @@ newproj_start_ntm() {
     local project_dir="$1" session="$2" work="$3"
     shift 3
     local -a counts=("$@") spawn_args=()
-    local response status=0 total=0 delivered assignments index agent count number ntm_binary
+    local response status=0 total=0 delivered assignments index agent count number ntm_binary ntm_config
+    ntm_config=$(newproj_ntm_policy configure "$project_dir" "${counts[@]}") || return 1
     local expected_types='["user"'
     for index in "${!counts[@]}"; do
         count="${counts[$index]}"
@@ -546,7 +607,8 @@ newproj_start_ntm() {
     ntm_binary=$(newproj_agent_binary ntm) || return 1
     # --spawn-safety delegates the create-only check to NTM. Never retry without
     # it: an existing session may belong to another project or contain live work.
-    response=$(newproj_ntm_project_command "$project_dir" "$ntm_binary" "--robot-spawn=$session" \
+    response=$(NTM_CONFIG="$ntm_config" HOME="$_NEWPROJ_LAUNCH_HOME" \
+        newproj_ntm_project_command "$project_dir" "$ntm_binary" "--robot-spawn=$session" \
         "--spawn-dir=$project_dir" --spawn-safety --robot-format=json \
         "${spawn_args[@]}") || status=$?
     # NTM includes the operator's shell as one type=user entry in agents.
@@ -586,7 +648,7 @@ newproj_start_ntm() {
 }
 
 open_in_ntm() {
-    local project_dir project_name session answer agent index help ntm_binary
+    local project_dir project_name session answer agent index help ntm_binary ntm_config
     local -a counts=() available_indices=()
     local work="${1:-false}" ready task_title="" created_task=""
     [[ "$work" == true || "$work" == false ]] || return 1
@@ -627,7 +689,14 @@ open_in_ntm() {
     printf '\nProject: %s\n' "$project_dir"
     echo "Start separate agent panes plus your own shell in a persistent tmux session."
     echo "Installed does not mean authenticated. Sign in inside each agent as needed."
-    echo "Agents use your existing NTM configuration and may incur provider charges."
+    echo "Built-in NTM provider defaults will follow your saved Safe/Vibe mode on future launches."
+    echo "Your other NTM settings are preserved; custom agent commands are checked before launch."
+    for index in "${available_indices[@]}"; do
+        if [[ "${_NEWPROJ_AGENT_COMMANDS[$index]}" == pi ]]; then
+            echo "Pi keeps its own plugin settings; ACFS checks its selection for this guided launch."
+        fi
+    done
+    echo "Agents may incur provider charges."
     if [[ "$work" == true ]]; then
         echo "Work mode lets NTM claim ready Beads tasks and send prompts to agents."
     else
@@ -671,6 +740,7 @@ open_in_ntm() {
     # Selection and the installed NTM may change during the prompts. Recheck
     # before creating a first task, then the spawn path checks again itself.
     newproj_validate_ntm_request "$project_dir" "$session" "$work" "${counts[@]}" || return 1
+    ntm_config=$(newproj_ntm_policy configure "$project_dir" "${counts[@]}") || return 1
     if [[ -n "$task_title" ]]; then
         newproj_ntm_ready_work "$project_dir" >/dev/null || return 1
         # --silent is br's single-ID output contract. A title stays one argument,
@@ -682,14 +752,16 @@ open_in_ntm() {
         fi
         printf 'Created task %s. It remains in Beads even if workspace launch fails.\n' "$created_task"
     fi
-    if ! session=$(newproj_start_ntm "$project_dir" "$session" "$work" "${counts[@]}"); then
+    if ! session=$(NTM_CONFIG="$ntm_config" newproj_start_ntm "$project_dir" "$session" "$work" "${counts[@]}"); then
         return 1
     fi
     ntm_binary=$(newproj_agent_binary ntm) || return 1
-    printf '\nWorkspace started. Reconnect later with: ntm attach %q\n' "$session"
+    printf '\nWorkspace started. Reconnect later with: NTM_CONFIG=%q ntm attach %q\n' "$ntm_config" "$session"
+    echo "Use this same NTM_CONFIG when adding or restarting agents for this workspace."
     echo "Detach with Ctrl-b then d. Agents keep running after you disconnect."
     prepare_success_exec
     newproj_enter_launch_project "$project_dir" || return 1
+    export NTM_CONFIG="$ntm_config" HOME="$_NEWPROJ_LAUNCH_HOME"
     exec "$ntm_binary" attach "$session"
 }
 

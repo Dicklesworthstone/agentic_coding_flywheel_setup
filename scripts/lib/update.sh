@@ -4317,6 +4317,7 @@ sync_acfs_deployed() {
         "scripts/lib/newproj_logging.sh:scripts/lib/newproj_logging.sh"
         "scripts/lib/newproj_screens.sh:scripts/lib/newproj_screens.sh"
         "scripts/lib/newproj_tui.sh:scripts/lib/newproj_tui.sh"
+        "scripts/lib/ntm_policy.py:scripts/lib/ntm_policy.py"
         "scripts/lib/newproj_screens/screen_agents_preview.sh:scripts/lib/newproj_screens/screen_agents_preview.sh"
         "scripts/lib/newproj_screens/screen_confirmation.sh:scripts/lib/newproj_screens/screen_confirmation.sh"
         "scripts/lib/newproj_screens/screen_directory.sh:scripts/lib/newproj_screens/screen_directory.sh"
