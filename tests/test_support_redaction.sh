@@ -426,6 +426,7 @@ fixtureHeaderDoubleTail"
 curl -H 'Authorization: Basic fixtureHeaderCurlBasic+==' https://example.com/basic
 curl -H "Proxy-Authorization: Digest username=\"fixtureHeaderCurlUser\", response=\"fixtureHeaderCurlResponse\"" https://example.com/digest
 Authorization: \"Bearer fixtureHeaderEscapedFirst \\\"fixtureHeaderEscapedTail\"
+request bEaReR fixtureHeaderBare+fixtureHeaderBareTail/~==
 token=fixtureTokenRaw+fixtureTokenTail/==
 TOKEN="fixtureTokenQuotedFirst \"fixtureTokenQuotedTail"
 token='fixtureTokenSingleFirst fixtureTokenSingleTail'
@@ -446,6 +447,79 @@ assert_contains "HTTP redaction preserves policy metadata" "$result" "Authorizat
 assert_contains "HTTP redaction preserves authorization counters" "$result" "authorizationCount=4"
 assert_contains "Token redaction preserves snake-case counters" "$result" "token_count=123456789"
 assert_contains "Token redaction preserves camelCase counters" "$result" "tokenCount=123456789"
+
+# Session cookies are credentials even when their values do not resemble a
+# provider token. Preserve repeated response headers and public metadata.
+cookie_header_json='{"headers":{"Cookie":"sid=fixtureCookieSession; csrf=fixtureCookieCsrf","sEt-CoOkIe":"sid=fixtureCookieResponse; Secure; HttpOnly"},"repeated":{"Set-Cookie":["sid=fixtureCookieRepeated", "", "csrf=fixtureCookieRepeatedTail"]},"mixed":{"Set-Cookie":[null,"sid=fixtureCookieMixed",false,9007199254740993,"",-1.25e3],"Cookie":[0,true,"sid=fixtureCookieMixedRequest"]},"document":"{\"Co\\u006fkie\":\"sid=fixtureCookieNested\",\"publicId\":9007199254740993}","snippet":"Cookie: sid=fixtureCookieSnippet; csrf=fixtureCookieSnippetTail\nX-Public-Header: visible","cookieCount":3,"Cookie-Policy":"public policy","Set-Cookie-Policy":"public response policy","eventId":9007199254740993,"unconfigured":{"Cookie":"","Set-Cookie":null,"cookie":false,"setCookie":[],"cookiesEnabled":true}}'
+result=$(redact_and_read "cookie_headers.json" "$cookie_header_json")
+assert_not_contains "JSON cookie credentials and all repeated values are removed" "$result" "fixtureCookie"
+if printf '%s' "$result" | jq -e '
+    (.headers | to_entries | all(.value == "<REDACTED:cookie>")) and
+    .repeated["Set-Cookie"] == ["<REDACTED:cookie>", "", "<REDACTED:cookie>"] and
+    .mixed["Set-Cookie"] == [null,"<REDACTED:cookie>",false,9007199254740993,"",-1250] and
+    .mixed.Cookie == [0,true,"<REDACTED:cookie>"] and
+    (.document | fromjson | .Cookie == "<REDACTED:cookie>") and
+    (.snippet | contains("X-Public-Header: visible")) and
+    .cookieCount == 3 and .["Cookie-Policy"] == "public policy" and
+    .["Set-Cookie-Policy"] == "public response policy" and
+    .unconfigured == {"Cookie":"","Set-Cookie":null,"cookie":false,"setCookie":[],"cookiesEnabled":true}
+' >/dev/null; then
+    pass "Cookie redaction preserves JSON, header arrays and nonsecret fields"
+else
+    fail "Cookie redaction preserves JSON, header arrays and nonsecret fields"
+fi
+assert_contains "Cookie redaction preserves large public JSON identifiers" "$result" '"eventId":9007199254740993'
+assert_contains "Cookie redaction preserves nested public JSON identifiers" "$result" '\"publicId\":9007199254740993'
+assert_contains "Cookie header arrays preserve exact non-string scalar bytes" "$result" '"Set-Cookie":[null,"<REDACTED:cookie>",false,9007199254740993,"",-1.25e3]'
+
+cookie_header_text=$(cat <<'COOKIE_HEADERS'
+Cookie: sid=fixtureCookieRaw; csrf=fixtureCookieRawTail
+sEt-CoOkIe: sid=fixtureCookieRawResponse; Secure; HttpOnly; SameSite=Lax
+Cookie: "sid=fixtureCookieMultilineFirst
+fixtureCookieMultilineTail"
+curl -H 'Cookie: sid=fixtureCookieCurl; csrf=fixtureCookieCurlTail' https://example.com/cookies
+curl -H "Set-Cookie: sid=\"fixtureCookieQuoted\"; Secure" https://example.com/response
+cookieCount=3
+Cookie-Policy: public policy
+Set-Cookie-Policy: public response policy
+X-Public-Header: visible
+COOKIE_HEADERS
+)
+result=$(redact_and_read "cookie_headers.log" "$cookie_header_text")
+assert_not_contains "Plain and quoted cookie headers remove every credential segment" "$result" "fixtureCookie"
+assert_contains "Cookie redaction preserves public request URLs" "$result" "https://example.com/cookies"
+assert_contains "Cookie redaction preserves public response URLs" "$result" "https://example.com/response"
+assert_contains "Cookie redaction preserves public headers" "$result" "X-Public-Header: visible"
+assert_contains "Cookie redaction preserves cookie policy" "$result" "Cookie-Policy: public policy"
+assert_contains "Cookie redaction preserves response policy" "$result" "Set-Cookie-Policy: public response policy"
+assert_contains "Cookie redaction preserves public counters" "$result" "cookieCount=3"
+
+# JSON encodings must not bypass token-shape detection in ordinary message
+# fields. Nested serialized records must retain exact public number bytes.
+encoded_provider_json='{"github":"\u0067hp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmn","fine_grained":"\u0067ithub_pat_ABCDEFGHIJKLMNOPQRSTUVWXYZab","tailscale":"\u0074skey-auth-fixtureEncodedTailscale01234567890","google":"\u0041Iza0123456789abcdefghijklmnopqrstuvwxy","api":"\u0073k-fixtureEncodedApi01234567890","vault":"\u0068vs.fixtureEncodedVault01234567890","slack":"\u0078oxb-fixtureEncodedSlack01234567890","aws":"\u0041KIA0123456789ABCDEF","webhook":"\u0068ttps://hooks.slack.com/services/T123/B123/fixtureEncodedWebhook01234567890","pem":"\u002d----BEGIN PRIVATE KEY-----\nfixtureEncodedPemBody\n-----END PRIVATE KEY----- after","url":"\u0070ostgres://user:fixtureEncodedUrlPassword@db.example.com:5432/db","bearer":"\u0042earer abcdefghij+fixtureEncodedBearerSuffix==","bearer_case":"bEaReR\tfixtureEncodedBearer_~+/-== public","document":"{\"message\":\"\\u0067hp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmn\",\"eventId\":9007199254740993}","public":"encoded public text \u0041BC","public_urls":"ssh://git@github.com/project https://example.com:443/path","public_bearer_labels":"Bearer scheme; bEaReR policy; token_type=Bearer","eventId":9007199254740993}'
+result=$(redact_and_read "encoded_provider.json" "$encoded_provider_json")
+assert_not_contains "Encoded credential payloads are absent from diagnostic text" "$result" "fixtureEncoded"
+if printf '%s' "$result" | jq -e '
+    .github == "<REDACTED:github_token>" and .fine_grained == "<REDACTED:github_pat>" and
+    .tailscale == "<REDACTED:tailscale_key>" and .google == "<REDACTED:google_api_key>" and
+    .api == "<REDACTED:api_key>" and .vault == "<REDACTED:vault_token>" and
+    .slack == "<REDACTED:slack_token>" and .aws == "<REDACTED:aws_key>" and
+    .webhook == "<REDACTED:webhook_url>" and .pem == "<REDACTED:private_key> after" and
+    .url == "postgres://<REDACTED:credentials>@db.example.com:5432/db" and
+    .bearer == "Bearer <REDACTED:bearer>" and
+    .bearer_case == "bEaReR <REDACTED:bearer> public" and
+    (.document | fromjson | .message == "<REDACTED:github_token>") and
+    .public == "encoded public text ABC" and
+    .public_urls == "ssh://git@github.com/project https://example.com:443/path" and
+    .public_bearer_labels == "Bearer scheme; bEaReR policy; token_type=Bearer"
+' >/dev/null; then
+    pass "Encoded provider credentials are removed before JSON strings are re-encoded"
+else
+    fail "Encoded provider credentials are removed before JSON strings are re-encoded"
+fi
+assert_contains "Encoded redaction preserves public JSON string bytes" "$result" '"public":"encoded public text \u0041BC"'
+assert_contains "Encoded redaction preserves large public JSON identifiers" "$result" '"eventId":9007199254740993'
+assert_contains "Encoded redaction preserves nested public JSON identifiers" "$result" '\"eventId\":9007199254740993'
 
 # ============================================================
 # Tests: Generic secret patterns (KEY=value)
@@ -684,22 +758,43 @@ http_archive_root="$TEST_DIR/http-archive"
 mkdir -p "$http_archive_root/source" "$http_archive_root/diagnostics"
 printf '%s\n' "$http_header_json" > "$http_archive_root/source/state.json"
 printf '%s\n' "$http_header_text" > "$http_archive_root/source/install-http.log"
+printf '%s\n' "$cookie_header_json" > "$http_archive_root/source/cookies.json"
+printf '%s\n' "$cookie_header_text" > "$http_archive_root/source/install-cookies.log"
+printf '%s\n' "$encoded_provider_json" > "$http_archive_root/source/encoded.json"
 BUNDLE_FILES=()
 collect_file "$http_archive_root/source/state.json" "$http_archive_root/diagnostics" "state.json"
 collect_file "$http_archive_root/source/install-http.log" "$http_archive_root/diagnostics" "logs/install-http.log"
+collect_file "$http_archive_root/source/cookies.json" "$http_archive_root/diagnostics" "cookies.json"
+collect_file "$http_archive_root/source/install-cookies.log" "$http_archive_root/diagnostics" "logs/install-cookies.log"
+collect_file "$http_archive_root/source/encoded.json" "$http_archive_root/diagnostics" "encoded.json"
 redact_bundle "$http_archive_root/diagnostics"
 if support_verify_identity_redaction "$http_archive_root/diagnostics" &&
     (cd "$http_archive_root" && support_write_archive "./diagnostics.tar.gz" "diagnostics"); then
     archive_json=$(tar -xOzf "$http_archive_root/diagnostics.tar.gz" "diagnostics/state.json")
     archive_log=$(tar -xOzf "$http_archive_root/diagnostics.tar.gz" "diagnostics/logs/install-http.log")
+    archive_cookies=$(tar -xOzf "$http_archive_root/diagnostics.tar.gz" "diagnostics/cookies.json")
+    archive_cookie_log=$(tar -xOzf "$http_archive_root/diagnostics.tar.gz" "diagnostics/logs/install-cookies.log")
+    archive_encoded=$(tar -xOzf "$http_archive_root/diagnostics.tar.gz" "diagnostics/encoded.json")
     assert_not_contains "Archive: JSON HTTP credentials absent" "$archive_json" "fixtureHeader"
     assert_not_contains "Archive: JSON opaque tokens absent" "$archive_json" "fixtureToken"
     assert_not_contains "Archive: log HTTP credentials absent" "$archive_log" "fixtureHeader"
     assert_not_contains "Archive: log opaque tokens absent" "$archive_log" "fixtureToken"
     assert_contains "Archive: public identifiers preserved" "$archive_json" '"eventId":9007199254740993'
     assert_contains "Archive: public request URL preserved" "$archive_log" "https://example.com/digest"
+    assert_not_contains "Archive: JSON session cookies absent" "$archive_cookies" "fixtureCookie"
+    assert_not_contains "Archive: log session cookies absent" "$archive_cookie_log" "fixtureCookie"
+    assert_not_contains "Archive: encoded credential payloads absent" "$archive_encoded" "fixtureEncoded"
+    if jq -e '.github == "<REDACTED:github_token>" and (.document | fromjson | .message == "<REDACTED:github_token>")' <<< "$archive_encoded" >/dev/null; then
+        pass "Archive: encoded provider tokens absent after JSON decoding"
+    else
+        fail "Archive: encoded provider tokens absent after JSON decoding"
+    fi
+    assert_contains "Archive: encoded public identifiers preserved" "$archive_encoded" '"eventId":9007199254740993'
     assert_equals "Archive collection preserves original JSON" "$(cat "$http_archive_root/source/state.json")" "$http_header_json"
     assert_equals "Archive collection preserves original log" "$(cat "$http_archive_root/source/install-http.log")" "$http_header_text"
+    assert_equals "Archive collection preserves original cookie JSON" "$(cat "$http_archive_root/source/cookies.json")" "$cookie_header_json"
+    assert_equals "Archive collection preserves original cookie log" "$(cat "$http_archive_root/source/install-cookies.log")" "$cookie_header_text"
+    assert_equals "Archive collection preserves original encoded JSON" "$(cat "$http_archive_root/source/encoded.json")" "$encoded_provider_json"
 else
     fail "HTTP credential fixture creates a verified support archive"
 fi

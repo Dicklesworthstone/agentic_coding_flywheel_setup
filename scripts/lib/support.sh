@@ -2902,7 +2902,7 @@ write_manifest() {
             redaction: {
                 enabled: $redaction_enabled,
                 files_modified: $redaction_files_modified,
-                patterns: ["api_key", "aws_key", "github_token", "github_pat", "vault_token", "slack_token", "bearer", "jwt", "password", "private_key", "generic_secret", "message_snippet", "command_path"],
+                patterns: ["api_key", "aws_key", "github_token", "github_pat", "vault_token", "slack_token", "tailscale_key", "google_api_key", "webhook_url", "authorization", "cookie", "credentials", "bearer", "jwt", "password", "private_key", "generic_secret", "message_snippet", "command_path"],
                 identity_scan: {
                     status: $identity_scan_status,
                     raw_hostname_absent: ($identity_scan_status == "pass"),
@@ -3351,6 +3351,14 @@ support_redact_quoted_values() {
       def aliases:
         "(?i:password|passwd|MYSQL_PWD|api_?key|api_secret|secret_?key|access_?key|access_token|refresh_token|auth_token|client_secret|private_?key|token)";
       def authorization_name: "(?i:(?:proxy[-_]?)?authorization)";
+      def cookie_name: "(?i:(?:set[-_]?)?cookie)";
+      def header_name: authorization_name + "|" + cookie_name;
+      # Repeated headers may contain null/scalar placeholders. Replace only
+      # their string tokens; parsing and serializing the array would round IDs.
+      def scalar_token:
+        string_token + "|null|true|false|-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?";
+      def scalar_list:
+        "\\[\\s*(?:(?:" + scalar_token + ")(?:\\s*,\\s*(?:" + scalar_token + "))*)?\\s*\\]";
       def suffixes:
         "password|passwd|api[_-]?key|api[_-]?secret|secret[_-]?key|access[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token|client[_-]?secret|private[_-]?key|secret|token";
       def names:
@@ -3361,6 +3369,7 @@ support_redact_quoted_values() {
       def secret_marker($key; $value):
         if ($key | snippet_key) then "<REDACTED:message_snippet>"
         elif ($key | test("^" + authorization_name + "$")) then "<REDACTED:authorization>"
+        elif ($key | test("^" + cookie_name + "$")) then "<REDACTED:cookie>"
         elif ($key | test("(?i:password|passwd|MYSQL_PWD)$")) then "<REDACTED:password>"
         elif ($key | test("^(?i:token)$")) then
           # Opaque token fields need no provider-specific shape, but keep the
@@ -3377,14 +3386,20 @@ support_redact_quoted_values() {
         elif ($key | test("^" + aliases + "$")) then "<REDACTED:" + $key + ">"
         else "<REDACTED:generic_secret>" end;
       def redact_fields:
-        gsub("(?<key>" + string_token + ")(?<separator>\\s*:\\s*)(?<value>" + string_token + ")";
-          . as $match | (.key | fromjson) as $key | (.value | fromjson) as $value
+        gsub("(?<key>" + string_token + ")(?<separator>\\s*:\\s*)(?<value>" + string_token + "|" + scalar_list + ")";
+          . as $match | (.key | fromjson) as $key
+          | if ($key | test("^(" + header_name + ")$")) then
+              .key + .separator + (.value | gsub("(?<item>" + string_token + ")";
+                (.item | fromjson) as $value
+                | if $value == "" then .item else secret_marker($key; $value) | tojson end))
+            elif (.value | startswith("[")) then $match.key + $match.separator + $match.value
+            else (.value | fromjson) as $value
           | if ($key | snippet_key) or
               (($key | test("^(" + authorization_name + "|(?i:token))$")) and ($value | length) > 0) or
               (($key | test("^(" + names + ")$")) and
                ($value | length) >= (if ($key | test("(?i:password|passwd|MYSQL_PWD)$")) then 4 else 8 end))
             then .key + ": " + (secret_marker($key; $value) | tojson)
-            else $match.key + $match.separator + $match.value end);
+            else $match.key + $match.separator + $match.value end end);
       # A header is a complete credential, regardless of scheme or token shape.
       # Match quoted curl headers first so a public URL after the quote survives.
       # Bare header lines include the entire value: Basic padding, Bearer +/=
@@ -3394,21 +3409,50 @@ support_redact_quoted_values() {
           ($value | capture("^(?<scheme>(?i:Bearer))")) as $bearer
           | $bearer.scheme + " <REDACTED:bearer>"
         else "<REDACTED:authorization>" end;
-      def redact_authorization:
-        ("\\b(?:" + authorization_name + ")[ \\t]*:[ \\t]*") as $header
+      def header_marker($prefix; $value):
+        if ($prefix | test("\\b" + cookie_name + "[ \\t]*:")) then "<REDACTED:cookie>"
+        else authorization_marker($value) end;
+      def redact_headers:
+        ("\\b(?:" + header_name + ")[ \\t]*:[ \\t]*") as $header
         | gsub(
             "\u0027(?<single_prefix>[ \\t]*" + $header + ")(?<single_value>(?:\\\\.|[^\u0027\\\\])+)(?<single_tail>\u0027|$)"
             + "|\"(?<double_prefix>[ \\t]*" + $header + ")(?<double_value>(?:\\\\.|[^\"\\\\])+)(?<double_tail>\"|$)"
             + "|(?<double_value_prefix>" + $header + ")\"(?<quoted_double_value>(?:\\\\.|[^\"\\\\])+)(?<double_value_tail>\"|$)"
             + "|(?<single_value_prefix>" + $header + ")\u0027(?<quoted_single_value>(?:\\\\.|[^\u0027\\\\])+)(?<single_value_tail>\u0027|$)"
             + "|(?<line_prefix>" + $header + ")(?<line_value>[^\\r\\n]+)";
-            if .single_prefix != null then "\u0027" + .single_prefix + authorization_marker(.single_value) + .single_tail
-            elif .double_prefix != null then "\"" + .double_prefix + authorization_marker(.double_value) + .double_tail
-            elif .double_value_prefix != null then .double_value_prefix + "\"" + authorization_marker(.quoted_double_value) + .double_value_tail
-            elif .single_value_prefix != null then .single_value_prefix + "\u0027" + authorization_marker(.quoted_single_value) + .single_value_tail
-            else .line_prefix + authorization_marker(.line_value) end);
+            if .single_prefix != null then "\u0027" + .single_prefix + header_marker(.single_prefix; .single_value) + .single_tail
+            elif .double_prefix != null then "\"" + .double_prefix + header_marker(.double_prefix; .double_value) + .double_tail
+            elif .double_value_prefix != null then .double_value_prefix + "\"" + header_marker(.double_value_prefix; .quoted_double_value) + .double_value_tail
+            elif .single_value_prefix != null then .single_value_prefix + "\u0027" + header_marker(.single_value_prefix; .quoted_single_value) + .single_value_tail
+            else .line_prefix + header_marker(.line_prefix; .line_value) end);
+      # Token shapes must be checked on decoded string contents. A later sed
+      # pass cannot recognize Unicode-escaped prefixes or nested PEM markers.
+      # Keep public JSON number bytes intact by re-encoding only changed strings.
+      def url_slash: "(?:/|\\\\/)";
+      def webhook_url:
+        "(?i:https?:" + url_slash + "{2}(?:hooks[.]slack(?:-gov)?[.]com" + url_slash
+        + "services" + url_slash + "[A-Za-z0-9_-]+" + url_slash + "[A-Za-z0-9_-]+" + url_slash
+        + "|(?:canary[.]|ptb[.])?discord(?:app)?[.]com" + url_slash + "api" + url_slash
+        + "(?:v[0-9]+" + url_slash + ")?webhooks" + url_slash + "[0-9]+" + url_slash
+        + "))[A-Za-z0-9_-]{8,}[^\\s\"\u0027<>`)]*";
+      def redact_values:
+        gsub("-----BEGIN (?<kind>[^-\\r\\n]*PRIVATE KEY[^-\\r\\n]*)-----(?s:.*?)(?:-----END \\k<kind>-----|\\z)";
+          "<REDACTED:private_key>")
+        | gsub("(?<scheme>[A-Za-z][A-Za-z0-9+.-]*:" + url_slash + "{2})[^\\s/@?#\"\u0027<>`]*:[^\\s/@?#\"\u0027<>`]+@";
+          "\(.scheme)<REDACTED:credentials>@")
+        | gsub("gh[pousr]_[A-Za-z0-9]{36,}"; "<REDACTED:github_token>")
+        | gsub("github_pat_[A-Za-z0-9_]{22,}"; "<REDACTED:github_pat>")
+        | gsub("tskey-[A-Za-z0-9-]{10,}"; "<REDACTED:tailscale_key>")
+        | gsub("AIza[A-Za-z0-9_-]{35,}"; "<REDACTED:google_api_key>")
+        | gsub(webhook_url; "<REDACTED:webhook_url>")
+        | gsub("sk-[A-Za-z0-9_-]{20,}"; "<REDACTED:api_key>")
+        | gsub("hvs\\.[A-Za-z0-9_-]{20,}"; "<REDACTED:vault_token>")
+        | gsub("xox[bpsar]-[A-Za-z0-9-]{10,}"; "<REDACTED:slack_token>")
+        | gsub("AKIA[0-9A-Z]{16}"; "<REDACTED:aws_key>")
+        | gsub("\\b(?<scheme>(?i:Bearer))[ \\t]+[A-Za-z0-9._~+/-]{10,}=*"; "\(.scheme) <REDACTED:bearer>")
+        | gsub("eyJ[a-zA-Z0-9_-]{10,}\\.[a-zA-Z0-9_-]{10,}\\.[a-zA-Z0-9_-]{10,}"; "<REDACTED:jwt>");
       def redact_inline:
-        redact_authorization
+        redact_headers
         | ("(?<prefix>\\b(?<name>(?:" + names + "))\\b\\s*[=:]\\s*)") as $prefix
         | gsub($prefix + "\"(?<value>(?:\\\\.|[^\"\\\\])+)(?<tail>\"|$)";
             .prefix + "\"" + secret_marker(.name; .value) + .tail)
@@ -3425,7 +3469,7 @@ support_redact_quoted_values() {
               else ($value | scrub) as $safe
                 | if $safe == $value then $raw else ($safe | tojson) end
               end)
-        | if $is_json then . else redact_inline end;
+        | if $is_json then . else redact_inline | redact_values end;
       scrub
     ' < "$file" > "$tmp" \
         && [[ -f "$file" && ! -L "$file" ]] \
