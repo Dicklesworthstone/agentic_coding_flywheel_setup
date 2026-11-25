@@ -2069,6 +2069,24 @@ esac
         for service in ("agent-mail", "cm", "cass"):
             self.assertIn(f"Restarted {service}; it now runs the installed binary", result.stdout)
 
+    def test_active_holds_override_standing_restart_requests(self):
+        self.selection("stack.mcp_agent_mail", "stack.cm", "stack.cass")
+        self.drift_service()
+        entries = {"mcp_agent_mail": "2999-12-31", "cm": "2000-01-01", "cass": "2999-12-31"}
+        holds = self.write(self.base, "holds.yaml", "holds:\n" + "".join(
+            f'  {tool}:\n    held_version: "current"\n    owner: "operator"\n'
+            f'    reason: "maintenance freeze"\n    expiry: "{expiry}"\n'
+            for tool, expiry in entries.items()
+        ))
+        result = self.shell("update_report_service_binary_drift\n", dispatch=False,
+                            ACFS_UPDATE_RESTART_SERVICES="agent-mail,cm,cass",
+                            ACFS_HOLDS_FILE=str(holds))
+        self.assertEqual(self.events(), ["restart:cm"])
+        self.assertIn("Restarted cm; it now runs the installed binary", result.stdout)
+        for name in ("agent-mail", "cass"):
+            self.assertIn(f"{name}: pid 7 runs the old executable", result.stdout)
+            self.assertFalse((self.base / f"restarted-{name}").exists())
+
     def test_invalid_scope_stops_main_before_self_update_or_component_mutation(self):
         for invalid in (
             {"schema_version": 2, "selected_modules": ["stack.ntm"]},
@@ -2105,6 +2123,22 @@ esac
             UPDATE_MODULE_SELECTION_READY="true", ACFS_STATE_SELECTION_MODE="legacy",
         )
         self.assertEqual(self.installers(), ["ntm"])
+
+    def test_default_holds_follow_target_account_for_agent_updates(self):
+        self.selection("agents.claude", "agents.codex")
+        caller = self.base / "caller"
+        for home, tool in ((self.home, "codex"), (caller, "claude")):
+            self.write(home, ".acfs/holds.yaml", f'holds:\n  {tool}:\n'
+                       '    held_version: "current"\n    owner: "operator"\n'
+                       '    reason: "maintenance freeze"\n    expiry: "2999-12-31"\n')
+        result = self.shell(
+            'update_agents\nprintf "HELD:%s\\n" "${UPDATE_HELD_TOOLS[*]}"\n',
+            HOME=str(caller), TARGET_HOME=str(caller), ACFS_HOME=str(caller / ".acfs"),
+            TEST_CURRENT_USER="caller", TEST_PRESENT="claude,codex,bun",
+        )
+        self.assertIn("HELD:codex", result.stdout)
+        self.assertEqual(self.installers(), ["claude"])
+        self.assertFalse(any("codex" in event for event in self.events()))
 
     def test_custom_checkpoint_scope_is_used_without_a_default_checkpoint(self):
         custom = self.home / "custom checkpoint.json"

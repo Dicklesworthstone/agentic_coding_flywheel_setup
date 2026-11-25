@@ -936,6 +936,9 @@ update_load_module_selection() {
     if [[ -n "${ACFS_STATE_INSTALL_MODE:-}" ]]; then
         export MODE="$ACFS_STATE_INSTALL_MODE"
     fi
+    # The scheduler or sudo caller may have a different HOME/ACFS_HOME.
+    # A default hold belongs to the same installation as the checkpoint.
+    : "${ACFS_HOLDS_FILE:=$acfs_home/holds.yaml}"
     UPDATE_MODULE_SELECTION_READY=true
 }
 
@@ -11963,6 +11966,11 @@ update_report_service_binary_drift() {
         esac
         if ! update_module_is_selected "$module"; then
             log_to_file "ACFS_UPDATE_RESTART_SERVICES: leaving '$name' running because $module is not selected for this installation"
+            continue
+        fi
+        # A stale process still deserves a report. Applying a newer binary
+        # by restarting it must respect the same hold as the install step.
+        if update_skip_held_tool "${module#stack.}" "Restart $name"; then
             continue
         fi
         [[ " ${restart_services[*]-} " == *" $name "* ]] || restart_services+=("$name")
