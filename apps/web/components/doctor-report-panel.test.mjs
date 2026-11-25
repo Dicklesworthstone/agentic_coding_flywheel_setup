@@ -81,7 +81,7 @@ function fixture(panelProps = {}) {
   const mode = { value: "safe", loaded: true };
   const metadata = { manifestSha256: "a".repeat(64), checksumsYamlSha256: "b".repeat(64) };
   const modules = ["agents.claude", "agents.codex", "lang.bun"].map((id) => ({ id }));
-  const scope = createContext({ TextDecoder, crypto: webcrypto });
+  const scope = createContext({ Blob, TextDecoder, crypto: webcrypto });
   const api = load(new URL("../lib/doctorReport.ts", import.meta.url), {}, scope);
   const instances = new Map();
   let serial = 0;
@@ -141,7 +141,12 @@ function fixture(panelProps = {}) {
       "next/link": { default: "link" },
       "@/components/ui/button": { Button: "button" },
       "@/components/command-card": { CommandCard: "command-card" },
-      "@/lib/hooks/useInstallationHealth": { useInstallationHealth: () => structuredClone(health) },
+      "@/lib/hooks/useInstallationHealth": {
+        useInstallationHealth: (release) => {
+          assert.equal(release, panelProps.keepUbuntuRelease);
+          return structuredClone(health);
+        },
+      },
       "@/lib/userPreferences": {
         useInstallMode: () => [mode.value, () => assert.fail("No preference writes"), mode.loaded],
       },
@@ -249,6 +254,20 @@ function fixture(panelProps = {}) {
     api,
     render,
     choose,
+    paste(source) {
+      let prevented = false;
+      const input = render().nodes.find((node) => node.type === "textarea");
+      input.props.onPaste({
+        preventDefault: () => { prevented = true; },
+        clipboardData: {
+          getData(type) {
+            assert.equal(type, "text/plain");
+            return source;
+          },
+        },
+      });
+      assert.equal(prevented, true, "raw pasted text stays out of the text field");
+    },
     settled,
     replaceFindingsCallback(callback) {
       findingsCallback = callback;
@@ -299,6 +318,41 @@ test("reads real file bytes, displays selected findings and preserves the separa
     assert.equal(node.props.showCheckbox, undefined);
   }
   assert.doesNotMatch(view.text(), /PRIVATE_|203\.0\.113|CURRENT_COMMAND|curl https/);
+});
+
+test("terminal paste uses the same report digest, validation and privacy rules as file input", async () => {
+  const f = fixture();
+  const value = report([
+    { id: "tool.bun", status: "skip" },
+    { id: "private_unknown_id", status: "timeout" },
+    { id: "agent.claude", status: "fail" },
+  ]);
+  f.choose(value);
+  const fromFile = (await f.settled()).text();
+  f.paste(JSON.stringify(value));
+  const fromPaste = await f.settled();
+  assert.equal(fromPaste.text(), fromFile);
+  assert.doesNotMatch(fromPaste.text(), /PRIVATE_|private_unknown_id/);
+  assert.equal(f.health.doctorConfirmed, false);
+  f.paste("PRIVATE invalid JSON");
+  assert.match((await f.settled()).errors(), /UTF-8 JSON/);
+  assert.doesNotMatch(f.render().text(), /PRIVATE|Report SHA-256:/);
+  f.paste("é".repeat(524289));
+  assert.match((await f.settled()).errors(), /1 MiB/);
+});
+
+test("in-place reports compare with the retained LTS and recover on the same page", async () => {
+  const f = fixture({ keepUbuntuRelease: "22.04" });
+  const value = report();
+  value.os.version = "22.04";
+  f.paste(JSON.stringify(value));
+  let view = await f.settled();
+  assert.doesNotMatch(view.errors(), /reported OS differs/);
+  assert.equal(view.recovery().props.href, "#in-place-install");
+  value.os.version = "26.04";
+  f.choose(value);
+  view = await f.settled();
+  assert.match(view.errors(), /selected Ubuntu 22.04/);
 });
 
 test("all reported passes remain advisory rather than authenticated success", async () => {

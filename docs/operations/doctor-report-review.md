@@ -10,10 +10,15 @@ On the intended VPS, as the configured installation account, run:
 acfs doctor --json
 ```
 
-Save the JSON output to a local file and choose it in the panel. A nonzero doctor
+Paste the JSON output from your terminal or choose a saved file. The existing-VPS
+wizard also offers report review after its in-place installation command when
+Doctor is selected. It compares the reported OS with the release you chose to
+keep and links recovery to the same command. A nonzero doctor
 exit can still produce a valid diagnostic report. Do not include terminal
 prompts, stderr, or surrounding prose. The reader accepts one nonempty UTF-8 JSON
-file up to 1 MiB. It never uploads the report, saves it in browser storage,
+report up to 1 MiB. A pasted report is hashed as UTF-8 clipboard text. Choose the
+original file when you need its exact byte digest. The panel never uploads the
+report, saves it in browser storage,
 changes preferences, executes a suggested fix, or acknowledges a doctor run.
 
 ## What the comparison means

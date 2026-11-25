@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { AlertCard, OutputPreview } from "@/components/alert-card";
 import { CommandCard } from "@/components/command-card";
+import { DoctorReportPanel } from "@/components/doctor-report-panel";
 import { TwoComputersExplainer } from "@/components/connection-check";
 import { Jargon } from "@/components/jargon";
 import {
@@ -139,7 +140,7 @@ function InPlaceInstallation({ release }: { release: string }) {
   const modules = new Set(selectedPlan.included.map((entry) => entry.id));
   return (
     <section className="space-y-5">
-      <h2 className="text-xl font-semibold">Install ACFS on Ubuntu {release} LTS</h2>
+      <h2 id="in-place-install" className="text-xl font-semibold">Install ACFS on Ubuntu {release} LTS</h2>
       <p>
         This command uses your saved mode, modules, and source revision. The regular installer
         keeps the current Ubuntu release. Run it from the root shell on your VPS.
@@ -150,6 +151,7 @@ function InPlaceInstallation({ release }: { release: string }) {
         <>
           <p>Once installation finishes, check the setup in the target account&apos;s terminal.</p>
           <CommandCard command="acfs doctor" description="Check your installation" runLocation="vps" />
+          <DoctorReportPanel keepUbuntuRelease={release} />
         </>
       ) : (
         <p>Your selection omits ACFS Doctor. Use the verification commands in the installer&apos;s final summary.</p>

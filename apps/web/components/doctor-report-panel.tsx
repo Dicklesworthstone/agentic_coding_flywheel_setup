@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { CommandCard } from "@/components/command-card";
 import { Button } from "@/components/ui/button";
 import {
+  DOCTOR_REPORT_MAX_BYTES,
   type DoctorReportContext,
   type DoctorReportCounts,
   DoctorReportError,
@@ -37,8 +38,9 @@ function CountSummary({ value }: { value: Readonly<DoctorReportCounts> }) {
 }
 
 /** Keyed by the entire effective context: changed targets unmount pending readers. */
-function DoctorReportContent({ context, onFindingsChange }: {
+function DoctorReportContent({ context, keepUbuntuRelease, onFindingsChange }: {
   context: DoctorReportContext;
+  keepUbuntuRelease?: string;
   onFindingsChange?: (needsAttention: boolean | null) => void;
 }) {
   const [review, setReview] = useState<DoctorReportReview | null>(null);
@@ -49,9 +51,10 @@ function DoctorReportContent({ context, onFindingsChange }: {
   const findingsListener = useRef(onFindingsChange);
   const id = useId();
   const current = doctorReportMatches(review, context) ? review : null;
+  const targetRelease = keepUbuntuRelease ?? ACFS_RECOMMENDED_UBUNTU;
   const destinationDiffers = Boolean(
     current &&
-    (current.reportedOS.id !== "ubuntu" || current.reportedOS.version !== ACFS_RECOMMENDED_UBUNTU),
+    (current.reportedOS.id !== "ubuntu" || current.reportedOS.version !== targetRelease),
   );
   const needsAttention = current ? current.needsAttention || destinationDiffers : null;
   // A listener change is not a new installation or a reason to abandon a read.
@@ -77,7 +80,7 @@ function DoctorReportContent({ context, onFindingsChange }: {
     setBusy(false);
     findingsListener.current?.(null);
   }
-  async function read(file: File | undefined): Promise<void> {
+  async function read(file: Blob | undefined): Promise<void> {
     if (!file || !mounted.current) return;
     const request = ++generation.current;
     setReview(null);
@@ -111,8 +114,8 @@ function DoctorReportContent({ context, onFindingsChange }: {
       <div className="mt-3 space-y-4">
         <p className="text-sm text-muted-foreground">
           Compare an actual report with your selected installation. Run the command on the intended
-          VPS as the configured account, save its JSON output to a local file, then choose that file
-          below. Failed checks can still produce a useful report. Do not include terminal prompts or
+          VPS as the configured account. Paste its JSON output from your terminal or choose a saved
+          report. Failed checks can still produce a useful report. Omit terminal prompts and
           other output.
         </p>
         <CommandCard
@@ -122,10 +125,29 @@ function DoctorReportContent({ context, onFindingsChange }: {
         />
         <p className="text-sm text-muted-foreground">
           Reports can contain private paths or credentials. This reader does not upload or persist
-          the file, display raw details or suggested shell fixes, run commands, or mark the doctor
+          the report, display raw details or suggested shell fixes, run commands, or mark the doctor
           checkbox complete. The report cannot prove which host or installation produced it; confirm
           its origin yourself.
         </p>
+        <label htmlFor={`${id}-paste`} className="block space-y-2 text-sm">
+          <span>Paste doctor JSON from your terminal (maximum 1 MiB)</span>
+          <textarea
+            id={`${id}-paste`}
+            rows={2}
+            spellCheck={false}
+            autoComplete="off"
+            placeholder="Paste to review immediately"
+            onPaste={(event) => {
+              event.preventDefault();
+              const source = event.clipboardData.getData("text/plain");
+              // Bound the encoding allocation while keeping oversized inputs
+              // above the reader's byte limit so it rejects the entire report.
+              void read(new Blob([source.slice(0, DOCTOR_REPORT_MAX_BYTES + 1)]));
+            }}
+            onChange={(event) => { event.currentTarget.value = ""; }}
+            className="block w-full rounded-md border bg-background p-2"
+          />
+        </label>
         <label htmlFor={`${id}-report`} className="block space-y-2 text-sm">
           <span>Doctor JSON report (maximum 1 MiB)</span>
           <input
@@ -190,9 +212,9 @@ function DoctorReportContent({ context, onFindingsChange }: {
             )}
             {destinationDiffers && (
               <p role="alert" className="text-sm text-destructive">
-                The reported OS differs from the recommended Ubuntu {ACFS_RECOMMENDED_UBUNTU}{" "}
-                destination. Inspect upgrade/resume state; this is not an instruction to start
-                another upgrade.
+                The reported OS differs from the {keepUbuntuRelease ? "selected" : "recommended"} Ubuntu{" "}
+                {targetRelease} destination. Check which machine produced the report and review its
+                installation state.
               </p>
             )}
             <div className="space-y-2">
@@ -271,7 +293,7 @@ function DoctorReportContent({ context, onFindingsChange }: {
                   broaden the selection.
                 </p>
                 <Link
-                  href={withCurrentSearch("/wizard/run-installer")}
+                  href={keepUbuntuRelease ? "#in-place-install" : withCurrentSearch("/wizard/run-installer")}
                   className="inline-flex min-h-11 items-center underline"
                 >
                   Review the exact installation and recovery instructions
@@ -286,12 +308,13 @@ function DoctorReportContent({ context, onFindingsChange }: {
 }
 
 /** The ordinary health workflow remains independent; file review never sets acknowledgements. */
-export function DoctorReportPanel({ onFindingsChange, showUnavailableContext = true }: {
+export function DoctorReportPanel({ onFindingsChange, showUnavailableContext = true, keepUbuntuRelease }: {
   /** Only an in-memory boolean projection; never report contents or identifiers. */
   onFindingsChange?: (needsAttention: boolean | null) => void;
   showUnavailableContext?: boolean;
+  keepUbuntuRelease?: string;
 } = {}) {
-  const health = useInstallationHealth();
+  const health = useInstallationHealth(keepUbuntuRelease);
   const [mode, , modeLoaded] = useInstallMode();
   if (!health.ready || !modeLoaded) {
     if (!showUnavailableContext) return null;
@@ -322,5 +345,12 @@ export function DoctorReportPanel({ onFindingsChange, showUnavailableContext = t
   };
   // This key stays in React memory only. A change, including A -> B -> A, destroys
   // the old reader instead of letting a delayed result or previous review revive.
-  return <DoctorReportContent key={JSON.stringify(context)} context={context} onFindingsChange={onFindingsChange} />;
+  return (
+    <DoctorReportContent
+      key={JSON.stringify([context, keepUbuntuRelease])}
+      context={context}
+      keepUbuntuRelease={keepUbuntuRelease}
+      onFindingsChange={onFindingsChange}
+    />
+  );
 }
