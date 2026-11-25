@@ -1976,6 +1976,66 @@ sys.exit(0 if sys.argv[2] == 'add' else 1)
         self.assertEqual(config.read_bytes(), original)
         self.assertNotIn('add', calls.read_text())
 
+    def check_default_root_mailbox_handoff(self, options, expected):
+        binary = b'#!/bin/sh\nif [ "$1" = --version ]; then echo "am 1.2.3"; else printf "%s" "$STORAGE_ROOT"; fi\n'
+        self.bundle('am', content=binary)
+        calls = self.root / 'mcp-arguments.jsonl'
+        self.command('claude', f'''#!{shutil.which('python3')}
+import json, pathlib, sys
+with pathlib.Path({str(calls)!r}).open('a') as output:
+    output.write(json.dumps(sys.argv[1:]) + '\\n')
+sys.exit(0 if sys.argv[2] == 'add' else 1)
+''')
+        secret = 'postgresql://setup-only-secret/never-persist'
+        self.run_setup('am', cwd=self.root, DATABASE_URL=secret, **options)
+        args = parse_json_report(calls.read_text().splitlines()[-1])
+        self.assertIn('--env', args)
+        self.assertEqual(args[args.index('--env') + 1], 'STORAGE_ROOT=' + str(expected))
+        self.assertTrue(expected.is_dir())
+        guide = self.home / '.claude/CLAUDE.md'
+        original = guide.read_text()
+        self.assertNotIn(secret, original)
+        self.assertNotIn(secret, (self.home / '.acfs/cloud/logs/mcp.log').read_text())
+        blocks = re.findall(r'```bash\n(.*?)\n```', original, re.S)
+        path = next(block for block in blocks if block.startswith('export PATH='))
+        example = next(block for block in blocks if block.startswith('STORAGE_ROOT='))
+        session = next(block for block in blocks if 'am_session=' in block)
+        self.assertIn(example.split(' am --help')[0] + ' am macros start-session', session)
+        script = self.root / 'default-root-mailbox-help.sh'
+        script.write_text(path + '\n' + example +
+                          '\nprintf "\\n%s\\n%s" "${STORAGE_ROOT-}" "${DATABASE_URL-}"\n')
+        later = self.root / 'later task'
+        later.mkdir()
+        for override in ('', str(self.root / 'task-selected mailbox')):
+            with self.subTest(task_override=override):
+                task_env = {**self.env, 'DATABASE_URL': 'task-database'}
+                if override:
+                    task_env['STORAGE_ROOT'] = override
+                probe = subprocess.run(['bash', str(script)], cwd=later, env=task_env,
+                                       text=True, capture_output=True, timeout=5)
+                self.assertEqual(probe.returncode, 0, probe.stderr)
+                self.assertEqual(probe.stdout, (override or str(expected)) + '\n' + override + '\ntask-database')
+        # Execute the generated rerun without the setup-field overrides. It
+        # must update the same guide and registration, with no reinstall.
+        result, _ = self.run_generated_rerun(original)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('am 1.2.3 (already installed)', result.stderr)
+        self.assertEqual(guide.read_text(), original)
+        args = parse_json_report(calls.read_text().splitlines()[-1])
+        self.assertEqual(args[args.index('--env') + 1], 'STORAGE_ROOT=' + str(expected))
+
+    def test_default_root_mailbox_override_survives_task_and_rerun(self):
+        expected = self.root / "selected mailbox ' `literal` $root"
+        self.check_default_root_mailbox_handoff({'STORAGE_ROOT': str(expected)}, expected)
+
+    def test_default_root_relative_mailbox_survives_task_and_rerun(self):
+        self.check_default_root_mailbox_handoff({'STORAGE_ROOT': 'relative archive'},
+                                               self.root / 'relative archive')
+
+    def test_default_root_xdg_mailbox_survives_task_and_rerun(self):
+        self.check_default_root_mailbox_handoff({'XDG_DATA_HOME': 'relative setup XDG'},
+                                               self.root / 'relative setup XDG/mcp-agent-mail/git_mailbox_repo')
+
     def test_guide_keeps_setup_mailbox_when_later_task_has_no_overrides(self):
         binary = b'#!/bin/sh\nif [ "$1" = --version ]; then echo "am 1.2.3"; else printf "%s" "$STORAGE_ROOT"; fi\n'
         self.bundle('am', content=binary)

@@ -851,10 +851,11 @@ PY
         ACFS_CLOUD_MCP_DETAIL="Existing Agent Mail MCP registration retained; see logs/mcp.log"
         return 0
     fi
-    if [[ "$ACFS_CLOUD_ROOT" != "$HOME" ]]; then
+    if [[ "$ACFS_CLOUD_ROOT" != "$HOME" || -n "${STORAGE_ROOT:-}" || -n "${XDG_DATA_HOME:-}" ]]; then
         # A later task's MCP child does not inherit setup-field overrides.
-        # Persist the same writable archive used by the CLI guide, while
-        # leaving existing registrations and database credentials alone.
+        # Persist the same archive used by the CLI guide, including overrides
+        # when tools install under HOME. Leave existing registrations and
+        # database credentials alone.
         storage_root="${STORAGE_ROOT:-${XDG_DATA_HOME:-$ACFS_CLOUD_ROOT/.local/share}/mcp-agent-mail/git_mailbox_repo}"
         [[ "$storage_root" == /* ]] || storage_root="$PWD/$storage_root"
         # AM's startup database probe needs its parent directories to exist.
@@ -893,7 +894,7 @@ cloud_tool_guide_line() {
         am)
             printf '%s\n' "- \`am\` / \`mcp-agent-mail\` (Agent Mail): agent messaging and file reservations. MCP registration status is in \`$ACFS_CLOUD_STATE_DIR/setup.log\`. Use MCP when connected; otherwise use the CLI workflow below."
             local am_command=am
-            if [[ "$ACFS_CLOUD_ROOT" != "$HOME" ]]; then
+            if [[ "$ACFS_CLOUD_ROOT" != "$HOME" || -n "${STORAGE_ROOT:-}" || -n "${XDG_DATA_HOME:-}" ]]; then
                 am_command="$(cloud_agent_mail_storage_env) am"
             fi
             cat <<'GUIDE'
@@ -1011,7 +1012,9 @@ cloud_write_guide() {
         block+=$'For JSM state with a read-only HOME and no configured profile, prefix each CLI command as shown (replace --help with your subcommand):\n\n```bash\n'
         block+="XDG_CONFIG_HOME=\${XDG_CONFIG_HOME:-$(printf '%q' "$ACFS_CLOUD_ROOT/.config")} XDG_DATA_HOME=\${XDG_DATA_HOME:-$(printf '%q' "$ACFS_CLOUD_ROOT/.local/share")} XDG_CACHE_HOME=\${XDG_CACHE_HOME:-$(printf '%q' "$ACFS_CLOUD_ROOT/.cache")} JSM_DISABLE_SELF_UPDATE=1 jsm --help"$'\n```\n\n'
         block+=$'Reuse existing JSM configuration. These command-scoped defaults preserve explicit XDG paths and leave HOME and the parent shell unchanged. JSM_PROFILE_ROOT, when set, takes precedence and must be writable. Configuration and cache paths do not redirect skill installation targets: inspect jsm config show and select writable skill directories supported by your provider before installing. Skill discovery and premium access still require their own checks.\n\n'
-        block+=$'For Agent Mail with a read-only HOME and no configured archive, prefix each CLI command as shown (replace --help with your subcommand):\n\n```bash\n'
+    fi
+    if [[ "$ACFS_CLOUD_ROOT" != "$HOME" || -n "${STORAGE_ROOT:-}" || -n "${XDG_DATA_HOME:-}" ]]; then
+        block+=$'For Agent Mail, keep the setup-selected mailbox in later tasks by prefixing each CLI command as shown (replace --help with your subcommand):\n\n```bash\n'
         block+="$(cloud_agent_mail_storage_env) am --help"$'\n```\n\n'
         block+=$'If Agent Mail is already configured, reuse its existing configuration. These command-scoped defaults retain the setup-selected archive, including a setup-relative path resolved from that directory. An explicit task STORAGE_ROOT still wins; XDG_DATA_HOME selects the archive when setup did not choose a STORAGE_ROOT. The commands do not change the parent shell\'s STORAGE_ROOT, DATABASE_URL, HOME or provider configuration. Existing configured state paths must be writable.\n\n'
     fi
@@ -1041,17 +1044,16 @@ cloud_write_guide() {
         [[ "$profile_path" == /* ]] || profile_path="$PWD/$profile_path"
         rerun_config="$profile_name=$(printf '%q' "$profile_path") "
     fi
-    if [[ "$ACFS_CLOUD_ROOT" != "$HOME" ]]; then
-        # Reuse the selected mailbox when setup-only state overrides vanished.
-        # Retain which setting selected it, so regenerating the guide is stable.
-        # These affect only the setup child; never persist DATABASE_URL.
-        if [[ -n "${STORAGE_ROOT:-}" ]]; then
-            rerun_config+="$(cloud_agent_mail_storage_env) "
-        elif [[ -n "${XDG_DATA_HOME:-}" ]]; then
-            mail_data="$XDG_DATA_HOME"
-            [[ "$mail_data" == /* ]] || mail_data="$PWD/$mail_data"
-            rerun_config+="XDG_DATA_HOME=\${XDG_DATA_HOME:-$(printf '%q' "$mail_data")} "
-        fi
+    # Reuse the selected mailbox when setup-only state overrides vanished,
+    # regardless of where the tools were installed. Retain which setting
+    # selected it, so regenerating the guide is stable. These affect only
+    # the setup child; never persist DATABASE_URL.
+    if [[ -n "${STORAGE_ROOT:-}" ]]; then
+        rerun_config+="$(cloud_agent_mail_storage_env) "
+    elif [[ -n "${XDG_DATA_HOME:-}" ]]; then
+        mail_data="$XDG_DATA_HOME"
+        [[ "$mail_data" == /* ]] || mail_data="$PWD/$mail_data"
+        rerun_config+="XDG_DATA_HOME=\${XDG_DATA_HOME:-$(printf '%q' "$mail_data")} "
     fi
     # Buffer the complete successful bootstrap before executing any bytes.
     # The subshell contains the temporary variable and preserves curl failure.
