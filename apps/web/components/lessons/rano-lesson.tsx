@@ -49,13 +49,13 @@ export function RanoLesson() {
       <Section title="What Is RANO?" icon={<Network className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
           <Highlight>RANO</Highlight> is a network observer purpose-built for AI coding CLIs. It
-          polls <code>/proc</code> (or macOS libproc) to map the sockets opened by Claude Code,
-          Codex CLI, Gemini CLI and their child processes to a PID and a provider. It is not a proxy
-          and never sees request or response bodies.
+          polls <code>/proc</code> (or macOS libproc) to map the sockets held by Claude Code, Codex
+          CLI, Gemini CLI and their child processes to a PID and a provider. It is not a proxy and
+          never sees request or response bodies.
         </Paragraph>
         <Paragraph>
           When agents behave unexpectedly, RANO shows which endpoints they connect to, how often
-          they reconnect, and which subprocess opened each socket.
+          they reconnect, and which process or subprocess holds each socket.
         </Paragraph>
 
         <div className="mt-8">
@@ -171,8 +171,9 @@ rano --once --json`}
 
         <TipBox variant="warning">
           RANO records process command lines in SQLite, log files and exports. Use{" "}
-          <code>--redact-cmdline</code> (or <code>--preset audit</code>) so secrets passed in argv
-          aren&apos;t stored.
+          <code>--redact-cmdline</code> (or <code>--preset audit</code>) to mask recognizable
+          secrets in argv before they&apos;re stored, or <code>--redact-cmdline all</code> to hide
+          command lines entirely.
         </TipBox>
       </Section>
 
@@ -218,8 +219,9 @@ rano --once --json`}
 
         <TipBox variant="warning">
           RANO samples by polling, so connections that open and close between polls can be missed.
-          Treat it as an observer, not a packet log; use tcpdump or Wireshark when you need every
-          packet or the payloads.
+          Hostnames come from reverse DNS by default (pcap mode adds DNS and TLS SNI), so a
+          CDN-hosted API can appear under a CDN name or as a bare IP. Treat it as an observer, not a
+          packet log; use tcpdump or Wireshark when you need every packet or the payloads.
         </TipBox>
       </Section>
     </div>
@@ -231,8 +233,9 @@ rano --once --json`}
 // ---------------------------------------------------------------------------
 // A simplified simulation of what RANO observes: sockets owned by monitored
 // processes (and their children), tagged with a provider and the remote
-// endpoint. RANO never sees payloads, HTTP status codes, or tokens, and it
-// never blocks or reroutes traffic.
+// endpoint. RANO never sees request/response bodies, HTTP status codes, or
+// tokens, and it never blocks or reroutes traffic. Log outputs below are real
+// rano output formats (documentation-range IPs; multi-line outputs excerpted).
 
 // --- Types ---
 
@@ -458,13 +461,15 @@ function makeScenarios(): Scenario[] {
         {
           id: 1,
           command: "rano",
-          output: "+ connect | anthropic | pid=2000 | claude | tcp | domain=api.anthropic.com",
+          output:
+            "2026-11-25T14:24:02Z | + connect | anthropic | pid=2000 | claude | tcp | 10.0.0.5:51022 <-> 198.51.100.7:443 | domain=api.anthropic.com",
           type: "success",
         },
         {
           id: 2,
-          command: "rano --pattern codex --once",
-          output: "+ connect | openai | pid=3100 | codex | tcp | domain=api.openai.com",
+          command: "rano --pattern codex",
+          output:
+            "2026-11-25T14:24:05Z | + connect | openai | pid=3100 | codex | tcp | 10.0.0.5:51040 <-> 198.51.100.20:443 | domain=api.openai.com",
           type: "info",
         },
         {
@@ -498,13 +503,13 @@ function makeScenarios(): Scenario[] {
         {
           id: 1,
           severity: "warning",
-          message: "Retry pattern: 7 connections to api.anthropic.com:443 in 30s",
+          message: "Retry pattern: 5 connections to api.anthropic.com:443 in 30s",
           timestamp: "14:25:03",
         },
         {
           id: 2,
           severity: "warning",
-          message: "Retry pattern: 5 connections to api.anthropic.com:443 in 30s",
+          message: "Retry pattern: 7 connections to api.anthropic.com:443 in 30s",
           timestamp: "14:25:41",
         },
       ],
@@ -512,19 +517,21 @@ function makeScenarios(): Scenario[] {
         {
           id: 1,
           command: "rano --pattern claude --retry-threshold 5 --retry-window-ms 30000",
-          output: "⚠ Retry pattern: 7 connections to api.anthropic.com:443 in 30s",
+          output: "⚠ Retry pattern: 5 connections to api.anthropic.com:443 in 30s",
           type: "warning",
         },
         {
           id: 2,
           command: "rano --pattern claude --json --retry-threshold 5 --retry-window-ms 30000",
-          output: '{"type":"retry_warning","count":7,"endpoint":"198.51.100.7:443","window_seconds":30}',
+          output: '{"type":"retry_warning","count":5,"endpoint":"198.51.100.7:443","window_seconds":30}',
           type: "warning",
         },
         {
           id: 3,
-          command: "rano report --latest --top 3",
-          output: "Top Domains: api.anthropic.com 52 | api.openai.com 11 | …googleapis.com 6",
+          command:
+            "rano export --format jsonl --since 1h | jq -c 'select(.retry_count) | {ts, domain, retry_count}'",
+          output:
+            '{"ts":"2026-11-25T14:25:03Z","domain":"api.anthropic.com","retry_count":5}\n{"ts":"2026-11-25T14:25:41Z","domain":"api.anthropic.com","retry_count":7}',
           type: "info",
         },
       ],
@@ -561,13 +568,15 @@ function makeScenarios(): Scenario[] {
         {
           id: 1,
           command: "rano --pattern codex --alert-unknown-domain",
-          output: "[ALERT] WARNING | unknown_domain | unresolved: 203.0.113.42 | pid=3188 | curl",
+          output:
+            "[ALERT] 2026-11-25T14:26:12Z | WARNING | unknown_domain | unresolved: 203.0.113.42 | pid=3188 | curl | tcp | 10.0.0.5:40112 -> 203.0.113.42:443",
           type: "warning",
         },
         {
           id: 2,
           command: "rano --pattern codex --show-ancestry",
-          output: "+ connect | openai | ... → bash(3150) → curl(3188) | tcp | domain=unknown",
+          output:
+            "2026-11-25T14:26:12Z | + connect | openai | ... → bash(3150) → curl(3188) | tcp | 10.0.0.5:40112 <-> 203.0.113.42:443 | domain=unknown",
           type: "info",
         },
         {
@@ -610,19 +619,21 @@ function makeScenarios(): Scenario[] {
         {
           id: 1,
           command: "rano --alert-duration-ms 30000",
-          output: "[ALERT] WARNING | long_duration | 45120ms > 30000ms | pid=3100 | codex",
+          output:
+            "[ALERT] 2026-11-25T14:27:30Z | WARNING | long_duration | 45120ms > 30000ms | pid=3100 | codex | tcp | 10.0.0.5:52144 -> 198.51.100.20:443",
           type: "warning",
         },
         {
           id: 2,
           command: "rano --pattern codex",
-          output: "- close | openai | pid=3100 | codex | tcp | domain=api.openai.com dur=45120ms",
+          output:
+            "2026-11-25T14:27:30Z | - close | openai | pid=3100 | codex | tcp | 10.0.0.5:52144 <-> 198.51.100.20:443 | domain=api.openai.com dur=45120ms",
           type: "info",
         },
         {
           id: 3,
           command: "rano report --latest",
-          output: "Close durations: avg=2140.500ms max=45120ms samples=34",
+          output: "Close durations: avg=2139.535ms max=45120ms samples=43",
           type: "info",
         },
       ],
@@ -651,13 +662,14 @@ function makeScenarios(): Scenario[] {
         {
           id: 1,
           command: "rano --preset live",
-          output: "anthropic ████████████████████░░░░ 42 (domains=1, ips=2)",
+          output: "Live Stats [provider]\n  anthropic  | ████████████████████ 42 (domains=1, ips=2)",
           type: "info",
         },
         {
           id: 2,
           command: "rano --stats-view process --stats-top 3",
-          output: "Live Stats [process]  30 claude | 18 codex | 12 node",
+          output:
+            "Live Stats [process]\n      30 ████████████████████ claude\n      18 ████████████         codex\n      12 ████████             node",
           type: "info",
         },
         {
@@ -698,14 +710,16 @@ function makeScenarios(): Scenario[] {
         },
         {
           id: 2,
-          command: "rano export --format jsonl | jq -r '.domain // \"unknown\"' | sort | uniq -c",
-          output: "84 api.anthropic.com | 36 api.openai.com | 12 …googleapis.com | 4 github.com",
+          command:
+            "rano export --format jsonl --run-id afternoon-audit | jq -r '.domain // \"unknown\"' | sort | uniq -c",
+          output:
+            "     84 api.anthropic.com\n     36 api.openai.com\n     12 generativelanguage.googleapis.com\n      4 github.com",
           type: "info",
         },
         {
           id: 3,
           command: "rano diff --old morning-audit --new afternoon-audit",
-          output: "New Domains: (1 added) + github.com | New Processes: (1 appeared) + curl",
+          output: "New Domains: (1 added)\n  + github.com\n\nNew Processes: (1 appeared)\n  + curl",
           type: "success",
         },
       ],
@@ -1045,11 +1059,15 @@ function LiveLogStream({ logs }: { logs: LogLine[] }) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ type: "spring", stiffness: 200, damping: 25, delay: i * 0.08 }}
         >
-          <div className="flex items-center gap-1">
+          <div className="flex items-start gap-1">
             <span className="text-emerald-500/70">$</span>
-            <span className="text-white/70">{log.command}</span>
+            <span className="min-w-0 break-words text-white/70">{log.command}</span>
           </div>
-          <div className={`pl-3 ${LOG_TYPE_STYLES[log.type]} opacity-80`}>{log.output}</div>
+          <div
+            className={`pl-3 whitespace-pre-wrap break-words ${LOG_TYPE_STYLES[log.type]} opacity-80`}
+          >
+            {log.output}
+          </div>
         </motion.div>
       ))}
     </div>
@@ -1456,7 +1474,7 @@ function InteractiveTrafficMonitor() {
               ~ {activeScenario.logs.length} commands
             </span>
           </div>
-          <div className="p-3 max-h-36 overflow-y-auto">
+          <div className="p-3 max-h-64 overflow-y-auto">
             <AnimatePresence mode="wait">
               <motion.div
                 key={activeScenario.id}

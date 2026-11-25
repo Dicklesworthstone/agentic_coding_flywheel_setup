@@ -48,8 +48,7 @@ export function XfLesson() {
         <Paragraph>
           <Highlight>XF</Highlight> provides blazingly fast full-text search across your personal
           X/Twitter archive: tweets, likes, DMs, bookmarks, and Grok conversations. Built with
-          Tantivy, it
-          delivers sub-millisecond queries with hybrid BM25 and semantic search.
+          Tantivy, it delivers sub-millisecond queries with hybrid BM25 and semantic search.
         </Paragraph>
         <Paragraph>
           All indexing happens locally on your machine. No data leaves your system. Index once at
@@ -153,7 +152,6 @@ interface TweetResult {
   retweets: number;
   views: number;
   relevance: number;
-  sentiment: "positive" | "neutral" | "negative";
   hashtags: string[];
   type: "tweet" | "dm" | "grok" | "like" | "thread";
 }
@@ -204,7 +202,6 @@ const SCENARIOS: Scenario[] = [
         retweets: 67,
         views: 18200,
         relevance: 0.97,
-        sentiment: "positive",
         hashtags: ["#ML", "#Transformers"],
         type: "tweet",
       },
@@ -217,7 +214,6 @@ const SCENARIOS: Scenario[] = [
         retweets: 412,
         views: 89400,
         relevance: 0.91,
-        sentiment: "neutral",
         hashtags: ["#ML", "#Academia"],
         type: "tweet",
       },
@@ -230,7 +226,6 @@ const SCENARIOS: Scenario[] = [
         retweets: 23,
         views: 4200,
         relevance: 0.85,
-        sentiment: "positive",
         hashtags: ["#ML", "#Engineering"],
         type: "tweet",
       },
@@ -243,7 +238,6 @@ const SCENARIOS: Scenario[] = [
         retweets: 145,
         views: 31200,
         relevance: 0.78,
-        sentiment: "neutral",
         hashtags: ["#ML", "#Research"],
         type: "tweet",
       },
@@ -273,7 +267,6 @@ const SCENARIOS: Scenario[] = [
         retweets: 0,
         views: 0,
         relevance: 0.94,
-        sentiment: "neutral",
         hashtags: [],
         type: "dm",
       },
@@ -286,7 +279,6 @@ const SCENARIOS: Scenario[] = [
         retweets: 0,
         views: 0,
         relevance: 0.89,
-        sentiment: "positive",
         hashtags: [],
         type: "dm",
       },
@@ -299,7 +291,6 @@ const SCENARIOS: Scenario[] = [
         retweets: 0,
         views: 0,
         relevance: 0.82,
-        sentiment: "neutral",
         hashtags: [],
         type: "dm",
       },
@@ -329,7 +320,6 @@ const SCENARIOS: Scenario[] = [
         retweets: 0,
         views: 0,
         relevance: 0.96,
-        sentiment: "neutral",
         hashtags: [],
         type: "grok",
       },
@@ -342,7 +332,6 @@ const SCENARIOS: Scenario[] = [
         retweets: 0,
         views: 0,
         relevance: 0.91,
-        sentiment: "neutral",
         hashtags: [],
         type: "grok",
       },
@@ -372,7 +361,6 @@ const SCENARIOS: Scenario[] = [
         retweets: 3200,
         views: 2100000,
         relevance: 0.93,
-        sentiment: "positive",
         hashtags: ["#Startup"],
         type: "like",
       },
@@ -385,7 +373,6 @@ const SCENARIOS: Scenario[] = [
         retweets: 2100,
         views: 1400000,
         relevance: 0.88,
-        sentiment: "positive",
         hashtags: ["#Startup", "#Founder"],
         type: "like",
       },
@@ -398,7 +385,6 @@ const SCENARIOS: Scenario[] = [
         retweets: 890,
         views: 560000,
         relevance: 0.81,
-        sentiment: "neutral",
         hashtags: ["#Startup", "#Growth"],
         type: "like",
       },
@@ -433,7 +419,6 @@ const SCENARIOS: Scenario[] = [
         retweets: 678,
         views: 145000,
         relevance: 0.95,
-        sentiment: "positive",
         hashtags: ["#Rust"],
         type: "thread",
       },
@@ -446,7 +431,6 @@ const SCENARIOS: Scenario[] = [
         retweets: 534,
         views: 98000,
         relevance: 0.93,
-        sentiment: "neutral",
         hashtags: ["#Rust", "#ErrorHandling"],
         type: "thread",
       },
@@ -459,14 +443,13 @@ const SCENARIOS: Scenario[] = [
         retweets: 412,
         views: 82000,
         relevance: 0.9,
-        sentiment: "neutral",
         hashtags: ["#Rust", "#ErrorHandling"],
         type: "thread",
       },
     ],
   },
   {
-    id: "sentiment",
+    id: "engagement",
     label: "Engagement Ranking",
     icon: <TrendingUp className="h-3.5 w-3.5" />,
     description: "Rank matching tweets by likes and retweets instead of relevance",
@@ -489,21 +472,7 @@ const SCENARIOS: Scenario[] = [
         retweets: 389,
         views: 87000,
         relevance: 0.96,
-        sentiment: "positive",
         hashtags: ["#AI", "#Safety"],
-        type: "tweet",
-      },
-      {
-        id: "sent-2",
-        date: "2024-08-19",
-        content:
-          "Read three AI safety papers today. The interpretability research coming out of Anthropic is genuinely exciting -- we are starting to see inside the black box.",
-        likes: 423,
-        retweets: 112,
-        views: 24500,
-        relevance: 0.88,
-        sentiment: "positive",
-        hashtags: ["#AI", "#Interpretability"],
         type: "tweet",
       },
       {
@@ -515,7 +484,6 @@ const SCENARIOS: Scenario[] = [
         retweets: 234,
         views: 45000,
         relevance: 0.81,
-        sentiment: "neutral",
         hashtags: ["#AI", "#Safety"],
         type: "tweet",
       },
@@ -528,8 +496,19 @@ const SCENARIOS: Scenario[] = [
         retweets: 178,
         views: 38000,
         relevance: 0.73,
-        sentiment: "negative",
         hashtags: ["#AI", "#LLM"],
+        type: "tweet",
+      },
+      {
+        id: "sent-2",
+        date: "2024-08-19",
+        content:
+          "Read three AI safety papers today. The interpretability research coming out of Anthropic is genuinely exciting -- we are starting to see inside the black box.",
+        likes: 423,
+        retweets: 112,
+        views: 24500,
+        relevance: 0.88,
+        hashtags: ["#AI", "#Interpretability"],
         type: "tweet",
       },
     ],
@@ -990,7 +969,7 @@ function InteractiveArchiveSearch() {
                     {/* Tweet content */}
                     <p className="text-sm text-white/70 leading-relaxed">{result.content}</p>
 
-                    {/* Bottom row: hashtags + sentiment + relevance */}
+                    {/* Bottom row: hashtags + relevance */}
                     <div className="flex items-center gap-3 flex-wrap">
                       {/* Hashtags */}
                       {result.hashtags.length > 0 && (

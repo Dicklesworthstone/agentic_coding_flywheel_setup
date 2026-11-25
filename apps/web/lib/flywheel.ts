@@ -476,7 +476,7 @@ const _flywheelTools: FlywheelTool[] = [
     features: [
       "110+ commands: spawn, send, dashboard, palette, checkpoint, health, and more",
       "Agent types: Claude (cc), Codex (cod), Antigravity (agy), Oh My Pi (omp), Grok Build (grok)",
-      "Context rotation: monitors usage, warns at 80%, auto-compaction recovery",
+      "Context rotation: warns at 70%, tries compaction first, rotates at 95%",
       "Command palette TUI with fuzzy search, Catppuccin themes, pinned commands",
       "Robot mode: --robot-status, --robot-snapshot, --robot-plan, --robot-mail",
       "Hooks: pre/post-spawn, pre/post-send, pre/post-shutdown with env vars",
@@ -547,7 +547,7 @@ const _flywheelTools: FlywheelTool[] = [
     description:
       "AST-grep patterns detecting 1000+ bug types across 15 languages. 18 detection categories from null safety to security vulnerabilities. Sub-5-second scans. Auto-wires into Claude Code, Codex, Cursor, Gemini, Windsurf, Cline, and OpenCode agents.",
     deepDescription:
-      "UBS is a meta-runner that fans out per-language scanners (ubs-js.sh, ubs-python.sh, etc.) and merges results into unified output. Uses ast-grep for AST-based pattern matching with 18 detection categories: null safety, async/await bugs, security holes (XSS, injection), memory leaks, type coercion, and more. Supports --beads-jsonl for Beads integration. The installer auto-detects local coding agents and wires guardrails (on-file-write hooks for Claude Code, .cursorrules blocks).",
+      "UBS is a meta-runner that fans out per-language scanners (ubs-js.sh, ubs-python.sh, etc.) and merges results into unified output. Uses ast-grep for AST-based pattern matching with 18 detection categories: null safety, async/await bugs, security holes (XSS, injection), memory leaks, type coercion, and more. Supports --beads-jsonl for Beads integration. The installer auto-detects local coding agents and wires guardrails (on-file-write hooks for Claude Code, .cursor/rules blocks).",
     connectsTo: ["bv", "br"],
     connectionDescriptions: {
       bv: "Bug findings create blocking issues via --beads-jsonl output",
@@ -558,7 +558,7 @@ const _flywheelTools: FlywheelTool[] = [
       "15 languages: JS/TS, Python, Go, Rust, C/C++, Java, Kotlin, Ruby, Swift, C#, Elixir, Bash, PHP, SQL, Terraform HCL",
       "18 detection categories: security, async, null safety, memory leaks",
       "5 output formats: text, json, jsonl, sarif, toon",
-      "Agent guardrails: Claude Code hooks, .cursorrules, .codex/rules",
+      "Agent guardrails: Claude Code hooks, .cursor/rules, .codex/rules",
       "Baseline comparison: --comparison for drift detection",
       "Git-aware: --staged, --diff for targeted scans",
     ],
@@ -625,7 +625,7 @@ const _flywheelTools: FlywheelTool[] = [
     description:
       "Local-first issue tracking for AI agents. SQLite primary storage with JSONL export for git. Dependencies, labels, priorities (P0-P4), blocking relationships. Non-invasive: never runs git commands automatically. The bd alias provides backward compatibility.",
     deepDescription:
-      "beads_rust (br) is the Rust port of the classic SQLite + JSONL beads issue tracker. SQLite for fast local queries, JSONL for git-friendly collaboration. Full dependency graph, labels, priorities, comments. Agent-first design: all commands support --json. Every change auto-flushes to .beads/issues.jsonl; br sync --flush-only is a final check, and br never runs git. Works offline. Doctor diagnostics, swarm scheduler, and schema output (--format toon/json).",
+      "beads_rust (br) is the Rust port of the classic SQLite + JSONL beads issue tracker. SQLite for fast local queries, JSONL for git-friendly collaboration. Full dependency graph, labels, priorities, comments. Agent-first design: all commands support --json. Successful changes auto-flush to .beads/issues.jsonl by default; br sync --flush-only is a final check, and br never commits, pushes, or pulls. Works offline. Doctor diagnostics, swarm scheduler, and schema output (--format toon/json).",
     connectsTo: ["bv", "mail", "ntm", "ru", "ubs"],
     connectionDescriptions: {
       bv: "BV visualizes and analyzes beads from br",
@@ -665,7 +665,7 @@ const _flywheelTools: FlywheelTool[] = [
     description:
       "Unified search for all AI coding sessions. Indexes 35 agent connectors, including Claude Code, Codex, Cursor, Antigravity, Gemini CLI, Copilot, ChatGPT, Cline, Aider, Pi-Agent, Factory, OpenCode, and Amp. Quill BM25 lexical engine with <60ms queries and optional semantic search.",
     deepDescription:
-      "CASS unifies session history from 35 agent connectors into a single searchable timeline. Three search modes: lexical (Quill BM25 with prefix matching), semantic (local MiniLM or hash embedder fallback), and hybrid (RRF fusion). Robot mode with cursor pagination, field selection, and token budgeting. HTML export with optional AES-256-GCM encryption. Multi-machine search via SSH/rsync with interactive setup wizard.",
+      "CASS unifies session history from 35 agent connectors into a single searchable timeline. Three search modes: lexical (Quill BM25 with prefix matching), semantic (local MiniLM; hash embedder opt-in), and hybrid (RRF fusion). Robot mode with cursor pagination, field selection, and token budgeting. HTML export with optional AES-256-GCM encryption. Multi-machine search via SSH/rsync with interactive setup wizard.",
     connectsTo: ["cm", "ntm", "bv"],
     connectionDescriptions: {
       cm: "Supplies the session history CM mines for rules",
@@ -675,7 +675,7 @@ const _flywheelTools: FlywheelTool[] = [
     stars: 145,
     features: [
       "35 agent connectors: Claude Code, Codex, Cursor, Antigravity, Gemini CLI, Copilot, ChatGPT, Cline, Aider, and more",
-      "Three search modes: lexical (Quill BM25), semantic (MiniLM/hash fallback), hybrid (RRF)",
+      "Three search modes: lexical (Quill BM25), semantic (MiniLM; hash opt-in), hybrid (RRF)",
       "Sub-60ms queries with prefix matching",
       "Aggregations for 99% token reduction (--aggregate agent,workspace)",
       "Robot mode with cursor pagination and token budgeting",
@@ -743,11 +743,11 @@ const _flywheelTools: FlywheelTool[] = [
       "Manage multiple accounts for Claude Code, Codex CLI, Antigravity CLI, Gemini CLI, Grok Build, OpenCode, and Cursor with sub-100ms switching. Smart rotation algorithms, cooldown tracking, health scoring, and vault-based profile isolation for parallel agent sessions.",
     deepDescription:
       "CAAM enables seamless multi-account workflows for AI coding CLIs. Vault profiles store auth files for instant switching without browser flows. Smart rotation considers cooldown state, health status (healthy/warning/critical), recency, and plan type. Robot mode provides JSON output for agent automation. Features include profile isolation for parallel sessions, background token refresh daemon, and multi-machine vault sync. AES-256-GCM encrypted bundles with Argon2id key derivation for secure export/import.",
-    connectsTo: ["ntm", "slb", "mail"],
+    connectsTo: ["ntm", "caut", "casr"],
     connectionDescriptions: {
       ntm: "Provides credentials when spawning agents; enables parallel sessions with isolated profiles",
-      slb: "Account switching can be coordinated through SLB for team approval workflows",
-      mail: "Account switches can trigger Agent Mail notifications for coordination",
+      caut: "CAUT shows which provider accounts are near their limits before you switch",
+      casr: "CAAM swaps the account on a rate limit; CASR moves the session to another provider",
     },
     stars: 12,
     features: [
@@ -784,17 +784,16 @@ const _flywheelTools: FlywheelTool[] = [
       "Nuclear-launch-style safety for AI agents. Four risk tiers (CRITICAL/DANGEROUS/CAUTION/SAFE) with 40+ regex patterns. CRITICAL commands require 2+ approvals from different agents (local agent review requires opting in with approval_policy = same_host; the default refuses local approvals). Cryptographic signing, rollback support, and outcome analytics.",
     deepDescription:
       "SLB implements a two-person authorization rule for dangerous commands. Commands are classified by regex patterns: CRITICAL (rm -rf /, DROP DATABASE, terraform destroy) needs 2+ approvals, DANGEROUS (git reset --hard, rm -rf) needs 1, CAUTION auto-approves after 30s, SAFE skips entirely. Approvals are cryptographically signed with HMAC. Features include Claude Code hooks, Cursor rules generation, session management for agents, watch mode (NDJSON streaming) for reviewing agents, pre-execution state capture for rollback, and outcome recording for pattern improvement.",
-    connectsTo: ["dcg", "mail", "ntm", "caam"],
+    connectsTo: ["dcg", "mail", "ntm"],
     connectionDescriptions: {
       dcg: "DCG blocks pre-execution, SLB validates with multi-agent approval",
       mail: "Approval requests can be routed via Agent Mail for coordination",
       ntm: "Coordinates approval quorum across NTM-managed agents",
-      caam: "Account switching can require SLB approval for team workflows",
     },
     stars: 23,
     features: [
       "4-tier risk: CRITICAL (2+), DANGEROUS (1), CAUTION (30s), SAFE (skip)",
-      "40+ regex patterns: 24 critical, 15 dangerous, 6 safe",
+      "40+ built-in regex patterns across all four tiers",
       "HMAC-SHA256 cryptographic approval signatures",
       "Self-review protection (agents can't approve own requests)",
       "Watch mode for reviewing agents (NDJSON streaming)",
@@ -805,7 +804,7 @@ const _flywheelTools: FlywheelTool[] = [
     cliCommands: [
       'slb run "rm -rf ./build" --reason "Clean artifacts"',
       'slb check "git push --force"      # Test classification',
-      "slb approve <id> -s $SESSION_ID -k $KEY",
+      "slb approve <id> --session-id $SESSION_ID -k $KEY",
       "slb watch --auto-approve-caution  # Review agent mode",
       "slb tui                           # Interactive dashboard",
       "slb session start -a MyAgent      # Start agent session",
@@ -825,7 +824,7 @@ const _flywheelTools: FlywheelTool[] = [
     description:
       "Pre-execution hook that blocks dangerous commands BEFORE they run in Claude Code, Codex CLI, Gemini CLI, Copilot, Cursor, Antigravity (agy), OpenCode, and more. 100+ packs across 28 categories: git, filesystem, databases, Kubernetes, cloud providers, CI/CD, and more. Unreadable hook input is allowed with an audit warning; analysis that cannot finish asks for review or blocks.",
     deepDescription:
-      "DCG protects your codebase from destructive operations. As a pre-execution hook for Claude Code, Codex CLI, Gemini CLI, Copilot, Cursor, agy, OpenCode, and other agents, it intercepts commands before execution with sub-millisecond latency. 100+ protection packs cover git (reset --hard, force push, branch -D), filesystem (rm -rf outside temp dirs), databases (DROP TABLE, TRUNCATE), Kubernetes (delete namespace, drain), and cloud providers (AWS, GCP, Azure). Commands are classified as blocked or allowed with safe directory exceptions (/tmp, /var/tmp, $TMPDIR). Output formats include text, JSON, and SARIF for security tooling integration.",
+      "DCG protects your codebase from destructive operations. As a pre-execution hook for Claude Code, Codex CLI, Gemini CLI, Copilot, Cursor, agy, OpenCode, and other agents, it intercepts commands before execution with sub-millisecond latency. 100+ protection packs cover git (reset --hard, force push, branch -D), filesystem (rm -rf outside temp dirs), databases (DROP TABLE, TRUNCATE), Kubernetes (delete namespace, drain), and cloud providers (AWS, GCP, Azure). Commands are classified as blocked or allowed with safe directory exceptions for literal /tmp and /var/tmp paths ($TMPDIR-based deletes stay blocked, since the caller controls that variable). Output formats include text, JSON, and SARIF for security tooling integration.",
     connectsTo: ["slb", "ntm", "mail", "srps"],
     connectionDescriptions: {
       slb: "DCG and SLB form a two-layer safety system - DCG blocks destructive patterns outright, SLB requires peer approval before risky commands run",
@@ -922,7 +921,7 @@ conflict type (dirty tree, diverged branches, auth failures).
       "ru review --plan           # AI-assisted code review",
       "ru review --apply --push   # Apply approved changes",
       "ru commit-sweep --execute  # Commit dirty worktrees logically",
-      "ru import --org=NAME        # Bulk import an org's repos",
+      "ru import --org=NAME       # Bulk import an org's repos",
       "ru prune                   # List orphan repos (--archive/--delete to act)",
     ],
     installCommand:
@@ -1003,9 +1002,9 @@ as a native tool, not string-parsing.`,
     color: "from-blue-500 to-indigo-600",
     tagline: "Offload Rust, Go, C/C++ and Bun builds to remote workers",
     description:
-      "Claude Code PreToolUse hook plus a cargo shim (for every other agent and script) that offloads builds to remote workers: cargo, go, gcc/clang, make/cmake/ninja, bun/tsc, nix. Syncs source via rsync + zstd, compiles on server-grade hardware, and streams artifacts back; fails open to local.",
+      "Hooks for Claude Code, Codex CLI, and Gemini CLI plus a cargo shim (for every other agent and script) that offload builds to remote workers: cargo, go, gcc/clang, make/cmake/ninja, bun/tsc, nix. Syncs source via rsync + zstd, compiles on server-grade hardware, and streams artifacts back; fails open to local.",
     deepDescription:
-      "RCH runs as a PreToolUse hook (and, via `rch shim`, a cargo shim for every other agent) intercepting build commands before execution. Workers are managed via `rch workers` with health probes and priority scheduling. The daemon mode maintains persistent SSH connections for low-latency builds. Agent detection (`rch agents list`) finds installed agents (Claude Code, Codex CLI, Gemini CLI, Cursor, and others) and installs the RCH hook into each. Doctor command validates workers, daemon, and hook configuration.",
+      "RCH runs as a PreToolUse hook (and, via `rch shim`, a cargo shim for every other agent) intercepting build commands before execution. Workers are managed via `rch workers` with health probes and priority scheduling. The rchd daemon owns worker state, slot accounting, and scheduling. `rch agents list` detects installed agents (Claude Code, Codex CLI, Gemini CLI, Cursor, and others), and `rch agents install-hook` adds the RCH hook to the ones that support hooks (Claude Code, Codex CLI, Gemini CLI). Doctor command validates workers, daemon, and hook configuration.",
     connectsTo: ["ntm", "ru", "br"],
     connectionDescriptions: {
       ntm: "NTM can spawn agents on same machines RCH uses as workers",
@@ -1017,7 +1016,7 @@ as a native tool, not string-parsing.`,
       "PreToolUse hook + cargo shim intercept builds automatically",
       "rsync + zstd sync with incremental artifact streaming",
       "Worker pool with health probes and priority scheduling",
-      "Daemon mode with persistent SSH connections",
+      "rchd daemon for worker state and scheduling",
       "Agent detection for Claude Code, Codex CLI, Gemini CLI, Cursor, and more",
       "Doctor command validates entire configuration",
     ],
@@ -1058,10 +1057,11 @@ Robot Mode provides a JSON/TOON API for external orchestration:
 - ft robot search "query": Lexical, semantic, or hybrid search over captured output
 
 Captured output is stored in SQLite with FTS5; a policy gate, approvals, and audit records
-guard every send. ACFS does not install ft: use the signed installer from the FrankenTerm repo.`,
+guard every send. ACFS does not install ft: use the FrankenTerm installer, which verifies the
+release checksum and minisign signature.`,
     connectsTo: ["ntm", "mail", "br"],
     connectionDescriptions: {
-      ntm: "An alternative operator cockpit to NTM; ft runs its own terminal engine, not tmux",
+      ntm: "A separate tool adjacent to NTM; ft runs its own terminal engine, not tmux",
       mail: "Built-in Agent Mail file-reservation coordination",
       br: "Beads coordination snapshots in incident bundles",
     },
@@ -1163,7 +1163,7 @@ sections with §n anchors), multi-model syntheses (Opus, GPT, Gemini), and full 
     description:
       "Browse a curated library of battle-tested prompts, then copy or export them as Markdown. Works via CLI or web UI with interactive fzf-style picker; Claude Code skills are managed by its sibling jsm.",
     deepDescription:
-      "JFP (JeffreysPrompts.com CLI) is the fastest way to discover prompts that actually work in production agent workflows. It mirrors the website library in a CLI: search, preview, copy, and export prompts in seconds. Features include an interactive fzf-style picker (jfp i), task-based suggestion engine (jfp suggest), and workflow bundles for team standardization. Premium features include collections, sync across machines, and premium prompt packs.",
+      "JFP (JeffreysPrompts.com CLI) is the fastest way to discover prompts that actually work in production agent workflows. It mirrors the website library in a CLI: search, preview, copy, and export prompts in seconds. Features include an interactive fzf-style picker (jfp i), task-based suggestion engine (jfp suggest), and prompt bundles (jfp bundles) for team standardization. Premium features include collections, sync across machines, and premium prompt packs.",
     connectsTo: ["ms", "apr", "cm"],
     connectionDescriptions: {
       ms: "Use JFP to discover prompts, then manage/curate them locally with MS",
@@ -1175,7 +1175,7 @@ sections with §n anchors), multi-model syntheses (Opus, GPT, Gemini), and full 
       "Interactive fzf-style prompt picker (jfp i)",
       "Task-based prompt suggestions (jfp suggest)",
       "Skills live in its sibling CLI jsm (jsm install <skill>), not jfp",
-      "Workflow bundles for team standardization",
+      "Prompt bundles for team standardization (jfp bundles)",
       "MCP server mode for agent integration (jfp serve)",
       "Variable rendering with placeholder fill (jfp render --fill)",
       "Premium: collections, sync, notes, prompt packs",
@@ -1501,7 +1501,7 @@ Key capabilities:
     color: "from-violet-500 to-purple-600",
     tagline: "JSON to TOON encoder for LLM context efficiency",
     description:
-      "Encode JSON as TOON (Token-Optimized Object Notation) so structured data costs 30-60% fewer tokens in an LLM context.",
+      "Encode JSON as TOON (Token-Optimized Object Notation) so structured data costs 40-60% fewer tokens in an LLM context.",
     deepDescription: `LLM context windows are precious. TOON (Token-Optimized Object Notation) carries the same
 data as JSON without the quotes, braces, brackets and commas that tokenizers charge for.
 
@@ -1521,7 +1521,7 @@ Key capabilities:
     },
     stars: 67,
     features: [
-      "30-60% fewer tokens on tabular data",
+      "40-60% fewer tokens than JSON on typical payloads",
       "JSON to TOON encoding",
       "TOON to JSON decoding",
       "Token estimates (--stats)",
@@ -1553,7 +1553,8 @@ Use cases:
 - Compare sessions with rano diff; summarize with rano report
 
 Key capabilities:
-- No proxy and no code changes; payloads and TLS are never inspected
+- No proxy and no code changes; payloads are never captured and TLS is never decrypted
+  (optional pcap mode reads only DNS answers and TLS SNI)
 - Descendant-aware process matching (--pattern, --pid, --exclude-pattern)
 - SQLite history, CSV/JSONL export, alerts, presets, prompt-friendly rano status`,
     connectsTo: ["caut", "cm"],
@@ -1599,7 +1600,7 @@ Key capabilities:
 - Renders pages in headless Chrome (handles JS-heavy sites)
 - OCRs screenshot tiles with olmOCR; every section carries provenance
 - links.json, full-text search, batch and crawl jobs
-- CLI talks to a local FastAPI server; needs an OCR API key`,
+- CLI talks to the MDWB FastAPI server; needs an olmOCR API key (or a local olmOCR server)`,
     connectsTo: ["tru", "cm"],
     connectionDescriptions: {
       tru: "JSON metadata extracted from converted pages can be TOON-encoded to save tokens",
@@ -1811,7 +1812,7 @@ Key capabilities:
       "BM25 lexical + semantic retrieval in a single binary. Returns fast initial results then refines with ML models. JSON API for agent integration.",
     deepDescription: `FrankenSearch combines the best of both search worlds: BM25 lexical retrieval for exact
 keyword matches and semantic vector search for conceptual similarity. Results are delivered
-progressively — an Initial phase fuses BM25 with a fast embedding tier (potion-128M) via RRF, then a quality model (MiniLM) refines the top candidates.
+progressively — an Initial phase fuses BM25 with a fast embedding tier (potion-multilingual-128M) via RRF, then a quality model (MiniLM) refines the top candidates.
 
 Local ML model support runs without external API calls. Indexing
 is incremental and handles code, documentation, and session logs equally well.
@@ -1959,8 +1960,8 @@ detects throttled Actions runs (queued past the 10-minute default threshold) so 
       "Throttled-Actions detection (dsr check)",
     ],
     cliCommands: [
-      "dsr check --all              # Detect throttled Actions runs",
-      "dsr build                    # Run local release build",
+      "dsr check                    # Detect throttled Actions runs",
+      "dsr build <tool>             # Run local release build",
       "dsr doctor                   # Diagnose release setup",
     ],
     installCommand:
@@ -2197,7 +2198,7 @@ confidence that it was a real crash, with printed reasons.
 
 Sessions you already resumed by hand are skipped (found via ps). Decisions are frozen
 into last-plan.json so discovery and reopening are separate, repeatable steps. Each
-victim reopens in its own Ghostty tab (Ghostty.app on macOS, the ghostty CLI on Linux) running its exact resume command on the model it
+victim reopens in its own Ghostty tab on macOS (its own ghostty window on Linux) running its exact resume command on the model it
 was actually using. PFR then polls ps for resume evidence, writes last-report.json, and
 exits non-zero on silent failures.
 

@@ -96,19 +96,21 @@ export function RustProxyLesson() {
       {/* Section 2: Quick Start */}
       <Section title="Quick Start" icon={<Play className="h-5 w-5" />} delay={0.15}>
         <Paragraph>
-          Register an upstream proxy, list the domains that should use it, then start the routing
-          daemon.
+          <code>init</code> writes a config that already targets the main AI and cloud provider
+          domains (Anthropic, OpenAI, Google, AWS, Cloudflare, Vercel, Supabase). Register an
+          upstream proxy, add any other domains, then start the routing daemon.
         </Paragraph>
 
         <CodeBlock
-          code={`# Create ~/.config/rust_proxy/config.toml
+          code={`# Create ~/.config/rust_proxy/config.toml (with default targets)
 rust_proxy init
 
 # Register an upstream HTTP proxy
-rust_proxy proxy add mesh-us us-wa.proxymesh.com:31280 --username-env PROXY_USER --password-env PROXY_PASS
+rust_proxy proxy add mesh-us us-wa.proxymesh.com:31280 \\
+  --username-env PROXY_USER --password-env PROXY_PASS
 
-# Pick the domains that should go through it
-rust_proxy targets add api.openai.com --provider openai
+# Add a domain that is not in the defaults
+rust_proxy targets add api.x.ai
 
 # Activate, then run the daemon (iptables + ipset need root)
 rust_proxy activate --select
@@ -121,7 +123,9 @@ rust_proxy status`}
 
         <TipBox variant="tip">
           No <code>HTTPS_PROXY</code> needed: the daemon redirects only traffic bound for your target
-          domains, machine-wide. Linux and IPv4 only.
+          domains, machine-wide. By default the ipset also includes the published AWS, Cloudflare and
+          Google IPv4 ranges; set the <code>include_*_ip_ranges</code> settings to false to turn
+          that off. Linux and IPv4 only.
         </TipBox>
       </Section>
 
@@ -333,22 +337,17 @@ const SCENARIOS: ScenarioStep[] = [
       {
         timestamp: "14:22:01.342",
         level: "debug",
-        message: "Redirected connection, original destination 160.79.104.10:443",
+        message: "Selected proxy for connection proxy=mesh-us strategy=Single",
       },
       {
         timestamp: "14:22:01.342",
         level: "debug",
-        message: "Selected proxy for connection proxy=mesh-us strategy=Single",
+        message: "Daemon log: nothing else per tunnel (TLS is copied, never decrypted)",
       },
       {
-        timestamp: "14:22:01.380",
+        timestamp: "14:22:05.010",
         level: "info",
-        message: "CONNECT 160.79.104.10:443 via mesh-us -> 200 (38ms)",
-      },
-      {
-        timestamp: "14:22:02.616",
-        level: "info",
-        message: "Tunnel closed: 4.1 KB sent, 18.7 KB received",
+        message: "$ rust_proxy list   # Sent/Received for mesh-us now include this tunnel",
       },
     ],
     packetColor: "#60a5fa",
@@ -464,17 +463,17 @@ const SCENARIOS: ScenarioStep[] = [
       {
         timestamp: "14:24:02.101",
         level: "warn",
-        message: "Failover triggered from=mesh-us to=backup-eu",
+        message: "Failover triggered from=mesh-us to=backup-eu reason=health check failure",
       },
       {
         timestamp: "14:24:05.410",
         level: "debug",
-        message: "Selected proxy for connection proxy=backup-eu",
+        message: "Selected proxy for connection proxy=backup-eu strategy=Single",
       },
       {
-        timestamp: "14:24:05.474",
+        timestamp: "14:26:32.200",
         level: "info",
-        message: "CONNECT 162.159.140.245:443 via backup-eu -> 200 (64ms)",
+        message: 'Failback triggered - returning to original proxy to=Some("mesh-us")',
       },
     ],
     packetColor: "#f59e0b",
@@ -539,12 +538,13 @@ const SCENARIOS: ScenarioStep[] = [
       {
         timestamp: "14:25:41.310",
         level: "error",
-        message: "Degradation policy failed: No healthy proxy available (fail_closed policy)",
+        message:
+          "Degradation policy failed error=No healthy proxy available (fail_closed policy) policy=FailClosed",
       },
       {
         timestamp: "14:25:41.310",
-        level: "info",
-        message: "Sent 503 to client; connection closed",
+        level: "warn",
+        message: "connection error: No healthy proxy available (fail_closed policy)",
       },
     ],
     packetColor: "#ef4444",
@@ -606,12 +606,12 @@ const SCENARIOS: ScenarioStep[] = [
         level: "info",
         message: "$ rust_proxy targets add generativelanguage.googleapis.com --provider google",
       },
-      { timestamp: "14:26:10.742", level: "info", message: "Configuration hot-reloaded" },
-      { timestamp: "14:26:10.918", level: "info", message: "Routing generation applied" },
+      { timestamp: "14:26:10.742", level: "info", message: "Routing generation applied" },
+      { timestamp: "14:26:10.743", level: "info", message: "Configuration hot-reloaded" },
       {
         timestamp: "14:26:12.031",
-        level: "info",
-        message: "CONNECT 142.250.72.10:443 via mesh-us -> 200 (40ms)",
+        level: "debug",
+        message: "Selected proxy for connection proxy=mesh-us strategy=Single",
       },
     ],
     packetColor: "#a78bfa",
@@ -678,8 +678,21 @@ const SCENARIOS: ScenarioStep[] = [
         level: "info",
         message: "Proxy selection: Selected mesh-us (strategy: Single)",
       },
-      { timestamp: "14:27:05.141", level: "info", message: "CONNECT request: 200 (41ms)" },
-      { timestamp: "14:27:05.196", level: "info", message: "TLS handshake: ok (55ms)" },
+      {
+        timestamp: "14:27:05.100",
+        level: "info",
+        message: "CONNECT request: Sent CONNECT for api.anthropic.com:443 (with auth)",
+      },
+      {
+        timestamp: "14:27:05.141",
+        level: "info",
+        message: "Proxy response: HTTP status 200 (41ms)",
+      },
+      {
+        timestamp: "14:27:05.196",
+        level: "info",
+        message: "TLS handshake: Handshake completed (55ms)",
+      },
     ],
     packetColor: "#ec4899",
     responseColor: "#34d399",

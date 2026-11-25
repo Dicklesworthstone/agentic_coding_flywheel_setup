@@ -166,7 +166,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     implementationHighlights: [
       "Rust port that freezes the classic SQLite + JSONL beads architecture",
       "SQLite primary storage + JSONL export (hybrid architecture)",
-      "Non-invasive: auto-flushes JSONL inside .beads/, never runs git",
+      "Non-invasive: auto-flushes JSONL inside .beads/, never commits, pushes, or pulls",
       "Full dependency graph with cycles detection",
     ],
     synergies: [
@@ -331,7 +331,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     keyFeatures: [
       "1000+ bug patterns across 15 languages",
       "18 detection categories with severity levels",
-      "Agent guardrails: Claude Code hooks, .cursorrules",
+      "Agent guardrails: Claude Code hooks, .cursor/rules",
       "Git-aware: --staged, --diff for targeted scans",
     ],
     useCases: [
@@ -352,7 +352,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     whatItDoes:
       "Pre-execution hook for Claude Code, Codex CLI, Gemini CLI, Copilot, Cursor, Antigravity and other agent CLIs that blocks dangerous commands BEFORE execution. 100+ packs across 28 categories: git (reset --hard, force push), filesystem (rm -rf), databases (DROP TABLE), Kubernetes, cloud providers, and more.",
     whyItsUseful:
-      "AI agents can and will run 'rm -rf /' if they think it solves your problem. DCG catches catastrophic commands before they execute with sub-millisecond latency. Safe directory exceptions (/tmp, /var/tmp, $TMPDIR) allow temp operations without friction.",
+      "AI agents can and will run 'rm -rf /' if they think it solves your problem. DCG catches catastrophic commands before they execute with sub-millisecond latency. Safe directory exceptions for literal /tmp and /var/tmp paths allow temp cleanup without friction ($TMPDIR-based deletes stay blocked, since the caller controls that variable).",
     implementationHighlights: [
       "SIMD-accelerated sub-millisecond PreToolUse hook",
       "Heredoc/inline script scanning (python -c, bash -c, node -e)",
@@ -498,7 +498,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
       "Running multiple AI agents simultaneously creates chaos without orchestration. NTM provides the command center: spawn agents with one command, broadcast prompts to specific types, monitor context usage, and coordinate via Agent Mail. Sessions persist across SSH disconnects, and ntm sessions save/resume rebuilds them after a reboot.",
     implementationHighlights: [
       "Go implementation with Bubble Tea TUI and Catppuccin themes",
-      "Context rotation monitors usage, warns at 80%, triggers compaction recovery",
+      "Context rotation warns at 70%, tries compaction first, and rotates at 95%",
       "Robot mode (--robot-*) outputs JSON for agent automation",
       "Direct CASS integration: --robot-cass-search, --robot-cass-context",
       "Bead management: --robot-bead-create, --robot-bead-claim, --robot-bead-close",
@@ -558,7 +558,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
       "AI agents can and will run destructive commands if they think it solves your problem. SLB intercepts commands like 'rm -rf /', 'DROP DATABASE', and 'terraform destroy' requiring explicit approval from another agent or human reviewer before execution. Watch mode lets reviewing agents stream pending requests. Local agents can only review each other after slb config set general.approval_policy same_host; the default independent policy refuses local approvals.",
     implementationHighlights: [
       "Go implementation with Bubble Tea TUI dashboard",
-      "40+ regex patterns: 24 critical, 15 dangerous, 6 safe",
+      "40+ built-in regex patterns across all four tiers",
       "HMAC-SHA256 cryptographic approval signatures",
       "Watch mode streams NDJSON events for reviewing agents",
       "Pre-execution state capture for rollback",
@@ -661,7 +661,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     whatItDoes:
       "Claude Code PreToolUse hook that offloads Rust, Go, C/C++, Bun and Nix builds to remote workers. Intercepts build commands, syncs source via rsync + zstd, compiles on server-grade hardware, streams artifacts back.",
     whyItsUseful:
-      "Multi-agent swarms trigger many concurrent builds. RCH intercepts commands before execution and routes them to remote workers with health probes and priority scheduling. A cargo shim plus per-agent hooks mean builds from Claude Code, Codex, and any other agent or script are offloaded.",
+      "Multi-agent swarms trigger many concurrent builds. RCH intercepts commands before execution and routes them to remote workers with health probes and priority scheduling. Hooks for Claude Code, Codex CLI, and Gemini CLI, plus a cargo shim that catches cargo runs from any other agent or script, send those builds to the workers.",
     implementationHighlights: [
       "PreToolUse hook intercepts cargo before execution",
       "rsync + zstd with incremental artifact streaming",
@@ -686,8 +686,8 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     keyFeatures: [
       "PreToolUse hook intercepts cargo automatically",
       "Worker pool with health probes and priorities",
-      "Daemon mode with persistent SSH connections",
-      "Agent hooks: Claude Code, Codex CLI, Gemini CLI, Cursor, and more",
+      "rchd daemon for worker state and scheduling",
+      "Agent hooks: Claude Code, Codex CLI, Gemini CLI (Continue.dev partial)",
     ],
     useCases: [
       "Offloading builds during multi-agent sessions",
@@ -1076,7 +1076,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     keyFeatures: [
       "Interactive fzf-style prompt picker (jfp i)",
       "Task-based suggestions (jfp suggest)",
-      "Workflow bundles for team patterns",
+      "Prompt bundles for team patterns (jfp bundles)",
       "MCP server mode for agent workflows",
       "Premium: collections, sync, prompt packs",
     ],
@@ -1232,7 +1232,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     implementationHighlights: [
       "Rust implementation for performance",
       "Passive network observation (no proxy)",
-      "Provider tagging (anthropic/openai/google) with PTR or pcap DNS/SNI domain attribution",
+      "Provider tagging (anthropic/openai/google); hostnames via reverse DNS or optional pcap DNS/SNI",
       "JSON output for analysis",
     ],
     synergies: [
@@ -1394,7 +1394,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
       "grep only finds exact text; fsfs adds intent-level recall without a remote service. Indexing and search run on your machine (network is only needed for model downloads, update checks, and opt-in query expansion), and agents get streaming jsonl or TOON output plus fsfs explain to see why a hit ranked where it did.",
     implementationHighlights: [
       "Progressive phases: Initial (fast tier + BM25 fused via RRF), then Refined or RefinementFailed",
-      "Fast tier potion-128M, quality tier MiniLM, blended at a default 0.7 quality weight",
+      "Fast tier potion-multilingual-128M, quality tier MiniLM, blended at a default 0.7 quality weight",
       "Native pure-Rust Quill BM25 engine, with Tantivy kept as the conformance oracle",
       "FSVI vector files: memory-mapped, f16 by default, portable SIMD top-k",
       "Async built on asupersync and Cx rather than Tokio",
@@ -1899,7 +1899,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     synergies: [
       {
         toolId: "ntm",
-        description: "An alternative operator cockpit to NTM; ft runs its own terminal engine, not tmux",
+        description: "A separate tool adjacent to NTM; ft runs its own terminal engine, not tmux",
       },
       {
         toolId: "mail",

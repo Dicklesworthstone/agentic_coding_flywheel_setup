@@ -122,7 +122,7 @@ export function RuLesson() {
         delay={0.2}
       >
         <Paragraph>
-          After a swarm session you are left with dirty worktrees across many repos.
+          After a swarm session you are left with dirty worktrees across many repos.{" "}
           <Highlight>ru commit-sweep</Highlight> groups the changes in each repo into logical
           conventional commits. It is a dry-run by default: you see the plan first and apply it with{" "}
           <code>--execute</code>.

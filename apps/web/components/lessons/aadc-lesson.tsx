@@ -151,8 +151,9 @@ aadc --diff diagram.txt`}
         />
 
         <TipBox variant="info">
-          AADC only adds whitespace padding to align right borders, iterating until each block
-          converges. It leaves GFM tables and language-tagged code fences alone.
+          AADC only adds characters (whitespace padding, or a missing closing border) to align
+          right borders, iterating until each block converges. It leaves GFM tables and
+          language-tagged code fences alone.
         </TipBox>
 
         <div className="mt-8">
@@ -204,6 +205,8 @@ interface DiagramScenario {
   file: string;
   /** Diagram blocks aadc detects (0 for content it leaves alone) */
   blocks: number;
+  /** Block confidence `aadc -v` reports, in percent (only when blocks > 0) */
+  confidence?: number;
 }
 
 // Every "fixed" diagram below is what aadc's monotone padding produces: spaces
@@ -216,6 +219,7 @@ const DIAGRAM_SCENARIOS: DiagramScenario[] = [
     icon: "+",
     file: "diagram.txt",
     blocks: 1,
+    confidence: 100,
     broken: [
       "+------------------+",
       "| Short|",
@@ -238,6 +242,7 @@ const DIAGRAM_SCENARIOS: DiagramScenario[] = [
     icon: "#",
     file: "architecture.md",
     blocks: 1,
+    confidence: 100,
     broken: [
       "┌────────────────┐",
       "│ API Gateway│",
@@ -260,6 +265,7 @@ const DIAGRAM_SCENARIOS: DiagramScenario[] = [
     icon: "|",
     file: "services.txt",
     blocks: 1,
+    confidence: 84,
     broken: [
       "+----------------------+",
       "| Agent Mail           |",
@@ -282,6 +288,7 @@ const DIAGRAM_SCENARIOS: DiagramScenario[] = [
     icon: "=",
     file: "CHECKLIST.md",
     blocks: 1,
+    confidence: 100,
     broken: [
       "╔══════════════════════════╗",
       "║ Deploy checklist         ║",
@@ -408,7 +415,7 @@ function InteractiveDiagramFixerImpl() {
 
     handleReset();
 
-    // Phase 1: Scanning (mirrors `aadc -v` verbose output on stderr)
+    // Phase 1: Scanning (mirrors `aadc -v` verbose output, minus the timing line)
     setPhase("scanning");
     const totalLines = scenario.broken.length;
     const revisions = scenario.broken.filter((line, i) => line !== scenario.fixed[i]).length;
@@ -416,7 +423,9 @@ function InteractiveDiagramFixerImpl() {
       `$ aadc -v ${scenario.file}`,
       `Processing ${scenario.file} (${totalLines} lines)...`,
       `Found ${scenario.blocks} diagram block(s)`,
-      ...(scenario.blocks > 0 ? [`  Block 1: lines 1-${totalLines} (confidence: 100%)`] : []),
+      ...(scenario.blocks > 0
+        ? [`  Block 1: lines 1-${totalLines} (confidence: ${scenario.confidence ?? 100}%)`]
+        : []),
     ];
     const summaryLines = [
       "─── Summary ───",
@@ -826,9 +835,11 @@ function InteractiveDiagramFixerImpl() {
           </span>
           <div className="flex flex-wrap gap-2">
             {scenario.issues.map((issue, i) => {
+              // A scenario aadc leaves alone (blocks === 0) has nothing to resolve
               const issueResolved =
-                phase === "done" ||
-                (phase === "repairing" && repairProgress > (i + 1) / scenario.issues.length);
+                scenario.blocks > 0 &&
+                (phase === "done" ||
+                  (phase === "repairing" && repairProgress > (i + 1) / scenario.issues.length));
 
               return (
                 <motion.span

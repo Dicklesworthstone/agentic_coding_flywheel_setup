@@ -1137,7 +1137,7 @@ test("focused cloud handoff omits unselected agents, NTM, doctor and terminal tu
   for (const command of commands) {
     assert.doesNotMatch(command, /^(?:claude|codex|agy|cc|cod|ntm|onboard|lsd|fd|rg|lazygit)(?:\s|$)/);
   }
-  assert.doesNotMatch(view.text(), /Claude Code|NTM|ntm new|\bonboard\b|\blazygit\b/);
+  assert.doesNotMatch(view.text(), /Claude Code|NTM|ntm (?:new|create)|\bonboard\b|\blazygit\b/);
 });
 
 for (const [moduleId, executable] of [

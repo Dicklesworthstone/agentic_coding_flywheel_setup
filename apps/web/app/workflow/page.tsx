@@ -866,9 +866,9 @@ export default function WorkflowPage() {
               <Clock className="h-5 w-5 text-[oklch(0.78_0.16_75)] shrink-0 mt-0.5" />
               <span>
                 <strong>Investment:</strong> VPS (~${VPS_TOP_PICK.recommended.priceUSD}/mo for 64GB)
-                + Claude Max ($200/mo × 1-5) + ChatGPT Pro ($200/mo × 1-5) + Google/Antigravity
-                access. Scale your swarm as you see ROI; start with one subscription for each agent
-                family and grow.
+                + Claude Max ($200/mo × 1-5) + ChatGPT Pro (from $100/mo × 1-5) +
+                Google/Antigravity access. Scale your swarm as you see ROI; start with one
+                subscription for each agent family and grow.
               </span>
             </p>
           </Card>
@@ -1142,8 +1142,8 @@ export default function WorkflowPage() {
                 multiple terminal panes, each running a coding agent:
               </p>
               <CommandCard
-                command="ntm spawn myproject --cc=4 --cod=2 --agy=2"
-                description="Create 8 agent panes (4 Claude Code, 2 Codex, 2 Antigravity) in your project session"
+                command="ntm add myproject --cc=3 --cod=2 --agy=2"
+                description="Add 7 agents to the Phase 2 session: 8 in total (4 Claude Code, 2 Codex, 2 Antigravity)"
               />
               <p className="text-xs mt-2">
                 Run 3+ machines with multiple subscriptions (e.g., 5 ChatGPT Pro, 5 Claude Max, 3

@@ -126,16 +126,16 @@ export function NtmPaletteLesson() {
         <div className="space-y-8">
           <UsageOption
             number={1}
-            title="Copy and Send"
+            title="Pick and Send"
             steps={[
               <>
                 Open the palette: <InlineCode>ntm palette</InlineCode>
               </>,
-              "Select a prompt",
-              "Copy it",
+              "Type to filter, then press Enter on a prompt",
               <>
-                Use <InlineCode>ntm send</InlineCode> or paste directly
+                Choose the targets (<InlineCode>1</InlineCode> = all agents, or one agent type)
               </>,
+              "The prompt is sent straight into those panes",
             ]}
           />
 

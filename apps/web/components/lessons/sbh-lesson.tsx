@@ -1132,7 +1132,7 @@ function InteractiveDiskPressureImpl() {
                 </div>
                 <div className="flex items-center gap-1">
                   <div className="w-3 h-px bg-red-500/70" />
-                  <span className="text-xs text-muted-foreground">95% release</span>
+                  <span className="text-xs text-muted-foreground">95% critical</span>
                 </div>
               </div>
             </div>

@@ -34,7 +34,7 @@ export function ContextMasteryLesson() {
             <FeatureCard
               icon={<Minimize2 className="h-5 w-5" />}
               title="TRU"
-              description="JSON to TOON: ~30-60% fewer tokens on tabular data"
+              description="JSON to TOON: ~40-60% fewer tokens on typical payloads"
               gradient="from-emerald-500/20 to-teal-500/20"
             />
             <FeatureCard
@@ -148,8 +148,8 @@ cass search "auth middleware pattern" --robot --fields minimal`}
         />
 
         <TipBox variant="tip">
-          Use <code>--fields minimal</code> to get just the snippet and score, not the full
-          metadata. This can cut the response size by 60%.
+          Use <code>--fields minimal</code> to get just each hit&apos;s path, line number, and
+          agent, without snippets or metadata, then <code>cass view</code> only the hits you need.
         </TipBox>
       </Section>
 

@@ -1138,8 +1138,8 @@ export default function RentVPSPage() {
                 <p className="mt-2 text-xs text-muted-foreground">
                   Confirm this image is available in your selected region. Ubuntu 22.04 or 24.04
                   also works: the wizard&apos;s install command opts into an in-place upgrade to{" "}
-                  {ACFS_RECOMMENDED_UBUNTU} (--target-ubuntu={ACFS_RECOMMENDED_UBUNTU}), which adds
-                  30–60 minutes and a reboot per hop.
+                  {ACFS_RECOMMENDED_UBUNTU} (<code>--target-ubuntu={ACFS_RECOMMENDED_UBUNTU}</code>),
+                  which adds 30–60 minutes and a reboot per hop.
                 </p>
                 <ScreenshotFigure
                   file="contabo_us_03_order_page.png"
@@ -1237,9 +1237,10 @@ export default function RentVPSPage() {
                   caption="Order flow — pick Ubuntu + region, then continue to checkout."
                 />
                 <p className="mt-2 text-xs text-muted-foreground">
-                  Confirm this image is available before paying. Older LTS images require a
-                  supported upgrade before installation; an arbitrary newer version is not
-                  automatically a reviewed ACFS image.
+                  Confirm this image is available before paying. Ubuntu 22.04 or 24.04 also works
+                  (the wizard&apos;s install command upgrades it in place to{" "}
+                  {ACFS_RECOMMENDED_UBUNTU}, adding 30–60 minutes and a reboot per hop); an
+                  arbitrary newer version is not automatically a reviewed ACFS image.
                 </p>
               </GuideStep>
 

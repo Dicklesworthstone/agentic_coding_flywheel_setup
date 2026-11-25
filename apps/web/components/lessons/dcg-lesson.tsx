@@ -48,8 +48,8 @@ export function DcgLesson() {
         <Paragraph>
           <Highlight>DCG (Destructive Command Guard)</Highlight> is a pre-execution hook for Claude
           Code, Codex, Antigravity and other agent CLIs that blocks dangerous commands before they
-          execute. It protects your repos from hard resets, recursive
-          deletes, destructive database commands, and more.
+          execute. It protects your repos from hard resets, recursive deletes, destructive
+          database commands, and more.
         </Paragraph>
         <Paragraph>
           Think of it as a safety interlock: if a command looks destructive, DCG stops it and
@@ -103,9 +103,10 @@ export function DcgLesson() {
           <CodeBlock
             code={`# Example: test a command before running it
 $ dcg test "git reset --hard" --explain
-> BLOCKED: git.reset.hard
-> Why: hard reset discards uncommitted work
-> Safer: git restore --staged .`}
+Decision: DENY
+Rule ID:  core.git:reset-hard
+Reason:   git reset --hard destroys uncommitted changes. Use 'git stash' first.
+Safer:    git reset --soft HEAD~1  (keeps your changes)`}
             language="bash"
           />
         </div>
@@ -139,7 +140,8 @@ $ dcg test "git reset --hard" --explain
             },
             {
               command: "dcg install",
-              description: "Register hooks for detected agent CLIs (Claude Code, Codex, and more)",
+              description:
+                "Register the Claude Code hook (--agy, --grok, --opencode, ... for other agents)",
             },
             {
               command: "dcg uninstall",
@@ -375,13 +377,14 @@ const DCG_SCENARIOS: DcgScenario[] = [
   },
 ];
 
+// Rule counts are each pack's destructive patterns (`dcg pack info <pack>`, dcg 0.15).
 const PACKS_DATA = [
-  { name: "core.git", rules: 12, desc: "Reset, force push, branch delete", enabled: true },
-  { name: "core.filesystem", rules: 18, desc: "rm -rf outside temp dirs", enabled: true },
-  { name: "database.postgresql", rules: 9, desc: "DROP, TRUNCATE, ALTER", enabled: true },
-  { name: "containers.docker", rules: 7, desc: "Prune, remove, system wipe", enabled: false },
-  { name: "cloud.aws", rules: 14, desc: "AWS resource deletes", enabled: false },
-  { name: "infrastructure.terraform", rules: 5, desc: "terraform destroy, state rm", enabled: false },
+  { name: "core.git", rules: 28, desc: "Reset, force push, branch delete", enabled: true },
+  { name: "core.filesystem", rules: 39, desc: "rm -rf outside temp dirs", enabled: true },
+  { name: "database.postgresql", rules: 10, desc: "DROP, TRUNCATE, ALTER", enabled: true },
+  { name: "containers.docker", rules: 9, desc: "Prune, remove, system wipe", enabled: true },
+  { name: "cloud.aws", rules: 41, desc: "AWS resource deletes", enabled: false },
+  { name: "infrastructure.terraform", rules: 8, desc: "terraform destroy, state rm", enabled: false },
 ];
 
 // ---------------------------------------------------------------------------

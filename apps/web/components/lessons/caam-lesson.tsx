@@ -194,8 +194,12 @@ caam next claude`}
         <CodeBlock
           code={`# Give each parallel agent its own isolated profile
 caam profile add claude agent-2
-caam login claude agent-2
-caam exec claude agent-2 -- "implement feature X"
+
+# Claude logs in from inside the session: start it once and type /login
+caam exec claude agent-2
+
+# Later runs reuse that login
+caam exec claude agent-2 -- -p "implement feature X"
 
 # List running caam sessions
 caam sessions
@@ -221,7 +225,7 @@ caam usage --days 1`}
           <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
             <span className="text-emerald-400 font-semibold">CAAM + SLB</span>
             <p className="text-white/80 text-sm mt-1">
-              Require approval before switching to expensive accounts
+              SLB gates dangerous commands; CAAM keeps every agent logged in
             </p>
           </div>
           <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
@@ -534,13 +538,13 @@ const SCENARIOS: Scenario[] = [
     ],
     activeAccountId: "a2",
     terminalLines: [
-      "$ caam next claude",
       "! Rate limit hit on work-primary",
-      "  Switching to work-backup...",
-      "  Switch completed in 47ms",
-      "",
       "$ caam cooldown set claude/work-primary --minutes 5",
-      "Cooldown set: work-primary (5m 0s remaining)",
+      "Recorded cooldown for claude/work-primary (5m remaining)",
+      "",
+      "$ caam next claude",
+      "Switched claude to 'work-backup' (1 other profile available)",
+      "  Switch completed in 47ms",
       "",
       "$ caam status",
       "Active: work-backup (claude)",
@@ -683,15 +687,15 @@ const SCENARIOS: Scenario[] = [
     activeAccountId: "a1",
     terminalLines: [
       "$ caam sessions",
-      "Running isolated profiles (caam exec)",
       "",
-      "SESSION   TOOL        PROFILE        TOKENS/HR",
-      "agent-1   claude      work-primary   12,400",
-      "agent-2   claude      work-backup    11,800",
-      "agent-3   codex       openai-main    15,200",
-      "agent-4   gemini      gemini-pro      9,600",
+      "PROVIDER  PROFILE        PID    STARTED      STATUS",
+      "--------  -------        ---    -------      ------",
+      "claude    work-primary   41022  2 hours ago  active",
+      "claude    work-backup    41187  2 hours ago  active",
+      "codex     openai-main    41355  2 hours ago  active",
+      "gemini    gemini-pro     41520  2 hours ago  active",
       "",
-      "4 sessions on 4 separate profiles",
+      "4 agents on 4 separate profiles (caam exec)",
       "No profile above 60% of its limit",
     ],
     rotationEvent: null,
@@ -703,7 +707,7 @@ const SCENARIOS: Scenario[] = [
     icon: Shield,
     color: "red",
     description:
-      "Anthropic API outage! Both accounts unreachable. CAAM emergency failover: all traffic rerouted to OpenAI and Google in 82ms.",
+      "Both Claude profiles are exhausted. CAAM activates the best Codex and Gemini profiles so agents restarted on those CLIs keep working.",
     accounts: [
       {
         id: "a1",
@@ -756,18 +760,18 @@ const SCENARIOS: Scenario[] = [
     ],
     activeAccountId: "o1",
     terminalLines: [
-      "$ caam status",
-      "!! EMERGENCY: Anthropic API unreachable",
-      "  work-primary: CONNECTION_REFUSED",
-      "  work-backup:  CONNECTION_REFUSED",
+      "$ caam next claude",
+      "!! No usable claude profile",
+      "  work-primary: cooldown (limit hit)",
+      "  work-backup:  cooldown (limit hit)",
       "",
       "$ caam next codex --usage-aware",
-      "  Rerouting agent-1 → openai-main (38ms)",
-      "$ caam next gemini --usage-aware",
-      "  Rerouting agent-2 → gemini-pro  (44ms)",
+      "Switched codex to 'openai-main' (38ms)",
+      "$ caam next gemini",
+      "Switched gemini to 'gemini-pro' (44ms)",
       "  Total failover time: 82ms",
       "",
-      "All agents operational on backup providers",
+      "Restart agents on codex and gemini to keep working",
     ],
     rotationEvent: { from: "a1", to: "o1" },
     switchTimeMs: 82,

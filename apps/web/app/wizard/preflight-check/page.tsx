@@ -179,7 +179,7 @@ export default function PreflightCheckPage() {
             <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
               &apos;bash&apos; is not recognized
             </code>{" "}
-            or
+            or{" "}
             <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
               Get-Date : Cannot bind parameter
             </code>

@@ -860,7 +860,7 @@ dcg test "<cmd>" [--explain]          # Test if a command would be blocked
 dcg packs [--enabled] [--verbose]     # List packs
 dcg allow-once <code>                 # One-time bypass code
 dcg doctor [--fix] [--format json]    # Health check + auto-fix
-dcg install [--force]                 # Register hooks for detected agent CLIs
+dcg install [--force]                 # Register Claude Code hook (--agy, --grok, etc. for others)
 ```
 
 ### RU — Repo Updater

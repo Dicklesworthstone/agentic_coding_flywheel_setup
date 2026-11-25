@@ -638,10 +638,10 @@ const REPOS: RepoNode[] = [
     id: "dcg",
     name: "DCG Tools",
     shortName: "DCG",
-    versionFrom: "0.4.1",
-    versionTo: "0.4.2",
+    versionFrom: "0.17.0",
+    versionTo: "0.17.1",
     category: "stack",
-    dependsOn: ["apt", "wrangler"],
+    dependsOn: ["apt"],
   },
 ];
 
@@ -688,7 +688,7 @@ const SCENARIOS: Scenario[] = [
       "[cloud] supabase 1.200.3 -> 1.201.0",
       "[cloud] vercel 37.8.0 -> 37.9.0",
       "[stack] ntm 1.38.1 -> 1.39.0",
-      "[stack] dcg 0.4.1 -> 0.4.2",
+      "[stack] dcg 0.17.0 -> 0.17.1",
       "All 12 components updated successfully!",
     ],
   },
@@ -715,7 +715,7 @@ const SCENARIOS: Scenario[] = [
       { repoId: "supabase", finalStatus: "updated", delay: 1000 },
       { repoId: "vercel", finalStatus: "updated", delay: 1100 },
       { repoId: "ntm", finalStatus: "updated", delay: 1300 },
-      { repoId: "dcg", finalStatus: "conflict", delay: 1400, errorMsg: "Depends on wrangler@^3" },
+      { repoId: "dcg", finalStatus: "updated", delay: 1400 },
     ],
     terminalLines: [
       "$ acfs-update",
@@ -727,9 +727,9 @@ const SCENARIOS: Scenario[] = [
       "  Breaking: Requires Node.js >= 22.0.0",
       "  Current: Node.js 20.11.0",
       "[cloud] Pinning wrangler@3.92.0 (safe)",
-      "[stack] dcg depends on wrangler@^3, conflict!",
+      "[stack] ntm, dcg updated",
       "Recommendation: Run 'nvm install 22' first",
-      "10/12 components updated, 2 need attention",
+      "11/12 components updated, 1 needs attention",
     ],
   },
   {
@@ -1724,12 +1724,12 @@ function VersionComparisonPanel({
     ],
     claude: ["Improved tool use reliability", "Faster streaming responses", "New /compact command"],
     codex: ["Multi-file editing support", "Better error recovery", "Sandbox improvements"],
-    agy: ["Pinned Gemini 4 Neon model", "DCG hook integration", "Terminal settings refreshed"],
+    agy: ["Pinned to Gemini 4 Neon (XHigh)", "DCG hook integration", "Terminal settings refreshed"],
     wrangler: ["D1 export support", "Hyperdrive GA", "Pages build caching"],
     supabase: ["Edge Functions v2", "Branching GA", "Realtime improvements"],
     vercel: ["Fluid compute support", "Faster deploys", "Improved DX for monorepos"],
-    ntm: ["New migration engine", "Schema diffing", "Better TypeScript types"],
-    dcg: ["Parallel generation", "Template caching", "New output formats"],
+    ntm: ["Pi (pi) agent harness support", "Pipeline until: loops", "Encrypted support bundles"],
+    dcg: ["Custom-pack lookaround fix", "install.sh works without python3", "cookie advisory fix"],
   };
 
   const changes = changelogs[repoId] ?? ["No changelog available"];

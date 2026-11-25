@@ -315,7 +315,8 @@ export function ToolPageContent({ tool: doc }: ToolPageContentProps) {
                   <div className="rounded-xl border border-white/[0.08] bg-black/40 p-4 text-sm text-white/70">
                     <p className="mb-4">
                       Remove the hook only, remove the hook plus its config, or fully remove DCG
-                      with its uninstall script. You can re-enable it anytime with{" "}
+                      with its uninstall script. While the binary is still installed, you can
+                      re-enable the hook anytime with{" "}
                       <code className="font-mono text-white/90 bg-white/5 px-1 rounded">
                         dcg install
                       </code>

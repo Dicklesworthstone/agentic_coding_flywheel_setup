@@ -193,7 +193,7 @@ export function SafetyToolsLesson() {
             },
             {
               command: "dcg install",
-              description: "Register DCG hooks for detected agent CLIs",
+              description: "Register the hook in Claude Code (--agy, --grok, etc. for other agents)",
             },
             {
               command: "dcg allow-once <code>",

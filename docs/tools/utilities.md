@@ -6,9 +6,9 @@ This document covers the utility tools included in ACFS. These are optional but 
 
 | Tool | Command | Purpose |
 |------|---------|---------|
-| toon_rust | `tru` | Token-optimized notation for LLM context |
-| rust_proxy | `rust_proxy` | Transparent proxy for network debugging |
-| rano | `rano` | Network observer for AI CLI traffic |
+| toon_rust | `toon` | Token-optimized notation for LLM context |
+| rust_proxy | `rust_proxy` | Route selected domains through an upstream proxy (Linux iptables + ipset) |
+| rano | `rano` | Observe which hosts AI CLI processes connect to |
 | xf | `xf` | Ultra-fast X/Twitter archive search |
 | mdwb | `mdwb` | Convert websites to Markdown for LLMs |
 | pt | `pt` | Process triage for stuck processes |
@@ -18,28 +18,29 @@ This document covers the utility tools included in ACFS. These are optional but 
 
 ---
 
-## toon_rust (tru)
+## toon_rust (toon)
 
-Token-optimized notation format for efficient LLM context usage.
+Token-optimized notation format for efficient LLM context usage. The Cargo package
+(and ACFS checksum key) is `tru`; the binary it installs is `toon`.
 
 ### Installation Verification
 
 ```bash
-tru --version
-tru --help
+toon --version
+toon --help
 ```
 
 ### Basic Usage
 
 ```bash
-# Convert JSON to TOON format
-tru encode input.json > output.toon
+# Convert JSON to TOON (direction is auto-detected from the extension)
+toon input.json -o output.toon
 
 # Convert TOON back to JSON
-tru decode input.toon > output.json
+toon input.toon -o output.json
 
-# Estimate token savings
-tru stats input.json
+# Encode stdin and print token estimates to stderr
+cat input.json | toon --encode --stats
 ```
 
 ### Use Cases
@@ -52,7 +53,9 @@ tru stats input.json
 
 ## rust_proxy
 
-Transparent proxy routing for debugging network traffic.
+Targeted transparent routing (Linux only): iptables + ipset send traffic for selected
+domains through an upstream HTTP proxy via CONNECT tunnels, with health checks and
+failover. It does not decrypt or inspect payloads.
 
 ### Installation Verification
 
@@ -64,27 +67,36 @@ rust_proxy --help
 ### Basic Usage
 
 ```bash
-# Start proxy on default port
-rust_proxy start
+# Write a starter config (already targets the main AI provider domains)
+rust_proxy init
 
-# Start on specific port
-rust_proxy start --port 8080
+# Add an upstream proxy and an extra target domain
+rust_proxy proxy add mesh-us us-wa.proxymesh.com:31280 \
+  --username-env PROXY_USER --password-env PROXY_PASS
+rust_proxy targets add api.x.ai
 
-# View captured traffic
-rust_proxy log
+# Pick the active proxy, then run the daemon (needs root for iptables)
+rust_proxy activate --select
+sudo rust_proxy daemon
+
+# Check routing and health
+rust_proxy status
+rust_proxy test api.openai.com --verbose
 ```
 
 ### Use Cases
 
-- Debug API calls from AI agents
-- Inspect request/response payloads
-- Monitor network traffic patterns
+- Route AI API traffic through a specific egress region or proxy provider
+- Keep agent traffic on a known proxy with automatic failover
+- Diagnose proxy reachability (`test`, `trace`, `ping`, `doctor`)
 
 ---
 
 ## rano
 
-Network observer for AI CLIs with request/response logging.
+Network observer for AI CLIs: polls the sockets held by Claude Code, Codex CLI, Gemini CLI
+and their descendants and attributes each connection to a process and provider. No proxy,
+no payload capture.
 
 ### Installation Verification
 
@@ -96,21 +108,22 @@ rano --help
 ### Basic Usage
 
 ```bash
-# Monitor Claude CLI traffic
-rano watch claude
+# Watch all detected AI CLI processes live
+rano
 
-# Monitor all AI CLI traffic
-rano watch --all
+# Watch only Codex and log events to SQLite
+rano --pattern codex --sqlite /tmp/rano.sqlite
 
-# Export logs
-rano export --format json > traffic.json
+# Summarize the latest run, or export history
+rano report --latest
+rano export --format csv --since 24h > daily.csv
 ```
 
 ### Use Cases
 
-- Debug AI API interactions
-- Monitor token usage across providers
-- Analyze request patterns
+- See which provider endpoints an agent actually connects to
+- Spot retry storms and long-lived connections during a stuck session
+- Keep an auditable connection history per run
 
 ---
 
@@ -128,14 +141,17 @@ xf --help
 ### Basic Usage
 
 ```bash
-# Search tweets
+# Index your downloaded archive once
+xf index /path/to/your-archive
+
+# Search everything (tweets, likes, DMs, Grok chats, bookmarks)
 xf search "machine learning"
 
-# Search with date range
-xf search "rust" --after 2024-01-01 --before 2024-06-01
+# Search only tweets in a date range
+xf search "rust" --types tweet --since 2024-01-01 --until 2024-06-01
 
 # Search DMs
-xf search "project update" --type dm
+xf search "project update" --types dm
 ```
 
 ### Use Cases
@@ -160,15 +176,20 @@ mdwb --help
 ### Basic Usage
 
 ```bash
-# Fetch and convert URL to Markdown
-mdwb fetch https://example.com
+# Capture a page (screenshot tiles -> OCR -> stitched Markdown) and watch progress
+mdwb fetch https://example.com --watch
 
-# Save to file
-mdwb fetch https://docs.example.com/api > api-docs.md
+# Check a job's status, print its Markdown, and list extracted links
+mdwb show <job-id>
+mdwb jobs result <job-id>
+mdwb links <job-id> --json
 
-# Follow links (crawl)
-mdwb crawl https://docs.example.com --depth 2
+# Crawl a docs site (seed plus discovered pages, capped)
+mdwb crawl https://docs.example.com --max-depth 1 --max-pages 10
 ```
+
+The CLI talks to the mdwb server and needs an olmOCR endpoint (hosted API key or a local
+olmOCR server); see the project README for setup.
 
 ### Use Cases
 
@@ -192,17 +213,17 @@ pt --help
 ### Basic Usage
 
 ```bash
-# Show process triage recommendations
-pt
+# Interactive golden path: scan, review candidates, confirm actions
+pt run
 
-# Show with details
-pt --verbose
+# Quick scan only (no inference or action)
+pt scan
 
-# Kill recommended processes
-pt --kill
+# Full deep scan with all available probes
+pt deep-scan
 
-# Target specific process type
-pt --filter node
+# Agent-friendly ranked plan with evidence (no execution)
+pt agent plan --format json
 ```
 
 ### Use Cases
@@ -227,14 +248,17 @@ aadc --help
 ### Basic Usage
 
 ```bash
-# Fix ASCII diagram from file
-aadc fix diagram.txt
+# Print the corrected diagram to stdout
+aadc diagram.txt
 
-# Fix from stdin
-cat diagram.txt | aadc fix
+# Fix the file in place
+aadc -i diagram.txt
 
-# Preview corrections
-aadc fix diagram.txt --preview
+# Show a diff of the proposed changes without writing
+aadc --diff diagram.txt
+
+# Fix every Markdown file under docs/ in place
+aadc -ri --glob "*.md" docs/
 ```
 
 ### Use Cases
@@ -320,17 +344,14 @@ caut history export --format csv
 
 ## Installation
 
-All utilities are installed via ACFS as optional tools. The Rust crates can be installed individually via cargo:
+All utilities are optional ACFS modules. toon_rust, pt, mdwb and s2p are on by default;
+xf, rano, rust_proxy, aadc and caut are opt-in. ACFS installs toon_rust, rano, xf, pt, mdwb
+and s2p with each project's checksum-verified `install.sh` (see `checksums.yaml`), and builds
+rust_proxy, aadc and caut from a source checkout with `cargo build --release`.
 
-```bash
-cargo install toon_rust
-cargo install rust_proxy
-cargo install rano
-cargo install xf
-cargo install process_triage
-cargo install aadc
-cargo install coding_agent_usage_tracker
-```
+Do not guess crate names for `cargo install`: only toon_rust is on crates.io (as `tru`), and
+the crates named `rano`, `xf` and `rust-proxy` there are unrelated projects by other authors.
+To install one by hand, use the install one-liner in that project's README.
 
 `mdwb` (markdown_web_browser) is a Python project (FastAPI + Playwright + OCR), not a Rust crate; follow its README.
 
@@ -353,28 +374,29 @@ acfs doctor --json | jq '.checks | map(select(.id | startswith("util.")))'
 
 ### Tool Not Found
 
-Most utilities install to `~/.cargo/bin/`. Ensure it's in your PATH:
+Tools from verified installers land in `~/.local/bin/`; the source-built ones (rust_proxy,
+aadc, caut) land in `~/.cargo/bin/`. The ACFS zshrc puts both on PATH; in another shell:
 
 ```bash
-export PATH="$HOME/.cargo/bin:$PATH"
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 ```
 
 ### Version Mismatch
 
-Update to latest version:
+Update the Flywheel stack tools (this re-runs each selected tool's verified installer or
+source build):
 
 ```bash
-cargo install --force TOOL_NAME
+acfs update --stack-only
 ```
 
 ### Missing Dependencies
 
-Some tools require system libraries:
+The released binaries need no extra libraries. Building from source needs a C toolchain:
 
 ```bash
-# For Tantivy-based tools (xf)
 sudo apt install -y build-essential pkg-config libssl-dev
-
-# For network tools (rano, rust_proxy)
-sudo apt install -y libpcap-dev
 ```
+
+rano's optional pcap mode (DNS answers and TLS SNI) needs a build with `--features pcap`,
+`libpcap-dev`, and root or CAP_NET_RAW. rust_proxy needs `iptables` and `ipset` at runtime.

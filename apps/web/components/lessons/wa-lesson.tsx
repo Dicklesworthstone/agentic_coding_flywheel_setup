@@ -86,7 +86,7 @@ export function WaLesson() {
             <FeatureCard
               icon={<Search className="h-5 w-5" />}
               title="Full-Text Search"
-              description="SQLite FTS5: lexical, semantic, hybrid"
+              description="Lexical (FTS5), semantic, or hybrid"
               gradient="from-emerald-500/20 to-teal-500/20"
             />
             <FeatureCard
@@ -142,7 +142,7 @@ A workflow or your orchestrator reacts (policy-gated)`}
         <CommandList
           commands={[
             { command: "ft watch", description: "Start the background watcher" },
-            { command: "ft status --health", description: "Check watcher and pane health" },
+            { command: "ft status --health", description: "Check watcher health (JSON)" },
             { command: "ft robot state", description: "View all panes as JSON" },
             { command: 'ft search "query"', description: "Search captured output" },
           ]}
@@ -213,7 +213,7 @@ ft robot send 43 "Start next task"`}
           <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
             <span className="text-amber-400 font-semibold">Custom Patterns</span>
             <p className="text-white/80 text-sm mt-1">
-              Define your own rules (<code>ft rules</code>)
+              Add TOML rule packs; check them with <code>ft rules test</code>
             </p>
           </div>
         </div>
@@ -232,10 +232,10 @@ ft robot send 43 "Start next task"`}
             transition={{ delay: 0.4 }}
             className="p-4 rounded-xl border border-border/50 bg-card/30"
           >
-            <h3 className="font-semibold text-primary mb-2">ft vs. NTM</h3>
+            <h3 className="font-semibold text-primary mb-2">ft and NTM</h3>
             <p className="text-muted-foreground text-sm">
-              ft is an alternative operator cockpit to NTM. It runs its own terminal engine rather
-              than tmux, so it observes panes in FrankenTerm, not the tmux sessions NTM spawns.
+              ft and NTM are separate, adjacent tools. ft runs its own terminal engine rather than
+              tmux, so it observes FrankenTerm panes, not the tmux sessions NTM spawns.
             </p>
           </motion.div>
           <motion.div
@@ -345,7 +345,7 @@ const SCENARIOS: Scenario[] = [
         name: "claude-code",
         status: "active",
         lines: [
-          { text: "$ claude --project api-server", color: "text-emerald-400" },
+          { text: "$ cd api-server && claude", color: "text-emerald-400" },
           { text: "Reading src/routes/users.ts...", color: "text-white/70" },
           { text: "Analyzing authentication flow...", color: "text-white/70" },
           { text: "Writing src/middleware/auth.ts", color: "text-cyan-400" },
@@ -415,7 +415,7 @@ const SCENARIOS: Scenario[] = [
         name: "claude-code",
         status: "active",
         lines: [
-          { text: "$ claude --project api-server", color: "text-emerald-400" },
+          { text: "$ cd api-server && claude", color: "text-emerald-400" },
           { text: "Writing src/routes/products.ts", color: "text-cyan-400" },
           { text: "+ export async function getProducts()", color: "text-emerald-400" },
           { text: "+ export async function createProduct()", color: "text-emerald-400" },
@@ -430,7 +430,7 @@ const SCENARIOS: Scenario[] = [
         name: "claude-code",
         status: "active",
         lines: [
-          { text: "$ claude --project frontend", color: "text-emerald-400" },
+          { text: "$ cd frontend && claude", color: "text-emerald-400" },
           { text: "Writing components/ProductCard.tsx", color: "text-cyan-400" },
           { text: "+ function ProductCard({ product })", color: "text-emerald-400" },
         ],
@@ -444,7 +444,7 @@ const SCENARIOS: Scenario[] = [
         name: "codex",
         status: "active",
         lines: [
-          { text: '$ codex --task "write tests"', color: "text-violet-400" },
+          { text: '$ codex "write tests"', color: "text-violet-400" },
           { text: "Creating tests/products.test.ts", color: "text-cyan-400" },
           { text: '+ describe("Products API", () => {', color: "text-emerald-400" },
         ],
@@ -458,7 +458,7 @@ const SCENARIOS: Scenario[] = [
         name: "claude-code",
         status: "active",
         lines: [
-          { text: "$ claude --project docs", color: "text-emerald-400" },
+          { text: "$ cd docs && claude", color: "text-emerald-400" },
           { text: "Writing docs/api-reference.md", color: "text-cyan-400" },
           { text: "## Products Endpoint", color: "text-white/70" },
         ],
@@ -503,7 +503,7 @@ const SCENARIOS: Scenario[] = [
         name: "claude-code",
         status: "active",
         lines: [
-          { text: "$ claude --project api-server", color: "text-emerald-400" },
+          { text: "$ cd api-server && claude", color: "text-emerald-400" },
           { text: "Refactoring database layer...", color: "text-white/70" },
         ],
         linesChanged: 201,
@@ -516,7 +516,7 @@ const SCENARIOS: Scenario[] = [
         name: "claude-code",
         status: "active",
         lines: [
-          { text: "$ claude --project frontend", color: "text-emerald-400" },
+          { text: "$ cd frontend && claude", color: "text-emerald-400" },
           { text: "Building search component...", color: "text-white/70" },
         ],
         linesChanged: 98,
@@ -529,7 +529,7 @@ const SCENARIOS: Scenario[] = [
         name: "codex",
         status: "error",
         lines: [
-          { text: '$ codex --task "fix lint"', color: "text-violet-400" },
+          { text: '$ codex "fix lint"', color: "text-violet-400" },
           { text: "Fixing src/utils.ts...", color: "text-yellow-400" },
           { text: "ESLint: 3 errors remaining", color: "text-red-400" },
           { text: "Fixing src/utils.ts... (retry)", color: "text-yellow-400" },
@@ -545,7 +545,7 @@ const SCENARIOS: Scenario[] = [
         name: "claude-code",
         status: "complete",
         lines: [
-          { text: "$ claude --project docs", color: "text-emerald-400" },
+          { text: "$ cd docs && claude", color: "text-emerald-400" },
           { text: "Task complete. All docs updated.", color: "text-emerald-400" },
         ],
         linesChanged: 312,
@@ -566,8 +566,8 @@ const SCENARIOS: Scenario[] = [
       { time: "14:42", agent: 45, event: "Task completed successfully", type: "success" },
     ],
     monitorOutput: [
-      '$ ft search "ESLint: 3 errors" --pane 44',
-      'Search results for "ESLint: 3 errors" (3 hits):',
+      '$ ft search "ESLint" --pane 44',
+      'Search results for "ESLint" (3 hits):',
       "1. 14:42 pane:44  ESLint: 3 errors remaining",
       "2. 14:41 pane:44  ESLint: 3 errors remaining",
       "3. 14:40 pane:44  ESLint: 3 errors remaining",
@@ -584,7 +584,7 @@ const SCENARIOS: Scenario[] = [
         name: "claude-code",
         status: "active",
         lines: [
-          { text: "$ claude --project payments", color: "text-emerald-400" },
+          { text: "$ cd payments && claude", color: "text-emerald-400" },
           { text: "Created src/payments/stripe.ts", color: "text-cyan-400" },
           { text: "Created src/payments/webhook.ts", color: "text-cyan-400" },
           { text: "Running tests... 14/14 passing", color: "text-emerald-400" },
@@ -600,7 +600,7 @@ const SCENARIOS: Scenario[] = [
         name: "claude-code",
         status: "active",
         lines: [
-          { text: "$ claude --project checkout-ui", color: "text-emerald-400" },
+          { text: "$ cd checkout-ui && claude", color: "text-emerald-400" },
           { text: "Building PaymentForm component", color: "text-white/70" },
         ],
         linesChanged: 145,
@@ -623,7 +623,7 @@ const SCENARIOS: Scenario[] = [
         name: "claude-code",
         status: "active",
         lines: [
-          { text: "$ claude --project infra", color: "text-emerald-400" },
+          { text: "$ cd infra && claude", color: "text-emerald-400" },
           { text: "Configuring Stripe webhooks...", color: "text-white/70" },
         ],
         linesChanged: 78,
@@ -663,7 +663,7 @@ const SCENARIOS: Scenario[] = [
         name: "claude-code",
         status: "rate-limited",
         lines: [
-          { text: "$ claude --project api-server", color: "text-emerald-400" },
+          { text: "$ cd api-server && claude", color: "text-emerald-400" },
           { text: "Writing src/routes/orders.ts...", color: "text-white/70" },
           { text: "ERROR: Rate limit exceeded (429)", color: "text-red-400" },
           { text: "Retrying in 58 seconds...", color: "text-yellow-400" },
@@ -679,7 +679,7 @@ const SCENARIOS: Scenario[] = [
         status: "active",
         lines: [
           { text: "--- Task handed over from pane #42 ---", color: "text-amber-400" },
-          { text: "$ claude --project api-server", color: "text-emerald-400" },
+          { text: "$ cd api-server && claude", color: "text-emerald-400" },
           { text: "Continuing orders.ts from pane #42", color: "text-cyan-400" },
           { text: "Writing remaining routes...", color: "text-white/70" },
         ],
@@ -693,7 +693,7 @@ const SCENARIOS: Scenario[] = [
         name: "codex",
         status: "active",
         lines: [
-          { text: '$ codex --task "write tests"', color: "text-violet-400" },
+          { text: '$ codex "write tests"', color: "text-violet-400" },
           { text: "Running test suite... 22/22 pass", color: "text-emerald-400" },
         ],
         linesChanged: 88,
@@ -741,7 +741,7 @@ const SCENARIOS: Scenario[] = [
         name: "claude-code",
         status: "complete",
         lines: [
-          { text: "$ claude --project api-server", color: "text-emerald-400" },
+          { text: "$ cd api-server && claude", color: "text-emerald-400" },
           { text: "All routes implemented", color: "text-emerald-400" },
           { text: "All 38 tests passing", color: "text-emerald-400" },
           { text: "Task complete. Notifying swarm.", color: "text-emerald-400" },
@@ -757,7 +757,7 @@ const SCENARIOS: Scenario[] = [
         status: "active",
         lines: [
           { text: "--- Triggered by pane #42 completion ---", color: "text-amber-400" },
-          { text: "$ claude --project integration", color: "text-emerald-400" },
+          { text: "$ cd integration && claude", color: "text-emerald-400" },
           { text: "Running full integration suite...", color: "text-white/70" },
         ],
         linesChanged: 23,
@@ -771,7 +771,7 @@ const SCENARIOS: Scenario[] = [
         status: "active",
         lines: [
           { text: "--- Triggered by pane #42 completion ---", color: "text-amber-400" },
-          { text: '$ codex --task "update changelog"', color: "text-violet-400" },
+          { text: '$ codex "update changelog"', color: "text-violet-400" },
           { text: "Generating CHANGELOG entry...", color: "text-white/70" },
         ],
         linesChanged: 15,
@@ -785,7 +785,7 @@ const SCENARIOS: Scenario[] = [
         status: "active",
         lines: [
           { text: "--- Triggered by pane #42 completion ---", color: "text-amber-400" },
-          { text: "$ claude --project deploy", color: "text-emerald-400" },
+          { text: "$ cd deploy && claude", color: "text-emerald-400" },
           { text: "Preparing staging deployment...", color: "text-white/70" },
         ],
         linesChanged: 8,

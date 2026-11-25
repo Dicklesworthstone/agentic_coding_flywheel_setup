@@ -1081,8 +1081,8 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
                 </Fragment>,
                 <Fragment key="human-review">
                   <strong>Check overlaps and select.</strong> Compare the 15 ideas against open
-                  beads (<code>br list --json</code>), merge rather than duplicate, then choose which
-                  to pursue.
+                  beads (<code>br list --json</code>), merge rather than duplicate, then you choose
+                  which to pursue.
                 </Fragment>,
                 <Fragment key="turn-into-beads">
                   <strong>Turn into beads.</strong> Selected ideas become beads with full
@@ -3182,7 +3182,7 @@ Then rewrite the skill to fix every issue you found. Make the happy path obvious
 
               <P>
                 The mining query (user prompts live at lines 1-3 of session entries;{" "}
-                <code>--fields summary</code> keeps only path, line, agent, title, and score):
+                <code>--fields summary</code> trims each hit to path, line, agent, title, score, and ids):
               </P>
 
               <CodeBlock

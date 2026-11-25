@@ -311,7 +311,7 @@ const STEP_COMMANDS: Record<number, string> = {
   1: "Spawning Claude-1 (claude-opus-5-5)...",
   2: "Spawning Claude-2 (claude-opus-5-5)...",
   3: "Spawning Codex (gpt-6.2-sol)...",
-  4: "Spawning Antigravity (Gemini 4 Neon)...",
+  4: "Spawning Antigravity: Gemini 4 Neon (XHigh)...",
   5: 'ntm send myproject "Analyze this codebase"',
   6: "Agents working in parallel...",
   7: "All agents complete!",
@@ -1365,7 +1365,7 @@ function AgentRatioCard() {
         <RatioItem
           count="1"
           name="Antigravity"
-          reason="Different perspective (Gemini 4 Neon), good for docs"
+          reason="Different perspective from Gemini 4 Neon (XHigh), good for docs"
           color="from-blue-500 to-purple-500"
         />
       </div>

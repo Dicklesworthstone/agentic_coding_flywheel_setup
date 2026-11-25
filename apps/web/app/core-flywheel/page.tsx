@@ -878,7 +878,7 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
                 name="DCG"
                 fullName="Destructive Command Guard"
                 color="#FF5F56"
-                description="A pre-execution hook for Claude Code, Codex, and other agent CLIs that blocks dangerous git, filesystem, and database commands. Sub-millisecond latency, mechanical enforcement."
+                description="A pre-execution hook for Claude Code, Codex, and other agent CLIs that blocks dangerous git and filesystem commands, with opt-in packs for databases, containers, and cloud CLIs. Sub-millisecond latency, mechanical enforcement."
                 usage="Works automatically. When a dangerous command is blocked, use safer alternatives or ask the user to run it manually."
                 command="dcg test 'rm -rf /' --explain"
               />

@@ -968,12 +968,12 @@ const PRICING_ITEMS = [
   },
   {
     name: "ChatGPT Pro",
-    price: "$200",
+    price: "$100–200",
     period: "/month",
     description: "GPT-6.2 Astra in ChatGPT Work for deep planning",
     icon: Cpu,
     gradient: "from-emerald-400 to-teal-500",
-    note: "Essential for plan documents",
+    note: "Pro tiers start at $100; essential for plan documents",
   },
 ];
 
@@ -1060,7 +1060,11 @@ function WhatDoesThisCostSection() {
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Estimated Monthly Total</p>
                 <p className="font-mono text-2xl font-bold sm:text-3xl">
-                  <span className="text-gradient-cosmic">$440 – $656</span>
+                  {/* Low: VPS + 1 Claude Max ($200) + ChatGPT Pro ($100 tier).
+                      High: VPS + 2 Claude Max ($400) + ChatGPT Pro ($200 tier). */}
+                  <span className="text-gradient-cosmic">
+                    {`$${VPS_TOP_PICK.recommended.priceUSD + 300} – $${VPS_TOP_PICK.recommended.priceUSD + 600}`}
+                  </span>
                   <span className="text-base font-normal text-muted-foreground">/month</span>
                 </p>
               </div>

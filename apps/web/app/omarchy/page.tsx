@@ -215,7 +215,8 @@ const TIERS: Record<ToolTier, { label: string; blurb: string; color: string }> =
 
 const TIER_ORDER: ToolTier[] = ["cornerstone", "flywheel", "thirdParty"];
 
-// Every entry is a binary ACFS puts on your PATH. Names come from
+// Every entry is a binary ACFS puts on your PATH; entries whose module has
+// enabled_by_default: false are marked "(optional module)". Names come from
 // lib/generated/manifest-tools.ts (cliName) — keep them in sync.
 const TOOLS: ToolEntry[] = [
   // Cornerstones: the ten tools a working session runs through, in workflow order.
@@ -347,7 +348,7 @@ const TOOLS: ToolEntry[] = [
   },
   {
     name: "xf",
-    description: "X Archive Search: fast search over X/Twitter data archives",
+    description: "X Archive Search: fast search over X/Twitter data archives (optional module)",
     tier: "flywheel",
   },
   {
@@ -357,7 +358,7 @@ const TOOLS: ToolEntry[] = [
   },
   {
     name: "rano",
-    description: "Network Observer: monitor AI CLI network traffic",
+    description: "Network Observer: monitor AI CLI network traffic (optional module)",
     tier: "flywheel",
   },
   {
@@ -383,17 +384,19 @@ const TOOLS: ToolEntry[] = [
   },
   {
     name: "aadc",
-    description: "ASCII Art Diagram Corrector: fix malformed ASCII diagrams from AI output",
+    description:
+      "ASCII Art Diagram Corrector: fix malformed ASCII diagrams from AI output (optional module)",
     tier: "flywheel",
   },
   {
     name: "caut",
-    description: "Coding Agent Usage Tracker: LLM provider usage and costs across agents",
+    description:
+      "Coding Agent Usage Tracker: LLM provider usage and costs across agents (optional module)",
     tier: "flywheel",
   },
   {
     name: "rust_proxy",
-    description: "Rust Proxy: route selected domains through an upstream proxy",
+    description: "Rust Proxy: route selected domains through an upstream proxy (optional module)",
     tier: "flywheel",
   },
   // Third-party: agents, runtimes, and CLIs the stack depends on.
@@ -933,6 +936,7 @@ export default function OmarchyPage() {
               Every name in the storm above is a binary on your PATH after install. ACFS leaves your
               desktop, shell, and prompt alone; the first two tiers are the flywheel stack it
               installs, and the third is the agents, runtimes, and CLIs it sets up around them.
+              Entries marked &ldquo;optional module&rdquo; are installed only when you opt in.
             </motion.p>
 
             {/* Legend */}

@@ -171,7 +171,7 @@ cass search "rate limit workaround rotation" --limit 3`}
 # Rapid reconnects to one endpoint → Retry storm, often rate limiting (use CAAM to rotate)
 # Connection timeouts → Network/DNS issue (check VPS connectivity)
 # 500/503 errors in agent output → Provider outage (switch to different provider)
-# Long-lived connections (>30s) → Provider overloaded (try during off-peak)
+# Connections far longer than your baseline → Slow responses, provider overloaded (try off-peak)
 # SSL errors → Certificate issue (check system time/certs)`}
           filename="Error Pattern Guide"
         />

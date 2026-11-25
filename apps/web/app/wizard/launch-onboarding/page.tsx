@@ -1133,7 +1133,7 @@ export default function LaunchOnboardingStep() {
                 <p className="font-medium text-foreground">cc (Claude Code)</p>
                 <p className="text-sm text-muted-foreground">
                   This is your primary AI coding assistant. Type{" "}
-                  <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">cc</code>
+                  <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">cc</code>{" "}
                   in any project folder and Claude will help you write, debug, and improve your
                   code. It can read your files, make changes, run tests, and more.
                 </p>
@@ -1155,7 +1155,7 @@ export default function LaunchOnboardingStep() {
                   Ultra-fast code search. Type{" "}
                   <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
                     rg &quot;searchterm&quot;
-                  </code>
+                  </code>{" "}
                   to find any text across all your files in milliseconds. Essential for navigating
                   large codebases.
                 </p>
@@ -1164,7 +1164,7 @@ export default function LaunchOnboardingStep() {
                 <p className="font-medium text-foreground">lazygit</p>
                 <p className="text-sm text-muted-foreground">
                   A visual interface for Git. Much easier than remembering git commands! Type{" "}
-                  <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">lazygit</code>
+                  <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">lazygit</code>{" "}
                   in any git repository to stage, commit, push, and manage branches visually.
                 </p>
               </div>
@@ -1174,7 +1174,7 @@ export default function LaunchOnboardingStep() {
           <GuideSection title="Your First Steps">
             <div className="space-y-4">
               <GuideStep number={1} title="Run the onboarding tutorial">
-                Type <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">onboard</code>
+                Type <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">onboard</code>{" "}
                 and press Enter. This interactive tutorial teaches you the basics of your new
                 environment.
               </GuideStep>
@@ -1182,14 +1182,15 @@ export default function LaunchOnboardingStep() {
               <GuideStep number={2} title="Create your first project session">
                 Type{" "}
                 <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
-                  ntm new hello-world
+                  ntm create hello-world --panes=1
                 </code>{" "}
-                to create a dedicated workspace for a test project.
+                to create a dedicated workspace for a test project and open a session inside it
+                (answer yes if it asks to create the folder).
               </GuideStep>
 
               <GuideStep number={3} title="Try Claude Code">
                 In your project folder, type{" "}
-                <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">cc</code>
+                <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">cc</code>{" "}
                 and ask it to &quot;create a simple hello world script in Python&quot;. Watch the
                 magic happen!
               </GuideStep>

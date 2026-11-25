@@ -94,8 +94,8 @@ export function PiLesson() {
       <Section title="Running Without an API Key" icon={<Play className="h-5 w-5" />} delay={0.3}>
         <Paragraph>
           Point <Highlight>pi</Highlight> at a local model server and it works with no cloud
-          account. Pick a built-in local provider with --provider; other OpenAI-compatible
-          endpoints go in{" "}
+          account. Pick a built-in local provider with <Highlight>--provider</Highlight>; other
+          OpenAI-compatible endpoints go in{" "}
           <Highlight>~/.pi/agent/models.json</Highlight>.
         </Paragraph>
         <CodeBlock

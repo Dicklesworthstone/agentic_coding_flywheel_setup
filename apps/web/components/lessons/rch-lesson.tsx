@@ -95,7 +95,8 @@ export function RchLesson() {
       {/* Section 2: How It Works */}
       <Section title="How It Works" icon={<Play className="h-5 w-5" />} delay={0.15}>
         <Paragraph>
-          RCH intercepts cargo commands via a Claude Code hook and offloads them to remote workers.
+          RCH intercepts build commands via a Claude Code hook (or its cargo shim) and offloads
+          them to remote workers.
         </Paragraph>
 
         <div className="mt-8 mb-8">

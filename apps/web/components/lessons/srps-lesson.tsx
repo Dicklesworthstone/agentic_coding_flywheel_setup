@@ -63,7 +63,7 @@ export function SrpsLesson() {
             <FeatureCard
               icon={<Activity className="h-5 w-5" />}
               title="sysmoni TUI"
-              description="Real-time CPU/memory monitoring with ananicy status"
+              description="Real-time CPU/memory/IO monitoring with per-process nice values"
               gradient="from-emerald-500/20 to-teal-500/20"
             />
             <FeatureCard
@@ -120,7 +120,7 @@ $ systemctl status ananicy-cpp
       >
         <Paragraph>
           The <Highlight>sysmoni</Highlight> TUI shows real-time CPU and memory usage per process,
-          along with the ananicy rule being applied to each.
+          along with each process&apos;s nice value, so you can see what SRPS has throttled.
         </Paragraph>
 
         <div className="mt-6">
@@ -138,7 +138,7 @@ $ sysmoni
           items={[
             "Per-process CPU and memory usage",
             "Nice value per process, throttled processes highlighted",
-            "Nice level and scheduling class",
+            "Disk read/write rates and open file descriptors",
             "Real-time updates (configurable interval)",
           ]}
         />
@@ -166,8 +166,8 @@ $ sysmoni
               description: "View daemon logs",
             },
             {
-              command: "sudo systemctl restart ananicy-cpp",
-              description: "Restart after adding custom rules",
+              command: "srps-reload-rules",
+              description: "Reload rules after adding custom ones",
             },
           ]}
         />
@@ -1658,7 +1658,7 @@ function MiniTerminal({ visibleLines, active }: { visibleLines: number; active: 
                   ? "text-emerald-400"
                   : line.cmd.startsWith("  Active:")
                     ? "text-sky-400/70"
-                    : line.cmd.startsWith("  Governor:")
+                    : line.cmd.startsWith("  Currently Throttled")
                       ? "text-amber-400/70"
                       : "text-muted-foreground"
               }

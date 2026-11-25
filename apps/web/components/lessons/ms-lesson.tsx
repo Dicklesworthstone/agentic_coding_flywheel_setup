@@ -76,7 +76,7 @@ export function MsLesson() {
             <FeatureCard
               icon={<Download className="h-5 w-5" />}
               title="Easy Install"
-              description="One command to install from JeffreysPrompts"
+              description="One command installs a bundle from a path, URL, or GitHub repo"
               gradient="from-blue-500/20 to-indigo-500/20"
             />
             <FeatureCard

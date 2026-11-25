@@ -49,7 +49,7 @@ export function SecurityLayersLesson() {
             <ArrowRight className="h-4 w-4 text-blue-400 shrink-0" />
             <span className="text-white/90 text-sm">
               <strong className="text-blue-400">Layer 3: CAAM</strong> — Credential rotation and
-              isolation so compromised agents can&apos;t drain API keys
+              isolation so one exhausted or compromised account can&apos;t stall every agent
             </span>
           </div>
         </div>
@@ -94,15 +94,15 @@ export function SecurityLayersLesson() {
       >
         <Paragraph>
           DCG is a pre-execution hook (Claude Code, Codex, Antigravity, and other agent CLIs) that
-          runs <Highlight>before every command execution</Highlight>.
-          It uses ast-grep internally for structural pattern matching, operating at sub-millisecond
-          latency — agents don&apos;t even notice it&apos;s there.
+          runs <Highlight>before every command execution</Highlight>. It parses each command&apos;s
+          structure (using ast-grep for embedded scripts) and checks it against its packs at
+          sub-millisecond latency — agents don&apos;t even notice it&apos;s there.
         </Paragraph>
 
         <CodeBlock
           code={`# DCG blocks destructive commands automatically
 # Agent tries: rm -rf /
-# → BLOCKED: filesystem.recursive_delete
+# → BLOCKED: core.filesystem:rm-rf-root-home
 
 # DCG understands command STRUCTURE, not just strings
 dcg test "rm -rf /" --explain
@@ -111,11 +111,11 @@ dcg test "rm -rf /" --explain
 dcg test "rm -rf /tmp/build" --explain
 # → ALLOWED: Scoped to /tmp (not root)
 
-dcg test "git push --force origin main" --explain
-# → BLOCKED: Force push to protected branch
-
 dcg test "git push --force origin feature-x" --explain
-# → ALLOWED: Force push to feature branch
+# → BLOCKED: --force can overwrite remote history on any branch
+
+dcg test "git push --force-with-lease origin feature-x" --explain
+# → ALLOWED: the lease refuses to clobber commits you haven't seen
 
 # DCG packs (rule bundles)
 dcg packs --enabled
@@ -127,7 +127,7 @@ dcg doctor --format json`}
         />
 
         <TipBox variant="tip">
-          DCG has zero false positives because it uses structural pattern matching via ast-grep. It
+          DCG keeps false positives low by looking at command structure instead of raw strings. It
           understands that <code className="text-emerald-300">rm -rf /tmp/build</code> is scoped
           while <code className="text-red-300">rm -rf /</code> is destructive.
         </TipBox>
@@ -154,18 +154,21 @@ slb init
 # Default "independent" policy refuses local approvals; opt in first
 slb config set general.approval_policy same_host
 
+# Every requester and reviewer works in an SLB session
+slb session start --agent agent-1   # → prints the session ID and key
+
 # Agent 1 wants to force-push (DCG would normally block)
-slb request "git push --force origin main" --reason "Rewrite history on my feature branch"
+slb request "git push --force origin feature-x" --reason "Rewrite history on my feature branch" -s <agent-1-id>
 # → Launch request created: slb-a7f3
 
 # Agent 1 sees:
-# ⚠️ CRITICAL: Requires approval before execution
+# ⚠️ CRITICAL: needs 2 approvals before execution
 
-# Human reviews and approves (from a separate reviewer session)
+# Each reviewer (human or another agent) approves from their own session
 slb approve slb-a7f3 --session-id <reviewer-id> --session-key <reviewer-key>
 
-# Now the command can execute
-slb execute slb-a7f3
+# Once both approvals are in, the command can execute
+slb execute slb-a7f3 -s <agent-1-id>
 
 # Policy for unattended workflows
 slb config set general.timeout_action auto_reject   # Reject if nobody reviews in time
@@ -289,17 +292,17 @@ caam limits claude
           code={`# Real scenario: Agent needs to drop and recreate a test database
 
 # Step 1: Agent tries "DROP DATABASE test_db"
-# → DCG: BLOCKED (sql.destructive_ddl)
+# → DCG: BLOCKED (database.postgresql:drop-database)
 
 # Step 2: Agent creates SLB request
-slb request "DROP DATABASE test_db" --reason "Recreate the throwaway test DB"
-# → slb-b2e9 created, awaiting approval
+slb request "DROP DATABASE test_db" --reason "Recreate the throwaway test DB" -s <agent-id>
+# → slb-b2e9 created, awaiting approval (CRITICAL: 2 approvals)
 
-# Step 3: Human reviews, sees it's a test DB, approves
+# Step 3: Reviewers see it's a test DB and approve
 slb approve slb-b2e9 --session-id <reviewer-id> --session-key <reviewer-key>
 
 # Step 4: Command executes safely through SLB
-slb execute slb-b2e9
+slb execute slb-b2e9 -s <agent-id>
 
 # Step 5: Agent continues with API calls via CAAM
 # → CAAM routes to claude-2 (claude-1 is cooling down)`}
