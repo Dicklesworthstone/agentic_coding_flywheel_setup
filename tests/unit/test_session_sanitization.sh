@@ -203,9 +203,112 @@ test_json_export_rejects_multiple_documents() {
     [[ ! -s "$ARTIFACT_DIR/multiple-documents.output" ]]
 }
 
+test_export_preserves_source_history_and_aliases() (
+    local fixture="$ARTIFACT_DIR/publication-source.json" destination index=0
+    local SOURCE_SESSION="$ARTIFACT_DIR/publication-source.jsonl"
+    printf '%s\n' 'original conversation history' > "$SOURCE_SESSION"
+    printf '%s\n' '{"content":"exported projection"}' > "$fixture"
+    ln -- "$SOURCE_SESSION" "$SOURCE_SESSION.hardlink" || return 1
+    ln -s -- "$SOURCE_SESSION" "$SOURCE_SESSION.link" || return 1
+    cass() { printf 'called\n' >> "$ARTIFACT_DIR/source-refusal-cass-called"; cat "$EXPORT_FIXTURE"; }
+    for destination in "$SOURCE_SESSION" "$ARTIFACT_DIR/./publication-source.jsonl" \
+        "$SOURCE_SESSION.hardlink" "$SOURCE_SESSION.link"; do
+        index=$((index + 1))
+        if run_export "source-refusal-$index" json "$fixture" --output "$destination"; then
+            return 1
+        fi
+        [[ ! -s "$ARTIFACT_DIR/source-refusal-$index.output" ]] || return 1
+        [[ "$(cat "$SOURCE_SESSION")" == 'original conversation history' ]] || return 1
+    done
+    [[ -L "$SOURCE_SESSION.link" && ! -e "$ARTIFACT_DIR/source-refusal-cass-called" ]]
+)
+
+test_export_refuses_directories_and_links() (
+    local fixture="$ARTIFACT_DIR/publication-links.json" destination index=0
+    local target="$ARTIFACT_DIR/publication-target" directory="$ARTIFACT_DIR/publication-directory"
+    printf '%s\n' 'user file sentinel' > "$target"
+    printf '%s\n' '{"content":"exported projection"}' > "$fixture"
+    mkdir -- "$directory" || return 1
+    ln -s -- "$directory" "$directory.link" || return 1
+    ln -s -- "$target" "$target.link" || return 1
+    ln -s -- "$target.absent" "$target.dangling" || return 1
+    for destination in "$directory" "$directory/" "$directory.link" "$target.link" "$target.dangling"; do
+        index=$((index + 1))
+        if run_export "unsafe-output-$index" json "$fixture" --output "$destination"; then
+            return 1
+        fi
+    done
+    [[ "$(cat "$target")" == 'user file sentinel' && ! -e "$target.absent" ]] || return 1
+    [[ -L "$target.link" && -L "$target.dangling" && -L "$directory.link" ]] || return 1
+    [[ -z "$(find "$directory" -mindepth 1 -print -quit)" ]]
+)
+
+test_export_replaces_regular_output_privately() (
+    local fixture="$ARTIFACT_DIR/publication-success.json" output="$ARTIFACT_DIR/replaced-export.json"
+    printf '%s\n' '{"content":"public projection","api_key":"fixturePublishCredential"}' > "$fixture"
+    printf '%s\n' 'previous export' > "$output"
+    umask 000
+    run_export publication-success json "$fixture" --output "$output" || return 1
+    jq -e '.content == "public projection" and .api_key == "[REDACTED]"' "$output" >/dev/null || return 1
+    [[ "$(stat -c %a -- "$output")" == 600 && ! -s "$ARTIFACT_DIR/publication-success.output" ]] || return 1
+    [[ "$(cat "$ARTIFACT_DIR/publication-success.stderr")" == *'Exported to:'* ]]
+)
+
+test_export_rechecks_destination_after_cass() (
+    local fixture="$ARTIFACT_DIR/publication-race.json" mode destination
+    printf '%s\n' '{"content":"exported projection"}' > "$fixture"
+    # Called indirectly by export_session in the sourced library.
+    # shellcheck disable=SC2329
+    cass() {
+        if [[ "$mode" == directory ]]; then
+            mkdir -- "$destination" || return 1
+        else
+            ln -s -- "$SOURCE_SESSION" "$destination" || return 1
+        fi
+        cat "$EXPORT_FIXTURE"
+    }
+    for mode in directory symlink; do
+        destination="$ARTIFACT_DIR/publication-race-$mode"
+        if run_export "publication-race-$mode" json "$fixture" --output "$destination"; then
+            return 1
+        fi
+        [[ ! -s "$ARTIFACT_DIR/publication-race-$mode.output" ]] || return 1
+    done
+    [[ -L "$ARTIFACT_DIR/publication-race-symlink" ]] || return 1
+    [[ -z "$(find "$ARTIFACT_DIR/publication-race-directory" -mindepth 1 -print -quit)" ]]
+)
+
+test_failed_export_publication_preserves_previous_output() (
+    local fixture="$ARTIFACT_DIR/publication-failure.json" output="$ARTIFACT_DIR/preserved-export.json"
+    local failed_mv="$ARTIFACT_DIR/publication-failing-mv"
+    printf '%s\n' '{"content":"exported projection"}' > "$fixture"
+    printf '%s\n' 'previous export sentinel' > "$output"
+    printf '%s\n' '#!/usr/bin/env bash' 'exit 73' > "$failed_mv"
+    chmod +x "$failed_mv" || return 1
+    # Fail the external rename, including the old PATH-based route. The export
+    # must not turn a publication error into a destructive streaming fallback.
+    # Both overrides are invoked indirectly by the sourced export library.
+    # shellcheck disable=SC2329
+    mv() { return 73; }
+    # shellcheck disable=SC2329
+    acfs_session_system_binary_path() {
+        if [[ "$1" == mv ]]; then printf '%s\n' "$failed_mv";
+        else printf '/usr/bin/%s\n' "$1"; fi
+    }
+    if run_export publication-failure json "$fixture" --no-sanitize --output "$output"; then
+        return 1
+    fi
+    [[ "$(cat "$output")" == 'previous export sentinel' ]] || return 1
+    [[ ! -s "$ARTIFACT_DIR/publication-failure.output" ]] || return 1
+    [[ "$(cat "$ARTIFACT_DIR/publication-failure.stderr")" != *'Exported to:'* ]]
+)
+
 for test_case in test_quoted_markdown_export test_json_export_preserves_public_values \
     test_export_optional_redaction_and_opt_out test_private_key_postcondition_with_opt_out \
-    test_failed_redactor_never_publishes test_json_export_rejects_multiple_documents; do
+    test_failed_redactor_never_publishes test_json_export_rejects_multiple_documents \
+    test_export_preserves_source_history_and_aliases test_export_refuses_directories_and_links \
+    test_export_replaces_regular_output_privately test_export_rechecks_destination_after_cass \
+    test_failed_export_publication_preserves_previous_output; do
     if "$test_case"; then
         printf 'PASS: %s\n' "$test_case"
         TESTS_PASSED=$((TESTS_PASSED + 1))

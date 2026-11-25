@@ -873,6 +873,71 @@ get_workspace_sessions() {
 # SESSION EXPORT
 # ============================================================
 
+acfs_session_validate_export_destination() {
+    local session_path="$1" output_file="$2"
+
+    if [[ -L "$output_file" ]] || { [[ -e "$output_file" ]] && [[ ! -f "$output_file" ]]; }; then
+        log_error "Refusing unsafe session export destination (expected a regular file): $output_file"
+        return 1
+    fi
+    if [[ "$session_path" -ef "$output_file" ]]; then
+        log_error "Refusing to overwrite source session history: $output_file"
+        return 1
+    fi
+    return 0
+}
+
+# Publish only complete, sanitized bytes. Pin the source and staged input before
+# changing directories, then stage on the destination filesystem so a failed
+# cross-device move can never fall back to truncating an existing output file.
+# The subshell keeps its descriptors, working directory, and cleanup trap local.
+acfs_session_publish_export() (
+    local staged_path="$1" session_path="$2" output_file="$3"
+    local output_dir="${output_file%/*}" output_name="${output_file##*/}"
+    local staged_fd session_fd tmp_publish="" mv_bin=""
+
+    if [[ -z "$output_name" || "$output_name" == . || "$output_name" == .. ]]; then
+        log_error "Refusing unsafe session export destination (expected a file path): $output_file"
+        return 1
+    fi
+    [[ "$output_dir" != "$output_file" ]] || output_dir=.
+    [[ -n "$output_dir" ]] || output_dir=/
+    if [[ ! -f "$staged_path" || -L "$staged_path" ]] ||
+        ! exec {staged_fd}<"$staged_path" || ! exec {session_fd}<"$session_path"; then
+        log_error "Failed to open session export for publication"
+        return 1
+    fi
+    if ! cd -P -- "$output_dir"; then
+        log_error "Failed to write exported session to: $output_file"
+        return 1
+    fi
+    acfs_session_validate_export_destination "/dev/fd/$session_fd" "./$output_name" || return 1
+
+    mv_bin="$(acfs_session_system_binary_path mv 2>/dev/null || true)"
+    if [[ -z "$mv_bin" ]]; then
+        log_error "mv is required to publish session exports but not installed"
+        return 1
+    fi
+    tmp_publish=$(mktemp './.acfs-session-export.XXXXXX') || {
+        log_error "Failed to stage exported session in: $output_dir"
+        return 1
+    }
+    trap 'acfs_session_remove_temp_files "$tmp_publish"' EXIT
+    if ! cat <&"$staged_fd" > "$tmp_publish"; then
+        log_error "Failed to stage exported session to: $output_file"
+        return 1
+    fi
+    acfs_session_validate_export_destination "/dev/fd/$session_fd" "./$output_name" || return 1
+    # -T treats the destination as one file even if it becomes a directory.
+    # rename replaces a final symlink rather than following it; never retry by
+    # opening the destination for writing after a publication failure.
+    if ! "$mv_bin" -T -- "$tmp_publish" "./$output_name"; then
+        log_error "Failed to write exported session to: $output_file"
+        return 1
+    fi
+    tmp_publish=""
+)
+
 # Export a session file with sanitization
 # Usage: export_session <session_path> [--format json|markdown] [--no-sanitize] [--output FILE]
 # Returns: Exported content to stdout (or file if --output specified)
@@ -942,6 +1007,10 @@ export_session() {
             ;;
     esac
 
+    if [[ -n "$output_file" ]]; then
+        acfs_session_validate_export_destination "$session_path" "$output_file" || return 1
+    fi
+
     # Check CASS is installed
     if ! check_cass_installed; then
         log_error "CASS not installed"
@@ -994,13 +1063,8 @@ export_session() {
     fi
 
     if [[ "$status" -eq 0 && -n "$output_file" ]]; then
-        # Move or copy to destination
-        # Try mv first (atomic if same fs), fall back to cat (streaming)
-        if ! mv -- "$tmp_export" "$output_file" 2>/dev/null; then
-            if ! cat "$tmp_export" > "$output_file"; then
-                log_error "Failed to write exported session to: $output_file"
-                status=1
-            fi
+        if ! acfs_session_publish_export "$tmp_export" "$session_path" "$output_file"; then
+            status=1
         fi
         if [[ "$status" -eq 0 ]]; then
             log_success "Exported to: $output_file"
