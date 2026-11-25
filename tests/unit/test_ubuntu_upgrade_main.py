@@ -88,6 +88,7 @@ acfs_resolve_selection() { trace selection; ACFS_EFFECTIVE_PLAN=(base.system); r
 acfs_interactive_module_selector() { trace interactive; ACFS_EFFECTIVE_PLAN=(base.system); return "$TEST_SELECTION_STATUS"; }
 list_modules() { trace list; }
 print_execution_plan() { trace plan; }
+print_installer_sources() { trace sources; }
 print_summary() { trace summary; }
 _state_acquire_lock() { :; }
 state_backup_and_remove() { trace mut:reset; }
@@ -282,6 +283,9 @@ confirm_resume() { trace normal_install_ready; exit 0; }
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertNotIn('upgrade', events)
                 self.assertFalse(any(e.startswith(('mut:', 'checkpoint:')) for e in events), events)
+                if flag == 'PRINT_MODE':
+                    self.assertIn('sources', events)
+                    self.assertNotIn('preflight', events)
 
     def test_invalid_targets_stop_before_network_or_environment_loading(self):
         for target in ('25.10', '', '24.04.1', '26.10', '$(touch never)', '26.04\n', '026.04'):

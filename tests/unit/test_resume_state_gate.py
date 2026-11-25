@@ -1152,6 +1152,32 @@ trap cleanup EXIT
                 selection = json.loads((folder / "home/.acfs/state.json").read_text())["module_selection"]
                 self.assertEqual(selection["selected_modules"], list(self.BASE_SCOPE))
 
+    def test_print_reports_selected_installer_sources_and_preserves_checkpoint(self):
+        installer = (ROOT / "install.sh").read_text()
+        preview = _main_fixture.definitions(installer, [
+            "print_installer_sources", "acfs_load_upstream_checksums",
+            "acfs_parse_checksums_content", "acfs_validate_upstream_checksums",
+            "acfs_required_upstream_tools"])
+        preview += "\nACFS_UPSTREAM_LOADED=false; declare -A ACFS_UPSTREAM_URLS=() ACFS_UPSTREAM_SHA256=()"
+        policy = ROOT / "checksums.yaml"
+        preview += "\nACFS_CHECKSUMS_YAML=" + shlex.quote(str(policy))
+        for args, selected, omitted in (
+            (("--print",), "bun", "uv"),
+            (("--print", "--only", "lang.uv"), "uv", "bun"),
+        ):
+            with self.subTest(args=args):
+                result, events, folder = self.run_scoped(args, execution=preview)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn("mode: safe", result.stdout)
+                self.assertIn("base.system — ", result.stdout)
+                self.assertIn(f"lang.{selected} — ", result.stdout)
+                self.assertNotIn(f"lang.{omitted} — ", result.stdout)
+                entry = policy.read_text().split(f"  {selected}:\n", 1)[1].splitlines()
+                url, pin = [line.split('"')[1] for line in entry[:2]]
+                self.assertIn(f"Installer: {url}\n  SHA-256: {pin}", result.stdout)
+                self.assertNotIn("preflight", events)
+                self.assert_unchanged(folder)
+
     def test_explicit_choices_can_expand_a_saved_no_deps_installation(self):
         cases = (
             ("--only", "agents.codex"),

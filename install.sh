@@ -2638,7 +2638,7 @@ Options:
   --mode <vibe|safe>      Install mode (default: vibe)
   --profile <profile>     Module profile (e.g. vibe, safe, minimal, agents-only, cloud-only, stack-only)
   --dry-run               Preview changes without applying
-  --print                 Print script without running
+  --print                 Show selected modules and their verified installer URLs and SHA-256 pins
   --resume                Resume interrupted installation
   --force-reinstall       Force reinstall of all modules
   --list-modules          List available modules and exit
@@ -3417,6 +3417,35 @@ print_execution_plan() {
     echo "  --skip-cloud:    $SKIP_CLOUD"
     echo ""
     echo "This is a preview. Run without --print-plan to execute."
+}
+
+print_installer_sources() {
+    echo "ACFS installer sources (mode: $MODE)"
+    echo "Manifest recipes: acfs.manifest.yaml"
+    echo "SHA-256 pins below apply to the named installer scripts."
+    echo "Selected modules: ${#ACFS_EFFECTIVE_PLAN[@]}"
+
+    local module tool
+    for module in "${ACFS_EFFECTIVE_PLAN[@]}"; do
+        printf '\n%s — %s\n' "$module" "${ACFS_MODULE_DESC[$module]}"
+        tool="${ACFS_MODULE_VERIFIED_INSTALLER_TOOL[$module]:-}"
+        if [[ -n "$tool" ]]; then
+            # Share the execution path's checksum source selection, including
+            # alternate refs and offline caches. This table loads once.
+            acfs_load_upstream_checksums || return 1
+            if [[ -z "${ACFS_UPSTREAM_URLS[$tool]:-}" || -z "${ACFS_UPSTREAM_SHA256[$tool]:-}" ]]; then
+                log_error "Missing installer URL or SHA-256 for $module ($tool)"
+                return 1
+            fi
+            printf '  Installer: %s\n  SHA-256: %s\n' "${ACFS_UPSTREAM_URLS[$tool]}" "${ACFS_UPSTREAM_SHA256[$tool]}"
+        fi
+        if [[ "${ACFS_MODULE_GENERATED[$module]}" == 0 ]]; then
+            echo "  Implementation: install.sh (orchestration)"
+        else
+            printf '  Manifest implementation: scripts/generated/install_%s.sh (%s)\n' \
+                "${ACFS_MODULE_CATEGORY[$module]}" "${ACFS_MODULE_FUNC[$module]}"
+        fi
+    done
 }
 
 # ============================================================
@@ -13005,7 +13034,7 @@ main() {
             log_error "The checkpoint $reset_requested_file conflicts with the resolved target home. Check TARGET_USER and TARGET_HOME."
             exit 1
         fi
-    elif [[ "$PRINT_PLAN_MODE" == true || "$DRY_RUN" == true ]]; then
+    elif [[ "$PRINT_PLAN_MODE" == true || "$DRY_RUN" == true || "$PRINT_MODE" == true ]]; then
         acfs_preview_installation_selection
     fi
 
@@ -13116,6 +13145,13 @@ main() {
         exit 0
     fi
 
+    # Source inspection needs the resolved plan but no host preflight, package
+    # bootstrap, or install confirmation. Keep --dry-run precedence when combined.
+    if [[ "$PRINT_MODE" == true && "$DRY_RUN" != true ]]; then
+        print_installer_sources || exit 1
+        exit 0
+    fi
+
     # Handle --reset-state: move state file aside and exit
     if [[ "$RESET_STATE_ONLY" == "true" ]]; then
         echo "Resetting ACFS state..." >&2
@@ -13185,27 +13221,6 @@ main() {
         print_execution_plan || true
         ACFS_SKILLS_AND_SUMMARY_DONE=1
         print_summary
-        exit 0
-    fi
-
-    if [[ "$PRINT_MODE" == "true" ]]; then
-        echo "The following tools will be installed from upstream:"
-        echo ""
-        echo "  - Oh My Zsh: https://ohmyz.sh"
-        echo "  - Powerlevel10k: https://github.com/romkatv/powerlevel10k"
-        echo "  - Bun: https://bun.sh"
-        echo "  - Rust: https://rustup.rs"
-        echo "  - uv: https://astral.sh/uv"
-        echo "  - Claude Code (native): https://claude.ai/install.sh"
-        echo "  - NTM: https://github.com/Dicklesworthstone/ntm"
-        echo "  - MCP Agent Mail: https://github.com/Dicklesworthstone/mcp_agent_mail_rust"
-        echo "  - UBS: https://github.com/Dicklesworthstone/ultimate_bug_scanner"
-        echo "  - Beads Viewer: https://github.com/Dicklesworthstone/beads_viewer"
-        echo "  - CASS: https://github.com/Dicklesworthstone/coding_agent_session_search"
-        echo "  - CM: https://github.com/Dicklesworthstone/cass_memory_system"
-        echo "  - CAAM: https://github.com/Dicklesworthstone/coding_agent_account_manager"
-        echo "  - SLB: https://github.com/Dicklesworthstone/simultaneous_launch_button"
-        echo ""
         exit 0
     fi
 
