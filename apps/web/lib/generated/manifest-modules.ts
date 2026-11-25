@@ -41,7 +41,7 @@ export interface ManifestProvenanceMetadata {
 
 export const manifestProvenance = {
   acfsVersion: "0.11.6",
-  manifestSha256: "7782b916105c4e4c6603f99f39e0192e1317b15d2eb3c102dacf6d69f734e772",
+  manifestSha256: "dd924dc5a20ba5d216d399bb90537764d243db0af936742b46a550b206c1ea95",
   checksumsYamlSha256: "ec14e45600447b518350827f6283455e4029b7856b7c367692c917224594cdb9",
 } as const satisfies ManifestProvenanceMetadata;
 
@@ -551,7 +551,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
   },
   {
     id: "stack.mcp_agent_mail",
-    description: "Like gmail for coding agents; MCP HTTP server + token; installs beads tools",
+    description: "Like gmail for coding agents; Rust MCP server + am CLI; Git archive + SQLite index; local HTTP service on 127.0.0.1:8765",
     category: "stack",
     phase: 9,
     dependencies: [
@@ -567,7 +567,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
   },
   {
     id: "stack.meta_skill",
-    description: "Local-first knowledge management with hybrid semantic search (ms)",
+    description: "Local-first skill management with hybrid search and MCP integration (ms)",
     category: "stack",
     phase: 9,
     dependencies: [
@@ -600,7 +600,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
   },
   {
     id: "stack.jeffreysprompts",
-    description: "Curated battle-tested prompts for AI agents - browse and install as skills (jfp)",
+    description: "Curated battle-tested prompts for AI agents - browse, search, copy, and export (jfp)",
     category: "stack",
     phase: 9,
     dependencies: [
@@ -742,7 +742,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
   },
   {
     id: "stack.dcg",
-    description: "Destructive Command Guard - Claude Code hook blocking dangerous git/fs commands",
+    description: "Destructive Command Guard - pre-execution hook (Claude Code, Codex, Gemini, Copilot, Cursor, and more) blocking destructive git/fs/database commands",
     category: "stack",
     phase: 9,
     dependencies: [
@@ -806,7 +806,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
   },
   {
     id: "stack.wezterm_automata",
-    description: "WezTerm Automata (wa) - terminal automation and orchestration for AI agents",
+    description: "WezTerm Automata (wa) - superseded by FrankenTerm (ft); not installed by ACFS",
     category: "stack",
     phase: 9,
     dependencies: [
@@ -1062,7 +1062,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
   },
   {
     id: "utils.rano",
-    description: "rano - Network observer for AI CLIs with request/response logging",
+    description: "rano - Network observer that attributes AI CLI sockets to processes and providers",
     category: "tools",
     phase: 9,
     dependencies: [
@@ -1113,7 +1113,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
   },
   {
     id: "utils.rust_proxy",
-    description: "rust_proxy - Transparent proxy routing for debugging network traffic",
+    description: "rust_proxy - Targeted transparent proxy routing selected domains through an upstream HTTP proxy",
     category: "tools",
     phase: 9,
     dependencies: [
@@ -1130,7 +1130,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
   },
   {
     id: "utils.aadc",
-    description: "aadc - ASCII diagram corrector for fixing malformed ASCII art",
+    description: "aadc - ASCII diagram corrector that realigns ragged right borders",
     category: "tools",
     phase: 9,
     dependencies: [

@@ -652,7 +652,7 @@ Don't commit ephemeral files. Use /effort max."`}
         <div className="mt-6">
           <CodeBlock
             code={`# 1. Gather proposals from multiple models
-# (Use GPT Pro, Gemini, Claude, Grok - whichever you have access to)
+# (Use GPT-6.2 Astra, Gemini 4 Carbon, Claude Fable 5.2, Grok 4.7 - whichever you have access to)
 # Save each as markdown in competing_proposal_plans/
 
 # 2. Synthesize into a master plan
@@ -1531,7 +1531,7 @@ const TERMINAL_COMMANDS: { time: string; cmd: string; agent: string }[] = [
   },
   {
     time: "1:18",
-    cmd: 'mcp.release_file_reservation(agent_name="RedFox", paths=["src/types/*.ts"])',
+    cmd: 'mcp.release_file_reservations(agent_name="RedFox", paths=["src/types/*.ts"])',
     agent: "GmiReview-1",
   },
   {

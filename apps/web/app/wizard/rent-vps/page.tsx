@@ -1017,15 +1017,18 @@ export default function RentVPSPage() {
               </div>
               <div className="rounded-lg border border-border/50 bg-card/50 p-3">
                 <p className="font-medium text-foreground">
-                  ChatGPT Pro ($200/month): Critical for Planning
+                  ChatGPT Pro (from $100/month): Critical for Planning
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  Access to GPT 5.2 Pro with Extended Thinking in the ChatGPT webapp. This is
+                  Access to GPT-6.2 Astra in ChatGPT Work, OpenAI&apos;s frontier model for deep
+                  reasoning. This is
                   <strong> the key to making this approach work</strong>: you use it to write,
                   revise, and iterate on comprehensive plan documents in markdown. Everything
                   depends on having an extremely detailed, granular plan, which you then convert
-                  into trackable tasks using <Jargon term="beads">Beads</Jargon>. The extended
-                  thinking capability is unmatched for this kind of strategic planning work.
+                  into trackable tasks using <Jargon term="beads">Beads</Jargon>. Its deep
+                  reasoning is unmatched for this kind of strategic planning work. Pro comes in
+                  several usage tiers starting at $100/month; the full-setup total below budgets
+                  the $200 tier.
                 </p>
               </div>
               <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
@@ -1046,16 +1049,16 @@ export default function RentVPSPage() {
             <div className="mt-4 rounded-lg border border-destructive/30 bg-destructive/8 p-3">
               <p className="text-sm text-muted-foreground">
                 <strong>⚠️ Realistic minimum investment:</strong> VPS (~${VPS_MONTHLY_USD}/month for
-                64GB) + Claude Max ($200/month) + ChatGPT Pro ($200/month) ={" "}
-                <strong>~${VPS_MONTHLY_USD + 400}/month</strong>. The $20/month Claude Pro tier does{" "}
+                64GB) + Claude Max ($200/month) + ChatGPT Pro (from $100/month) ={" "}
+                <strong>~${VPS_MONTHLY_USD + 300}/month</strong>. The $20/month Claude Pro tier does{" "}
                 <em>not</em> have enough capacity for agentic workflows; you&apos;ll hit rate limits
-                almost immediately. Claude Max is required for execution, and ChatGPT Pro&apos;s
-                extended thinking is essential for creating the detailed plan documents that make
-                this approach work.
+                almost immediately. Claude Max is required for execution, and GPT-6.2 Astra in
+                ChatGPT Pro is essential for creating the detailed plan documents that make this
+                approach work.
                 <br />
                 <br />
-                <strong>Perspective:</strong> A junior US developer costs ~$8k+/month. This is ~5%
-                of that, for AI agents that work 24/7.
+                <strong>Perspective:</strong> A junior US developer costs ~$8k+/month. This is
+                about 4–5% of that, for AI agents that work 24/7.
               </p>
             </div>
           </GuideSection>
@@ -1133,9 +1136,10 @@ export default function RentVPSPage() {
                   </li>
                 </ul>
                 <p className="mt-2 text-xs text-muted-foreground">
-                  Confirm this image is available in your selected region. For Ubuntu 22.04 or
-                  24.04, complete a supported LTS upgrade first; do not rely on ACFS&apos;s legacy
-                  automatic upgrade path.
+                  Confirm this image is available in your selected region. Ubuntu 22.04 or 24.04
+                  also works: the wizard&apos;s install command opts into an in-place upgrade to{" "}
+                  {ACFS_RECOMMENDED_UBUNTU} (--target-ubuntu={ACFS_RECOMMENDED_UBUNTU}), which adds
+                  30–60 minutes and a reboot per hop.
                 </p>
                 <ScreenshotFigure
                   file="contabo_us_03_order_page.png"

@@ -219,6 +219,8 @@ export function CassLesson() {
             code={`$ cass search "PostgreSQL connection" --robot --limit 2
 
 {
+  "query": "PostgreSQL connection",
+  "count": 2,
   "hits": [
     {
       "source_path": "/home/ubuntu/.claude/projects/.../session.jsonl",
@@ -237,7 +239,7 @@ export function CassLesson() {
       "score": 0.85
     }
   ],
-  "_meta": { "query": "PostgreSQL connection", "took_ms": 42 }
+  "budget": { "elapsed_ms": 42, "timed_out": false }
 }`}
             language="json"
           />
@@ -765,7 +767,7 @@ const SEARCH_SCENARIOS: SearchScenario[] = [
     label: "Cross-Agent",
     icon: "compare",
     query: "Docker multi-stage build",
-    command: 'cass search "Docker multi-stage build" --robot --compare',
+    command: 'cass search "Docker multi-stage build" --robot --aggregate agent --limit 5',
     description:
       "Compare how different agents approached the same problem to find the best solution",
     hits: [
@@ -871,7 +873,7 @@ const SEARCH_SCENARIOS: SearchScenario[] = [
     label: "Timeline",
     icon: "timeline",
     query: "database migration",
-    command: 'cass search "database migration" --robot --sort date',
+    command: 'cass search "database migration" --robot --aggregate date --limit 5',
     description: "Reconstruct a timeline of how a problem evolved across sessions and agents",
     hits: [
       {
@@ -975,7 +977,7 @@ const SEARCH_SCENARIOS: SearchScenario[] = [
     label: "Knowledge",
     icon: "knowledge",
     query: "testing strategies",
-    command: 'cass search "testing strategies" --robot --extract-patterns',
+    command: 'cass search "testing strategies" --robot --fields summary --limit 10',
     description: "Extract reusable knowledge patterns and best practices from agent sessions",
     hits: [
       {

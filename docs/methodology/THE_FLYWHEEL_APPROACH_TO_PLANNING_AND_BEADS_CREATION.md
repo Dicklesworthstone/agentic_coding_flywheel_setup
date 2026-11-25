@@ -426,10 +426,12 @@ Claude Opus in the web app is also good for this, but GPT Pro remains the top ch
 
 For the best results, ask multiple frontier models to independently create plans for the same project:
 
-1. **GPT Pro** (with Extended Reasoning)
-2. **Claude Opus** (in the web app)
-3. **Gemini** (with Deep Think enabled)
-4. **Grok Heavy**
+1. **GPT-6.2 Astra** (in ChatGPT Work, with the strongest reasoning setting)
+2. **Claude Fable 5.2** (in the web app)
+3. **Gemini 4 Carbon** (Gemini app with Google AI Ultra, or the Gemini API)
+4. **Grok 4.7**
+
+(Model lineup as of November 2026; the agent-flywheel.com complete guide keeps the dated current recommendation.)
 
 Each model brings different strengths and perspectives. The goal is to generate diverse raw material that will be synthesized in the next phase.
 

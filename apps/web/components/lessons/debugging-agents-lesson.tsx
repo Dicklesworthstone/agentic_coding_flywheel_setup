@@ -45,7 +45,7 @@ export function DebuggingAgentsLesson() {
     <div className="space-y-8">
       <GoalBanner>
         Diagnose agent failures, rate limits, cost overruns, and network issues using RANO, CAUT,
-        WA, and CASS together.
+        FrankenTerm, and CASS together.
       </GoalBanner>
 
       {/* Section 1: The Debugging Toolkit */}
@@ -63,19 +63,19 @@ export function DebuggingAgentsLesson() {
             <FeatureCard
               icon={<Wifi className="h-5 w-5" />}
               title="RANO"
-              description="Network traffic — see every API call"
+              description="Network observer — which process talks to which provider"
               gradient="from-cyan-500/20 to-teal-500/20"
             />
             <FeatureCard
               icon={<DollarSign className="h-5 w-5" />}
               title="CAUT"
-              description="Cost tracking — per-session spend analysis"
+              description="Usage tracking — quota windows and per-session cost"
               gradient="from-emerald-500/20 to-teal-500/20"
             />
             <FeatureCard
               icon={<Activity className="h-5 w-5" />}
-              title="WA"
-              description="Terminal state — pattern detection across panes"
+              title="FrankenTerm"
+              description="Terminal state — pattern detection across panes (ft, installed separately)"
               gradient="from-violet-500/20 to-purple-500/20"
             />
             <FeatureCard
@@ -106,20 +106,20 @@ export function DebuggingAgentsLesson() {
         </Paragraph>
 
         <CodeBlock
-          code={`# Step 1: Check if RANO sees 429 responses
-rano status
-# Look for: HTTP 429 Too Many Requests
+          code={`# Step 1: Look for reconnect storms (RANO sees sockets, not HTTP status codes)
+rano --pattern claude --retry-threshold 5 --retry-window-ms 30000
+# Look for: retry-pattern warnings against one provider endpoint
 
 # Step 2: Check which provider is throttling
-caut breakdown
-# Shows per-provider token consumption
+caut usage --provider all
+# Shows each provider's remaining session/weekly quota and reset time
 
-# Step 3: Check WA for rate limit patterns across panes
-wa robot events --rule-id "claude_code.rate_limit" --unhandled-only
+# Step 3: Check FrankenTerm for usage-limit events across panes
+ft robot events --rule-id "claude_code.usage.reached" --unhandled
 
 # Step 4: Rotate to a fresh account
-caam status --verbose
-caam rotate
+caam limits claude
+caam next claude
 
 # Step 5: Check CASS for how you solved this before
 cass search "rate limit workaround rotation" --limit 3`}
@@ -127,7 +127,7 @@ cass search "rate limit workaround rotation" --limit 3`}
         />
 
         <TipBox variant="tip">
-          If you see 429s from RANO but CAUT shows low token usage, you&apos;re likely hitting
+          If RANO shows reconnect storms but CAUT shows low token usage, you&apos;re likely hitting
           requests-per-minute limits, not token limits. Space out your requests or use CAAM to
           rotate accounts.
         </TipBox>
@@ -138,30 +138,40 @@ cass search "rate limit workaround rotation" --limit 3`}
       {/* Section 3: Network Issues */}
       <Section title="Network Debugging" icon={<Wifi className="h-5 w-5" />} delay={0.2}>
         <Paragraph>
-          RANO intercepts all agent API traffic, letting you see exactly what&apos;s happening at
-          the network level.
+          RANO attributes every socket your agents open to a process and provider (it does not
+          decrypt or log payloads), so you can see which agent is talking to which endpoint and
+          how often.
         </Paragraph>
 
         <CommandList
           commands={[
-            { command: "rano status", description: "Show active connections and recent errors" },
-            { command: "rano log --errors-only", description: "Filter to just failed requests" },
-            { command: "rano log --provider anthropic", description: "Filter by API provider" },
+            { command: "rano status", description: "One-line activity summary for your prompt" },
             {
-              command: "rano log --slow --threshold 10s",
-              description: "Find requests taking over 10 seconds",
+              command: "rano report --latest",
+              description: "Session summary: providers, top domains/IPs",
             },
-            { command: "rano log --status 5xx", description: "Find server errors from providers" },
+            {
+              command: "rano export --format csv --provider anthropic",
+              description: "Export one provider's events",
+            },
+            {
+              command: "rano --alert-duration-ms 10000",
+              description: "Alert on connections lasting over 10 seconds",
+            },
+            {
+              command: "rano diff --old <run-id> --new <run-id>",
+              description: "Compare two sessions",
+            },
           ]}
         />
 
         <CodeBlock
           code={`# Common patterns and what they mean:
 
-# Lots of 429s → Rate limiting (use CAAM to rotate)
+# Rapid reconnects to one endpoint → Retry storm, often rate limiting (use CAAM to rotate)
 # Connection timeouts → Network/DNS issue (check VPS connectivity)
-# 500/503 errors → Provider outage (switch to different provider)
-# Slow responses (>30s) → Provider overloaded (try during off-peak)
+# 500/503 errors in agent output → Provider outage (switch to different provider)
+# Long-lived connections (>30s) → Provider overloaded (try during off-peak)
 # SSL errors → Certificate issue (check system time/certs)`}
           filename="Error Pattern Guide"
         />
@@ -178,29 +188,28 @@ cass search "rate limit workaround rotation" --limit 3`}
 
         <CodeBlock
           code={`# Find your most expensive sessions today
-caut sessions --sort cost --limit 5
+caut session --today
 
-# Compare against yesterday
-caut summary --period 1d
-caut summary --period 2d  # includes yesterday
+# Usage trend over the last two days
+caut history show --days 2
 
-# Check token efficiency (high input/low output = wasted context)
-caut efficiency
+# Rescan local logs for cost totals
+caut cost --refresh
 
-# Drill into a specific session's API calls
-rano log --session <session-id> --verbose
+# Drill into one RANO session's connections
+rano report --run-id <run-id>
 
 # Common cost culprits:
 # 1. Agents re-reading large files repeatedly
 # 2. Long context windows with low-value content
 # 3. Agents stuck in retry loops
-# 4. Using Opus when Sonnet would suffice`}
+# 4. Using Claude Fable or Opus when Sonnet would suffice`}
           filename="Cost Analysis"
         />
 
         <TipBox variant="warning">
           If an agent&apos;s input tokens are 10x its output tokens, it&apos;s probably stuffing too
-          much context. Use TRU to compress source files before feeding them to agents.
+          much context. Trim what you feed it, and use TRU to encode JSON tool output as TOON.
         </TipBox>
       </Section>
 
@@ -209,27 +218,26 @@ rano log --session <session-id> --verbose
       {/* Section 5: Stuck Agent Detection */}
       <Section title="Stuck Agent Detection" icon={<Activity className="h-5 w-5" />} delay={0.3}>
         <Paragraph>
-          WA detects when agents go silent. An idle pane usually means the agent is waiting for
-          approval, hit an error, or is genuinely stuck.
+          FrankenTerm (<code>ft</code>, the successor to WezTerm Automata; ACFS doesn&apos;t
+          install it) detects when agents go silent. An idle pane usually means the agent is
+          waiting for approval, hit an error, or is genuinely stuck.
         </Paragraph>
 
         <CodeBlock
-          code={`# Check all pane states
-wa robot state | jq '.data.panes[] |
-  select(.idle_seconds > 120) |
-  {id, title, idle_seconds, last_output_preview}'
+          code={`# List every pane the mux can see
+ft robot state
 
 # Get the last 50 lines from a stuck pane
-wa robot get-text <pane_id> --tail 50
+ft robot get-text <pane_id> --tail 50
 
-# Search for error patterns in pane output
-wa search "error|failed|panic|traceback" --pane <pane_id>
+# Search captured output from that pane
+ft search "error" --pane <pane_id>
 
-# Check if agent is waiting for SLB approval
-wa robot events --rule-id "claude_code.waiting_approval"
+# Check if agent is waiting for approval
+ft robot events --rule-id "claude_code.approval_needed"
 
-# Force-send a nudge to wake up a stuck agent
-wa robot send <pane_id> "Continue with the task"`}
+# Force-send a nudge to wake up a stuck agent (policy-gated)
+ft robot send <pane_id> "Continue with the task"`}
           filename="Stuck Agent Diagnosis"
         />
       </Section>
@@ -262,17 +270,19 @@ cm context "debugging API connection failures" --json`}
           <div className="p-3 rounded-lg bg-cyan-500/10 border border-cyan-500/30">
             <span className="text-cyan-400 font-semibold">Quick Diagnosis</span>
             <p className="text-white/80 text-sm mt-1">
-              RANO status + CAUT summary = instant health check
+              RANO status + caut usage = instant health check
             </p>
           </div>
           <div className="p-3 rounded-lg bg-violet-500/10 border border-violet-500/30">
             <span className="text-violet-400 font-semibold">Deep Investigation</span>
-            <p className="text-white/80 text-sm mt-1">WA events + RANO logs = full request trace</p>
+            <p className="text-white/80 text-sm mt-1">
+              FrankenTerm events + RANO reports = full connection trace
+            </p>
           </div>
           <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
             <span className="text-emerald-400 font-semibold">Cost Audit</span>
             <p className="text-white/80 text-sm mt-1">
-              CAUT breakdown + session drill-down = spend accountability
+              caut cost + caut session drill-down = spend accountability
             </p>
           </div>
           <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
@@ -388,7 +398,7 @@ function makeScenarios(): DebugScenario[] {
         {
           rank: 1,
           label: "Kill loop and reset context",
-          command: 'wa robot send pane-1 "/clear"',
+          command: 'ntm send myproject --pane=1 "/clear"',
           confidence: 95,
         },
         {
@@ -473,13 +483,13 @@ function makeScenarios(): DebugScenario[] {
         {
           rank: 1,
           label: "Force context refresh",
-          command: 'wa robot send pane-2 "Read the file again"',
+          command: 'ntm send myproject --pane=2 "Read the file again"',
           confidence: 92,
         },
         {
           rank: 2,
           label: "Clear conversation and restart",
-          command: 'wa robot send pane-2 "/clear"',
+          command: 'ntm send myproject --pane=2 "/clear"',
           confidence: 88,
         },
         {
@@ -723,7 +733,7 @@ function makeScenarios(): DebugScenario[] {
       fixes: [
         {
           rank: 1,
-          label: "Rotate API accounts",
+          label: "Rotate to a fresh account",
           command: "caam next claude --usage-aware",
           confidence: 94,
         },

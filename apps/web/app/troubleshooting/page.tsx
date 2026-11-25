@@ -222,7 +222,7 @@ const ISSUES: Omit<TroubleshootingIssue, "searchable">[] = [
           "Even if disconnected, your work continues",
           "Just reconnect and reattach to your session",
         ],
-        command: "ntm new myproject",
+        command: "ntm create myproject --panes=1",
       },
       {
         title: "Configure SSH keep-alive",
@@ -232,7 +232,8 @@ const ISSUES: Omit<TroubleshootingIssue, "searchable">[] = [
         ],
       },
     ],
-    prevention: "Always work inside tmux sessions. Use 'ntm new projectname' before starting work.",
+    prevention:
+      "Always work inside tmux sessions. Use 'ntm create projectname --panes=1' (it reattaches if the session already exists) before starting work.",
   },
   {
     id: "install-curl-fails",
@@ -312,7 +313,7 @@ const ISSUES: Omit<TroubleshootingIssue, "searchable">[] = [
     solutions: [
       {
         title: "Check available disk space",
-        steps: ["View disk usage", "You need at least 10GB free for ACFS"],
+        steps: ["View disk usage", "ACFS preflight requires at least 20GB free (40GB+ recommended)"],
         command: "df -h",
       },
       {
@@ -337,13 +338,13 @@ const ISSUES: Omit<TroubleshootingIssue, "searchable">[] = [
       {
         title: "Complete authentication flow",
         steps: [
-          "Run 'claude' in terminal",
+          "Run 'claude auth login' in terminal",
           "Copy the URL displayed",
           "Open in your laptop's browser (not on VPS)",
           "Log in with your Anthropic account",
           "Return to terminal after success message",
         ],
-        command: "claude",
+        command: "claude auth login",
       },
       {
         title: "Check every agent's sign-in at once",
@@ -358,7 +359,7 @@ const ISSUES: Omit<TroubleshootingIssue, "searchable">[] = [
         title: "Check your subscription",
         steps: [
           "Verify you have an active Claude subscription",
-          "Visit console.anthropic.com to check status",
+          "Check your Pro/Max plan at claude.ai (Settings); console.anthropic.com covers API billing only",
         ],
       },
     ],

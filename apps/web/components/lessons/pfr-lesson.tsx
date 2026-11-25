@@ -52,7 +52,7 @@ export function PfrLesson() {
             <FeatureCard
               icon={<RotateCcw className="h-5 w-5" />}
               title="Model-Aware Resume"
-              description="Reopens each victim with its recorded model in its own tab"
+              description="Reopens each victim with its recorded model in its own Ghostty tab"
               gradient="from-violet-500/20 to-purple-500/20"
             />
             <FeatureCard
@@ -99,7 +99,7 @@ pfr -y
 # Each victim reopens with its recorded model:
 #   Claude Code sessions  -> cc --resume
 #   Codex sessions        -> cod resume
-# ...each in its own terminal tab.
+# ...each in its own Ghostty tab.
 
 # Afterward, pfr verifies against ps and writes last-report.json.
 # A silent failure (tab opened but no live process) exits non-zero.`}
@@ -114,8 +114,8 @@ pfr -y
 
         <TipBox variant="warning">
           There is no <Highlight>--version</Highlight> flag; use <Highlight>pfr --doctor</Highlight>{" "}
-          instead. PFR is a local-workstation tool: on a headless server it can still plan, but it
-          cannot reopen terminal tabs.
+          instead. PFR is a local-workstation tool that needs Ghostty (Ghostty.app on macOS, the
+          ghostty CLI on Linux): on a headless server it can still plan, but it cannot reopen tabs.
         </TipBox>
       </Section>
     </div>

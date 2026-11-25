@@ -134,12 +134,11 @@ export const COMMANDS: CommandRef[] = [
   },
   {
     name: "gmi",
-    fullName: "Gemini CLI (legacy)",
+    fullName: "Antigravity CLI (legacy gmi shortcut)",
     description: "Legacy shortcut retained for old habits; now launches locked agy.",
     category: "agents",
     example: 'gmi -p "review this PR"',
-    aliases: ["gemini"],
-    docsUrl: "/learn/tools/gemini-cli",
+    docsUrl: "/learn/tools/antigravity-cli",
   },
   {
     name: "rg",
@@ -147,7 +146,7 @@ export const COMMANDS: CommandRef[] = [
     description: "Ultra-fast code search.",
     category: "search",
     example: 'rg "TODO" ./apps',
-    aliases: ["grep"],
+    aliases: ["rgrep", "search"],
   },
   {
     name: "fd",
@@ -155,7 +154,7 @@ export const COMMANDS: CommandRef[] = [
     description: "Fast file finder.",
     category: "search",
     example: 'fd "*.ts"',
-    aliases: ["find", "fdfind"],
+    aliases: ["fdfind"],
   },
   {
     name: "fzf",
@@ -191,7 +190,7 @@ export const COMMANDS: CommandRef[] = [
     fullName: "Named Tmux Manager",
     description: "Session management for agents and workflows.",
     category: "stack",
-    example: "ntm new acfs",
+    example: "ntm spawn myproject --cc=2 --cod=1",
     docsUrl: "/learn/tools/ntm",
   },
   {
@@ -265,7 +264,7 @@ export const COMMANDS: CommandRef[] = [
   {
     name: "ms",
     fullName: "Meta Skill",
-    description: "Local-first knowledge management with hybrid semantic search.",
+    description: "Local-first skill management with hybrid search and MCP integration.",
     category: "stack",
     example: "ms search 'auth flow'",
     aliases: ["meta-skill"],
@@ -314,7 +313,7 @@ export const COMMANDS: CommandRef[] = [
   {
     name: "dcg",
     fullName: "Destructive Command Guard",
-    description: "Claude Code hook blocking dangerous git/fs commands before execution.",
+    description: "Pre-execution hook (Claude Code, Codex, and more) blocking dangerous git/fs commands.",
     category: "stack",
     example: "dcg test 'rm -rf /'",
     aliases: ["destructive-command-guard"],
@@ -367,7 +366,7 @@ export const COMMANDS: CommandRef[] = [
   {
     name: "sysmoni",
     fullName: "SRPS System Monitor",
-    description: "Real-time TUI showing CPU/memory per process with ananicy rule status.",
+    description: "Real-time TUI showing per-process CPU, memory, IO, FD counts and nice values.",
     category: "stack",
     example: "sysmoni",
     docsUrl: "/learn/tools/srps",

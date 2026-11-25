@@ -157,19 +157,19 @@ bv --robot-triage --label "backend"`}
             },
             { command: "bv --robot-plan", description: "Dependency-respecting execution plan" },
             {
-              command: "bv --robot-blocker-chain",
-              description: "Find the longest blocking chains",
+              command: "bv --robot-blocker-chain <bead-id>",
+              description: "Full blocker chain for one issue",
             },
             {
               command: "bv --robot-orphans",
-              description: "Discover disconnected issues with no dependencies",
+              description: "Find commits that should be linked to beads but aren't",
             },
             {
               command: "bv --robot-related <bead-id>",
               description: "Find issues related to a specific bead",
             },
             {
-              command: "bv --robot-graph --format mermaid",
+              command: "bv --robot-graph --graph-format mermaid",
               description: "Export dependency graph as Mermaid diagram",
             },
           ]}
@@ -207,7 +207,7 @@ bv --robot-file-hotspots
 bv --robot-capacity --agents=3
 
 # Forecast completion ETAs
-bv --robot-forecast`}
+bv --robot-forecast all`}
           filename="Impact Analysis"
         />
       </Section>
@@ -225,17 +225,17 @@ bv --robot-forecast`}
           code={`# Proactive alerts (drift + anomalies)
 bv --robot-alerts
 
-# Detect drift from baseline
-bv --robot-drift
+# Detect drift from a saved baseline (create one first: bv --save-baseline "v1")
+bv --check-drift --robot-drift
 
 # Performance and cache metrics
 bv --robot-metrics
 
 # Diff since a git ref (time-travel)
-bv --robot-diff --since HEAD~5
+bv --robot-diff --diff-since HEAD~5
 
 # View historical state
-bv --as-of v1.0.0
+bv --robot-insights --as-of v1.0.0
 
 # Label health (velocity, staleness, cascade effects)
 bv --robot-label-health`}
@@ -243,8 +243,8 @@ bv --robot-label-health`}
         />
 
         <TipBox variant="tip">
-          Use <code>bv --robot-alerts</code> in a cron job or CI step. Exit code 0 means healthy, 1
-          means drifted, 2 means critical — perfect for automated monitoring.
+          Use <code>bv --check-drift</code> in a cron job or CI step. Exit code 0 means OK, 1
+          means critical drift, 2 means warning — perfect for automated monitoring.
         </TipBox>
       </Section>
 
@@ -713,31 +713,31 @@ const TERMINAL_COMMANDS: Record<AnalysisMode, string[]> = {
     '{"status":"complete","recommendations":6}',
   ],
   pagerank: [
-    "$ bv --robot-insights --metric pagerank",
+    "$ bv --robot-insights | jq '.full_stats.pagerank'",
     '{"DB":0.31,"AUTH":0.24,"API":0.18,"PERF":0.14}',
     '{"UI":0.12,"NOTIFY":0.11,"BILLING":0.10}',
     '{"TESTS":0.09,"DOCS":0.07,"CACHE":0.05}',
   ],
   "critical-path": [
-    "$ bv --robot-blocker-chain",
+    "$ bv --robot-blocker-chain BILLING",
     '{"chain":["DB","API","PERF","BILLING"]}',
     '{"length":4,"estimated_days":28}',
     '{"bottleneck":"DB","blocks_remaining":3}',
   ],
   cycles: [
-    "$ bv --robot-insights --cycles",
+    "$ bv --robot-insights | jq '.Cycles'",
     '{"warning":"cycle_detected","nodes":3}',
     '{"cycle":["API","NOTIFY","PERF","API"]}',
     '{"recommendation":"break_edge PERF->API"}',
   ],
   "quick-wins": [
-    "$ bv --robot-triage --filter quick-wins",
+    "$ bv --robot-triage | jq '.triage.quick_wins'",
     '{"quick_wins":["TESTS","DOCS"]}',
     '{"TESTS":{"blockers":0,"dependents":0}}',
     '{"DOCS":{"blockers":0,"dependents":1}}',
   ],
   bottlenecks: [
-    "$ bv --robot-priority --metric betweenness",
+    "$ bv --robot-insights | jq '.full_stats.betweenness'",
     '{"DB":{"betweenness":0.82,"blocking":4}}',
     '{"AUTH":{"betweenness":0.65,"blocking":2}}',
     '{"API":{"betweenness":0.48,"blocking":2}}',

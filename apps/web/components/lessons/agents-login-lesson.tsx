@@ -40,7 +40,8 @@ export function AgentsLoginLesson() {
       {/* The Three Agents */}
       <Section title="The Three Agents" icon={<Bot className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          You have three powerful coding agents installed, each from a different AI company:
+          ACFS installs three coding agents by default, each from a different AI company (Grok CLI,
+          oh-my-pi, and OpenCode are optional add-ons):
         </Paragraph>
 
         <div className="mt-8 grid gap-4 sm:grid-cols-3">
@@ -71,11 +72,12 @@ export function AgentsLoginLesson() {
         </div>
 
         <Paragraph>
-          The Antigravity CLI (<Highlight>agy</Highlight>) is pinned to Gemini 3.1 Pro (High). It
+          The Antigravity CLI (<Highlight>agy</Highlight>) is pinned to Gemini 4 Neon (XHigh). It
           replaced the Gemini CLI (<Highlight>gmi</Highlight>), which retired 2026-06-18 —{" "}
-          <Highlight>gmi</Highlight> still works for reading old{" "}
-          <Highlight>~/.gemini/tmp</Highlight> history, but use <Highlight>agy</Highlight> for all
-          new work.
+          <Highlight>gmi</Highlight> is kept only as a legacy shortcut and now launches the same
+          locked Antigravity launcher as <Highlight>agy</Highlight>. Old{" "}
+          <Highlight>~/.gemini/tmp</Highlight> history stays on disk for session-search tools such
+          as cass; use <Highlight>agy</Highlight> for all new work.
         </Paragraph>
 
         <div className="mt-8">
@@ -122,8 +124,8 @@ export function AgentsLoginLesson() {
           <AliasCard
             alias="agy"
             name="Antigravity CLI"
-            code={`agy --model "Gemini 4 Neon (XHigh)" \\
-  --dangerously-skip-permissions`}
+            code={`$HOME/.local/bin/agy-locked
+# = agy-real --model "Gemini 4 Neon (XHigh)" --dangerously-skip-permissions`}
             features={[
               'Model pinned to "Gemini 4 Neon (XHigh)"',
               "Auto-approves tool permissions (no confirmations)",
@@ -670,7 +672,7 @@ const SCENARIOS: Scenario[] = [
           { text: "$ source ~/.bashrc", type: "command", delay: 1200 },
           { text: "Validating API key with test request...", type: "info", delay: 1600 },
           { text: '$ curl -s api.openai.com/v1/models -H "Auth..."', type: "command", delay: 2000 },
-          { text: '{"data":[{"id":"gpt-4o"...}]}', type: "output", delay: 2500 },
+          { text: '{"data":[{"id":"gpt-6.2-astra"...}]}', type: "output", delay: 2500 },
           { text: "API key validated. 47 models accessible.", type: "success", delay: 2900 },
         ],
         result: "success",
@@ -681,11 +683,11 @@ const SCENARIOS: Scenario[] = [
           { text: '$ codex "Configure my API keys"', type: "command", delay: 0 },
           { text: "$ export OPENAI_API_KEY=sk-...", type: "command", delay: 250 },
           {
-            text: "$ python -c 'import openai; print(openai.Model.list())'",
+            text: "$ python -c 'import openai; print(openai.OpenAI().models.list())'",
             type: "command",
             delay: 600,
           },
-          { text: '{"data": [{"id": "gpt-4o"...}]}', type: "output", delay: 1000 },
+          { text: '{"data": [{"id": "gpt-6.2-sol"...}]}', type: "output", delay: 1000 },
           { text: "API key is working. Done!", type: "success", delay: 1300 },
         ],
         result: "success",
@@ -765,7 +767,11 @@ const SCENARIOS: Scenario[] = [
         lines: [
           { text: "$ caam backup claude main-acct", type: "command", delay: 0 },
           { text: "Backing up Claude credentials...", type: "info", delay: 400 },
-          { text: "Credentials saved to ~/.caam/claude/main-acct", type: "success", delay: 900 },
+          {
+            text: "Saved to ~/.local/share/caam/vault/claude/main-acct",
+            type: "success",
+            delay: 900,
+          },
           { text: "$ caam ls", type: "command", delay: 1300 },
           { text: "claude: main-acct (active)", type: "output", delay: 1600 },
           { text: "$ caam activate claude backup-acct", type: "command", delay: 2000 },
@@ -779,7 +785,11 @@ const SCENARIOS: Scenario[] = [
         lines: [
           { text: "$ caam backup codex main-acct", type: "command", delay: 0 },
           { text: "Backing up Codex credentials...", type: "info", delay: 350 },
-          { text: "Credentials saved to ~/.caam/codex/main-acct", type: "success", delay: 800 },
+          {
+            text: "Saved to ~/.local/share/caam/vault/codex/main-acct",
+            type: "success",
+            delay: 800,
+          },
           { text: "$ caam activate codex alt-team-acct", type: "command", delay: 1200 },
           { text: "Switched Codex to alt-team-acct", type: "success", delay: 1700 },
           { text: "Ready with new credentials!", type: "success", delay: 2100 },
@@ -791,7 +801,11 @@ const SCENARIOS: Scenario[] = [
         lines: [
           { text: "$ caam backup agy main-acct", type: "command", delay: 0 },
           { text: "Backing up Antigravity credentials...", type: "info", delay: 400 },
-          { text: "Credentials saved to ~/.caam/agy/main-acct", type: "success", delay: 900 },
+          {
+            text: "Saved to ~/.local/share/caam/vault/agy/main-acct",
+            type: "success",
+            delay: 900,
+          },
           { text: "$ caam activate agy work-acct", type: "command", delay: 1300 },
           { text: "Switched Antigravity to work-acct", type: "success", delay: 1800 },
         ],
@@ -836,7 +850,7 @@ const SCENARIOS: Scenario[] = [
         lines: [
           { text: '$ agy -p "Update the documentation"', type: "command", delay: 0 },
           { text: "Processing request...", type: "info", delay: 400 },
-          { text: "Error: Quota exceeded for gemini-pro", type: "error", delay: 1000 },
+          { text: "Error: Quota exceeded for Gemini 4 Neon", type: "error", delay: 1000 },
           { text: "$ caam activate agy work-acct", type: "command", delay: 1500 },
           { text: "Switched to work-acct", type: "success", delay: 2000 },
           { text: '$ agy -p "Update the documentation"', type: "command", delay: 2400 },
@@ -1574,14 +1588,14 @@ function OpenAIAccountWarning() {
         {/* Account type comparison */}
         <div className="grid gap-4 md:grid-cols-2 mb-4">
           <div className="p-4 rounded-xl bg-black/20 border border-white/[0.06]">
-            <h4 className="font-bold text-white mb-2">ChatGPT (Pro/Plus/Team)</h4>
+            <h4 className="font-bold text-white mb-2">ChatGPT (Plus/Pro/Business)</h4>
             <ul className="space-y-1 text-xs text-white/60">
               <li>• For Codex CLI, ChatGPT web</li>
               <li>
                 • Auth via ChatGPT login ({`\`codex login --device-auth\``} is recommended on a VPS)
               </li>
               <li>
-                • Get at <span className="text-primary">chat.openai.com</span>
+                • Get at <span className="text-primary">chatgpt.com</span>
               </li>
             </ul>
           </div>
@@ -1598,8 +1612,9 @@ function OpenAIAccountWarning() {
         </div>
 
         <p className="text-sm text-white/70">
-          Codex CLI uses <strong>ChatGPT OAuth</strong>, not API keys. If you have an{" "}
-          <InlineCode>OPENAI_API_KEY</InlineCode>, that&apos;s for the API—different system!
+          Codex CLI normally signs in with <strong>ChatGPT OAuth</strong> (your ChatGPT plan). An{" "}
+          <InlineCode>OPENAI_API_KEY</InlineCode> is pay-as-you-go API billing—only use it on
+          purpose via <InlineCode>codex login --with-api-key</InlineCode>.
         </p>
 
         <p className="mt-3 text-sm text-amber-400/80">

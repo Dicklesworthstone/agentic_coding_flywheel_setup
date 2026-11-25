@@ -12,7 +12,7 @@ import {
   Droplets,
   Eye,
   FileImage,
-  Globe,
+  Film,
   HardDrive,
   Image as ImageIcon,
   Layers,
@@ -103,11 +103,13 @@ export function GiilLesson() {
           </div>
           <div className="p-4 rounded-lg bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-slate-700/50">
             <h3 className="font-semibold text-white mb-2">Dropbox</h3>
-            <code className="text-xs text-slate-400">dropbox.com/s/*, dl.dropbox.com/*</code>
+            <code className="text-xs text-slate-400">dropbox.com/s/*, dropbox.com/scl/fi/*</code>
           </div>
           <div className="p-4 rounded-lg bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-slate-700/50">
             <h3 className="font-semibold text-white mb-2">Google Photos</h3>
-            <code className="text-xs text-slate-400">photos.google.com/*</code>
+            <code className="text-xs text-slate-400">
+              photos.app.goo.gl/*, photos.google.com/share/*
+            </code>
           </div>
           <div className="p-4 rounded-lg bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-slate-700/50">
             <h3 className="font-semibold text-white mb-2">Google Drive</h3>
@@ -287,8 +289,9 @@ fi`}
         />
 
         <TipBox variant="info">
-          GIIL only supports images. For videos or documents, you&apos;ll need to download them
-          manually or use a different tool.
+          GIIL is built for images. The exception is Google Photos, where it saves the original
+          file: a shared video downloads as the video, and an album (<code>--all</code>) as a .zip.
+          Other videos and documents exit with code 13.
         </TipBox>
       </Section>
     </div>
@@ -336,8 +339,8 @@ const CLOUD_PROVIDERS: CloudProvider[] = [
     glowColor: "shadow-blue-500/20",
     url: "https://share.icloud.com/photos/0a9Xk_login-bug-screenshot",
     urlPattern: "share.icloud.com/photos/*",
-    protocol: "iCloud Web API",
-    bypassMethod: "Token extraction from share page meta tags",
+    protocol: "Headless Chromium (Playwright)",
+    bypassMethod: "4-tier capture: Download button, CDN intercept, then screenshots",
     file: {
       name: "login-bug-screenshot.jpg",
       sizeBytes: 2516582,
@@ -348,11 +351,11 @@ const CLOUD_PROVIDERS: CloudProvider[] = [
     },
     imageGradient: "from-blue-600/40 via-cyan-500/30 to-sky-400/40",
     pipelineSteps: [
-      "GET share page HTML",
-      "Extract data-token from meta",
-      "POST /api/records/resolve",
-      "Follow downloadURL redirect",
-      "Stream binary to disk",
+      "Load share page in Chromium",
+      "Click Download (original file)",
+      "Fallback: intercept CDN response",
+      "Fallback: element screenshot",
+      "Process & save image",
     ],
   },
   {
@@ -365,9 +368,9 @@ const CLOUD_PROVIDERS: CloudProvider[] = [
     gradient: "from-indigo-500/20 to-blue-500/20",
     glowColor: "shadow-indigo-500/20",
     url: "https://dropbox.com/s/xr7kz/dashboard-overflow.png",
-    urlPattern: "dropbox.com/s/*",
-    protocol: "Dropbox Content API",
-    bypassMethod: "dl=1 parameter forces raw binary download",
+    urlPattern: "dropbox.com/s/*, dropbox.com/scl/fi/*",
+    protocol: "Direct curl (no browser)",
+    bypassMethod: "raw=1 parameter returns the raw file with the right MIME type",
     file: {
       name: "dashboard-overflow.png",
       sizeBytes: 1887436,
@@ -378,11 +381,11 @@ const CLOUD_PROVIDERS: CloudProvider[] = [
     },
     imageGradient: "from-indigo-600/40 via-violet-500/30 to-blue-400/40",
     pipelineSteps: [
-      "Rewrite URL: ?dl=1",
-      "Follow 302 to dl.dropbox.com",
-      "Negotiate content-type",
-      "Verify image/* MIME",
-      "Stream binary to disk",
+      "Rewrite URL: ?raw=1",
+      "curl download (no Chromium)",
+      "Check magic bytes (not HTML)",
+      "Verify image format",
+      "Process & save image",
     ],
   },
   {
@@ -395,9 +398,9 @@ const CLOUD_PROVIDERS: CloudProvider[] = [
     gradient: "from-emerald-500/20 to-teal-500/20",
     glowColor: "shadow-emerald-500/20",
     url: "https://photos.google.com/share/AF1Q_mobile-crash",
-    urlPattern: "photos.google.com/share/*",
-    protocol: "Google Photos Embed API",
-    bypassMethod: "Parse data-image-url from share embed page",
+    urlPattern: "photos.app.goo.gl/*, photos.google.com/share/*",
+    protocol: "Headless Chromium (Playwright)",
+    bypassMethod: "Native download (Shift+D) returns the original; =s0 CDN fallback",
     file: {
       name: "mobile-crash-report.jpg",
       sizeBytes: 3250585,
@@ -408,11 +411,11 @@ const CLOUD_PROVIDERS: CloudProvider[] = [
     },
     imageGradient: "from-emerald-600/40 via-teal-500/30 to-green-400/40",
     pipelineSteps: [
-      "GET share/embed page",
-      "Scrape data-image-url",
-      "Append =w0-h0 for full res",
-      "GET image with referer",
-      "Stream binary to disk",
+      "Load share page in Chromium",
+      "Open the photo viewer",
+      "Shift+D native download",
+      "Fallback: CDN URL with =s0",
+      "Save original file",
     ],
   },
   {
@@ -426,8 +429,8 @@ const CLOUD_PROVIDERS: CloudProvider[] = [
     glowColor: "shadow-yellow-500/20",
     url: "https://drive.google.com/file/d/1Bk9q_error-toast/view",
     urlPattern: "drive.google.com/file/d/*",
-    protocol: "Google Drive Export API",
-    bypassMethod: "Convert /view to /export?format=png",
+    protocol: "Headless Chromium + direct download",
+    bypassMethod: "Multi-tier: /uc?export=download, sz=w4000 thumbnail, screenshot",
     file: {
       name: "error-toast-dialog.png",
       sizeBytes: 945210,
@@ -440,39 +443,39 @@ const CLOUD_PROVIDERS: CloudProvider[] = [
     pipelineSteps: [
       "Extract file ID from URL",
       "GET /uc?export=download&id=",
-      "Handle virus scan warning",
-      "Follow confirm token redirect",
-      "Stream binary to disk",
+      "Detect login redirect (auth)",
+      "Fallback: thumbnail sz=w4000",
+      "Process & save image",
     ],
   },
   {
-    id: "direct-url",
-    name: "Direct URL",
-    icon: <Globe className="h-5 w-5" />,
+    id: "gphotos-video",
+    name: "Photos Video",
+    icon: <Film className="h-5 w-5" />,
     brandColor: "bg-purple-500",
     borderColor: "border-purple-500/30",
     textColor: "text-purple-400",
     gradient: "from-purple-500/20 to-pink-500/20",
     glowColor: "shadow-purple-500/20",
-    url: "https://cdn.example.com/screenshots/navbar-bug.webp",
-    urlPattern: "*.jpg, *.png, *.webp (any URL)",
-    protocol: "HTTP/2 Direct",
-    bypassMethod: "Direct binary download with content-type check",
+    url: "https://photos.app.goo.gl/Vd7q_repro-video",
+    urlPattern: "photos.app.goo.gl/* (video item)",
+    protocol: "Headless Chromium (Playwright)",
+    bypassMethod: "Native download keeps the original video, not a poster frame",
     file: {
-      name: "navbar-bug.webp",
-      sizeBytes: 578432,
-      size: "565 KB",
-      dimensions: "1366 x 768",
-      format: "WebP",
-      colorDepth: "24-bit sRGB",
+      name: "repro-steps.mp4",
+      sizeBytes: 18874368,
+      size: "18 MB",
+      dimensions: "1920 x 1080",
+      format: "MP4",
+      colorDepth: "original video",
     },
     imageGradient: "from-purple-600/40 via-pink-500/30 to-fuchsia-400/40",
     pipelineSteps: [
-      "HEAD request for content-type",
-      "Verify image/* MIME type",
-      "GET with range support check",
-      "Detect WebP/AVIF format",
-      "Stream binary to disk",
+      "Load share page in Chromium",
+      "Open the video viewer",
+      "Shift+D native download",
+      "Detect video container (MP4)",
+      "Save original file (no re-encode)",
     ],
   },
   {
@@ -484,10 +487,10 @@ const CLOUD_PROVIDERS: CloudProvider[] = [
     textColor: "text-rose-400",
     gradient: "from-rose-500/20 to-orange-500/20",
     glowColor: "shadow-rose-500/20",
-    url: "https://photos.google.com/share/album_3imgs --all",
-    urlPattern: "any album URL + --all flag",
-    protocol: "Batch Parallel Download",
-    bypassMethod: "Enumerate album, download all images concurrently",
+    url: "https://share.icloud.com/photos/album_3imgs",
+    urlPattern: "shared album URL + --all flag",
+    protocol: "Album mode (--all)",
+    bypassMethod: "Open each thumbnail in turn and capture it with the 4-tier strategy",
     file: {
       name: "3 images (album)",
       sizeBytes: 7340032,
@@ -498,11 +501,11 @@ const CLOUD_PROVIDERS: CloudProvider[] = [
     },
     imageGradient: "from-rose-600/40 via-orange-500/30 to-amber-400/40",
     pipelineSteps: [
-      "GET album share page",
-      "Enumerate image entries",
-      "Spawn parallel downloads (3)",
-      "Verify each image on disk",
-      "Report batch summary",
+      "Load album share page",
+      "Detect thumbnail grid",
+      "Open each photo (1s apart)",
+      "Capture via 4-tier strategy",
+      "Save with index suffix",
     ],
   },
 ];
@@ -1147,7 +1150,7 @@ function InteractiveCloudDownload() {
                         <CheckCircle className="h-3.5 w-3.5" />
                         <span>
                           {activeProvider.id === "batch-album"
-                            ? "Saved 3 images to ./album_3imgs/"
+                            ? "Saved 3 images: icloud_<date>_001.jpg … _003.jpg"
                             : `Saved to ./${activeProvider.file.name}`}
                         </span>
                       </div>

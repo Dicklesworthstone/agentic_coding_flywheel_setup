@@ -214,7 +214,7 @@ const archLayers: ArchLayer[] = [
     components: [
       {
         id: "ubuntu",
-        name: "Ubuntu 24.04 LTS",
+        name: "Ubuntu LTS (26.04, 24.04 or 22.04)",
         shortName: "Ubuntu",
         description:
           "The base operating system running on your VPS. Ubuntu LTS provides a stable, well-supported foundation with long-term security updates.",
@@ -237,10 +237,10 @@ const archLayers: ArchLayer[] = [
         name: "UFW Firewall",
         shortName: "UFW",
         description:
-          "Uncomplicated Firewall restricts network access to only the ports you need - SSH (22) and any development servers you expose.",
+          "Ubuntu's built-in firewall. ACFS does not enable or configure it; if you turn it on, allow SSH (22) first so you don't lock yourself out.",
         commands: ["sudo ufw status", "sudo ufw allow 22"],
         dependencies: ["ubuntu"],
-        status: "active",
+        status: "standby",
       },
     ],
   },
@@ -278,7 +278,7 @@ const archLayers: ArchLayer[] = [
         shortName: "acfs.zshrc",
         description:
           "Custom shell aliases and functions loaded by ACFS. Provides shortcuts like cc, cod, agy and all the acfs subcommands.",
-        commands: ["source ~/.acfs.zshrc", "acfs help"],
+        commands: ["source ~/.acfs/zsh/acfs.zshrc", "acfs help"],
         dependencies: ["zsh"],
         status: "active",
       },
@@ -347,7 +347,7 @@ const archLayers: ArchLayer[] = [
         name: "Codex CLI (OpenAI)",
         shortName: "cod",
         description:
-          "OpenAI's command-line coding agent. Great for quick edits, code generation, and working with GPT-4 models.",
+          "OpenAI's command-line coding agent. Great for quick edits, code generation, and working with GPT-6.2 models.",
         commands: ["cod", "cod 'add unit tests'"],
         dependencies: ["tmux", "runtimes", "git"],
         status: "ready",

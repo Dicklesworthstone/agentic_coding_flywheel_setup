@@ -1035,6 +1035,20 @@ export default function RunInstallerPage() {
                 Tells the installer which mode to use based on your wizard selection.
               </p>
             </div>
+            {installerTargetUbuntuVersion &&
+              installCommand?.includes(`--target-ubuntu=${installerTargetUbuntuVersion}`) && (
+              <div>
+                <code className="text-primary">
+                  --target-ubuntu={installerTargetUbuntuVersion}
+                </code>
+                <p className="mt-1 font-sans text-muted-foreground">
+                  Opts this VPS into an Ubuntu release upgrade to {installerTargetUbuntuVersion}{" "}
+                  first (30–60 minutes and a reboot per version hop). Without it, ACFS keeps a
+                  supported 22.04 or 24.04 host on its current release; a VPS already on{" "}
+                  {installerTargetUbuntuVersion} needs no upgrade.
+                </p>
+              </div>
+            )}
             {usePinnedRef && safePinnedRef && (
               <div>
                 <code className="text-primary">--ref &quot;{safePinnedRef}&quot;</code>
@@ -1262,11 +1276,12 @@ export default function RunInstallerPage() {
                 30–60 minutes per version hop and reboots the VPS. You&apos;ll see progress messages
                 scroll by:
                 <OutputPreview title="What you'll see" className="mt-3">
-                  <p className="text-green">[1/8] Installing zsh + oh-my-zsh...</p>
-                  <p className="text-green">[2/8] Installing bun...</p>
-                  <p className="text-green">[3/8] Installing development tools...</p>
+                  <p className="text-green">[1/9] User Setup...</p>
+                  <p className="text-green">[3/9] Shell Setup (zsh + oh-my-zsh)...</p>
+                  <p className="text-green">[5/9] Languages (bun, uv, rust, go)...</p>
                   <p className="text-muted-foreground">... lots of download output ...</p>
-                  <p className="text-green">[8/8] Installing AI coding agents...</p>
+                  <p className="text-green">[6/9] Coding Agents...</p>
+                  <p className="text-green">[9/9] Finalize...</p>
                   <p className="text-green font-medium mt-1">
                     ✔ Agent Flywheel installation complete!
                   </p>

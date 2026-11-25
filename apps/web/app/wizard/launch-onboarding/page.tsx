@@ -329,8 +329,8 @@ function SelectedStackGuidance({
           <h2 className="text-xl font-semibold">Keep a session running</h2>
           <CommandCard command="ntm list" description="See existing sessions" runLocation="vps" />
           <CommandCard
-            command="ntm new myproject"
-            description="Create a project session"
+            command="ntm create myproject --panes=1"
+            description="Create a project session (reattaches if it already exists)"
             runLocation="vps"
           />
           <CommandCard
@@ -543,8 +543,8 @@ export default function LaunchOnboardingStep() {
               <div className="space-y-3">
                 <p className="font-medium">Claude Code</p>
                 <CommandCard
-                  command="claude"
-                  description="Follow the prompts. If it prints a URL, open it on your laptop to log in."
+                  command="claude auth login"
+                  description="Prints a sign-in URL: open it on your laptop, then paste the code back here."
                   runLocation="vps"
                 />
                 {/* Detailed OAuth flow explanation */}
@@ -575,7 +575,10 @@ export default function LaunchOnboardingStep() {
                   <p className="text-xs text-muted-foreground mt-2">
                     When your browser says &quot;Paste this into Claude Code&quot; — that means
                     paste the code into the terminal window where you typed{" "}
-                    <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">claude</code>.
+                    <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+                      claude auth login
+                    </code>
+                    .
                   </p>
                 </div>
               </div>
@@ -705,7 +708,7 @@ export default function LaunchOnboardingStep() {
                 </div>
                 <div className="flex-1">
                   <CommandCard
-                    command="ntm new myproject"
+                    command="ntm create myproject --panes=1"
                     description="Or create new"
                     runLocation="vps"
                   />
@@ -928,7 +931,7 @@ export default function LaunchOnboardingStep() {
               Use <Jargon term="tmux">tmux</Jargon> with <Jargon term="ntm">ntm</Jargon>
             </h3>
             <p className="mb-3 text-sm text-muted-foreground">Manage terminal sessions</p>
-            <code className="rounded bg-muted px-2 py-1 text-sm">ntm new myproject</code>
+            <code className="rounded bg-muted px-2 py-1 text-sm">ntm create myproject --panes=1</code>
           </Card>
           <Card className="p-4">
             <h3 className="mb-2 font-medium">
@@ -1046,7 +1049,7 @@ export default function LaunchOnboardingStep() {
               </li>
               <li>
                 <a
-                  href="https://docs.anthropic.com/claude-code"
+                  href="https://docs.claude.com/en/docs/claude-code/overview"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex min-h-6 items-center gap-1 text-primary hover:underline"
@@ -1103,9 +1106,9 @@ export default function LaunchOnboardingStep() {
             <ul className="mt-2 list-disc list-inside space-y-1 text-sm text-muted-foreground">
               <li>
                 <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
-                  ntm new myproject
+                  ntm create myproject --panes=1
                 </code>{" "}
-                — Start a new session
+                — Start a new session (or reattach to it)
               </li>
               <li>
                 <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
@@ -1140,7 +1143,7 @@ export default function LaunchOnboardingStep() {
                 <p className="text-sm text-muted-foreground">
                   This manages your terminal &quot;sessions&quot;. When you run{" "}
                   <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
-                    ntm new myproject
+                    ntm create myproject --panes=1
                   </code>
                   , it creates a persistent workspace that stays running even if you disconnect.
                   Perfect for long-running tasks!
@@ -1180,7 +1183,7 @@ export default function LaunchOnboardingStep() {
                 Type{" "}
                 <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
                   ntm new hello-world
-                </code>
+                </code>{" "}
                 to create a dedicated workspace for a test project.
               </GuideStep>
 

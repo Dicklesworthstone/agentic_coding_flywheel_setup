@@ -233,12 +233,16 @@ const SCENARIOS: Scenario[] = [
     ],
     alerts: [
       { time: "14:32", message: "sbh status: all mounts healthy", severity: "info" },
-      { time: "14:30", message: "Ballast file verified: 7.0 GB at /var/ballast", severity: "info" },
+      {
+        time: "14:30",
+        message: "Ballast verified: 7.0 GB at /var/lib/sbh/ballast",
+        severity: "info",
+      },
       { time: "14:28", message: "Disk monitor started, checking every 30s", severity: "info" },
     ],
     terminalLines: [
       "$ sbh status",
-      "SBH Storage Ballast Helper v2.1.0",
+      "SBH Storage Ballast Helper v0.8.0",
       "",
       "Mount    Used     Total    Pct   Status",
       "/        28.4 GB  50.0 GB  57%   OK",
@@ -246,8 +250,8 @@ const SCENARIOS: Scenario[] = [
       "/tmp     1.8 GB   10.0 GB  18%   OK",
       "/var/log 6.3 GB   20.0 GB  32%   OK",
       "",
-      "Ballast: 7.0 GB reserved at /var/ballast",
-      "Threshold: auto-release at 95%",
+      "Ballast: 7.0 GB reserved at /var/lib/sbh/ballast",
+      "Auto-release: when disk pressure turns orange",
     ],
     ballastStatus: "reserved",
     ballastGb: 7.0,
@@ -280,7 +284,7 @@ const SCENARIOS: Scenario[] = [
     ],
     terminalLines: [
       "$ sbh status",
-      "SBH Storage Ballast Helper v2.1.0",
+      "SBH Storage Ballast Helper v0.8.0",
       "",
       "Mount    Used     Total    Pct   Status",
       "/        34.7 GB  50.0 GB  69%   OK",
@@ -288,7 +292,7 @@ const SCENARIOS: Scenario[] = [
       "/tmp     4.2 GB   10.0 GB  42%   OK",
       "/var/log 17.6 GB  20.0 GB  88%   WARNING",
       "",
-      "Ballast: 7.0 GB reserved at /var/ballast",
+      "Ballast: 7.0 GB reserved at /var/lib/sbh/ballast",
       "! Log growth rate: 2.1 GB/hr",
     ],
     ballastStatus: "reserved",
@@ -299,7 +303,7 @@ const SCENARIOS: Scenario[] = [
     label: "Cleanup",
     icon: Trash2,
     color: "blue",
-    description: "SBH triggered automatic log rotation and old build artifact cleanup.",
+    description: "SBH's scored cleanup removed stale build artifacts and caches.",
     mounts: [
       { path: "/", totalGb: 50, usedGb: 31.2 },
       { path: "/home", totalGb: 100, usedGb: 48.7 },
@@ -317,21 +321,21 @@ const SCENARIOS: Scenario[] = [
     ],
     alerts: [
       { time: "16:02", message: "Cleanup complete: freed 19.2 GB total", severity: "success" },
-      { time: "16:01", message: "Rotated logs: freed 9.2 GB from /var/log", severity: "success" },
+      { time: "16:01", message: "Removed idle target/ dirs: freed 9.2 GB", severity: "success" },
       {
         time: "16:00",
         message: "Removed stale build artifacts: freed 8.1 GB",
         severity: "success",
       },
-      { time: "15:59", message: "Cleaned /tmp: freed 2.1 GB", severity: "info" },
+      { time: "15:59", message: "Removed stale node_modules caches: freed 2.1 GB", severity: "info" },
     ],
     terminalLines: [
       "$ sbh clean --yes",
       "Scanning for reclaimable space...",
       "",
-      "Rotated:  /var/log/*.log.gz   -9.2 GB",
+      "Removed:  target/ (idle 9d)    -9.2 GB",
       "Removed:  build/artifacts/*    -8.1 GB",
-      "Cleaned:  /tmp/agent-*         -2.1 GB",
+      "Removed:  node_modules/.cache  -2.1 GB",
       "",
       "Total freed: 19.2 GB",
       "All mount points now healthy.",
@@ -456,15 +460,15 @@ const SCENARIOS: Scenario[] = [
       { time: "18:58", message: "All cleanup strategies executing...", severity: "warn" },
     ],
     terminalLines: [
-      "$ sbh emergency",
-      "!!! EMERGENCY BALLAST RELEASE !!!",
+      "$ sbh ballast release 7",
+      "Released 7 ballast files (7.0 GiB)",
       "",
-      "Released: /var/ballast (7.0 GB)",
       "Root / now at 85% (was 99%)",
+      "$ sbh emergency /data/projects --yes",
       "",
       "Running emergency cleanup...",
-      "  Truncating old logs...    -4.2 GB",
-      "  Clearing /tmp...          -8.1 GB",
+      "  stale target/ dirs         -4.2 GB",
+      "  stale node_modules caches  -8.1 GB",
       "",
       "$ sbh ballast replenish  # after cleanup",
     ],
@@ -797,7 +801,7 @@ function BallastIndicator({ status, sizeGb }: { status: string; sizeGb: number }
       <p className="text-xs text-muted-foreground mt-1.5">
         {isReleased
           ? "Ballast released! Run sbh ballast replenish after cleanup."
-          : `${sizeGb.toFixed(1)} GB reserved at /var/ballast. Auto-releases at 95%.`}
+          : `${sizeGb.toFixed(1)} GB reserved at /var/lib/sbh/ballast. Auto-releases under disk pressure.`}
       </p>
     </div>
   );

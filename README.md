@@ -878,7 +878,7 @@ accepts one. Verified installers are staged in a system directory instead of
 | **Runtime** | Rust | `rustup update stable` |
 | **Runtime** | uv (Python) | `uv self update` |
 | **Runtime** | Go | Targeted apt package update; `--force` repairs a missing selected installation |
-| **Agents** | Claude Code | `claude update --channel latest` |
+| **Agents** | Claude Code | Re-runs the checksum-verified native installer (`claude update` by hand) |
 | **Agents** | Codex | `bun install -g @latest` |
 | **Agents** | Antigravity | `agy update` (or verified installer with `--force`) |
 | **Agents** | oh-my-pi (omp) | `omp update` (or verified installer with `--force`) |
@@ -1494,13 +1494,13 @@ acfs services-setup          # Run full setup wizard
 ```
 
 Guides you through:
-- **Claude Code**: API key configuration
+- **Claude Code**: Anthropic account OAuth login
 - **Codex CLI**: ChatGPT account login
-- **Antigravity CLI**: Google account authentication
+- **Gemini CLI** (legacy, only if installed): Google account authentication. The Antigravity CLI signs in the first time you run `agy`.
 - **GitHub CLI**: `gh auth login`
 - **Cloud CLIs**: Wrangler, Supabase, Vercel authentication
 
-Also offers to install **DCG (Destructive Command Guard)**, a Claude Code hook that blocks destructive commands like `rm -rf /`.
+Also offers to install **DCG (Destructive Command Guard)**, a pre-execution hook for Claude Code and other agent CLIs that blocks destructive commands like `rm -rf /`.
 
 ### `acfs continue` — Upgrade Progress
 
@@ -1753,7 +1753,7 @@ ACFS installs a comprehensive suite of **30+ tools** organized into categories:
 | **oh-my-zsh** | - | zsh plugin framework |
 | **powerlevel10k** | - | Fast, customizable prompt |
 | **lsd** | `ls` (aliased) | Modern ls with icons |
-| **atuin** | `atuin search` | Searchable shell history database (its zsh hook is intentionally not enabled; `Ctrl+R` is the shell's own history search) |
+| **atuin** | `Ctrl+R`, `atuin search` | Searchable shell history database (initialized by the ACFS zshrc; agent-issued commands are kept out of it) |
 | **fzf** | `fzf` | Fuzzy finder |
 | **zoxide** | `z` | Smarter cd |
 | **direnv** | - | Directory-specific env vars |
@@ -1863,7 +1863,7 @@ alias gmi='$HOME/.local/bin/agy-locked'
 **Installation & Updates:**
 Claude Code should be installed and updated using its native mechanisms:
 - **Install:** ACFS uses the official native installer (`claude.ai/install.sh`), checksum-verified via `checksums.yaml` (installs to `~/.local/bin/claude`)
-- **Update:** Use `claude update --channel latest` (built-in) or run `acfs update --agents-only`
+- **Update:** Run `acfs update --agents-only` (re-runs the checksum-verified native installer) or `claude update` (built-in)
 
 This ensures proper authentication handling and avoids issues with alternative package manager builds. ACFS updates Codex with Bun global package updates, Antigravity with its native `agy update` path, oh-my-pi with its native `omp update` path, and Grok CLI by re-running its checksum-verified installer.
 
@@ -1894,7 +1894,7 @@ The core suite of tools for professional agentic workflows:
 | 5 | **Coding Agent Session Search** | `cass` | Unified agent history search (CASS) |
 | 6 | **CASS Memory System** | `cm` | Procedural memory for agents |
 | 7 | **Ultimate Bug Scanner** | `ubs` | Bug scanning with guardrails |
-| 8 | **Destructive Command Guard** | `dcg` | Claude Code hook blocking dangerous git/fs commands |
+| 8 | **Destructive Command Guard** | `dcg` | Pre-execution hook (Claude Code, Codex, and more) blocking dangerous git/fs commands |
 | 9 | **Repo Updater** | `ru` | Multi-repo sync + AI-driven commit automation |
 | 10 | **Remote Compilation Helper** | `rch` | Transparent build offloading to faster machines |
 | 11 | **Coding Agent Account Manager** | `caam` | Agent auth switching |
@@ -2376,7 +2376,8 @@ alias ls='lsd --inode --long --all'
 alias ll='lsd -l'
 alias tree='lsd --tree'
 alias cat='bat'
-alias grep='rg'
+alias rgrep='rg'     # rg is NOT aliased over grep (incompatible flags)
+alias fdfind='fd'    # fd is NOT aliased over find (incompatible syntax)
 alias vim='nvim'
 alias lg='lazygit'
 ```
@@ -2389,8 +2390,12 @@ eval "$(zoxide init zsh)"
 # direnv (directory env vars)
 eval "$(direnv hook zsh)"
 
-# fzf (fuzzy finder)
-source /usr/share/doc/fzf/examples/key-bindings.zsh
+# fzf (fuzzy finder): key bindings stay off (Ctrl+R belongs to atuin)
+export DISABLE_FZF_KEY_BINDINGS=1
+
+# Atuin (shell history), initialized after fzf so its Ctrl+R wins.
+# Set ACFS_NO_ATUIN_INIT=1 to opt out.
+eval "$(atuin init zsh)"
 ```
 
 **Shell Keybindings (Quality of Life):**
@@ -2405,13 +2410,15 @@ source /usr/share/doc/fzf/examples/key-bindings.zsh
 | `Ctrl+Delete` | Delete word forward | Fast deletion |
 | `Home` | Beginning of line | Works in all terminals |
 | `End` | End of line | Works in all terminals |
-| `Ctrl+R` | Shell history search | Uses the active shell/editor binding |
+| `Ctrl+R` | Atuin history search | Falls back to the shell's own search if atuin is opted out |
 
 **Atuin History Bindings:**
-ACFS intentionally does not enable Atuin's zsh preexec/precmd integration by
-default. Atuin's searchable CLI remains available as `atuin search`, but the
-automatic shell hook can record every coding-agent command and grow the Atuin
-database fast enough to make shells laggy.
+ACFS initializes Atuin in `~/.acfs/zsh/acfs.zshrc` (after fzf, so Atuin's `Ctrl+R`
+wins). To keep coding-agent commands from flooding the Atuin database, the guarded
+`~/.local/bin/atuin` shim turns `atuin hook` into a no-op and drops the
+`history start`/`history end` calls that agents' shells would otherwise send. Set
+`ACFS_NO_ATUIN_INIT=1` before the file is sourced to keep Atuin uninitialized, or
+`ACFS_ATUIN_INIT_FLAGS` to pass extra flags.
 
 ### `~/.acfs/tmux/tmux.conf`
 
@@ -2742,7 +2749,7 @@ server. If Agent Mail cannot start, the installer reports which process is holdi
 ```bash
 # In your agent, call:
 mcp.ensure_project(project_key="/data/projects/my-project")
-mcp.register_agent(project_key=..., program="claude-code", model="opus-4.5")
+mcp.register_agent(project_key=..., program="claude-code", model="opus-5.5")
 ```
 
 **2. Reserve Files Before Editing:**
@@ -2782,7 +2789,7 @@ mcp.macro_contact_handshake(...)  # Request contact permissions
 
 ## Destructive Command Guard (dcg)
 
-**dcg** is a high-performance Claude Code hook that blocks dangerous git and filesystem commands before they execute. Built in Rust for sub-millisecond latency, it provides mechanical enforcement of safety rules that instructions alone cannot guarantee.
+**dcg** is a high-performance pre-execution hook for Claude Code, Codex CLI, and other agent CLIs that blocks dangerous git and filesystem commands before they execute. Built in Rust for sub-millisecond latency, it provides mechanical enforcement of safety rules that instructions alone cannot guarantee.
 
 ### Why dcg Exists
 

@@ -49,14 +49,16 @@ export function MdwbLesson() {
       {/* Section 1: What Is MDWB */}
       <Section title="What Is MDWB?" icon={<Globe className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>MDWB (Markdown Web Browser)</Highlight> fetches web pages and converts them
-          into clean Markdown, stripping out ads, navigation, and scripts. The result is perfect for
-          feeding into LLMs as context.
+          <Highlight>MDWB (Markdown Web Browser)</Highlight> renders web pages in headless Chrome,
+          OCRs the screenshots, and returns Markdown with per-tile provenance. The result is perfect
+          for feeding into LLMs as context.
         </Paragraph>
         <Paragraph>
-          When AI agents need information from the web, raw HTML is noisy and token-expensive. MDWB
-          extracts just the content, preserving headings, code blocks, lists, and links in a format
-          LLMs handle efficiently.
+          When AI agents need information from the web, raw HTML is noisy and token-expensive, and
+          JavaScript-heavy pages often hide their content from plain scrapers. MDWB captures what
+          the page actually shows, preserving headings, code blocks, lists, and links in a format
+          LLMs handle efficiently. The <code>mdwb</code> CLI is a Python client for a local MDWB
+          server, which needs an OCR endpoint and API key configured.
         </Paragraph>
 
         <div className="mt-8">
@@ -70,7 +72,7 @@ export function MdwbLesson() {
             <FeatureCard
               icon={<FileText className="h-5 w-5" />}
               title="Clean Output"
-              description="No ads, scripts, or clutter"
+              description="Markdown with per-tile provenance"
               gradient="from-violet-500/20 to-purple-500/20"
             />
             <FeatureCard
@@ -81,8 +83,8 @@ export function MdwbLesson() {
             />
             <FeatureCard
               icon={<Zap className="h-5 w-5" />}
-              title="Fast"
-              description="Built in Rust for speed"
+              title="Real Rendering"
+              description="Headless Chrome + OCR pipeline (Python)"
               gradient="from-amber-500/20 to-orange-500/20"
             />
           </FeatureGrid>
@@ -105,14 +107,14 @@ export function MdwbLesson() {
           code={`# Capture a web page (streams progress, prints the job id)
 mdwb fetch "https://docs.example.com/api/reference" --watch
 
-# Read the Markdown snapshot for that job
-mdwb show <job-id>
+# Print the Markdown for that job
+mdwb jobs result <job-id>
 
 # Save it to a file
-mdwb show <job-id> > guide.md
+mdwb jobs result <job-id> > guide.md
 
 # Pipe directly to an AI agent
-mdwb show <job-id> | claude "summarize this API"`}
+mdwb jobs result <job-id> | claude "summarize this API"`}
           filename="Basic Usage"
         />
 
@@ -131,7 +133,8 @@ mdwb show <job-id> | claude "summarize this API"`}
               command: 'mdwb fetch "<url>" --watch',
               description: "Capture a URL as a Markdown job",
             },
-            { command: "mdwb show <job-id>", description: "Print the Markdown snapshot for a job" },
+            { command: "mdwb jobs result <job-id>", description: "Print the job's Markdown" },
+            { command: "mdwb show <job-id>", description: "Show the job's status and snapshot" },
             {
               command: "mdwb links <job-id>",
               description: "List the links found on the captured page",
@@ -159,11 +162,11 @@ mdwb show <job-id> | claude "summarize this API"`}
         <CodeBlock
           code={`# Research a library's docs before using it
 mdwb fetch "https://docs.rs/tokio/latest" --watch
-mdwb show <job-id> > tokio-docs.md
+mdwb jobs result <job-id> > tokio-docs.md
 
 # Get error context from StackOverflow
 mdwb fetch "https://stackoverflow.com/questions/12345" --watch
-mdwb show <job-id> > context.md
+mdwb jobs result <job-id> > context.md
 
 # Crawl a docs site one level deep
 mdwb crawl "https://blog.example.com/architecture-decisions"
@@ -185,7 +188,7 @@ mdwb search "architecture" --tag research | claude "analyze these documents"`}
           <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
             <span className="text-emerald-400 font-semibold">MDWB + TRU</span>
             <p className="text-white/80 text-sm mt-1">
-              Fetch docs, then compress for maximum context
+              Encode a job&apos;s JSON result as TOON to save tokens
             </p>
           </div>
           <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/30">
@@ -573,9 +576,9 @@ const PAGE_TYPES: PageType[] = [
 
 const COMMANDS = [
   { cmd: 'mdwb fetch "<url>" --watch', desc: "Capture URL as a job" },
-  { cmd: "mdwb show <job-id> > file.md", desc: "Save snapshot to file" },
+  { cmd: "mdwb jobs result <job-id> > file.md", desc: "Save Markdown to file" },
   { cmd: "mdwb links <job-id>", desc: "List captured links" },
-  { cmd: "mdwb show <job-id> | claude", desc: "Pipe to AI agent" },
+  { cmd: "mdwb jobs result <job-id> | claude", desc: "Pipe to AI agent" },
 ];
 
 type ConversionStage = "idle" | "fetching" | "scanning" | "stripping" | "converting" | "done";
@@ -758,7 +761,8 @@ function InteractiveWebToMarkdown() {
             <Sparkles className="h-4 w-4 text-violet-400" />
           </div>
           <p className="text-xs text-muted-foreground">
-            Watch HTML get fetched, noise stripped, and content converted to clean Markdown
+            A simplified view of page content becoming clean Markdown (MDWB itself renders the
+            page in headless Chrome and OCRs screenshot tiles)
           </p>
         </div>
 

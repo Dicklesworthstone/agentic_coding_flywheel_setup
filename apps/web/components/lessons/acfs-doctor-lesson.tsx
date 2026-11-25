@@ -208,42 +208,35 @@ ntm attach myproject`}
       {/* Section 5: SRPS: Resource Protection */}
       <Section title="SRPS: Resource Protection" icon={<Gauge className="h-5 w-5" />} delay={0.3}>
         <Paragraph>
-          The <Highlight>System Resource Protection Service</Highlight> prevents agents from
-          overwhelming the VPS. It monitors CPU, memory, disk, and process count, taking automatic
-          action when thresholds are exceeded.
+          The <Highlight>System Resource Protection Script</Highlight> keeps the VPS responsive
+          when agents pile on builds. It installs the ananicy-cpp daemon with curated rules that
+          lower the priority of compilers, bundlers, and test runners, plus sysctl tuning and the
+          sysmoni monitor. It never kills processes automatically.
         </Paragraph>
 
         <div className="mt-6">
           <CodeBlock
-            code={`# Check current system resource status
-srps status
+            code={`# Is the priority daemon running?
+systemctl status ananicy-cpp
 
-# What SRPS monitors:
-# - CPU usage > 90% for > 60 seconds → throttle agents
-# - Memory usage > 85% → warn, > 95% → emergency cleanup
-# - Disk usage > 90% → block new writes
-# - Process count > 500 → kill orphaned processes
+# Live per-process CPU/memory/IO view (q to quit)
+sysmoni
 
-# View SRPS alerts
-srps alerts --last 10
+# Which processes are currently deprioritized (nice > 0)?
+check-throttled
 
-# Configure thresholds
-srps config set cpu-warning 80
-srps config set memory-critical 95
+# Quick SRPS diagnostics
+srps-doctor
 
-# When SRPS triggers:
-# 1. Logs the event
-# 2. Sends Agent Mail notification to all agents
-# 3. Pauses lowest-priority agent work
-# 4. Waits for resources to recover
-# 5. Resumes work automatically`}
+# After adding rules in /etc/ananicy.d/10-local/
+srps-reload-rules`}
             showLineNumbers
           />
         </div>
 
         <div className="mt-6">
           <TipBox variant="info">
-            SRPS works with <Highlight>SBH</Highlight> (Storage Ballast Helper) which pre-allocates
+            SRPS pairs well with <Highlight>SBH</Highlight> (Storage Ballast Helper), which pre-allocates
             disk space as an emergency buffer. When disk fills up, SBH releases the ballast so the
             system can recover gracefully.
           </TipBox>
@@ -270,12 +263,12 @@ srps config set memory-critical 95
           />
           <ChecklistItem
             frequency="Daily"
-            task="Check srps status if system feels slow"
+            task="Run check-throttled or sysmoni if system feels slow"
             detail="Quick resource check"
           />
           <ChecklistItem
             frequency="Weekly"
-            task="Review journalctl -u acfs-nightly.service for update failures"
+            task="Review journalctl --user -u acfs-nightly-update.service for update failures"
             detail="Catch silent errors"
           />
           <ChecklistItem

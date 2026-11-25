@@ -70,7 +70,7 @@ export const workflowScenarios: WorkflowScenario[] = [
       {
         tool: "ntm",
         action:
-          "Spawn agents across 3 projects: `ntm spawn proj1 --cc=2 proj2 --cod=1 proj3 --agy=1`",
+          "Spawn agents across 3 projects: `ntm spawn proj1 --cc=2 && ntm spawn proj2 --cod=2 && ntm spawn proj3 --agy=2`",
         result: "6 agents running in parallel across your machines",
       },
       {
@@ -106,7 +106,7 @@ export const workflowScenarios: WorkflowScenario[] = [
       {
         tool: "ubs",
         action: "Bug scanner runs: `ubs . --format=json`",
-        result: "Static analysis catches issues in 7 languages",
+        result: "Static analysis catches issues in 15 languages",
       },
       {
         tool: "br",
@@ -200,7 +200,7 @@ export const workflowScenarios: WorkflowScenario[] = [
       },
       {
         tool: "ntm",
-        action: "Spawn agents into key repos: `ntm spawn proj1 --cc=2 proj2 --cc=2`",
+        action: "Spawn agents into key repos: `ntm spawn proj1 --cc=2 && ntm spawn proj2 --cc=2`",
         result: "4 Claude agents ready across 2 projects",
       },
       {
@@ -256,7 +256,7 @@ export const workflowScenarios: WorkflowScenario[] = [
       },
       {
         tool: "ntm",
-        action: "Launch heavy multi-agent session: `ntm spawn proj1 --cc=2 proj2 --cod=2`",
+        action: "Launch heavy multi-agent sessions: `ntm spawn proj1 --cc=2 && ntm spawn proj2 --cod=2`",
         result: "4 agents start, each spawning compilers and test runners",
       },
       {
@@ -418,10 +418,10 @@ export const synergyExplanations = [
     tools: ["ru", "mail"],
     title: "Repo Coordination",
     description:
-      "RU commit-sweep can coordinate via Mail to prevent conflicts. Agents claim repos before committing. Complete audit trail of which agent touched which repo.",
+      "Agents reserve repos through Agent Mail before committing, then each runs RU only on its own repos. Mail supplies the claims and the audit trail of which agent touched which repo.",
     multiplier: "Conflict-free",
     example:
-      "Agent A claims repo-1, Agent B claims repo-2. Both run `ru commit-sweep --execute` on their own repos. No conflicts, clear ownership.",
+      "Agent A claims repo-1, Agent B claims repo-2. Each runs `ru commit-sweep --execute --repos=<its repo>`. No conflicts, clear ownership.",
   },
   {
     tools: ["dcg", "slb"],
@@ -436,10 +436,10 @@ export const synergyExplanations = [
     tools: ["dcg", "ntm", "mail"],
     title: "Protected Agent Fleet",
     description:
-      "NTM spawns multiple Claude agents. Each agent runs under DCG protection. If one agent attempts something dangerous, DCG blocks it and can notify via Mail so other agents (or you) know what happened.",
+      "NTM spawns multiple agents (Claude Code, Codex, Antigravity, and more). Each agent runs under DCG protection. If one agent attempts something dangerous, DCG blocks it, and the agent can report the block over Mail so other agents (or you) know what happened.",
     multiplier: "Fleet-wide protection",
     example:
-      "Agent 1 working on repo cleanup tries 'git clean -fdx'. DCG blocks it. Mail notification: 'Agent 1 attempted blocked command in project-x'.",
+      "Agent 1 working on repo cleanup tries 'git clean -fdx'. DCG blocks it. Agent 1 posts to Mail: 'DCG blocked git clean -fdx in project-x'.",
   },
 ];
 
@@ -457,9 +457,9 @@ const _flywheelTools: FlywheelTool[] = [
     color: "from-sky-400 to-blue-500",
     tagline: "Multi-agent tmux command center",
     description:
-      "Orchestrate multiple AI coding agents across tmux sessions. Spawn Claude, Codex, and Antigravity agents in named panes. 80+ commands for session management, prompt broadcasting, file conflict detection, and context rotation. Persistent sessions survive SSH disconnects.",
+      "Orchestrate multiple AI coding agents across tmux sessions. Spawn Claude, Codex, Antigravity, Oh My Pi, and Grok Build agents in named panes. 110+ commands for session management, prompt broadcasting, file conflict detection, and context rotation. Persistent sessions survive SSH disconnects.",
     deepDescription:
-      "NTM transforms tmux into a multi-agent command center with 80+ commands. Spawn agents with type classification (cc/cod/agy), broadcast prompts with filtering, and use the command palette TUI for quick actions. Features context window monitoring with automatic compaction recovery, checkpoints for session state management, agent profiles/personas for specialized roles, and deep integrations with Agent Mail (file reservations, messaging), CASS (session search), and beads (--robot-bead-* commands). Robot mode (--robot-*) provides JSON output for automation.",
+      "NTM transforms tmux into a multi-agent command center with 110+ commands. Spawn agents with type classification (cc/cod/agy, plus omp and grok), broadcast prompts with filtering, and use the command palette TUI for quick actions. Features context window monitoring with automatic compaction recovery, checkpoints for session state management, agent profiles/personas for specialized roles, and deep integrations with Agent Mail (file reservations, messaging), CASS (session search), and beads (--robot-bead-* commands). Robot mode (--robot-*) provides JSON output for automation.",
     connectsTo: ["slb", "mail", "cass", "caam", "ru", "srps", "bv", "br", "dcg"],
     connectionDescriptions: {
       slb: "Routes dangerous commands through SLB safety checks",
@@ -474,8 +474,8 @@ const _flywheelTools: FlywheelTool[] = [
     },
     stars: 16,
     features: [
-      "80+ commands: spawn, send, dashboard, palette, checkpoint, health, and more",
-      "Agent types: Claude (cc), Codex (cod), Antigravity (agy) with named panes",
+      "110+ commands: spawn, send, dashboard, palette, checkpoint, health, and more",
+      "Agent types: Claude (cc), Codex (cod), Antigravity (agy), Oh My Pi (omp), Grok Build (grok)",
       "Context rotation: monitors usage, warns at 80%, auto-compaction recovery",
       "Command palette TUI with fuzzy search, Catppuccin themes, pinned commands",
       "Robot mode: --robot-status, --robot-snapshot, --robot-plan, --robot-mail",
@@ -497,29 +497,29 @@ const _flywheelTools: FlywheelTool[] = [
     id: "mail",
     name: "MCP Agent Mail",
     shortName: "Mail",
-    href: "https://github.com/Dicklesworthstone/mcp_agent_mail",
+    href: "https://github.com/Dicklesworthstone/mcp_agent_mail_rust",
     icon: "Mail",
     color: "from-violet-400 to-purple-500",
     tagline: "Gmail for your agents",
     description:
-      "A complete coordination system for multi-agent workflows. Agents register identities, send/receive messages, search conversations, and declare file reservations to prevent edit conflicts. HTTP-only FastMCP server with static export and Web UI.",
+      "A complete coordination system for multi-agent workflows. Agents register identities, send/receive messages, search conversations, and declare file reservations to prevent edit conflicts. Rust MCP server (Streamable HTTP or stdio) with the am operator CLI, a TUI, static export, and a Web UI.",
     deepDescription:
-      "Agent Mail is the nervous system of the flywheel. HTTP-only transport (Streamable HTTP) for modern MCP clients. Provides: agent identities (adjective+noun names like 'BlueLake'), threaded GFM messages, FTS5 full-text search, and advisory file reservations. SQLite + Git dual persistence means human-auditable artifacts. 30+ MCP tools including macros for common workflows. Static mailbox export with Ed25519 signing and age encryption for audits. Web UI for exploration and Human Overseer for human-to-agent messaging.",
+      "Agent Mail is the nervous system of the flywheel. Rust MCP server over Streamable HTTP or stdio, plus the am operator CLI with agent-first robot commands. Provides: agent identities (adjective+noun names like 'BlueLake'), threaded GFM messages, Tantivy-backed full-text search (Search V3), and advisory file reservations. SQLite + Git dual persistence means human-auditable artifacts. 45+ MCP tools including macros for common workflows. Static mailbox export with Ed25519 signing and age encryption for audits. Web UI for exploration and Human Overseer for human-to-agent messaging.",
     connectsTo: ["bv", "cm", "slb", "ntm", "ru"],
     connectionDescriptions: {
       bv: "Task IDs link conversations to Beads issues",
       cm: "Shared memories accessible across sessions",
       slb: "Approval requests delivered to agent inboxes",
       ntm: "NTM-spawned agents auto-register",
-      ru: "RU can coordinate repo claims via Mail",
+      ru: "Agents reserve repos via Mail before running RU sweeps",
     },
-    stars: 1015,
+    stars: 284,
     demoUrl: "https://dicklesworthstone.github.io/cass-memory-system-agent-mailbox-viewer/viewer/",
     features: [
       "Agent identities with adjective+noun names (BlueLake, GreenCastle)",
       "GitHub-flavored Markdown messages with threading",
       "Advisory file reservations with pre-commit guard enforcement",
-      "FTS5 full-text search with boolean operators",
+      "Tantivy-backed full-text search (Search V3) with boolean operators",
       "Contact policies with auto-allow heuristics",
       "Static export with Ed25519 signing and age encryption",
       "Web UI and Human Overseer for human-to-agent messaging",
@@ -527,9 +527,10 @@ const _flywheelTools: FlywheelTool[] = [
     ],
     cliCommands: [
       "am serve-http --port 8765",
-      "mcp-agent-mail guard install <project> <repo>",
-      "mcp-agent-mail share wizard",
-      "mcp-agent-mail doctor check --verbose",
+      "am robot status --project <abs-path> --agent <name>",
+      "am guard install <project> <repo>",
+      "am share wizard",
+      "am doctor check --verbose",
     ],
     installCommand:
       "curl --proto '=https' --proto-redir '=https' -fsSL \"https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail_rust/refs/heads/main/install.sh\" | bash -s -- --yes",
@@ -544,7 +545,7 @@ const _flywheelTools: FlywheelTool[] = [
     color: "from-rose-400 to-red-500",
     tagline: "1000+ bug patterns for AI workflows",
     description:
-      "AST-grep patterns detecting 1000+ bug types across 8 languages. 18 detection categories from null safety to security vulnerabilities. Sub-5-second scans. Auto-wires into Claude Code, Codex, Cursor, Antigravity, and Windsurf agents.",
+      "AST-grep patterns detecting 1000+ bug types across 15 languages. 18 detection categories from null safety to security vulnerabilities. Sub-5-second scans. Auto-wires into Claude Code, Codex, Cursor, Gemini, Windsurf, Cline, and OpenCode agents.",
     deepDescription:
       "UBS is a meta-runner that fans out per-language scanners (ubs-js.sh, ubs-python.sh, etc.) and merges results into unified output. Uses ast-grep for AST-based pattern matching with 18 detection categories: null safety, async/await bugs, security holes (XSS, injection), memory leaks, type coercion, and more. Supports --beads-jsonl for Beads integration. The installer auto-detects local coding agents and wires guardrails (on-file-write hooks for Claude Code, .cursorrules blocks).",
     connectsTo: ["bv", "br"],
@@ -554,7 +555,7 @@ const _flywheelTools: FlywheelTool[] = [
     },
     stars: 91,
     features: [
-      "8 languages: JS/TS, Python, Go, Rust, C/C++, Java, Ruby, Swift",
+      "15 languages: JS/TS, Python, Go, Rust, C/C++, Java, Kotlin, Ruby, Swift, C#, Elixir, Bash, PHP, SQL, Terraform HCL",
       "18 detection categories: security, async, null safety, memory leaks",
       "5 output formats: text, json, jsonl, sarif, toon",
       "Agent guardrails: Claude Code hooks, .cursorrules, .codex/rules",
@@ -590,10 +591,10 @@ const _flywheelTools: FlywheelTool[] = [
       ubs: "Bug scan results create blocking issues",
       cass: "Search prior sessions for task context",
       cm: "Remembers successful approaches",
-      ru: "RU integrates with beads for multi-repo task tracking",
+      ru: "RU keeps repos (and their .beads/ trackers) synced across machines",
       ntm: "NTM uses --robot-plan, --robot-graph for dependency insights during agent orchestration",
     },
-    stars: 546,
+    stars: 1736,
     demoUrl: "https://dicklesworthstone.github.io/beads_viewer-pages/",
     features: [
       "9 graph metrics: PageRank, Betweenness, HITS, Critical Path, Eigenvector, Degree, Density, Cycles, Topo Sort",
@@ -601,7 +602,7 @@ const _flywheelTools: FlywheelTool[] = [
       "Robot protocol: --robot-triage, --robot-plan, --robot-insights, --robot-alerts, --robot-forecast",
       "11 built-in recipes: actionable, high-impact, bottlenecks, stale, quick-wins",
       "Export to Markdown, HTML (D3.js force-graph), SQLite static sites (--pages)",
-      "Live reload on beads.jsonl changes, TOON format for low-token output",
+      "Live reload when beads data changes, TOON format for low-token output",
     ],
     cliCommands: [
       "bv --robot-triage",
@@ -624,7 +625,7 @@ const _flywheelTools: FlywheelTool[] = [
     description:
       "Local-first issue tracking for AI agents. SQLite primary storage with JSONL export for git. Dependencies, labels, priorities (P0-P4), blocking relationships. Non-invasive: never runs git commands automatically. The bd alias provides backward compatibility.",
     deepDescription:
-      "beads_rust (br) is the ~20K line Rust port of the beads issue tracker. SQLite for fast local queries, JSONL for git-friendly collaboration. Full dependency graph, labels, priorities, comments. Agent-first design: all commands support --json. Explicit sync (flush-only/import-only). Works offline. Doctor diagnostics and schema output (--format toon/json).",
+      "beads_rust (br) is the Rust port of the classic SQLite + JSONL beads issue tracker. SQLite for fast local queries, JSONL for git-friendly collaboration. Full dependency graph, labels, priorities, comments. Agent-first design: all commands support --json. Every change auto-flushes to .beads/issues.jsonl; br sync --flush-only is a final check, and br never runs git. Works offline. Doctor diagnostics, swarm scheduler, and schema output (--format toon/json).",
     connectsTo: ["bv", "mail", "ntm", "ru", "ubs"],
     connectionDescriptions: {
       bv: "BV visualizes and analyzes beads from br",
@@ -662,20 +663,20 @@ const _flywheelTools: FlywheelTool[] = [
     color: "from-cyan-400 to-sky-500",
     tagline: "Instant search across all agents",
     description:
-      "Unified search for all AI coding sessions. Indexes 11 agent formats: Claude Code, Codex, Cursor, Antigravity/Gemini, ChatGPT, Cline, Aider, Pi-Agent, Factory, OpenCode, Amp. Tantivy-powered <60ms queries with optional semantic search.",
+      "Unified search for all AI coding sessions. Indexes 35 agent connectors, including Claude Code, Codex, Cursor, Antigravity, Gemini CLI, Copilot, ChatGPT, Cline, Aider, Pi-Agent, Factory, OpenCode, and Amp. Quill BM25 lexical engine with <60ms queries and optional semantic search.",
     deepDescription:
-      "CASS unifies session history from 11 agent formats into a single searchable timeline. Three search modes: lexical (BM25 with edge n-grams), semantic (local MiniLM or hash embedder fallback), and hybrid (RRF fusion). Robot mode with cursor pagination, field selection, and token budgeting. HTML export with optional AES-256-GCM encryption. Multi-machine search via SSH/rsync with interactive setup wizard.",
+      "CASS unifies session history from 35 agent connectors into a single searchable timeline. Three search modes: lexical (Quill BM25 with prefix matching), semantic (local MiniLM or hash embedder fallback), and hybrid (RRF fusion). Robot mode with cursor pagination, field selection, and token budgeting. HTML export with optional AES-256-GCM encryption. Multi-machine search via SSH/rsync with interactive setup wizard.",
     connectsTo: ["cm", "ntm", "bv"],
     connectionDescriptions: {
-      cm: "Indexes stored memories for retrieval",
+      cm: "Supplies the session history CM mines for rules",
       ntm: "Searches all NTM-managed session histories",
       bv: "Links search results to related tasks",
     },
     stars: 145,
     features: [
-      "11 agent formats: Claude Code, Codex, Cursor, Antigravity/Gemini, ChatGPT, Cline, Aider, Pi-Agent, Factory",
-      "Three search modes: lexical (BM25), semantic (MiniLM/hash fallback), hybrid (RRF)",
-      "Sub-60ms queries with edge n-gram prefix matching",
+      "35 agent connectors: Claude Code, Codex, Cursor, Antigravity, Gemini CLI, Copilot, ChatGPT, Cline, Aider, and more",
+      "Three search modes: lexical (Quill BM25), semantic (MiniLM/hash fallback), hybrid (RRF)",
+      "Sub-60ms queries with prefix matching",
       "Aggregations for 99% token reduction (--aggregate agent,workspace)",
       "Robot mode with cursor pagination and token budgeting",
       "Context command finds related sessions for a source path",
@@ -739,7 +740,7 @@ const _flywheelTools: FlywheelTool[] = [
     color: "from-amber-400 to-orange-500",
     tagline: "Instant auth switching",
     description:
-      "Manage multiple accounts for Claude Code, Codex CLI, and Antigravity CLI with sub-100ms switching. Smart rotation algorithms, cooldown tracking, health scoring, and vault-based profile isolation for parallel agent sessions.",
+      "Manage multiple accounts for Claude Code, Codex CLI, Antigravity CLI, Gemini CLI, Grok Build, OpenCode, and Cursor with sub-100ms switching. Smart rotation algorithms, cooldown tracking, health scoring, and vault-based profile isolation for parallel agent sessions.",
     deepDescription:
       "CAAM enables seamless multi-account workflows for AI coding CLIs. Vault profiles store auth files for instant switching without browser flows. Smart rotation considers cooldown state, health status (healthy/warning/critical), recency, and plan type. Robot mode provides JSON output for agent automation. Features include profile isolation for parallel sessions, background token refresh daemon, and multi-machine vault sync. AES-256-GCM encrypted bundles with Argon2id key derivation for secure export/import.",
     connectsTo: ["ntm", "slb", "mail"],
@@ -751,7 +752,7 @@ const _flywheelTools: FlywheelTool[] = [
     stars: 12,
     features: [
       "Sub-100ms account switching via vault profiles",
-      "3 providers: Claude Code, Codex CLI, Antigravity CLI",
+      "7 providers: Claude Code, Codex CLI, Antigravity CLI, Gemini CLI, Grok Build, OpenCode, Cursor",
       "Smart rotation: cooldown, health, recency, plan type",
       "Health scoring: healthy (🟢), warning (🟡), critical (🔴)",
       "caam run with automatic failover on rate limits",
@@ -775,12 +776,12 @@ const _flywheelTools: FlywheelTool[] = [
     id: "slb",
     name: "Simultaneous Launch Button",
     shortName: "SLB",
-    href: "https://github.com/Dicklesworthstone/simultaneous_launch_button",
+    href: "https://github.com/Dicklesworthstone/slb",
     icon: "ShieldCheck",
     color: "from-yellow-400 to-amber-500",
     tagline: "Two-person rule for agents",
     description:
-      "Nuclear-launch-style safety for AI agents. Four risk tiers (CRITICAL/DANGEROUS/CAUTION/SAFE) with 40+ regex patterns. CRITICAL commands require 2+ approvals from different agents. Cryptographic signing, rollback support, and outcome analytics.",
+      "Nuclear-launch-style safety for AI agents. Four risk tiers (CRITICAL/DANGEROUS/CAUTION/SAFE) with 40+ regex patterns. CRITICAL commands require 2+ approvals from different agents (local agent review requires opting in with approval_policy = same_host; the default refuses local approvals). Cryptographic signing, rollback support, and outcome analytics.",
     deepDescription:
       "SLB implements a two-person authorization rule for dangerous commands. Commands are classified by regex patterns: CRITICAL (rm -rf /, DROP DATABASE, terraform destroy) needs 2+ approvals, DANGEROUS (git reset --hard, rm -rf) needs 1, CAUTION auto-approves after 30s, SAFE skips entirely. Approvals are cryptographically signed with HMAC. Features include Claude Code hooks, Cursor rules generation, session management for agents, watch mode (NDJSON streaming) for reviewing agents, pre-execution state capture for rollback, and outcome recording for pattern improvement.",
     connectsTo: ["dcg", "mail", "ntm", "caam"],
@@ -810,7 +811,7 @@ const _flywheelTools: FlywheelTool[] = [
       "slb session start -a MyAgent      # Start agent session",
     ],
     installCommand:
-      "curl --proto '=https' --proto-redir '=https' -fsSL https://raw.githubusercontent.com/Dicklesworthstone/simultaneous_launch_button/main/scripts/install.sh | bash",
+      "curl --proto '=https' --proto-redir '=https' -fsSL https://raw.githubusercontent.com/Dicklesworthstone/slb/main/scripts/install.sh | bash",
     language: "Go",
   },
   {
@@ -822,25 +823,25 @@ const _flywheelTools: FlywheelTool[] = [
     color: "from-red-400 to-rose-500",
     tagline: "Pre-execution safety net",
     description:
-      "Claude Code PreToolUse hook blocking dangerous commands BEFORE execution. 50+ packs across 17 categories: git, filesystem, databases, Kubernetes, cloud providers, CI/CD, and more. Fail-open design ensures you're never blocked by errors.",
+      "Pre-execution hook that blocks dangerous commands BEFORE they run in Claude Code, Codex CLI, Gemini CLI, Copilot, Cursor, Antigravity (agy), OpenCode, and more. 100+ packs across 28 categories: git, filesystem, databases, Kubernetes, cloud providers, CI/CD, and more. Unreadable hook input is allowed with an audit warning; analysis that cannot finish asks for review or blocks.",
     deepDescription:
-      "DCG protects your codebase from destructive operations. As a PreToolUse hook, it intercepts commands before execution with sub-millisecond latency. 50+ protection packs cover git (reset --hard, force push, branch -D), filesystem (rm -rf outside temp dirs), databases (DROP TABLE, TRUNCATE), Kubernetes (delete namespace, drain), and cloud providers (AWS, GCP, Azure). Commands are classified as blocked or allowed with safe directory exceptions (/tmp, /var/tmp, $TMPDIR). Output formats include text, JSON, and SARIF for security tooling integration.",
+      "DCG protects your codebase from destructive operations. As a pre-execution hook for Claude Code, Codex CLI, Gemini CLI, Copilot, Cursor, agy, OpenCode, and other agents, it intercepts commands before execution with sub-millisecond latency. 100+ protection packs cover git (reset --hard, force push, branch -D), filesystem (rm -rf outside temp dirs), databases (DROP TABLE, TRUNCATE), Kubernetes (delete namespace, drain), and cloud providers (AWS, GCP, Azure). Commands are classified as blocked or allowed with safe directory exceptions (/tmp, /var/tmp, $TMPDIR). Output formats include text, JSON, and SARIF for security tooling integration.",
     connectsTo: ["slb", "ntm", "mail", "srps"],
     connectionDescriptions: {
-      slb: "DCG and SLB form a two-layer safety system - DCG blocks pre-execution, SLB validates post-execution",
-      ntm: "Agents spawned by NTM are protected by DCG hooks in Claude Code",
-      mail: "DCG denials can be logged to Mail for agent coordination",
+      slb: "DCG and SLB form a two-layer safety system - DCG blocks destructive patterns outright, SLB requires peer approval before risky commands run",
+      ntm: "Agents spawned by NTM (Claude Code, Codex, agy, and more) are protected by DCG hooks",
+      mail: "Agents can report DCG denials to each other over Agent Mail",
       srps: "Together with SRPS: DCG blocks dangerous commands, SRPS blocks resource exhaustion",
     },
     stars: 50,
     features: [
-      "Sub-millisecond SIMD-accelerated PreToolUse hook",
+      "Sub-millisecond SIMD-accelerated pre-execution hook",
       "Heredoc/inline script scanning (python -c, bash -c, etc.)",
       "Smart context detection: data vs execution contexts",
-      "49+ packs: git, filesystem, database, k8s, cloud, cicd",
+      "100+ packs: git, filesystem, database, k8s, cloud, cicd",
       "Agent-specific trust profiles (claude-code, antigravity, etc.)",
       "MCP server mode for direct agent integration",
-      "Fail-open design: never blocks on errors/timeouts",
+      "Bounded failure policy: unfinished analysis asks or blocks",
       "Output: text, JSON, SARIF for security tooling",
     ],
     cliCommands: [
@@ -874,7 +875,7 @@ conflict type (dirty tree, diverged branches, auth failures).
 
 **AI-Assisted Review (ru review):**
 - GraphQL batch queries discover issues/PRs across all repos
-- Multi-factor priority scoring: type (+20 PRs), labels (+50 security), age, staleness
+- Multi-factor priority scoring: type (+20 PRs), labels (+150 security/critical, +30 bugs), age, staleness
 - Git worktree isolation for parallel sessions (main directory untouched)
 - Session drivers: auto, ntm (robot mode API), local (raw tmux)
 - Two-phase workflow: --plan (discover) → --apply --push (execute)
@@ -886,20 +887,20 @@ conflict type (dirty tree, diverged branches, auth failures).
 - --repos=PATTERN to scope, --respect-staging to keep hand-staged files separate
 
 **Dependency Updates (ru dep-update):**
-- Supported: npm, pip, cargo, go, composer
+- Supported: npm, cargo, go, composer (pip, yarn/pnpm, bundler, maven/gradle detected but not yet scanned)
 - Per-dependency test verification with auto-fix attempts
 - Major version filtering, regex include/exclude patterns
 
 **Automation & Scripting:**
 - Output modes: text, TOON, JSON for CI integration
 - Meaningful exit codes: 0=ok, 1=partial, 2=conflicts, 3=system, 4=bad args, 5=interrupted
-- Bulk import from GitHub/GitLab/Bitbucket/Gitea (ru import)
-- Orphan repo cleanup with ru prune`,
+- Bulk import from files or GitHub stars/orgs/users (ru import)
+- Orphan repo detection and cleanup with ru prune`,
     connectsTo: ["ntm", "mail", "bv"],
     connectionDescriptions: {
       ntm: "Uses ntm robot mode for AI-assisted reviews (ru review)",
-      mail: "Can coordinate repo claims across agents",
-      bv: "Integrates with beads for multi-repo task tracking",
+      mail: "Agents claim repos via Mail before running RU commands",
+      bv: "Syncs the repos whose beads BV triages",
     },
     stars: 78,
     features: [
@@ -911,7 +912,7 @@ conflict type (dirty tree, diverged branches, auth failures).
       "Resume from checkpoint: ru sync --resume",
       "Quality gates: ShellCheck, tests, lint",
       "TOON/JSON output modes for CI integration",
-      "Bulk import from GitHub/GitLab/Bitbucket (ru import)",
+      "Bulk import from files or GitHub stars/orgs/users (ru import)",
     ],
     cliCommands: [
       "ru sync                    # Clone missing + pull updates",
@@ -921,8 +922,8 @@ conflict type (dirty tree, diverged branches, auth failures).
       "ru review --plan           # AI-assisted code review",
       "ru review --apply --push   # Apply approved changes",
       "ru commit-sweep --execute  # Commit dirty worktrees logically",
-      "ru import github user/org  # Bulk import repos",
-      "ru prune                   # Remove orphan repos",
+      "ru import --org=NAME        # Bulk import an org's repos",
+      "ru prune                   # List orphan repos (--archive/--delete to act)",
     ],
     installCommand:
       'curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/repo_updater/main/install.sh" | bash',
@@ -959,8 +960,8 @@ Over time, the system learns which signals matter for your workflow.
 **Graph Analysis:** Converts skills to JSONL and delegates to bv for PageRank, betweenness,
 cycles, critical path analysis, HITS algorithm. Use the right tool for each job.
 
-**MCP Server:** Exposes 12 tools (search, load, evidence, list, show, doctor, lint, suggest,
-feedback, index, validate, config) so Claude, Codex, and other MCP-aware agents can use ms
+**MCP Server:** Exposes 15 tools (search, load, evidence, list, show, doctor, lint, suggest,
+feedback, index, validate, config, safety, security, dedup) so Claude, Codex, and other MCP-aware agents can use ms
 as a native tool, not string-parsing.`,
     connectsTo: ["cass", "cm", "bv", "br", "jfp"],
     connectionDescriptions: {
@@ -975,7 +976,7 @@ as a native tool, not string-parsing.`,
       "Dual persistence: SQLite + Git archive",
       "Hybrid search: BM25 + hash embeddings + RRF",
       "UCB bandit: Learns from feedback to optimize suggestions",
-      "MCP server: 12 native tools for AI agent integration",
+      "MCP server: 15 native tools for AI agent integration",
       "ACIP + DCG: Multi-layer security with quarantine",
       "Token packing with pack contracts (debug/refactor/learn)",
       "Auto-loading: Context-aware skill suggestions",
@@ -985,11 +986,12 @@ as a native tool, not string-parsing.`,
       "ms doctor                 # Health checks and repairs",
       "ms search 'error handling' # Hybrid BM25 + semantic search",
       "ms suggest                # Bandit-optimized suggestions",
-      "ms mcp serve              # Start MCP server (12 tools)",
+      "ms mcp serve              # Start MCP server (15 tools)",
       "ms build --from-cass <query> # Build skills from CASS",
       "ms sync                   # Multi-machine Git sync",
     ],
-    installCommand: "cargo install --git https://github.com/Dicklesworthstone/meta_skill",
+    installCommand:
+      'curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/meta_skill/main/scripts/install.sh" | bash -s -- --easy-mode',
     language: "Rust",
   },
   {
@@ -999,11 +1001,11 @@ as a native tool, not string-parsing.`,
     href: "https://github.com/Dicklesworthstone/remote_compilation_helper",
     icon: "Cloud",
     color: "from-blue-500 to-indigo-600",
-    tagline: "Offload Rust builds to remote workers",
+    tagline: "Offload Rust, Go, C/C++ and Bun builds to remote workers",
     description:
-      "Claude Code PreToolUse hook that offloads cargo builds to remote workers. Intercepts build commands, syncs source via rsync + zstd, compiles on server-grade hardware, and streams artifacts back.",
+      "Claude Code PreToolUse hook plus a cargo shim (for every other agent and script) that offloads builds to remote workers: cargo, go, gcc/clang, make/cmake/ninja, bun/tsc, nix. Syncs source via rsync + zstd, compiles on server-grade hardware, and streams artifacts back; fails open to local.",
     deepDescription:
-      "RCH runs as a PreToolUse hook intercepting cargo commands before execution. Workers are managed via `rch workers` with health probes and priority scheduling. The daemon mode maintains persistent SSH connections for low-latency builds. Agent detection (`rch agents`) finds running Claude Code, Codex, and Antigravity sessions to coordinate multi-agent builds. Doctor command validates workers, daemon, and hook configuration.",
+      "RCH runs as a PreToolUse hook (and, via `rch shim`, a cargo shim for every other agent) intercepting build commands before execution. Workers are managed via `rch workers` with health probes and priority scheduling. The daemon mode maintains persistent SSH connections for low-latency builds. Agent detection (`rch agents list`) finds installed agents (Claude Code, Codex CLI, Gemini CLI, Cursor, and others) and installs the RCH hook into each. Doctor command validates workers, daemon, and hook configuration.",
     connectsTo: ["ntm", "ru", "br"],
     connectionDescriptions: {
       ntm: "NTM can spawn agents on same machines RCH uses as workers",
@@ -1012,11 +1014,11 @@ as a native tool, not string-parsing.`,
     },
     stars: 45,
     features: [
-      "PreToolUse hook intercepts cargo commands automatically",
+      "PreToolUse hook + cargo shim intercept builds automatically",
       "rsync + zstd sync with incremental artifact streaming",
       "Worker pool with health probes and priority scheduling",
       "Daemon mode with persistent SSH connections",
-      "Agent detection for Claude Code, Codex, Antigravity CLI",
+      "Agent detection for Claude Code, Codex CLI, Gemini CLI, Cursor, and more",
       "Doctor command validates entire configuration",
     ],
     cliCommands: [
@@ -1025,66 +1027,65 @@ as a native tool, not string-parsing.`,
       "rch workers probe --all     # Test worker connectivity",
       "rch daemon start            # Start persistent daemon",
       "rch hook install            # Install PreToolUse hook",
-      "rch agents                  # Detect running AI agents",
+      "rch agents list             # Detect installed AI agents",
     ],
     installCommand:
-      "curl --proto '=https' --proto-redir '=https' -fsSL \"https://raw.githubusercontent.com/Dicklesworthstone/remote_compilation_helper/main/install.sh\" | bash",
+      "curl --proto '=https' --proto-redir '=https' -fsSL \"https://raw.githubusercontent.com/Dicklesworthstone/remote_compilation_helper/main/install.sh\" | bash -s -- --easy-mode",
     language: "Rust",
   },
   {
+    // Kept as id "wa" so existing links and graph connections keep working;
+    // the tool itself is now FrankenTerm (ft), which superseded WezTerm Automata.
     id: "wa",
-    name: "WezTerm Automata",
-    shortName: "WA",
-    href: "https://github.com/Dicklesworthstone/wezterm_automata",
+    name: "FrankenTerm",
+    shortName: "FT",
+    href: "https://github.com/Dicklesworthstone/frankenterm",
     icon: "Terminal",
     color: "from-purple-500 to-violet-600",
-    tagline: "Terminal hypervisor for AI agents",
+    tagline: "Swarm-native terminal platform (successor to WezTerm Automata)",
     description:
-      "A terminal hypervisor that captures pane output in real-time, detects AI agent state transitions via pattern matching, and enables event-driven automation across multi-agent swarms.",
-    deepDescription: `WA is a terminal hypervisor - not just an automation tool. It runs a daemon that continuously
-observes WezTerm panes with sub-50ms latency, capturing output deltas and detecting state
-transitions in AI coding agents (Claude Code, Codex, Antigravity).
+      "FrankenTerm (ft) supersedes WezTerm Automata (wa): it captures pane output on its own vendored WezTerm-fork terminal engine, detects agent state transitions, and exposes policy-gated Robot Mode and MCP control. ACFS does not install it; use FrankenTerm's own installer.",
+    deepDescription: `FrankenTerm (ft) is the successor to WezTerm Automata (wa); the wezterm_automata repository
+now redirects to frankenterm and there is no wa binary. ft runs on its own in-tree fork of
+WezTerm's mux/term crates, captures bounded pane-output deltas, and detects agent states
+(usage limits, approval prompts, compaction, errors) with pattern rules plus change-point detection.
 
-The pattern detection engine recognizes agent-specific states: ready for input, thinking,
-rate limited, awaiting approval, idle timeout. When states change, WA can trigger automated
-responses via callbacks or Robot Mode.
+Robot Mode provides a JSON/TOON API for external orchestration:
+- ft robot state: Current state of all observed panes
+- ft robot get-text <pane>: Extract recent pane output
+- ft robot send <pane> "text": Policy-gated input injection
+- ft robot wait-for <pane> "pattern": Block until a pattern appears
+- ft robot search "query": Lexical, semantic, or hybrid search over captured output
 
-Robot Mode provides a JSON API for external orchestration:
-- wa robot state: Get current state of all observed panes
-- wa robot get-text: Extract screen content from specific panes
-- wa robot send: Inject keystrokes with configurable delays
-- wa robot wait-for: Block until a pattern matches
-- wa robot search: Query the FTS5-indexed capture history
-
-The policy engine allows capability gates (e.g., "agent X can only send to its own pane")
-to prevent runaway automation. All captured content is stored in SQLite with FTS5 for
-full-text search across sessions - invaluable for debugging agent behavior.`,
+Captured output is stored in SQLite with FTS5; a policy gate, approvals, and audit records
+guard every send. ACFS does not install ft: use the signed installer from the FrankenTerm repo.`,
     connectsTo: ["ntm", "mail", "br"],
     connectionDescriptions: {
-      ntm: "WA observes agents spawned by NTM sessions",
-      mail: "State changes can trigger Agent Mail notifications",
-      br: "Task completions can update bead status",
+      ntm: "An alternative operator cockpit to NTM; ft runs its own terminal engine, not tmux",
+      mail: "Built-in Agent Mail file-reservation coordination",
+      br: "Beads coordination snapshots in incident bundles",
     },
-    stars: 42,
+    stars: 129,
     features: [
-      "Real-time delta capture (sub-50ms latency)",
-      "Multi-agent pattern detection engine",
-      "Robot Mode JSON API for orchestration",
-      "FTS5-powered search with BM25 ranking",
-      "Policy engine with capability gates",
+      "Own terminal engine (in-tree WezTerm fork), no tmux required",
+      "Multi-agent pattern detection with change-point detection",
+      "Robot Mode JSON/TOON API for orchestration",
+      "Lexical, semantic, and hybrid search over captured output",
+      "Policy gate, approvals, and audit trail on every send",
       "Workflow automation triggered by pattern matches",
-      "TOON output format for token-efficient AI consumption",
-      "Explainability via 'wa why' command",
+      "Explainability via 'ft why' command",
     ],
     cliCommands: [
-      "wa daemon start              # Start background observer",
-      "wa robot state               # JSON state of all panes",
-      "wa robot get-text --pane 1   # Extract pane content",
-      "wa robot send --pane 1 'cmd' # Inject keystrokes",
-      "wa robot wait-for 0 'pattern' # Event-driven wait",
-      "wa robot events              # Recent detection events",
-      "wa why deny.alt_screen       # Explain policy denials",
+      "ft watch                      # Start the background watcher",
+      "ft robot state                # JSON state of all panes",
+      "ft robot get-text 1 --tail 50 # Extract pane content",
+      "ft robot send 1 'cmd'         # Policy-gated input",
+      "ft robot wait-for 0 'pattern' # Event-driven wait",
+      "ft robot events               # Recent detection events",
+      "ft why deny.alt_screen        # Explain policy denials",
     ],
+    installCommand:
+      "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/frankenterm/main/install.sh | bash",
     language: "Rust",
   },
   {
@@ -1102,8 +1103,8 @@ Built around Sydney Brenner's methodology (Nobel laureate, discoverer of mRNA), 
 sections with §n anchors), multi-model syntheses (Opus, GPT, Gemini), and full artifact lifecycle management.
 
 **Research Artifact Lifecycle:**
-- Hypothesis management: proposed → active → under_attack → killed/validated/dormant
-- Discriminative tests: designed → pending → completed/blocked (exclusion beats accumulation)
+- Hypothesis management: proposed → active → confirmed/refuted/superseded/deferred (via hypothesis validate/kill/refine/park)
+- Discriminative tests: designed → ready → in_progress → completed/blocked/abandoned (exclusion beats accumulation)
 - Anomaly tracking: active → resolved/deferred/paradigm_shifting (can spawn new hypotheses)
 - Critique system: adversarial attacks with severity levels and response tracking
 - Evidence packs: import papers, datasets, prior sessions with stable EV-NNN citations
@@ -1127,7 +1128,7 @@ sections with §n anchors), multi-model syntheses (Opus, GPT, Gemini), and full 
     },
     stars: 28,
     features: [
-      "Hypothesis lifecycle: proposed → active → killed/validated with discriminative tests",
+      "Hypothesis lifecycle: proposed → active → confirmed/refuted with discriminative tests",
       "Evidence packs: import papers, datasets, prior sessions with stable EV-NNN citations",
       "Anomaly tracking with paradigm_shifting status and hypothesis spawning",
       "Critique system for adversarial review with severity levels",
@@ -1158,11 +1159,11 @@ sections with §n anchors), multi-model syntheses (Opus, GPT, Gemini), and full 
     href: "https://jeffreysprompts.com",
     icon: "BookOpen",
     color: "from-amber-400 to-yellow-500",
-    tagline: "Curated prompt library + skill installer",
+    tagline: "Curated prompt library + CLI",
     description:
-      "Browse a curated library of battle-tested prompts and install them directly as Claude Code skills. Works via CLI or web UI with interactive fzf-style picker.",
+      "Browse a curated library of battle-tested prompts, then copy or export them as Markdown. Works via CLI or web UI with interactive fzf-style picker; Claude Code skills are managed by its sibling jsm.",
     deepDescription:
-      "JFP (JeffreysPrompts.com CLI) is the fastest way to discover prompts that actually work in production agent workflows. It mirrors the website library in a CLI: search, preview, and install prompts as Claude Code skills in seconds. Features include an interactive fzf-style picker (jfp i), task-based suggestion engine (jfp suggest), and workflow bundles for team standardization. Premium features include collections, sync across machines, and a skills marketplace.",
+      "JFP (JeffreysPrompts.com CLI) is the fastest way to discover prompts that actually work in production agent workflows. It mirrors the website library in a CLI: search, preview, copy, and export prompts in seconds. Features include an interactive fzf-style picker (jfp i), task-based suggestion engine (jfp suggest), and workflow bundles for team standardization. Premium features include collections, sync across machines, and premium prompt packs.",
     connectsTo: ["ms", "apr", "cm"],
     connectionDescriptions: {
       ms: "Use JFP to discover prompts, then manage/curate them locally with MS",
@@ -1173,11 +1174,11 @@ sections with §n anchors), multi-model syntheses (Opus, GPT, Gemini), and full 
     features: [
       "Interactive fzf-style prompt picker (jfp i)",
       "Task-based prompt suggestions (jfp suggest)",
-      "Skill installs hand off to its sibling jsm (jsm install <skill>)",
+      "Skills live in its sibling CLI jsm (jsm install <skill>), not jfp",
       "Workflow bundles for team standardization",
       "MCP server mode for agent integration (jfp serve)",
       "Variable rendering with placeholder fill (jfp render --fill)",
-      "Premium: collections, sync, notes, marketplace",
+      "Premium: collections, sync, notes, prompt packs",
       "Shell completion and auto-updates",
     ],
     cliCommands: [
@@ -1244,8 +1245,8 @@ Supports Linux (Debian/Ubuntu) and WSL2. Idempotent installer with --plan dry-ru
     color: "from-amber-500 to-yellow-600",
     tagline: "Iterative spec refinement via GPT Pro Extended Reasoning + Oracle",
     description:
-      "Automates multi-round specification review using GPT Pro 5.2 Extended Reasoning. Document bundling, convergence analytics, session management, and robot mode for coding agents.",
-    deepDescription: `APR (v1.2.2) automates iterative specification refinement like numerical optimization converging on a steady state. Rounds 1-3 fix major architectural issues and security gaps, rounds 4-7 refine interfaces, rounds 8-12 handle edge cases, rounds 13+ polish abstractions.
+      "Automates multi-round specification review using GPT Pro extended reasoning in ChatGPT (driven by Oracle). Document bundling, convergence analytics, session management, and robot mode for coding agents.",
+    deepDescription: `APR automates iterative specification refinement like numerical optimization converging on a steady state. Rounds 1-3 fix major architectural issues and security gaps, rounds 4-7 refine interfaces, rounds 8-12 handle edge cases, rounds 13+ polish abstractions.
 
 Workflow: apr setup (interactive wizard) → apr run <N> (execute round) → apr integrate <N> (Claude Code prompt). Document bundling automatically combines README + spec + implementation (every 3-4 rounds). Background execution with 10-60 minute GPT Pro reasoning and desktop notifications on completion.
 
@@ -1295,16 +1296,16 @@ Robot mode (JSON API): apr robot validate <N> → apr robot run <N> → apr robo
     color: "from-red-500 to-orange-600",
     tagline: "Bayesian-inference zombie/abandoned process detection and cleanup",
     description:
-      "Four-state classification model (Useful, Useful-but-bad, Abandoned, Zombie) with evidence-based posterior inference. Interactive TUI via gum, agent/robot mode for automation.",
+      "Four-state classification model (Useful, Useful-but-bad, Abandoned, Zombie) with evidence-based posterior inference. Interactive Rust TUI (ftui), agent/robot mode and an MCP server for automation.",
     deepDescription: `PT identifies abandoned processes using Bayesian posterior inference. Every process is classified into one of four states: Useful (productive work), Useful-but-bad (stuck/leaking), Abandoned (forgotten), or Zombie (terminated but not reaped).
 
 Evidence sources: process type (test runner? dev server?), age vs expected lifetime, parent PID (orphaned?), CPU activity, I/O activity, TTY state, memory usage, and past decisions (learns from your patterns). Confidence levels: very_high (>0.99), high (>0.95), medium (>0.80), low (<0.80).
 
 Safety model: Identity validation (boot_id:start_time_ticks:pid) prevents PID reuse attacks. Protected processes (systemd, sshd, docker, postgres, etc.) are never flagged. Staged kill signals: SIGTERM → wait → SIGKILL. Blast radius assessment includes memory freed, CPU released, and child process impact.
 
-Agent/robot mode safety gates: min_posterior (0.95 default), max_kills (10/session), max_blast_radius (4GB), fdr_budget (0.05). Output formats: json, toon, md, jsonl, summary, metrics, slack, exitcode, prose.
+Agent/robot mode safety gates (robot mode is off by default via robot_mode.enabled): min_posterior (0.95 default), max_kills (5 per run), max_blast_radius_mb (4096 per action), fdr_control.alpha (0.05), plus live identity/protection pre-checks before every action. Output formats: json, toon, md, jsonl, summary, metrics, slack, exitcode, prose.
 
-Tech stack: Rust pt-core inference engine + Bash wrapper + gum TUI. Session bundles (.ptb) enable sharing and reproducibility with optional encryption.`,
+Tech stack: Rust pt-core inference engine (built-in ftui TUI, MCP server via pt-core mcp, SSH fleet mode) + thin Bash wrapper. Session bundles (.ptb) enable sharing and reproducibility with optional encryption.`,
     connectsTo: ["srps", "ntm"],
     connectionDescriptions: {
       srps: "PT terminates stuck processes, SRPS prevents them from starving the system",
@@ -1318,7 +1319,7 @@ Tech stack: Rust pt-core inference engine + Bash wrapper + gum TUI. Session bund
       "Identity validation prevents PID reuse attacks",
       "Staged kill signals (SIGTERM → wait → SIGKILL)",
       "Blast radius assessment before termination",
-      "Interactive gum TUI for process selection",
+      "Interactive ftui TUI for process selection",
       "Agent/robot mode with safety gates",
       "Session bundles (.ptb) for sharing/reproducibility",
     ],
@@ -1345,7 +1346,7 @@ Tech stack: Rust pt-core inference engine + Bash wrapper + gum TUI. Session bund
     description:
       "Hybrid BM25 + semantic search over X/Twitter data exports. Zero-dependency local processing with Reciprocal Rank Fusion.",
     deepDescription: `XF indexes your X (Twitter) data export and provides sub-millisecond full-text search
-across tweets, likes, DMs, and Grok conversations. Three search modes: hybrid (default),
+across tweets, likes, DMs, bookmarks, and Grok conversations. Three search modes: hybrid (default),
 lexical (BM25 keyword matching), and semantic (vector similarity via hash embedder or
 optional MiniLM with --semantic flag).
 
@@ -1395,7 +1396,7 @@ Key capabilities:
     tagline: "Download full-resolution cloud images via four-tier capture",
     description:
       "Download images from iCloud, Dropbox, Google Photos, and Google Drive share links with intelligent four-tier capture strategy and MozJPEG compression.",
-    deepDescription: `GIIL (v3.1.0 Hybrid Edition) solves the remote image retrieval problem for AI-assisted debugging.
+    deepDescription: `GIIL (Hybrid Edition) solves the remote image retrieval problem for AI-assisted debugging.
 When users share screenshots via cloud links, agents can download full-resolution originals directly.
 
 Four-tier capture strategy ensures maximum quality:
@@ -1404,11 +1405,13 @@ Four-tier capture strategy ensures maximum quality:
 3. Element screenshot (targets largest image element)
 4. Viewport screenshot (final fallback)
 
-Supports iCloud (share.icloud.com), Dropbox (dropbox.com/s/, dl.dropbox.com), Google Photos (photos.google.com),
-and Google Drive (drive.google.com). Album mode (--all flag) extracts all images from multi-image shares.
+Supports iCloud (share.icloud.com), Dropbox (dropbox.com/s/, dropbox.com/scl/fi/; direct curl, no browser),
+Google Photos (photos.app.goo.gl, photos.google.com/share; original-file download), and Google Drive
+(drive.google.com). Album mode (--all flag) extracts all images from multi-image shares. Several URLs can be
+passed in one run.
 
 Processing: MozJPEG compression (default 85% quality), HEIC/AVIF to JPEG conversion via Sharp.
-Output formats: default (file + path), JSON ({"file","format","size"}), TOON (formatted log), base64.
+Output formats: default (absolute file path), JSON ({"ok","platform","path","method","size","width","height",...}), TOON (same envelope, token-optimized via toon), base64.
 
 Exit codes enable scripting: 0=success, 10=network error, 11=auth required, 12=not found, 13=unsupported platform.
 Tech stack: Bash wrapper orchestrating Node.js/Playwright/Chromium/Sharp for headless browser automation.`,
@@ -1447,7 +1450,7 @@ Tech stack: Bash wrapper orchestrating Node.js/Playwright/Chromium/Sharp for hea
     color: "from-emerald-500 to-teal-600",
     tagline: "Convert AI chat share links to Markdown/HTML",
     description:
-      "Archive AI conversations from ChatGPT, Claude, and Gemini share links into clean Markdown and HTML files.",
+      "Archive AI conversations from ChatGPT, Gemini, Grok, and Claude share links into clean Markdown and HTML files.",
     deepDescription: `AI conversations are ephemeral - share links expire, contexts get lost. CSCTF converts
 share links from major AI platforms into permanent Markdown and HTML archives.
 
@@ -1461,6 +1464,7 @@ Key capabilities:
 - ChatGPT share link conversion
 - Claude share link conversion
 - Gemini share link conversion
+- Grok share link conversion
 - Clean Markdown with preserved code blocks
 - Static HTML with syntax highlighting
 - Stable, slug-based output filenames`,
@@ -1474,11 +1478,16 @@ Key capabilities:
       "ChatGPT share link support",
       "Claude share link support",
       "Gemini share link support",
+      "Grok share link support",
       "Clean Markdown output",
       "Static HTML with syntax highlighting",
       "Stable slug-based filenames",
     ],
-    cliCommands: ['csctf "https://chatgpt.com/share/..."', "csctf --md-only", "csctf --help"],
+    cliCommands: [
+      'csctf "https://chatgpt.com/share/..."',
+      'csctf "https://grok.com/share/..." --md-only',
+      "csctf --help",
+    ],
     installCommand:
       "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/chat_shared_conversation_to_file/main/install.sh | bash",
     language: "TypeScript",
@@ -1519,7 +1528,7 @@ Key capabilities:
       "Streaming decode",
       "Key folding and delimiter options",
     ],
-    cliCommands: ["toon compress file.json", "toon expand file.toon", "toon --help"],
+    cliCommands: ["toon data.json -o data.toon", "toon --decode data.toon", "toon --stats data.json"],
     installCommand:
       "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/toon_rust/main/install.sh | bash",
     language: "Rust",
@@ -1531,39 +1540,37 @@ Key capabilities:
     href: "https://github.com/Dicklesworthstone/rano",
     icon: "Wifi",
     color: "from-cyan-500 to-blue-600",
-    tagline: "Network observer for AI CLIs with request/response logging",
+    tagline: "Network observer that attributes AI CLI connections to processes",
     description:
-      "Transparent proxy that logs all HTTP traffic from AI coding agents for debugging and analysis.",
-    deepDescription: `When AI agents make API calls, understanding what's being sent and received is crucial
-for debugging and optimization. RANO acts as a transparent proxy, logging all HTTP traffic
-from Claude Code, Codex, and other AI CLIs.
+      "Polls /proc (or macOS libproc) to attribute sockets opened by Claude Code, Codex, Gemini CLI and their children to a PID and provider. No proxy, no payload capture.",
+    deepDescription: `AI CLIs spawn subprocesses and open sockets you can't easily attribute to a provider.
+RANO polls Linux /proc (or macOS libproc), maps each socket to its owning PID and monitored
+root, tags it anthropic/openai/google/unknown, and logs observed history to SQLite.
 
 Use cases:
-- Debug failed API calls to understand error responses
-- Analyze token usage across different prompts
-- Monitor rate limiting and retry behavior
-- Audit AI agent network activity
+- Spot retry storms (rapid reconnects to one endpoint)
+- Audit which subprocess talks to which provider or host
+- Compare sessions with rano diff; summarize with rano report
 
 Key capabilities:
-- Transparent proxy requiring no code changes
-- Request/response body logging with formatting
-- Token usage extraction from API responses
-- Filtering by host, path, or content type`,
+- No proxy and no code changes; payloads and TLS are never inspected
+- Descendant-aware process matching (--pattern, --pid, --exclude-pattern)
+- SQLite history, CSV/JSONL export, alerts, presets, prompt-friendly rano status`,
     connectsTo: ["caut", "cm"],
     connectionDescriptions: {
-      caut: "Network logs feed into usage tracking for cost analysis",
+      caut: "RANO shows which endpoints were hit; CAUT shows the usage and cost",
       cm: "Patterns in API usage become procedural memories",
     },
     stars: 32,
     features: [
-      "Transparent proxy operation",
-      "Request/response logging",
-      "Token usage extraction",
+      "Per-process socket attribution via /proc or libproc",
+      "Provider tagging (anthropic/openai/google)",
+      "No proxy, no payload capture",
       "No code changes required",
-      "Filtering by host/path",
-      "Formatted output",
+      "SQLite history with report and diff",
+      "CSV/JSONL export",
     ],
-    cliCommands: ["rano start", "rano logs", "rano --help"],
+    cliCommands: ["rano --pattern claude", "rano report --latest", "rano --help"],
     installCommand:
       "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/rano/main/install.sh | bash",
     language: "Rust",
@@ -1589,10 +1596,10 @@ Perfect for:
 - Feeding web content to AI for analysis
 
 Key capabilities:
-- Intelligent content extraction (removes nav, ads, footers)
-- Code block preservation with language detection
-- Link and image handling with optional resolution
-- Recursive crawling for documentation sites`,
+- Renders pages in headless Chrome (handles JS-heavy sites)
+- OCRs screenshot tiles with olmOCR; every section carries provenance
+- links.json, full-text search, batch and crawl jobs
+- CLI talks to a local FastAPI server; needs an OCR API key`,
     connectsTo: ["tru", "cm"],
     connectionDescriptions: {
       tru: "JSON metadata extracted from converted pages can be TOON-encoded to save tokens",
@@ -1614,7 +1621,7 @@ Key capabilities:
     ],
     installCommand:
       "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/markdown_web_browser/main/install.sh | bash",
-    language: "Rust",
+    language: "Python",
   },
   {
     id: "s2p",
@@ -1626,7 +1633,7 @@ Key capabilities:
     tagline: "World-class TUI for combining source code into LLM-ready prompts",
     description:
       "Terminal UI for selecting code files and generating structured, token-counted prompts with XML-like output format optimized for LLM parsing.",
-    deepDescription: `S2P solves the code-to-context problem for AI-assisted development. Features a tree explorer with file sizes and line counts, vim-style navigation (j/k/h/l), quick file-type selects (1-9,0,r for JS/React/TS/JSON/MD/Python/Go/Java/Ruby/PHP/Rust), live syntax preview, and real-time token estimation using tiktoken (cl100k_base).
+    deepDescription: `S2P solves the code-to-context problem for AI-assisted development. Features a tree explorer with file sizes and line counts, vim-style navigation (j/k/h/l), quick file-type selects (1-9,0,r for JS/React/TS/JSON/MD/Python/Go/Java/Ruby/PHP/Rust), live syntax preview, and real-time token estimation using tiktoken (o200k_base, falling back to cl100k_base).
 
 Structured XML-like output with <preamble>, <goal>, <project_structure>, and <files> tags for reliable LLM parsing. Context window bar shows usage against 128K limit with cost estimates.
 
@@ -1664,39 +1671,38 @@ Single compiled binary via Bun with zero runtime dependencies. Respects .gitigno
     href: "https://github.com/Dicklesworthstone/rust_proxy",
     icon: "Network",
     color: "from-gray-500 to-zinc-600",
-    tagline: "Transparent proxy routing for debugging network traffic",
+    tagline: "Targeted transparent proxy routing for selected domains",
     description:
-      "High-performance transparent proxy for routing and debugging network traffic in development environments.",
-    deepDescription: `When debugging network issues or analyzing API traffic, a transparent proxy is invaluable.
-Rust Proxy provides a lightweight, high-performance proxy that can intercept, log, and modify
-HTTP/HTTPS traffic.
-
-Use cases:
-- Debugging microservice communication
-- Analyzing third-party API behavior
-- Testing error handling with injected failures
-- Capturing traffic for replay testing
+      "Machine-wide transparent proxy that routes only selected domains through an upstream HTTP proxy using iptables + ipset.",
+    deepDescription: `Sometimes only a few hosts (an AI provider's API, a CDN) need to go through an upstream
+proxy while everything else stays direct. Rust Proxy sets that up machine-wide with iptables
++ ipset: pick an upstream HTTP proxy, add target domains, and activate.
 
 Key capabilities:
-- Transparent HTTP/HTTPS proxying
-- Request/response modification
-- Traffic capture and replay
-- Minimal performance overhead
-- Configuration via TOML`,
+- Per-domain targets (Anthropic, OpenAI, Google, AWS, Cloudflare, ... or your own list)
+- CONNECT tunneling through the upstream proxy; traffic is never inspected (no MITM)
+- Health checks with failover between upstream proxies, live reload
+- status, test, trace, ping, and doctor commands with JSON or TOON output
+- Linux and IPv4 only`,
     connectsTo: ["rano"],
     connectionDescriptions: {
-      rano: "Rust Proxy handles routing, RANO handles logging and analysis",
+      rano: "Rust Proxy decides which domains go through the upstream proxy; RANO shows which processes opened which connections",
     },
     stars: 28,
     features: [
-      "Transparent HTTP/HTTPS proxy",
-      "Request/response modification",
-      "Traffic capture and replay",
-      "Minimal performance overhead",
-      "TOML configuration",
-      "TLS support",
+      "Routes only selected domains via iptables + ipset",
+      "CONNECT tunneling to an upstream HTTP proxy",
+      "Health checks and failover",
+      "Live reload of targets",
+      "JSON/TOON diagnostics (status, test, trace, ping)",
+      "No traffic inspection (no MITM)",
     ],
-    cliCommands: ["rust_proxy start", "rust_proxy --config proxy.toml", "rust_proxy --help"],
+    cliCommands: [
+      "rust_proxy init",
+      "rust_proxy activate --select",
+      "sudo rust_proxy daemon",
+      "rust_proxy status --json",
+    ],
     installCommand: "cargo install --git https://github.com/Dicklesworthstone/rust_proxy",
     language: "Rust",
   },
@@ -1709,37 +1715,38 @@ Key capabilities:
     color: "from-indigo-500 to-blue-600",
     tagline: "Fix malformed ASCII art diagrams",
     description:
-      "Automatically correct alignment and connection issues in ASCII diagrams generated by AI or written by hand.",
-    deepDescription: `AI-generated ASCII diagrams often have subtle alignment issues - boxes that don't quite
-connect, arrows that are off by one character, or inconsistent spacing. AADC automatically
-detects and fixes these issues.
+      "Fix misaligned right borders in ASCII diagrams (AI-generated or hand-edited) by adding padding, never removing content.",
+    deepDescription: `AI-generated ASCII diagrams often have ragged right edges - box borders that drift by a
+character or two from line to line. AADC finds diagram blocks heuristically and pads lines so
+the right borders line up again. It only ever adds padding; it never deletes content.
 
-Common fixes:
-- Box corner alignment
-- Arrow endpoint connection
-- Consistent spacing and padding
-- Line continuation across breaks
-- Unicode box-drawing character normalization
+Ways to run it:
+- Read stdin or files and print the corrected text
+- -i to fix files in place (with optional --backup), -r to walk a directory
+- --diff to preview changes, --dry-run to check (exit 3 when fixes are needed)
+- --watch for live re-runs, --json for machine-readable results
+- aadc hook install to add a git pre-commit check (or auto-fix)
 
 Perfect for:
 - Cleaning up AI-generated architecture diagrams
 - Fixing documentation ASCII art
-- Standardizing diagram styles across a codebase`,
+- Checking diagrams in CI before they land`,
     connectsTo: ["cm"],
     connectionDescriptions: {
       cm: "Diagram correction patterns become procedural memory",
     },
     stars: 34,
     features: [
-      "Automatic alignment correction",
-      "Box corner detection and fixing",
-      "Arrow endpoint connection",
-      "Unicode normalization",
-      "Consistent spacing",
-      "Multiple diagram styles",
+      "Right-border alignment correction",
+      "Heuristic diagram block detection",
+      "Adds padding only, never removes content",
+      "In-place, recursive, diff, and dry-run modes",
+      "Watch mode and JSON output",
+      "Git pre-commit hook (aadc hook install)",
     ],
-    cliCommands: ["aadc fix diagram.txt", "aadc --style unicode", "aadc --help"],
-    installCommand: "cargo install --git https://github.com/Dicklesworthstone/aadc",
+    cliCommands: ["aadc diagram.txt", "aadc -i diagram.txt", "aadc --diff diagram.txt", "aadc -r docs/"],
+    installCommand:
+      "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/aadc/main/install.sh | bash",
     language: "Rust",
   },
   {
@@ -1751,40 +1758,45 @@ Perfect for:
     color: "from-pink-500 to-rose-600",
     tagline: "Track LLM provider usage and costs",
     description:
-      "Monitor token usage, API costs, and rate limits across Claude, OpenAI, and other LLM providers.",
+      "Check remaining quota, rate-limit windows, credits and local costs across 16 coding-agent providers (Codex, Claude, Gemini, Cursor, Copilot, and more) from one CLI.",
     deepDescription: `Running multiple AI agents across projects quickly adds up in API costs. CAUT tracks
 usage across all your LLM providers in one place, helping you understand where tokens go
 and optimize spending.
 
 Tracks:
-- Token usage per provider, project, and session
-- Estimated costs based on current pricing
-- Rate limit hits and retry patterns
-- Usage trends over time
+- Session/weekly quota windows, reset times and credits per provider
+- Local cost from agent JSONL logs (caut cost)
+- Per-session cost attribution (caut session)
+- Usage history and trends (caut history show)
 
 Key capabilities:
-- Multi-provider support (Anthropic, OpenAI, Google, etc.)
-- Project and session attribution
-- Cost estimation with customizable pricing
-- Export to CSV/JSON for analysis
-- Integration with rano for automatic tracking`,
+- 16 providers via CLI, web-cookie, OAuth, API or local sources
+- JSON/Markdown robot output, a TUI dashboard, and an MCP server (caut mcp)
+- Background HTTP server (caut serve / caut query)
+- History export to CSV/JSON (caut history export)
+- Shell-prompt integration (caut prompt)`,
     connectsTo: ["rano", "cm"],
     connectionDescriptions: {
-      rano: "RANO captures the traffic, CAUT calculates the costs",
+      rano: "RANO shows which processes connected where; CAUT shows quota and cost per provider",
       cm: "Usage patterns become memories for optimizing future sessions",
     },
     stars: 42,
     features: [
-      "Multi-provider usage tracking",
-      "Cost estimation",
-      "Project attribution",
-      "Rate limit monitoring",
-      "Usage trend analysis",
-      "CSV/JSON export",
+      "Quota and rate-limit windows for 16 providers",
+      "Local cost from agent logs",
+      "Per-session cost attribution",
+      "Usage history and trends",
+      "TUI dashboard and MCP server",
+      "CSV/JSON history export",
     ],
-    cliCommands: ["caut status", "caut report --days 7", "caut --help"],
+    cliCommands: [
+      "caut usage --provider all",
+      "caut cost",
+      "caut history show --days 7",
+      "caut session --today",
+    ],
     installCommand:
-      "cargo install --git https://github.com/Dicklesworthstone/coding_agent_usage_tracker",
+      "cargo install --locked --git https://github.com/Dicklesworthstone/coding_agent_usage_tracker",
     language: "Rust",
   },
   {
@@ -1799,7 +1811,7 @@ Key capabilities:
       "BM25 lexical + semantic retrieval in a single binary. Returns fast initial results then refines with ML models. JSON API for agent integration.",
     deepDescription: `FrankenSearch combines the best of both search worlds: BM25 lexical retrieval for exact
 keyword matches and semantic vector search for conceptual similarity. Results are delivered
-progressively — fast lexical hits arrive first while the semantic pass refines rankings.
+progressively — an Initial phase fuses BM25 with a fast embedding tier (potion-128M) via RRF, then a quality model (MiniLM) refines the top candidates.
 
 Local ML model support runs without external API calls. Indexing
 is incremental and handles code, documentation, and session logs equally well.
@@ -1809,7 +1821,7 @@ your codebase and get ranked file + line references back. Particularly useful wh
 finds too many results and you need semantic narrowing.`,
     connectsTo: ["cass", "cm"],
     connectionDescriptions: {
-      cass: "FSFS indexes the same session artifacts CASS searches",
+      cass: "CASS is built on FrankenSearch's Quill BM25 and embedding stack",
       cm: "Semantic search over procedural memory entries",
     },
     stars: 30,
@@ -1826,7 +1838,7 @@ finds too many results and you need semantic narrowing.`,
       "fsfs status                  # Index health",
     ],
     installCommand:
-      'curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/frankensearch/refs/heads/main/install.sh" | bash -s -- --easy-mode --from-source --lite',
+      'curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/frankensearch/main/install.sh" | bash -s -- --easy-mode',
     language: "Rust",
   },
   {
@@ -1840,15 +1852,15 @@ finds too many results and you need semantic narrowing.`,
     description:
       "Monitors disk usage and maintains a ballast pool of pre-allocated files that can be instantly released when disk pressure spikes during builds or large clones.",
     deepDescription: `AI coding workloads are bursty — cargo builds, node_modules installs, and git clones can
-consume gigabytes in seconds. SBH maintains a configurable ballast pool (default 5GB) of
+consume gigabytes in seconds. SBH maintains a configurable ballast pool (default 10 GiB: ten 1 GiB files) of
 pre-allocated files. When free space drops below thresholds, ballast files are released
 instantly to prevent disk-full failures.
 
 Policies are explainable: 'sbh explain' shows exactly why each cleanup decision was made.
 Safe cleanup targets build artifacts, caches, and temporary files — never source code.
 
-The daemon monitors continuously with configurable check intervals. Integrates with SRPS
-for comprehensive system resource protection.`,
+The daemon monitors continuously with configurable check intervals. It complements SRPS
+(SBH covers disk, SRPS covers CPU/memory) and prunes idle rch worker staging trees.`,
     connectsTo: ["srps", "ru"],
     connectionDescriptions: {
       srps: "SBH handles disk pressure, SRPS handles CPU/memory",
@@ -1864,8 +1876,8 @@ for comprehensive system resource protection.`,
     ],
     cliCommands: [
       "sbh status                   # Current disk and ballast state",
-      "sbh explain                  # Why each policy decision was made",
-      "sbh daemon start             # Start continuous monitoring",
+      "sbh explain --last 10        # Why recent cleanup decisions were made",
+      "sbh install                  # Run the monitoring daemon as a service",
     ],
     installCommand:
       'curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/storage_ballast_helper/main/scripts/install.sh" | bash',
@@ -1880,16 +1892,17 @@ for comprehensive system resource protection.`,
     color: "from-fuchsia-500 to-pink-600",
     tagline: "Resume coding sessions across AI providers",
     description:
-      "Converts session history between Claude, Codex, Antigravity, and 14+ providers. Resume work started in one agent using another without losing context.",
-    deepDescription: `When you hit a rate limit on Claude and need to continue in Codex, or want a fresh perspective
-from Antigravity on a Claude session, CASR handles the conversion. It normalizes session history
+      "Converts session history between Claude, Codex, Gemini, and 14 more providers (17 total). Resume work started in one agent using another without losing context.",
+    deepDescription: `When you hit a rate limit on Claude and need to continue in Codex, or want to pick up an
+Antigravity session in Claude Code, CASR handles the conversion. It normalizes session history
 into a canonical model, then generates provider-specific resume contexts.
 
-Supports 14+ providers: Claude Code, Codex CLI, Antigravity CLI, Cursor, Aider, Cline, and more.
+Supports 17 providers: Claude Code, Codex CLI, Gemini CLI, Cursor, Aider, Cline, and more (Antigravity read-only).
 'casr list' and 'casr info <session-id>' show which sessions exist and what they hold before you convert one.
 
-The conversion preserves tool calls, file edits, and reasoning chains in a format each
-target provider understands. Quality depends on what was captured — inspect the generated
+The conversion carries tool calls and file edits into a format each target provider understands;
+source reasoning is dropped unless you pass --keep-reasoning, tool output is truncated (--max-tool-output, default 4000 chars),
+and history is capped at about 200k tokens (--max-context-tokens). Quality depends on what was captured — inspect the generated
 conversion with 'casr resume <target> <session-id> --dry-run' before trusting it.`,
     connectsTo: ["cass", "ntm", "caam"],
     connectionDescriptions: {
@@ -1901,7 +1914,7 @@ conversion with 'casr resume <target> <session-id> --dry-run' before trusting it
     features: [
       "Cross-provider session conversion",
       "Canonical session model",
-      "14+ provider support",
+      "17-provider support",
       "Session listing and inspection",
       "Preview before commit",
     ],
@@ -1929,9 +1942,9 @@ conversion with 'casr resume <target> <session-id> --dry-run' before trusting it
 locally using nektos/act (a local GitHub Actions runner). It reuses the exact same
 workflow YAML you already have — no separate release config to maintain.
 
-Multi-platform support via Docker containers matching GitHub's runner images. Artifact
-signing with minisign ensures release integrity. The 'dsr check' command validates that
-your repo has everything needed for a fallback release before you actually need one.`,
+Linux targets build in Docker via act; macOS and Windows targets build natively on your
+own hosts over SSH. Minisign signatures and syft SBOMs ensure release integrity. 'dsr check'
+detects throttled Actions runs (queued past the 10-minute default threshold) so you know when to fall back.`,
     connectsTo: ["ru", "slb"],
     connectionDescriptions: {
       ru: "RU ensures repos are synced before DSR runs local releases",
@@ -1941,12 +1954,12 @@ your repo has everything needed for a fallback release before you actually need 
     features: [
       "Reuses existing GitHub Actions YAML",
       "Local builds via nektos/act",
-      "Multi-platform support via Docker",
+      "Linux via act, macOS/Windows over SSH",
       "Artifact signing with minisign",
-      "Pre-flight release readiness check",
+      "Throttled-Actions detection (dsr check)",
     ],
     cliCommands: [
-      "dsr check --all              # Validate release readiness",
+      "dsr check --all              # Detect throttled Actions runs",
       "dsr build                    # Run local release build",
       "dsr doctor                   # Diagnose release setup",
     ],
@@ -1971,8 +1984,8 @@ with full history — you can diff, bisect, and restore any previous state.
 Supports Claude Code, Cursor, Codex, Antigravity, Aider, Cline, and more. The backup repos
 contain agent-specific settings, MCP configs, hooks, and local preferences.
 
-Handle backup repos like secrets — they may contain tokens, auth state, or sensitive
-local configurations.`,
+Login tokens and API key files (.credentials.json, auth.json, oauth_creds.json, .env) are excluded by default
+(ASB_INCLUDE_CREDENTIALS=true opts in); still treat backup repos as private.`,
     connectsTo: ["caam", "dcg"],
     connectionDescriptions: {
       caam: "Back up configs before CAAM switches accounts",
@@ -1987,9 +2000,9 @@ local configurations.`,
       "Automatic commit messages with timestamps",
     ],
     cliCommands: [
-      "asb backup --all             # Back up all agents",
+      "asb backup                   # Back up all detected agents",
       "asb backup claude            # Back up specific agent",
-      "asb restore claude --list    # Show available snapshots",
+      "asb history claude           # Show available snapshots",
       "asb version                  # Show ASB version",
     ],
     installCommand:
@@ -2138,8 +2151,8 @@ model responses with extended thinking inline, ships a full built-in toolset (re
 write, edit, hashline_edit, bash, grep, find, ls, plus opt-in subagent and todo), and
 drives Rust subagents defined in plain Markdown.
 
-It supports many providers, including fully local ones (ollama, llama.cpp, LM Studio)
-via ~/.pi/agent/models.json, so you can run a coding agent with no API key at all.
+It supports many providers, including built-in local ones (ollama, llama.cpp, and mistral.rs need
+no API key; LM Studio is also built in), plus any OpenAI-compatible server via ~/.pi/agent/models.json.
 
 Compared to the TypeScript original: native cold start with no Node/Bun bootstrap,
 bounded-resource long sessions (SQLite index + segmented log for fast resume), and a
@@ -2184,7 +2197,7 @@ confidence that it was a real crash, with printed reasons.
 
 Sessions you already resumed by hand are skipped (found via ps). Decisions are frozen
 into last-plan.json so discovery and reopening are separate, repeatable steps. Each
-victim reopens in its own terminal tab running its exact resume command on the model it
+victim reopens in its own Ghostty tab (Ghostty.app on macOS, the ghostty CLI on Linux) running its exact resume command on the model it
 was actually using. PFR then polls ps for resume evidence, writes last-report.json, and
 exits non-zero on silent failures.
 

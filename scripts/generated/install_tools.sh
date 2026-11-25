@@ -1490,7 +1490,7 @@ INSTALL_UTILS_TOON_RUST
     log_success "utils.toon_rust installed"
 }
 
-# rano - Network observer for AI CLIs with request/response logging
+# rano - Network observer that attributes AI CLI sockets to processes and providers
 acfs_generated_install_utils_rano() {
     local module_id="utils.rano"
     acfs_require_contract "module:${module_id}" || return 1
@@ -1904,7 +1904,7 @@ INSTALL_UTILS_S2P
     log_success "utils.s2p installed"
 }
 
-# rust_proxy - Transparent proxy routing for debugging network traffic
+# rust_proxy - Targeted transparent proxy routing selected domains through an upstream HTTP proxy
 acfs_generated_install_utils_rust_proxy() {
     local module_id="utils.rust_proxy"
     acfs_require_contract "module:${module_id}" || return 1
@@ -1975,7 +1975,7 @@ INSTALL_UTILS_RUST_PROXY
     log_success "utils.rust_proxy installed"
 }
 
-# aadc - ASCII diagram corrector for fixing malformed ASCII art
+# aadc - ASCII diagram corrector that realigns ragged right borders
 acfs_generated_install_utils_aadc() {
     local module_id="utils.aadc"
     acfs_require_contract "module:${module_id}" || return 1

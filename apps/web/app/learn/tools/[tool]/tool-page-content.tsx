@@ -314,8 +314,8 @@ export function ToolPageContent({ tool: doc }: ToolPageContentProps) {
                   </div>
                   <div className="rounded-xl border border-white/[0.08] bg-black/40 p-4 text-sm text-white/70">
                     <p className="mb-4">
-                      Remove the hook only, or fully purge DCG from your system. You can re-enable
-                      it anytime with{" "}
+                      Remove the hook only, remove the hook plus its config, or fully remove DCG
+                      with its uninstall script. You can re-enable it anytime with{" "}
                       <code className="font-mono text-white/90 bg-white/5 px-1 rounded">
                         dcg install
                       </code>
@@ -325,11 +325,14 @@ export function ToolPageContent({ tool: doc }: ToolPageContentProps) {
                       {`# Remove hook only
 dcg uninstall
 
-# Full removal (hook + binary + config)
+# Remove the hook and dcg's config directory (binary stays)
 dcg uninstall --purge
 
 # Verify removal
-dcg doctor`}
+dcg doctor
+
+# Full removal: run uninstall.sh from a local dcg checkout you trust
+bash ./uninstall.sh`}
                     </pre>
                   </div>
                 </motion.div>

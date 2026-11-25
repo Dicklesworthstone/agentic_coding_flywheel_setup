@@ -796,7 +796,7 @@ const LAUNCH_SCENARIOS: LaunchScenario[] = [
       "[18:45:21] Rollback point saved: rb-20251213-184520",
     ],
     terminalOutput: [
-      "$ slb request --cmd 'psql -c \"ALTER TABLE users DROP COLUMN legacy_auth;\"'",
+      "$ slb request 'psql -c \"ALTER TABLE users DROP COLUMN legacy_auth;\"'",
       "SLB: Risk level CRITICAL detected",
       "SLB: Command hash: sha256:a3f8c2...e91d",
       "SLB: Awaiting peer review from claude-cc-2...",
@@ -832,7 +832,7 @@ const LAUNCH_SCENARIOS: LaunchScenario[] = [
       "[20:12:20] Rollback manifest saved: rb-20251213-201219",
     ],
     terminalOutput: [
-      "$ slb request --cmd 'kubectl apply -f deploy/production.yaml --namespace=prod'",
+      "$ slb request 'kubectl apply -f deploy/production.yaml --namespace=prod'",
       "SLB: Risk level CRITICAL detected (production namespace)",
       "SLB: Pre-flight: image sha256:9c4f... verified",
       "SLB: Awaiting peer review from codex-1...",
@@ -870,7 +870,7 @@ const LAUNCH_SCENARIOS: LaunchScenario[] = [
       "[21:30:58] Incident logged: INC-20251213-001",
     ],
     terminalOutput: [
-      "$ slb request --cmd 'git push --force origin main'",
+      "$ slb request 'git push --force origin main'",
       "SLB: Risk level DANGEROUS detected",
       "SLB: WARNING: Protected branch 'main' targeted",
       "SLB: Awaiting peer review from claude-cc-3...",
@@ -907,7 +907,7 @@ const LAUNCH_SCENARIOS: LaunchScenario[] = [
       "[22:05:34] State backup: tf-state-20251213-220533",
     ],
     terminalOutput: [
-      "$ slb request --cmd 'terraform destroy -auto-approve -target=module.staging'",
+      "$ slb request 'terraform destroy -auto-approve -target=module.staging'",
       "SLB: Risk level CRITICAL detected",
       "SLB: Pre-flight: 7 resources targeted for destruction",
       "SLB: Awaiting peer review from claude-cc-3...",
@@ -945,7 +945,7 @@ const LAUNCH_SCENARIOS: LaunchScenario[] = [
       "[23:00:17] vault tidy completed (12 tokens revoked)",
     ],
     terminalOutput: [
-      "$ slb request --cmd 'vault write -f sys/rotate && vault write auth/token/tidy'",
+      "$ slb request 'vault write -f sys/rotate && vault write auth/token/tidy'",
       "SLB: Risk level DANGEROUS detected",
       "SLB: Pre-flight: vault status: sealed=false",
       "SLB: Awaiting peer review from claude-cc-1...",
@@ -982,7 +982,7 @@ const LAUNCH_SCENARIOS: LaunchScenario[] = [
       "[20:18:55] Error rate dropping: 12% -> 3% -> 0.1%",
     ],
     terminalOutput: [
-      "$ slb request --cmd 'kubectl rollout undo deployment/api-server --namespace=prod' --emergency",
+      "$ slb request 'kubectl rollout undo deployment/api-server --namespace=prod' --reason 'Error rate 12% after v2.3.1 deploy'",
       "SLB: Risk level CAUTION (emergency rollback)",
       "SLB: FAST-TRACK enabled for emergency",
       "SLB: Awaiting peer review from claude-cc-2...",
@@ -1142,7 +1142,7 @@ function InteractiveBuildTimeline() {
           <span className="text-sm font-mono font-bold text-white/90">SLB Launch Console</span>
         </div>
         <span className="ml-auto text-xs font-mono text-muted-foreground">
-          slb v1.0.0 | two-person-rule
+          slb v0.7.0 | two-person-rule
         </span>
       </div>
 

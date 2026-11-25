@@ -46,8 +46,9 @@ export function DcgLesson() {
 
       <Section title="What Is DCG?" icon={<ShieldAlert className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>DCG (Destructive Command Guard)</Highlight> is a Claude Code hook that blocks
-          dangerous commands before they execute. It protects your repos from hard resets, recursive
+          <Highlight>DCG (Destructive Command Guard)</Highlight> is a pre-execution hook for Claude
+          Code, Codex, Antigravity and other agent CLIs that blocks dangerous commands before they
+          execute. It protects your repos from hard resets, recursive
           deletes, destructive database commands, and more.
         </Paragraph>
         <Paragraph>
@@ -77,8 +78,8 @@ export function DcgLesson() {
             />
             <FeatureCard
               icon={<Zap className="h-5 w-5" />}
-              title="Fail-Open Design"
-              description="Errors never block your workflow"
+              title="Bounded Failure Policy"
+              description="Unreadable input passes with a warning; unfinished analysis asks or blocks"
               gradient="from-emerald-500/20 to-teal-500/20"
             />
           </FeatureGrid>
@@ -93,8 +94,9 @@ export function DcgLesson() {
         delay={0.15}
       >
         <Paragraph>
-          DCG runs as a <Highlight>PreToolUse hook</Highlight> inside Claude Code. Every command is
-          checked against a set of rules before it runs.
+          DCG runs as a <Highlight>PreToolUse hook</Highlight> inside Claude Code (and the
+          equivalent hook in Codex, Gemini, Cursor, agy and others). Every command is checked
+          against a set of rules before it runs.
         </Paragraph>
 
         <div className="mt-6">
@@ -137,7 +139,7 @@ $ dcg test "git reset --hard" --explain
             },
             {
               command: "dcg install",
-              description: "Register the Claude Code hook",
+              description: "Register hooks for detected agent CLIs (Claude Code, Codex, and more)",
             },
             {
               command: "dcg uninstall",
@@ -159,8 +161,8 @@ $ dcg test "git reset --hard" --explain
 
       <Section title="Uninstalling DCG" icon={<ShieldAlert className="h-5 w-5" />} delay={0.23}>
         <Paragraph>
-          If you need to remove DCG, you can uninstall the hook and optionally purge the binary and
-          config. You can always re-enable it later with <Highlight>dcg install</Highlight>.
+          If you need to remove DCG, you can uninstall the hook and optionally purge its config.
+          You can always re-enable it later with <Highlight>dcg install</Highlight>.
         </Paragraph>
 
         <div className="mt-6">
@@ -168,8 +170,11 @@ $ dcg test "git reset --hard" --explain
             code={`# Remove hook only (keeps dcg installed)
 $ dcg uninstall
 
-# Full removal (hook + binary + config)
+# Remove the hook and dcg's config directory (binary stays)
 $ dcg uninstall --purge
+
+# Full removal: run uninstall.sh from a local dcg checkout you trust
+$ bash ./uninstall.sh
 
 # Verify removal
 $ dcg doctor
@@ -196,15 +201,15 @@ $ claude /hooks`}
           <CodeBlock
             code={`# ~/.config/dcg/config.toml
 [packs]
-enabled = ["git", "filesystem", "database.postgresql", "containers.docker"]`}
+enabled = ["database.postgresql", "containers.docker"]  # core.git + core.filesystem are always on`}
             language="toml"
             filename="config.toml"
           />
         </div>
 
         <TipBox variant="info">
-          Start with <Highlight>git</Highlight> and <Highlight>filesystem</Highlight> packs. Add
-          database or cloud packs only when you use those tools.
+          <Highlight>core.git</Highlight> and <Highlight>core.filesystem</Highlight> are always on.
+          Add database or cloud packs only when you use those tools.
         </TipBox>
       </Section>
 
@@ -268,8 +273,8 @@ const DCG_SCENARIOS: DcgScenario[] = [
     id: "rm-rf",
     command: "rm -rf /",
     blocked: true,
-    rule: "fs.rm.recursive.force.root",
-    pack: "filesystem",
+    rule: "core.filesystem:rm-rf-root-home",
+    pack: "core.filesystem",
     threatLevel: "critical",
     explanation: "Recursive force delete of root filesystem. Catastrophic data loss.",
     safer: "rm -r ./build  (scoped, no -f)",
@@ -281,21 +286,21 @@ const DCG_SCENARIOS: DcgScenario[] = [
     id: "git-reset",
     command: "git reset --hard HEAD~5",
     blocked: true,
-    rule: "git.reset.hard",
-    pack: "git",
+    rule: "core.git:reset-hard",
+    pack: "core.git",
     threatLevel: "high",
     explanation: "Hard reset discards 5 commits of uncommitted work permanently.",
     safer: "git stash && git reset --soft HEAD~5",
     detail:
       "Pattern match: git reset with --hard flag. Destroys working tree changes and staged files with no recovery path.",
-    allowOnceCode: "DCG-A1X7",
+    allowOnceCode: "481207",
   },
   {
     id: "safe-cmd",
     command: "git status && cargo build",
     blocked: false,
     rule: null,
-    pack: "git",
+    pack: "core.git",
     threatLevel: "safe",
     explanation: "Read-only git command chained with build. No destructive effects.",
     safer: null,
@@ -307,21 +312,21 @@ const DCG_SCENARIOS: DcgScenario[] = [
     id: "allow-once",
     command: "git push --force origin main",
     blocked: true,
-    rule: "git.push.force",
-    pack: "git",
+    rule: "core.git:push-force-long",
+    pack: "core.git",
     threatLevel: "high",
     explanation: "Force push overwrites remote history. Others may lose work.",
     safer: "git push --force-with-lease origin main",
     detail:
       "Pattern match: git push with --force flag. Bypass available if you have confirmed no one else has pushed.",
-    allowOnceCode: "DCG-F3K9",
+    allowOnceCode: "730514",
   },
   {
     id: "drop-table",
     command: "DROP TABLE users CASCADE",
     blocked: true,
-    rule: "db.drop.table.cascade",
-    pack: "database",
+    rule: "database.postgresql:drop-table",
+    pack: "database.postgresql",
     threatLevel: "critical",
     explanation: "Destroys table and all dependent objects. Unrecoverable without backup.",
     safer: "pg_dump -t users > backup.sql  (backup first)",
@@ -333,14 +338,14 @@ const DCG_SCENARIOS: DcgScenario[] = [
     id: "docker-prune",
     command: "docker system prune -af --volumes",
     blocked: true,
-    rule: "containers.prune.all",
-    pack: "containers",
+    rule: "containers.docker:system-prune",
+    pack: "containers.docker",
     threatLevel: "medium",
     explanation: "Removes all unused images, containers, networks, and volumes.",
     safer: "docker image prune  (just dangling images)",
     detail:
       "Pattern match: docker system prune with -a and --volumes. Will delete named volumes with data.",
-    allowOnceCode: "DCG-P2M4",
+    allowOnceCode: "205968",
   },
   {
     id: "dcg-doctor",
@@ -359,8 +364,8 @@ const DCG_SCENARIOS: DcgScenario[] = [
     id: "chmod-777",
     command: "chmod -R 777 /etc",
     blocked: true,
-    rule: "fs.chmod.world.writable",
-    pack: "filesystem",
+    rule: "system.permissions:chmod-777",
+    pack: "system.permissions",
     threatLevel: "critical",
     explanation: "Makes /etc world-writable. Massive security vulnerability.",
     safer: "chmod 755 ./my-script.sh  (specific file, sane perms)",
@@ -371,12 +376,12 @@ const DCG_SCENARIOS: DcgScenario[] = [
 ];
 
 const PACKS_DATA = [
-  { name: "git", rules: 12, desc: "Reset, force push, branch delete", enabled: true },
-  { name: "filesystem", rules: 18, desc: "rm -rf, chmod, chown, symlinks", enabled: true },
-  { name: "database", rules: 9, desc: "DROP, TRUNCATE, ALTER", enabled: true },
-  { name: "containers", rules: 7, desc: "Prune, remove, system wipe", enabled: false },
-  { name: "cloud", rules: 14, desc: "AWS/GCP delete, terraform destroy", enabled: false },
-  { name: "network", rules: 5, desc: "iptables flush, DNS overwrite", enabled: false },
+  { name: "core.git", rules: 12, desc: "Reset, force push, branch delete", enabled: true },
+  { name: "core.filesystem", rules: 18, desc: "rm -rf outside temp dirs", enabled: true },
+  { name: "database.postgresql", rules: 9, desc: "DROP, TRUNCATE, ALTER", enabled: true },
+  { name: "containers.docker", rules: 7, desc: "Prune, remove, system wipe", enabled: false },
+  { name: "cloud.aws", rules: 14, desc: "AWS resource deletes", enabled: false },
+  { name: "infrastructure.terraform", rules: 5, desc: "terraform destroy, state rm", enabled: false },
 ];
 
 // ---------------------------------------------------------------------------

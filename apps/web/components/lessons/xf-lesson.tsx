@@ -3,7 +3,6 @@
 import {
   Archive,
   ArrowRight,
-  BarChart3,
   Bot,
   CheckCircle2,
   ChevronRight,
@@ -48,7 +47,8 @@ export function XfLesson() {
       <Section title="What Is XF?" icon={<Archive className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
           <Highlight>XF</Highlight> provides blazingly fast full-text search across your personal
-          X/Twitter archive: tweets, likes, DMs, and Grok conversations. Built with Tantivy, it
+          X/Twitter archive: tweets, likes, DMs, bookmarks, and Grok conversations. Built with
+          Tantivy, it
           delivers sub-millisecond queries with hybrid BM25 and semantic search.
         </Paragraph>
         <Paragraph>
@@ -79,7 +79,7 @@ export function XfLesson() {
             <FeatureCard
               icon={<FileText className="h-5 w-5" />}
               title="Export"
-              description="Output to JSON, CSV, or plain text"
+              description="Export to JSON, JSONL, CSV, or TOON"
               gradient="from-amber-500/20 to-orange-500/20"
             />
           </FeatureGrid>
@@ -113,8 +113,8 @@ export function XfLesson() {
       <Section title="Archive Mining Lab" icon={<Search className="h-5 w-5" />} delay={0.25}>
         <Paragraph>
           Explore the full power of <Highlight>xf</Highlight> across 6 different archive mining
-          scenarios. Watch tweets flow through the analysis pipeline with real-time relevance
-          scoring, engagement metrics, and sentiment analysis.
+          scenarios. Watch tweets flow through the search pipeline with real-time relevance
+          scoring and engagement metrics.
         </Paragraph>
         <InteractiveArchiveSearch />
       </Section>
@@ -254,7 +254,7 @@ const SCENARIOS: Scenario[] = [
     label: "DM Archive",
     icon: <MessageSquare className="h-3.5 w-3.5" />,
     description: "Search your private direct messages",
-    command: 'xf search --type dm "project deadline"',
+    command: 'xf search --types dm "project deadline"',
     totalResults: 156,
     searchTimeMs: 0.28,
     indexStats: {
@@ -310,7 +310,7 @@ const SCENARIOS: Scenario[] = [
     label: "Grok Chats",
     icon: <Bot className="h-3.5 w-3.5" />,
     description: "Extract and search Grok conversation history",
-    command: 'xf search --type grok "explain recursion"',
+    command: 'xf search --types grok "explain recursion"',
     totalResults: 42,
     searchTimeMs: 0.19,
     indexStats: {
@@ -353,7 +353,7 @@ const SCENARIOS: Scenario[] = [
     label: "Likes Export",
     icon: <Heart className="h-3.5 w-3.5" />,
     description: "Search through your liked tweets archive",
-    command: 'xf search --type likes "startup advice"',
+    command: 'xf search --types like "startup advice"',
     totalResults: 1289,
     searchTimeMs: 0.55,
     indexStats: {
@@ -557,18 +557,6 @@ function formatNumber(n: number): string {
   return String(n);
 }
 
-function getSentimentColor(s: string): string {
-  if (s === "positive") return "text-emerald-400";
-  if (s === "negative") return "text-rose-400";
-  return "text-muted-foreground";
-}
-
-function getSentimentBg(s: string): string {
-  if (s === "positive") return "bg-emerald-500/20 border-emerald-500/30";
-  if (s === "negative") return "bg-rose-500/20 border-rose-500/30";
-  return "bg-white/[0.04] border-white/[0.08]";
-}
-
 function getTypeIcon(type: string): React.ReactNode {
   if (type === "dm") return <MessageSquare className="h-3.5 w-3.5 text-blue-400" />;
   if (type === "grok") return <Bot className="h-3.5 w-3.5 text-purple-400" />;
@@ -667,18 +655,6 @@ function InteractiveArchiveSearch() {
     },
     [clearTimers],
   );
-
-  // Sentiment distribution for the sentiment scenario
-  const sentimentCounts = scenario
-    ? {
-        positive: scenario.results.filter((r) => r.sentiment === "positive").length,
-        neutral: scenario.results.filter((r) => r.sentiment === "neutral").length,
-        negative: scenario.results.filter((r) => r.sentiment === "negative").length,
-      }
-    : { positive: 0, neutral: 0, negative: 0 };
-
-  const sentimentTotal =
-    sentimentCounts.positive + sentimentCounts.neutral + sentimentCounts.negative;
 
   return (
     <div
@@ -873,7 +849,7 @@ function InteractiveArchiveSearch() {
               Choose a mining scenario to explore your archive
             </span>
             <span className="text-xs text-muted-foreground">
-              6 scenarios available: search, DMs, Grok, likes, threads, sentiment
+              6 scenarios available: search, DMs, Grok, likes, threads, engagement
             </span>
           </motion.div>
         )}
@@ -946,74 +922,6 @@ function InteractiveArchiveSearch() {
                       {tag}
                     </span>
                   ))}
-                </motion.div>
-              )}
-
-              {/* Sentiment breakdown bar (only for sentiment scenario) */}
-              {showStats && activeScenario === "sentiment" && sentimentTotal > 0 && (
-                <motion.div
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{
-                    type: "spring",
-                    stiffness: 200,
-                    damping: 25,
-                    delay: 0.15,
-                  }}
-                  className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3"
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <BarChart3 className="h-3.5 w-3.5 text-sky-400" />
-                    <span className="text-xs font-semibold text-white/60">
-                      Sentiment Distribution
-                    </span>
-                  </div>
-                  <div className="flex h-3 rounded-full overflow-hidden gap-0.5">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{
-                        width: `${String((sentimentCounts.positive / sentimentTotal) * 100)}%`,
-                      }}
-                      transition={{
-                        type: "spring",
-                        stiffness: 100,
-                        damping: 20,
-                        delay: 0.2,
-                      }}
-                      className="bg-emerald-500/60 rounded-l-full"
-                    />
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{
-                        width: `${String((sentimentCounts.neutral / sentimentTotal) * 100)}%`,
-                      }}
-                      transition={{
-                        type: "spring",
-                        stiffness: 100,
-                        damping: 20,
-                        delay: 0.3,
-                      }}
-                      className="bg-white/20"
-                    />
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{
-                        width: `${String((sentimentCounts.negative / sentimentTotal) * 100)}%`,
-                      }}
-                      transition={{
-                        type: "spring",
-                        stiffness: 100,
-                        damping: 20,
-                        delay: 0.4,
-                      }}
-                      className="bg-rose-500/60 rounded-r-full"
-                    />
-                  </div>
-                  <div className="flex items-center justify-between mt-1.5 text-xs font-mono">
-                    <span className="text-emerald-400">Positive {sentimentCounts.positive}</span>
-                    <span className="text-muted-foreground">Neutral {sentimentCounts.neutral}</span>
-                    <span className="text-rose-400">Negative {sentimentCounts.negative}</span>
-                  </div>
                 </motion.div>
               )}
 
@@ -1097,13 +1005,6 @@ function InteractiveArchiveSearch() {
                           ))}
                         </div>
                       )}
-
-                      {/* Sentiment badge */}
-                      <span
-                        className={`text-xs font-medium px-1.5 py-0.5 rounded border ${getSentimentBg(result.sentiment)} ${getSentimentColor(result.sentiment)}`}
-                      >
-                        {result.sentiment}
-                      </span>
 
                       {/* Spacer */}
                       <div className="flex-1" />

@@ -45,19 +45,19 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     id: "mail",
     name: "MCP Agent Mail",
     shortName: "Mail",
-    href: "https://github.com/Dicklesworthstone/mcp_agent_mail",
+    href: "https://github.com/Dicklesworthstone/mcp_agent_mail_rust",
     icon: "Mail",
     color: "from-violet-500 to-purple-600",
     category: "core",
-    stars: 1400,
+    stars: 284,
     whatItDoes:
-      "A mail-like coordination layer for multi-agent workflows. Agents send messages, read threads, and reserve files asynchronously via MCP tools - like Gmail for AI coding agents. HTTP-only FastMCP transport with static export.",
+      "A mail-like coordination layer for multi-agent workflows. Agents send messages, read threads, and reserve files asynchronously via MCP tools - like Gmail for AI coding agents. Rust MCP server (Streamable HTTP or stdio) with an am operator CLI and static export.",
     whyItsUseful:
       "Critical for multi-agent setups. When 5+ Claude Code instances work the same codebase, they need to coordinate who's editing what. Agent Mail prevents merge conflicts via advisory file reservations with pre-commit guard enforcement, and builds an audit trail of all agent decisions via SQLite + Git dual persistence.",
     implementationHighlights: [
-      "HTTP-only FastMCP server (Streamable HTTP transport)",
+      "Rust MCP server over Streamable HTTP or stdio, plus the am robot CLI",
       "SQLite + Git dual persistence for human-auditable artifacts",
-      "FTS5 full-text search with boolean operators",
+      "Tantivy-backed full-text search (Search V3) with boolean operators",
       "Pre-commit guard for file reservation enforcement",
       "Static export with Ed25519 signing and age encryption",
     ],
@@ -79,7 +79,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
         description: "NTM-spawned agents auto-register with Agent Mail",
       },
     ],
-    techStack: ["Python 3.14+", "FastMCP", "SQLAlchemy async", "SQLite + FTS5", "LiteLLM"],
+    techStack: ["Rust", "FastMCP (Rust)", "SQLite", "Git archive", "Tantivy"],
     keyFeatures: [
       "Threaded GFM messages with importance levels",
       "Advisory file reservations with pre-commit guard",
@@ -103,7 +103,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     icon: "GitBranch",
     color: "from-emerald-500 to-teal-600",
     category: "core",
-    stars: 891,
+    stars: 1736,
     whatItDoes:
       "A fast terminal UI for viewing and analyzing Beads issues. Applies graph theory (PageRank, betweenness centrality, critical path) to identify which tasks unblock the most other work.",
     whyItsUseful:
@@ -117,7 +117,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     synergies: [
       {
         toolId: "br",
-        description: "Reads and visualizes issues from beads_rust (.beads/*.jsonl)",
+        description: "Reads beads_rust state directly (.beads/beads.db, WAL-aware, plus issues.jsonl)",
       },
       {
         toolId: "mail",
@@ -158,15 +158,15 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     icon: "ListTodo",
     color: "from-amber-500 to-orange-600",
     category: "core",
-    stars: 128,
+    stars: 1164,
     whatItDoes:
       "Local-first issue tracking for AI agents. SQLite for fast local queries, JSONL export for git-friendly collaboration. Full dependency graph with blocking/blocked-by relationships, priorities P0-P4.",
     whyItsUseful:
       "Your issues travel with your repo - no external service required. Non-invasive design: never runs git commands automatically. Agents can create, update, and close issues with simple CLI commands. The bd alias provides backward compatibility.",
     implementationHighlights: [
-      "~20K lines of Rust (vs 276K in original Go)",
+      "Rust port that freezes the classic SQLite + JSONL beads architecture",
       "SQLite primary storage + JSONL export (hybrid architecture)",
-      "Non-invasive: explicit sync, never runs git automatically",
+      "Non-invasive: auto-flushes JSONL inside .beads/, never runs git",
       "Full dependency graph with cycles detection",
     ],
     synergies: [
@@ -210,12 +210,12 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     category: "core",
     stars: 307,
     whatItDoes:
-      "Blazing-fast search across all your past AI coding agent sessions. Indexes 11 agent formats: Claude Code, Codex, Cursor, Antigravity/Gemini, ChatGPT, Cline, Aider, Pi-Agent, Factory, OpenCode, Amp. Sub-60ms queries with optional semantic search.",
+      "Blazing-fast search across all your past AI coding agent sessions. Indexes 35 agent connectors, including Claude Code, Codex, Cursor, Antigravity, Gemini CLI, Copilot, ChatGPT, Cline, Aider, Pi-Agent, Factory, OpenCode, and Amp. Sub-60ms queries with optional semantic search.",
     whyItsUseful:
       "You've solved this problem before - but which session? CASS lets you search 'how did I fix that React hydration error' and instantly find the exact conversation. Three search modes (lexical, semantic, hybrid), HTML export with encryption, and multi-machine sync via SSH.",
     implementationHighlights: [
-      "Rust + Tantivy BM25 with edge n-gram prefix indexing",
-      "Three search modes: lexical, semantic (MiniLM/hash fallback), hybrid (RRF)",
+      "Rust + Quill BM25 (frankensearch) with edge n-gram prefix indexing",
+      "Three search modes: lexical, semantic (MiniLM; hash embedder opt-in), hybrid (RRF)",
       "Aggregations for 99% token reduction (--aggregate agent,workspace)",
       "Context command finds related sessions for source paths",
       "Multi-machine sync via SSH with interactive setup wizard",
@@ -223,7 +223,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     synergies: [
       {
         toolId: "cm",
-        description: "Indexes memories stored by CM for retrieval",
+        description: "Supplies the session history CM mines into playbook rules",
       },
       {
         toolId: "ntm",
@@ -234,13 +234,13 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
         description: "Links search results to related Beads tasks",
       },
     ],
-    techStack: ["Rust", "Tantivy", "Ratatui", "SQLite FTS5", "FastEmbed"],
+    techStack: ["Rust", "Quill BM25 (frankensearch)", "FrankenTUI", "FrankenSQLite"],
     keyFeatures: [
-      "Unified search across 11 agent formats",
+      "Unified search across 35 agent connectors",
       "Aggregations for 99% token reduction",
       "Context command for path-based session discovery",
       "Robot mode with cursor pagination and token budgeting",
-      "Hash embedder fallback for deterministic searches",
+      "Opt-in hash embedder for deterministic searches",
     ],
     useCases: [
       "Finding how a similar bug was fixed before",
@@ -259,9 +259,9 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     category: "core",
     stars: 234,
     whatItDoes:
-      "One-command bootstrap that transforms a fresh Ubuntu VPS into a fully-configured agentic coding environment. CLI provides doctor (47+ health checks), update (category-specific), cheatsheet (50+ aliases), and session management.",
+      "One-command bootstrap that transforms a fresh Ubuntu VPS or Arch/Omarchy machine into a fully-configured agentic coding environment. CLI provides doctor (47+ health checks), update (category-specific), cheatsheet (50+ aliases), and session management.",
     whyItsUseful:
-      "Setting up a new development environment takes hours. ACFS does it in 30 minutes, installing 35+ tools, six AI agent CLIs (three by default, three optional), and all flywheel tooling. Post-install CLI provides `acfs doctor` for health checks and `acfs update` for maintenance.",
+      "Setting up a new development environment takes hours. ACFS does it in 30 minutes, installing 35+ tools, seven coding-agent modules (three by default, three optional, plus legacy Gemini CLI off by default), and all flywheel tooling. Post-install CLI provides `acfs doctor` for health checks and `acfs update` for maintenance.",
     implementationHighlights: [
       "Single curl | bash installation with SHA256 verification",
       "Idempotent and resumable installation",
@@ -308,9 +308,9 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     category: "core",
     stars: 132,
     whatItDoes:
-      "A meta-runner that fans out per-language scanners across 8 languages (JS/TS, Python, Go, Rust, C/C++, Java, Ruby, Swift). Uses ast-grep for AST-based pattern matching with 18 detection categories and 1000+ bug patterns.",
+      "A meta-runner that fans out per-language scanners across 15 languages (JS/TS, Python, Go, Rust, C/C++, Java, Kotlin, Ruby, Swift, C#, Elixir, Bash, PHP, SQL, Terraform HCL). Uses ast-grep for AST-based pattern matching with 18 detection categories and 1000+ bug patterns.",
     whyItsUseful:
-      "AI coding agents move 10-100x faster than humans. UBS keeps pace with sub-5-second scans and auto-wires guardrails into Claude Code, Codex, Cursor, Antigravity, and Windsurf agents. The --beads-jsonl output creates Beads issues directly from findings.",
+      "AI coding agents move 10-100x faster than humans. UBS keeps pace with sub-5-second scans and auto-wires guardrails into Claude Code, Codex, Cursor, Gemini, Windsurf, Cline, and OpenCode agents. The --beads-jsonl output creates Beads issues directly from findings.",
     implementationHighlights: [
       "Shell meta-runner with per-language modules (ubs-js.sh, ubs-python.sh, etc.)",
       "ast-grep for syntax-aware pattern matching (not regex)",
@@ -329,7 +329,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     ],
     techStack: ["Bash", "ast-grep", "Per-language scanners", "ripgrep"],
     keyFeatures: [
-      "1000+ bug patterns across 8 languages",
+      "1000+ bug patterns across 15 languages",
       "18 detection categories with severity levels",
       "Agent guardrails: Claude Code hooks, .cursorrules",
       "Git-aware: --staged, --diff for targeted scans",
@@ -350,7 +350,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     category: "core",
     stars: 89,
     whatItDoes:
-      "Claude Code PreToolUse hook that blocks dangerous commands BEFORE execution. 50+ packs across 17 categories: git (reset --hard, force push), filesystem (rm -rf), databases (DROP TABLE), Kubernetes, cloud providers, and more.",
+      "Pre-execution hook for Claude Code, Codex CLI, Gemini CLI, Copilot, Cursor, Antigravity and other agent CLIs that blocks dangerous commands BEFORE execution. 100+ packs across 28 categories: git (reset --hard, force push), filesystem (rm -rf), databases (DROP TABLE), Kubernetes, cloud providers, and more.",
     whyItsUseful:
       "AI agents can and will run 'rm -rf /' if they think it solves your problem. DCG catches catastrophic commands before they execute with sub-millisecond latency. Safe directory exceptions (/tmp, /var/tmp, $TMPDIR) allow temp operations without friction.",
     implementationHighlights: [
@@ -373,7 +373,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     techStack: ["Rust", "Claude Code hooks", "SARIF output", "MCP"],
     keyFeatures: [
       "Heredoc/inline script AST scanning",
-      "49+ packs: git, filesystem, database, k8s, cloud",
+      "100+ packs: git, filesystem, database, k8s, cloud",
       "Agent-specific trust levels and profiles",
       "dcg scan for CI/pre-commit integration",
       "MCP server for direct agent access",
@@ -397,7 +397,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     whatItDoes:
       "Multi-repo management system: sync 100+ repos, AI-assisted code review with priority scoring, dependency updates across package managers, and agent-driven commit automation.",
     whyItsUseful:
-      "Managing 100+ repos manually is impossible. 'ru sync' handles clone/pull in parallel. 'ru review' discovers issues/PRs via GraphQL batch queries, scores by priority (security+50, bugs+30, age), and spawns isolated Claude Code sessions in worktrees.",
+      "Managing 100+ repos manually is impossible. 'ru sync' handles clone/pull in parallel. 'ru review' discovers issues/PRs via GraphQL batch queries, scores by priority (security/critical+150, bugs+30, age), and spawns isolated Claude Code sessions in worktrees.",
     implementationHighlights: [
       "Pure Bash with git plumbing (rev-list, status --porcelain)",
       "Work-stealing queue for parallel sync with portable locking",
@@ -413,20 +413,20 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
       },
       {
         toolId: "mail",
-        description: "Coordinates repo claims across parallel agents",
+        description: "Agents claim repos via Mail before running RU commands",
       },
       {
         toolId: "bv",
-        description: "Multi-repo task tracking via beads integration",
+        description: "Keeps the repos whose beads BV triages in sync",
       },
     ],
-    techStack: ["Bash 4.0+", "Git plumbing", "GitHub CLI GraphQL", "ntm robot mode"],
+    techStack: ["Bash 4.4+", "Git plumbing", "GitHub CLI GraphQL", "ntm robot mode"],
     keyFeatures: [
       "Parallel sync with work-stealing queue (-j4)",
       "AI code review with priority scoring (ru review)",
-      "Dependency updates (npm, pip, cargo, go, composer)",
+      "Dependency updates (npm, cargo, go, composer)",
       "Agent sweep for multi-repo automation",
-      "Bulk import from GitHub/GitLab/Bitbucket (ru import)",
+      "Bulk import from files or GitHub stars/orgs/users (ru import)",
       "Orphan cleanup with ru prune",
       "Resume from checkpoint (--resume)",
     ],
@@ -491,11 +491,11 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     icon: "LayoutGrid",
     color: "from-sky-500 to-blue-600",
     category: "core",
-    stars: 69,
+    stars: 467,
     whatItDoes:
-      "A multi-agent tmux orchestration tool with 80+ commands. Spawns Claude, Codex, and Antigravity agents in named panes with type classification (cc/cod/agy). Monitors context windows, detects file conflicts, and provides robot mode for automation.",
+      "A multi-agent tmux orchestration tool with 110+ commands. Spawns Claude, Codex, Antigravity, Grok Build, Oh My Pi, and other agents in named panes with type classification (cc/cod/agy/grok/omp and more). Monitors context windows, detects file conflicts, and provides robot mode for automation.",
     whyItsUseful:
-      "Running multiple AI agents simultaneously creates chaos without orchestration. NTM provides the command center: spawn agents with one command, broadcast prompts to specific types, monitor context usage, and coordinate via Agent Mail. Sessions persist across SSH disconnects and system reboots.",
+      "Running multiple AI agents simultaneously creates chaos without orchestration. NTM provides the command center: spawn agents with one command, broadcast prompts to specific types, monitor context usage, and coordinate via Agent Mail. Sessions persist across SSH disconnects, and ntm sessions save/resume rebuilds them after a reboot.",
     implementationHighlights: [
       "Go implementation with Bubble Tea TUI and Catppuccin themes",
       "Context rotation monitors usage, warns at 80%, triggers compaction recovery",
@@ -529,8 +529,8 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     ],
     techStack: ["Go 1.25+", "Bubble Tea", "tmux 3.0+", "Catppuccin themes"],
     keyFeatures: [
-      "80+ commands: spawn, send, dashboard, checkpoint, health, and more",
-      "Agent type classification with named panes (cc, cod, agy)",
+      "110+ commands: spawn, send, dashboard, checkpoint, health, and more",
+      "Agent type classification with named panes (cc, cod, agy, grok, omp, and more)",
       "Context window monitoring with automatic compaction recovery",
       "Command palette TUI with fuzzy search and pinned commands",
       "Robot mode for scripting and agent automation",
@@ -547,7 +547,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     id: "slb",
     name: "Simultaneous Launch Button",
     shortName: "SLB",
-    href: "https://github.com/Dicklesworthstone/simultaneous_launch_button",
+    href: "https://github.com/Dicklesworthstone/slb",
     icon: "ShieldCheck",
     color: "from-amber-500 to-orange-600",
     category: "core",
@@ -555,7 +555,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     whatItDoes:
       "Nuclear-launch-style two-person rule for dangerous commands. Four risk tiers classify commands via 40+ regex patterns: CRITICAL (2+ approvals), DANGEROUS (1 approval), CAUTION (30s auto-approve), SAFE (skip). Cryptographic signing, rollback support, and outcome analytics.",
     whyItsUseful:
-      "AI agents can and will run destructive commands if they think it solves your problem. SLB intercepts commands like 'rm -rf /', 'DROP DATABASE', and 'terraform destroy' requiring explicit approval from another agent or human reviewer before execution. Watch mode lets reviewing agents stream pending requests.",
+      "AI agents can and will run destructive commands if they think it solves your problem. SLB intercepts commands like 'rm -rf /', 'DROP DATABASE', and 'terraform destroy' requiring explicit approval from another agent or human reviewer before execution. Watch mode lets reviewing agents stream pending requests. Local agents can only review each other after slb config set general.approval_policy same_host; the default independent policy refuses local approvals.",
     implementationHighlights: [
       "Go implementation with Bubble Tea TUI dashboard",
       "40+ regex patterns: 24 critical, 15 dangerous, 6 safe",
@@ -575,11 +575,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
       },
       {
         toolId: "mail",
-        description: "Approval requests can be routed via Agent Mail",
-      },
-      {
-        toolId: "caam",
-        description: "Account switching can require SLB approval for team workflows",
+        description: "Agent Mail carries approval-request notifications to reviewers",
       },
     ],
     techStack: ["Go 1.24+", "Bubble Tea", "SQLite", "HMAC-SHA256"],
@@ -615,7 +611,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
       "Dual persistence: SQLite for queries + Git for audit trails (neither privileged)",
       "UCB bandit learns from feedback to optimize suggestions",
       "Hybrid search: BM25 + deterministic hash embeddings + RRF fusion",
-      "MCP server exposes 12 native tools (search, load, evidence, list, show, doctor, lint, suggest, feedback, index, validate, config)",
+      "MCP server exposes 15 native tools (search, load, evidence, list, show, doctor, lint, suggest, feedback, index, validate, config, safety, security, dedup)",
       "ACIP prompt-injection quarantine + DCG command safety tiers",
       "Graph analysis via bv: PageRank, betweenness, cycles, critical path",
     ],
@@ -639,7 +635,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     ],
     techStack: ["Rust", "SQLite + FTS5", "Git archive", "MCP stdio/HTTP"],
     keyFeatures: [
-      "MCP server: 12 native tools for AI agent integration",
+      "MCP server: 15 native tools for AI agent integration",
       "UCB bandit optimization learns from feedback",
       "Context-aware auto-loading (ms load --auto)",
       "Pack contracts: debug/refactor/learn/quickref/codegen",
@@ -663,14 +659,14 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     category: "core",
     stars: 35,
     whatItDoes:
-      "Claude Code PreToolUse hook that offloads Rust compilation to remote workers. Intercepts cargo commands, syncs source via rsync + zstd, compiles on server-grade hardware, streams artifacts back.",
+      "Claude Code PreToolUse hook that offloads Rust, Go, C/C++, Bun and Nix builds to remote workers. Intercepts build commands, syncs source via rsync + zstd, compiles on server-grade hardware, streams artifacts back.",
     whyItsUseful:
-      "Multi-agent swarms trigger many concurrent builds. RCH intercepts commands before execution and routes them to remote workers with health probes and priority scheduling. Agent detection coordinates builds across Claude Code, Codex, and Antigravity sessions.",
+      "Multi-agent swarms trigger many concurrent builds. RCH intercepts commands before execution and routes them to remote workers with health probes and priority scheduling. A cargo shim plus per-agent hooks mean builds from Claude Code, Codex, and any other agent or script are offloaded.",
     implementationHighlights: [
       "PreToolUse hook intercepts cargo before execution",
       "rsync + zstd with incremental artifact streaming",
       "Worker health probes and priority scheduling",
-      "Agent detection for multi-agent coordination",
+      "Cargo shim + per-agent hooks so every agent offloads",
     ],
     synergies: [
       {
@@ -691,7 +687,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
       "PreToolUse hook intercepts cargo automatically",
       "Worker pool with health probes and priorities",
       "Daemon mode with persistent SSH connections",
-      "Agent detection: Claude Code, Codex, Antigravity",
+      "Agent hooks: Claude Code, Codex CLI, Gemini CLI, Cursor, and more",
     ],
     useCases: [
       "Offloading builds during multi-agent sessions",
@@ -709,7 +705,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     category: "core",
     stars: 12,
     whatItDoes:
-      "Manages multiple accounts for Claude Code, Codex CLI, and Antigravity CLI with sub-100ms switching. Vault profiles store auth files for instant activation without browser flows. Smart rotation algorithms automatically select the best profile based on cooldown state, health, and usage patterns.",
+      "Manages multiple accounts for Claude Code, Codex CLI, Antigravity CLI, Gemini CLI, Grok Build, OpenCode, and Cursor with sub-100ms switching. Vault profiles store auth files for instant activation without browser flows. Smart rotation algorithms automatically select the best profile based on cooldown state, health, and usage patterns.",
     whyItsUseful:
       "When running multiple agents, you'll hit rate limits. CAAM lets you switch accounts instantly - no browser login, no waiting. Profile isolation enables parallel sessions where each agent uses its own credentials. Health scoring (🟢/🟡/🔴) shows which profiles are ready vs. cooling down.",
     implementationHighlights: [
@@ -725,12 +721,12 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
         description: "NTM spawns agents with isolated CAAM profiles for parallel sessions",
       },
       {
-        toolId: "mail",
-        description: "Account switches can trigger Agent Mail notifications",
+        toolId: "caut",
+        description: "CAUT shows which provider accounts are near their limits before you switch",
       },
       {
-        toolId: "slb",
-        description: "Team approval workflows for account switching",
+        toolId: "casr",
+        description: "CAAM swaps the account on a rate limit; CASR moves the session to another provider",
       },
     ],
     techStack: ["Go", "SQLite", "OAuth", "AES-256-GCM", "Argon2id"],
@@ -750,55 +746,6 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     ],
   },
   {
-    id: "wa",
-    name: "WezTerm Automata",
-    shortName: "WA",
-    href: "https://github.com/Dicklesworthstone/wezterm_automata",
-    icon: "Monitor",
-    color: "from-cyan-500 to-teal-600",
-    category: "core",
-    stars: 42,
-    whatItDoes:
-      "Terminal hypervisor that captures pane output in real-time, detects agent state transitions through pattern matching, and enables event-driven automation across multiple AI coding agents.",
-    whyItsUseful:
-      "When running multiple AI agents in WezTerm, you need to know when they hit rate limits, complete tasks, or need approval. WA observes all panes with sub-50ms latency and triggers automated responses.",
-    implementationHighlights: [
-      "Real-time delta extraction (sub-50ms latency)",
-      "Multi-agent pattern detection engine",
-      "FTS5-powered full-text search with BM25 ranking",
-      "TOON output format for token-efficient AI consumption",
-      "Workflow automation triggered by pattern matches",
-    ],
-    synergies: [
-      {
-        toolId: "ntm",
-        description: "WA observes agents spawned by NTM",
-      },
-      {
-        toolId: "mail",
-        description: "State changes trigger Agent Mail notifications",
-      },
-      {
-        toolId: "bv",
-        description: "Task completions can update bead status",
-      },
-    ],
-    techStack: ["Rust", "WezTerm API", "SQLite FTS5", "Pattern matching"],
-    keyFeatures: [
-      "Real-time terminal observation (<50ms latency)",
-      "Multi-agent pattern detection (Claude, Codex, Antigravity)",
-      "Robot Mode JSON/TOON API",
-      "Event-driven wait-for automation",
-      "Explainability via 'wa why' command",
-    ],
-    useCases: [
-      "Detecting agent rate limits and errors",
-      "Coordinating multi-agent workflows",
-      "Searching across captured terminal sessions",
-      "Triggering automated responses on state changes",
-    ],
-  },
-  {
     id: "brenner",
     name: "Brenner Bot",
     shortName: "Brenner",
@@ -812,7 +759,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     whyItsUseful:
       "Transforms AI agents into a collaborative research group with rigorous scientific discipline. The Brenner approach emphasizes exclusion over accumulation, third-alternative thinking, and discriminative experiments that collapse hypothesis space fast.",
     implementationHighlights: [
-      "Hypothesis lifecycle management: proposed → active → killed/validated with discriminative tests",
+      "Hypothesis lifecycle management: proposed → active → confirmed/refuted/superseded/deferred with discriminative tests",
       "Evidence packs: import papers, datasets, prior sessions with stable EV-NNN citations",
       "Anomaly tracking with paradigm_shifting status and hypothesis spawning capability",
       "Cockpit runtime: multi-agent sessions with role-specific prompts (hypothesis_generator, test_designer, adversarial_critic)",
@@ -958,7 +905,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     category: "supporting",
     stars: 156,
     whatItDoes:
-      "Ultra-fast search over X/Twitter data archives with sub-millisecond latency. Uses hybrid BM25 + semantic search with Reciprocal Rank Fusion. Indexes tweets, likes, DMs, and Grok conversations.",
+      "Ultra-fast search over X/Twitter data archives with sub-millisecond latency. Uses hybrid BM25 + semantic search with Reciprocal Rank Fusion. Indexes tweets, likes, DMs, Grok conversations, and bookmarks.",
     whyItsUseful:
       "Your X archive is a goldmine of bookmarks, threads, and ideas, but Twitter's search is terrible. XF makes your archive instantly searchable (<10ms) with both keyword and semantic matching. DM context search shows full conversation threads.",
     implementationHighlights: [
@@ -983,7 +930,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
       "Sub-millisecond lexical search (<10ms typical)",
       "Hybrid BM25 + semantic with RRF fusion",
       "DM context search with full threads",
-      "Indexes tweets, likes, DMs, Grok chats",
+      "Indexes tweets, likes, DMs, Grok chats, bookmarks",
     ],
     useCases: [
       "Finding that thread you bookmarked months ago",
@@ -1007,7 +954,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     implementationHighlights: [
       "Bun single-binary with zero runtime dependencies",
       "React/Ink terminal UI with virtualized rendering",
-      "tiktoken cl100k_base encoding (GPT-4 compatible)",
+      "tiktoken o200k_base encoding (via gpt-4o-mini), with a cl100k_base fallback",
       "Structured XML output: <preamble>, <goal>, <project_structure>, <files>",
       "JS/TS minification via Terser, CSS via csso",
       "Recursive .gitignore support including nested gitignores",
@@ -1051,11 +998,11 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     category: "supporting",
     stars: 85,
     whatItDoes:
-      "Iterative specification refinement via GPT Pro 5.2 Extended Reasoning + Oracle. Document bundling (README + spec + impl), convergence analytics with weighted scoring, session management, and robot mode JSON API for coding agents.",
+      "Iterative specification refinement via GPT Pro Extended Reasoning + Oracle. Document bundling (README + spec + impl), convergence analytics with weighted scoring, session management, and robot mode JSON API for coding agents.",
     whyItsUseful:
       "Complex specs need 15-20 review cycles. APR automates the loop: rounds 1-3 fix architecture, 4-7 refine interfaces, 8-12 handle edge cases, 13+ polish abstractions. Convergence score (≥0.75 = stable) tells you when to stop.",
     implementationHighlights: [
-      "GPT Pro 5.2 Extended Reasoning via Oracle browser automation",
+      "GPT Pro Extended Reasoning via Oracle browser automation",
       "Convergence analytics (output_trend + change_velocity + similarity)",
       "Pre-flight validation and auto-retry with exponential backoff",
       "Session locking prevents concurrent runs",
@@ -1075,7 +1022,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
         description: "Refined specs generate well-structured beads",
       },
     ],
-    techStack: ["Bash", "Oracle", "Node.js", "gum", "GPT Pro 5.2"],
+    techStack: ["Bash", "Oracle", "Node.js", "gum", "GPT Pro"],
     keyFeatures: [
       "Document bundling (README + spec + implementation)",
       "Convergence analytics with weighted scoring",
@@ -1100,9 +1047,9 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     category: "supporting",
     stars: 120,
     whatItDoes:
-      "Official CLI for jeffreysprompts.com - browse, search, and install battle-tested prompts as Claude Code skills. Features interactive fzf-style picker and task-based suggestion engine.",
+      "Official CLI for jeffreysprompts.com - browse, search, copy, and export battle-tested prompts as Markdown (Claude Code skills live in its sibling CLI, jsm). Features interactive fzf-style picker and task-based suggestion engine.",
     whyItsUseful:
-      "Instead of writing prompts from scratch, install proven patterns. The interactive mode (jfp i) lets you fuzzy-search the entire library, while jfp suggest recommends prompts based on your task description. Premium features include collections, cross-machine sync, and a skills marketplace.",
+      "Instead of writing prompts from scratch, reuse proven patterns. The interactive mode (jfp i) lets you fuzzy-search the entire library, while jfp suggest recommends prompts based on your task description. Premium features include collections, cross-machine sync, and premium prompt packs.",
     implementationHighlights: [
       "TypeScript/Bun compiled to standalone binary",
       "Interactive fzf-style picker (jfp i) for browsing",
@@ -1125,13 +1072,13 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
         description: "Effective prompts become retrievable memories",
       },
     ],
-    techStack: ["TypeScript", "Bun", "Claude Code Skills API"],
+    techStack: ["TypeScript", "Bun", "MCP"],
     keyFeatures: [
       "Interactive fzf-style prompt picker (jfp i)",
       "Task-based suggestions (jfp suggest)",
       "Workflow bundles for team patterns",
       "MCP server mode for agent workflows",
-      "Premium: collections, sync, marketplace",
+      "Premium: collections, sync, prompt packs",
     ],
     useCases: [
       "Bootstrapping a new project with proven prompts",
@@ -1158,7 +1105,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
       "Four-state Bayesian posterior classification",
       "Identity validation (boot_id:start_time:pid) prevents PID reuse",
       "Protected process lists (systemd, sshd, docker, postgres)",
-      "Agent/robot mode with safety gates (min_posterior, max_kills, fdr_budget)",
+      "Agent/robot mode with safety gates (min_posterior, max_kills, max_blast_radius_mb, fdr_control)",
     ],
     synergies: [
       {
@@ -1170,12 +1117,12 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
         description: "Clean up runaway processes in tmux sessions",
       },
     ],
-    techStack: ["Rust", "Bash", "gum", "procfs", "Bayesian inference"],
+    techStack: ["Rust", "Bash", "ftui", "procfs", "Bayesian inference"],
     keyFeatures: [
       "Four-state classification with posterior probabilities",
       "Evidence-based scoring (process type, age, CPU, IO, memory)",
       "Protected processes and identity validation",
-      "Interactive gum TUI for process selection",
+      "Interactive Rust TUI (ftui) for process selection",
       "Session bundles (.ptb) for sharing/reproducibility",
     ],
     useCases: [
@@ -1237,19 +1184,19 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     category: "supporting",
     stars: 18,
     whatItDoes:
-      "Transparent HTTP/HTTPS proxy for debugging and inspecting network traffic. Routes requests through a local proxy for analysis.",
+      "Targeted, machine-wide transparent proxy: iptables + ipset redirect only the domains you list through an upstream HTTP proxy; everything else stays direct.",
     whyItsUseful:
-      "When debugging API integrations or AI agent network calls, you need visibility into what's being sent and received. Rust Proxy provides transparent interception without modifying your code.",
+      "Send agent and SDK traffic for specific providers through a chosen proxy without HTTPS_PROXY env vars, per-app config, or a global system proxy.",
     implementationHighlights: [
       "Rust implementation with async I/O",
-      "HTTPS interception with certificate generation",
-      "Request/response logging",
+      "iptables NAT REDIRECT + ipset destination matching",
+      "CONNECT tunneling to upstream proxies with failover",
       "Minimal latency overhead",
     ],
     synergies: [
       {
         toolId: "rano",
-        description: "Complementary network debugging - proxy vs observer",
+        description: "Complementary network tools: RANO observes connections, Rust Proxy routes them",
       },
       {
         toolId: "cass",
@@ -1258,15 +1205,15 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     ],
     techStack: ["Rust", "Tokio", "TLS", "HTTP proxy"],
     keyFeatures: [
-      "Transparent HTTP/HTTPS proxy",
-      "Request/response inspection",
-      "Certificate generation",
-      "Low latency overhead",
+      "Per-domain targeting via iptables + ipset",
+      "Upstream HTTP proxy tunneling",
+      "Health checks, failover and latency stats",
+      "Live config reload",
     ],
     useCases: [
-      "Debugging API integrations",
-      "Inspecting AI agent network calls",
-      "Analyzing third-party API traffic",
+      "Routing AI-provider API traffic through a chosen proxy",
+      "Machine-wide proxying without per-app config",
+      "Measuring upstream proxy latency",
     ],
   },
   {
@@ -1279,19 +1226,19 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     category: "supporting",
     stars: 25,
     whatItDoes:
-      "Network observer for AI CLI tools that logs requests and responses without proxying. Passive monitoring of LLM API traffic.",
+      "Network observer for AI CLI tools: attributes the sockets opened by Claude Code, Codex, Gemini CLI and their children to a PID and provider, live and in SQLite. No proxy and no payload capture.",
     whyItsUseful:
-      "Understanding what your AI agents are actually sending to APIs helps with debugging, cost tracking, and optimization. RANO passively observes network traffic without adding proxy overhead.",
+      "Seeing which endpoints your agents and their subprocesses connect to, and how often they reconnect, makes retry storms and unexpected hosts easy to spot. RANO observes sockets without proxy overhead and never touches payloads.",
     implementationHighlights: [
       "Rust implementation for performance",
       "Passive network observation (no proxy)",
-      "LLM-specific request/response parsing",
+      "Provider tagging (anthropic/openai/google) with PTR or pcap DNS/SNI domain attribution",
       "JSON output for analysis",
     ],
     synergies: [
       {
         toolId: "caut",
-        description: "Network observations feed usage tracking",
+        description: "Endpoint activity alongside CAUT's usage numbers",
       },
       {
         toolId: "cass",
@@ -1301,8 +1248,8 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     techStack: ["Rust", "pcap", "Network monitoring"],
     keyFeatures: [
       "Passive network observation",
-      "LLM API traffic parsing",
-      "Request/response logging",
+      "Per-process socket attribution",
+      "Provider tagging (anthropic/openai/google)",
       "Zero proxy overhead",
     ],
     useCases: [
@@ -1321,12 +1268,12 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     category: "supporting",
     stars: 42,
     whatItDoes:
-      "Converts websites to clean Markdown for LLM consumption. Strips ads, navigation, and boilerplate to extract just the content.",
+      "Converts websites to Markdown for LLM consumption by rendering them in headless Chrome, OCRing screenshot tiles, and stitching the result with per-tile provenance.",
     whyItsUseful:
       "AI agents need web content in a format they can understand. MDWB fetches pages and converts them to clean Markdown, perfect for feeding into LLM context windows.",
     implementationHighlights: [
-      "Rust implementation with async fetching",
-      "Intelligent content extraction (reader mode)",
+      "Python 3.13 + FastAPI + Playwright capture pipeline",
+      "Screenshot tiles OCR'd by olmOCR, stitched with provenance comments",
       "Configurable output formatting",
       "Handles JavaScript-rendered pages",
     ],
@@ -1340,12 +1287,12 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
         description: "Store fetched content as memories",
       },
     ],
-    techStack: ["Rust", "HTML parsing", "Markdown", "HTTP client"],
+    techStack: ["Python", "FastAPI", "Playwright", "olmOCR"],
     keyFeatures: [
-      "Website to Markdown conversion",
-      "Content extraction (reader mode)",
-      "JavaScript rendering support",
-      "Clean output formatting",
+      "Headless Chrome capture of JS-rendered pages",
+      "Screenshot tiles OCR'd into Markdown",
+      "Per-tile provenance and links.json",
+      "Batch, crawl and search over captures",
     ],
     useCases: ["Feeding web content to AI agents", "Research automation", "Documentation scraping"],
   },
@@ -1359,14 +1306,14 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     category: "supporting",
     stars: 15,
     whatItDoes:
-      "Fixes malformed ASCII art diagrams generated by AI. Corrects alignment, box characters, and connection lines.",
+      "Fixes misaligned right borders in ASCII diagrams by adding padding, never removing content. Detects ASCII and Unicode box-drawing blocks automatically.",
     whyItsUseful:
-      "AI models often generate ASCII diagrams with alignment issues, broken lines, or inconsistent characters. AADC automatically detects and fixes these problems.",
+      "Editing an ASCII diagram (or letting an AI write one) leaves ragged right borders. AADC realigns them in one command, safely enough to run as a pre-commit hook.",
     implementationHighlights: [
       "Rust implementation for speed",
       "Pattern detection for common diagram types",
       "Character alignment correction",
-      "Box-drawing character normalization",
+      "Skips GFM tables and tagged code fences",
     ],
     synergies: [
       {
@@ -1381,9 +1328,9 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     techStack: ["Rust", "Pattern matching", "Text processing"],
     keyFeatures: [
       "ASCII diagram detection",
-      "Alignment correction",
-      "Box-drawing normalization",
-      "Line connection repair",
+      "Right-border alignment by padding",
+      "Never removes content",
+      "Recursive, watch and pre-commit hook modes",
     ],
     useCases: [
       "Fixing AI-generated diagrams",
@@ -1401,27 +1348,23 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     category: "supporting",
     stars: 28,
     whatItDoes:
-      "Tracks LLM provider usage across multiple coding agents. Monitors API calls, token consumption, and costs.",
+      "Fetches quota, rate-limit windows and credits from 16 coding-agent providers (Codex, Claude, Gemini, Cursor, Copilot, and more), plus local cost from agent JSONL logs.",
     whyItsUseful:
       "When running multiple AI agents simultaneously, costs can spiral. CAUT provides visibility into which agents are using how many tokens and at what cost.",
     implementationHighlights: [
       "Rust implementation with SQLite storage",
-      "Multi-provider support (Anthropic, OpenAI, Google)",
-      "Real-time usage monitoring",
-      "Cost estimation and alerts",
+      "16 providers via CLI, web-cookie, OAuth, API or local sources",
+      "Watch mode, TUI dashboard and HTTP server",
+      "JSON/Markdown robot output and an MCP server",
     ],
     synergies: [
       {
         toolId: "rano",
-        description: "Network observations feed usage data",
+        description: "RANO shows which API endpoints agents connect to; CAUT shows quota and cost",
       },
       {
-        toolId: "ntm",
-        description: "Track usage per NTM-managed session",
-      },
-      {
-        toolId: "mail",
-        description: "Usage alerts via Agent Mail",
+        toolId: "caam",
+        description: "Check remaining quota per provider before CAAM switches accounts",
       },
     ],
     techStack: ["Rust", "SQLite", "API monitoring"],
@@ -1500,7 +1443,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
       "Hybrid BM25 + local vector retrieval via Frankensearch, with a Model2Vec embedder and hash fallback",
       "Procedural rules decay; harmful feedback demotes faster than helpful feedback promotes",
       "Deterministic: same DB, indexes, config, and query yield an identical pack hash",
-      "Graph analytics over memories: PageRank, HITS, personalized PageRank, causal paths",
+      "Graph analytics over memories: PageRank, HITS, min-cut proximity, causal paths",
       "Versioned JSON on every machine-facing command; no daemon required",
     ],
     synergies: [
@@ -1903,7 +1846,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
       "Copy-pasting from a share page breaks fenced code blocks, loses language hints, and leaves messy filenames. CSCTF archives a conversation in one command, and --publish-to-gh-pages can push it to a GitHub Pages microsite with a regenerated index.",
     implementationHighlights: [
       "Headless Playwright Chromium with provider-specific selectors and fallback chains",
-      "Claude.ai shares via your installed Chrome over DevTools, using a temporary cookie copy",
+      "Claude.ai shares over Chrome DevTools: attaches to a debuggable Chrome or launches an isolated private-profile Chrome",
       "Custom Turndown rule emits fenced code blocks with the detected language",
       "Atomic temp+rename writes; collisions get _2, _3 suffixes",
       "HTML via markdown-it + highlight.js: TOC, light/dark/print CSS, no scripts",
@@ -1929,6 +1872,57 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
       "Archiving an AI conversation with its code intact",
       "Publishing transcripts to a shareable microsite",
       "Keeping a local Markdown record of useful chats",
+    ],
+  },
+  {
+    // FrankenTerm (ft) superseded WezTerm Automata (wa). The id stays "wa" so
+    // existing links and synergy references keep resolving.
+    id: "wa",
+    name: "FrankenTerm",
+    shortName: "FT",
+    href: "https://github.com/Dicklesworthstone/frankenterm",
+    icon: "Monitor",
+    color: "from-cyan-500 to-teal-600",
+    category: "supporting",
+    stars: 129,
+    whatItDoes:
+      "Swarm-native terminal platform (ft) that succeeded WezTerm Automata (wa). It captures pane output on its own vendored WezTerm-fork engine, detects agent state transitions, and exposes policy-gated Robot Mode and MCP control. Not installed by ACFS; use FrankenTerm's own installer.",
+    whyItsUseful:
+      "When running many AI agents, you need to know when they hit usage limits, finish, or need approval. ft records those events, lets one agent safely drive another through a policy gate, and keeps a searchable history of what every pane printed.",
+    implementationHighlights: [
+      "Bounded pane-output delta capture with explicit gap records",
+      "Pattern rules plus Bayesian change-point detection of agent states",
+      "SQLite FTS5 search with lexical, semantic, and hybrid (RRF) modes",
+      "Robot Mode JSON/TOON API and MCP server",
+      "Policy-gated sends, approvals, and transactional workflows",
+    ],
+    synergies: [
+      {
+        toolId: "ntm",
+        description: "An alternative operator cockpit to NTM; ft runs its own terminal engine, not tmux",
+      },
+      {
+        toolId: "mail",
+        description: "Built-in Agent Mail file-reservation coordination",
+      },
+      {
+        toolId: "br",
+        description: "Beads coordination snapshots in incident bundles",
+      },
+    ],
+    techStack: ["Rust", "Vendored WezTerm-fork engine", "SQLite FTS5", "asupersync"],
+    keyFeatures: [
+      "Real-time pane capture with explicit gap records",
+      "Pattern and change-point agent-state detection",
+      "Robot Mode JSON/TOON API and MCP server",
+      "Policy-gated sends and transactional workflows",
+      "Explainability via 'ft why' command",
+    ],
+    useCases: [
+      "Detecting agent usage limits and errors",
+      "Coordinating multi-agent workflows",
+      "Searching across captured terminal sessions",
+      "Triggering automated responses on state changes",
     ],
   },
 ];
@@ -2047,7 +2041,7 @@ export const tldrPageData = {
   coreDescription:
     "The core flywheel tools form the backbone: Agent Mail for coordination, BV for graph-based prioritization, CASS for instant session search, CM for persistent memory, UBS for bug detection, MS for skill management with MCP integration, plus session management, safety guards, and automated setup.",
   supportingDescription:
-    "Supporting tools extend the ecosystem: GIIL for remote image debugging, SRPS for system responsiveness under heavy load, XF for searching your X archive, S2P for crafting prompts from source code, APR for spec refinement, JFP for curated prompt discovery, PT for process triage, TRU for token-optimized notation, RANO for network observation, MDWB for website-to-Markdown conversion, AADC for ASCII diagram correction, CAUT for usage tracking, FSFS for hybrid local search, EE for durable agent memory, SBH for disk-pressure defense, CASR for resuming sessions across agents, DSR for local releases when CI is throttled, ASB for versioned agent config backups, PCR for post-compaction rule reminders, FMD for Markdown-to-HTML/PDF rendering, PI for a native Rust coding agent, PFR for recovering sessions after a power cut, and CSCTF for archiving AI chat share links.",
+    "Supporting tools extend the ecosystem: GIIL for remote image debugging, SRPS for system responsiveness under heavy load, XF for searching your X archive, S2P for crafting prompts from source code, APR for spec refinement, JFP for curated prompt discovery, PT for process triage, TRU for token-optimized notation, RANO for network observation, MDWB for website-to-Markdown conversion, AADC for ASCII diagram correction, CAUT for usage tracking, FSFS for hybrid local search, EE for durable agent memory, SBH for disk-pressure defense, CASR for resuming sessions across agents, DSR for local releases when CI is throttled, ASB for versioned agent config backups, PCR for post-compaction rule reminders, FMD for Markdown-to-HTML/PDF rendering, PI for a native Rust coding agent, PFR for recovering sessions after a power cut, CSCTF for archiving AI chat share links, and FrankenTerm (the successor to WA, installed separately rather than by ACFS) for observing and driving agent terminal panes.",
   flywheelExplanation: {
     title: "Why a Flywheel?",
     paragraphs: [

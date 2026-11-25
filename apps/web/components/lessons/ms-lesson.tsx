@@ -55,7 +55,7 @@ export function MsLesson() {
       {/* Section 1: What Is Meta Skill */}
       <Section title="What Is Meta Skill?" icon={<GraduationCap className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>Meta Skill (ms)</Highlight> is a local-first knowledge management platform that
+          <Highlight>Meta Skill (ms)</Highlight> is a local-first skill management platform that
           turns operational knowledge into structured, searchable, reusable artifacts with
           Git-backed audit trails.
         </Paragraph>
@@ -105,17 +105,20 @@ export function MsLesson() {
       <Section title="Essential Commands" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
         <CommandList
           commands={[
-            { command: "ms list", description: "List all installed skills" },
-            { command: "ms install <skill>", description: "Install a skill from registry" },
-            { command: "ms uninstall <skill>", description: "Remove an installed skill" },
-            { command: "ms update", description: "Update all installed skills" },
+            { command: "ms list", description: "List all indexed skills" },
+            {
+              command: "ms install <bundle>",
+              description: "Install a skill bundle (path, URL, or repo shorthand)",
+            },
+            { command: "ms bundle remove <bundle>", description: "Remove an installed bundle" },
+            { command: "ms bundle update --all", description: "Update installed bundles" },
             { command: "ms doctor", description: "Check skill system health" },
-            { command: "ms search <query>", description: "Search for skills in registry" },
+            { command: "ms search <query>", description: "Hybrid search across indexed skills" },
           ]}
         />
 
         <TipBox>
-          Install popular skills directly: <code>ms install code-review</code>
+          Install a shared bundle: <code>ms install ./team-skills.msb</code>
         </TipBox>
       </Section>
 
@@ -129,17 +132,20 @@ export function MsLesson() {
         </Paragraph>
 
         <CodeBlock
-          code={`# List your installed skills
+          code={`# List your indexed skills
 ms list
 
-# Install a skill
-ms install idea-wizard
+# Install a skill bundle
+ms install https://example.com/team-skills.msb
+
+# Load a skill with progressive disclosure
+ms load idea-wizard
 
 # Use it in Claude Code
 /idea-wizard "build a todo app"
 
-# Update all skills to latest versions
-ms update`}
+# Update all installed bundles
+ms bundle update --all`}
         />
       </Section>
     </div>
@@ -249,7 +255,7 @@ const INITIAL_SKILLS: Skill[] = [
     name: "code-review",
     description:
       "Automated code review with best-practice checks, security scanning, and style suggestions. Generates inline comments and a summary report.",
-    file: "code-review.md",
+    file: "code-review/SKILL.md",
     installed: true,
     category: "dev",
     triggers: ["/review", "/cr", "review this PR"],
@@ -264,7 +270,7 @@ const INITIAL_SKILLS: Skill[] = [
     name: "refactor-guru",
     description:
       "Intelligent refactoring suggestions with before/after diffs, impact analysis, and complexity scoring. Detects code smells automatically.",
-    file: "refactor-guru.md",
+    file: "refactor-guru/SKILL.md",
     installed: true,
     category: "dev",
     triggers: ["/refactor", "/clean", "refactor this function"],
@@ -279,7 +285,7 @@ const INITIAL_SKILLS: Skill[] = [
     name: "idea-wizard",
     description:
       "Turn vague ideas into structured project plans with architecture diagrams, tech stack recommendations, and milestone breakdowns.",
-    file: "idea-wizard.md",
+    file: "idea-wizard/SKILL.md",
     installed: false,
     category: "agent",
     triggers: ["/idea", "/brainstorm", "plan this project"],
@@ -294,7 +300,7 @@ const INITIAL_SKILLS: Skill[] = [
     name: "doc-gen",
     description:
       "Generate comprehensive documentation from code with JSDoc, README templates, API docs, and usage examples. Supports multiple output formats.",
-    file: "doc-gen.md",
+    file: "doc-gen/SKILL.md",
     installed: false,
     category: "dev",
     triggers: ["/docs", "/document", "generate docs"],
@@ -309,7 +315,7 @@ const INITIAL_SKILLS: Skill[] = [
     name: "stacktrace-decoder",
     description:
       "Parse and explain complex stack traces with source mapping, root cause analysis, and suggested fixes. Works with Node.js, Python, Rust, and Go.",
-    file: "stacktrace-decoder.md",
+    file: "stacktrace-decoder/SKILL.md",
     installed: true,
     category: "cli",
     triggers: ["/decode", "/trace", "explain this error"],
@@ -324,7 +330,7 @@ const INITIAL_SKILLS: Skill[] = [
     name: "log-analyzer",
     description:
       "Pattern-match log files to find anomalies, errors, and performance bottlenecks. Generates timeline visualizations and alert summaries.",
-    file: "log-analyzer.md",
+    file: "log-analyzer/SKILL.md",
     installed: false,
     category: "cli",
     triggers: ["/logs", "/analyze", "check the logs"],
@@ -339,7 +345,7 @@ const INITIAL_SKILLS: Skill[] = [
     name: "git-bisect-helper",
     description:
       "Automate git bisect to find the exact commit that introduced a bug. Supports custom test commands and parallel testing.",
-    file: "git-bisect-helper.md",
+    file: "git-bisect-helper/SKILL.md",
     installed: false,
     category: "cli",
     triggers: ["/bisect", "/findbug", "find which commit broke"],
@@ -354,7 +360,7 @@ const INITIAL_SKILLS: Skill[] = [
     name: "test-gen",
     description:
       "Generate unit and integration tests with edge cases, mocking strategies, and coverage targets. Infers test frameworks from project config.",
-    file: "test-gen.md",
+    file: "test-gen/SKILL.md",
     installed: true,
     category: "dev",
     triggers: ["/test", "/generate-tests", "write tests for"],
@@ -369,7 +375,7 @@ const INITIAL_SKILLS: Skill[] = [
     name: "docker-compose",
     description:
       "Generate optimized Dockerfiles and docker-compose configs with multi-stage builds, health checks, and security hardening.",
-    file: "docker-compose.md",
+    file: "docker-compose/SKILL.md",
     installed: false,
     category: "infra",
     triggers: ["/docker", "/containerize", "dockerize this"],
@@ -384,7 +390,7 @@ const INITIAL_SKILLS: Skill[] = [
     name: "ci-pipeline",
     description:
       "Create CI/CD pipelines for GitHub Actions, GitLab CI, or CircleCI from project config. Auto-detects build steps and test suites.",
-    file: "ci-pipeline.md",
+    file: "ci-pipeline/SKILL.md",
     installed: true,
     category: "infra",
     triggers: ["/ci", "/pipeline", "set up CI"],
@@ -399,7 +405,7 @@ const INITIAL_SKILLS: Skill[] = [
     name: "deploy-helper",
     description:
       "Deployment checklists, rollback plans, and environment configuration validation. Supports blue-green and canary deployment strategies.",
-    file: "deploy-helper.md",
+    file: "deploy-helper/SKILL.md",
     installed: false,
     category: "infra",
     triggers: ["/deploy", "/release", "deploy to production"],
@@ -414,7 +420,7 @@ const INITIAL_SKILLS: Skill[] = [
     name: "secret-scanner",
     description:
       "Scan codebases for leaked credentials, API keys, and sensitive data. Integrates with pre-commit hooks and CI pipelines.",
-    file: "secret-scanner.md",
+    file: "secret-scanner/SKILL.md",
     installed: true,
     category: "security",
     triggers: ["/scan-secrets", "/secrets", "check for leaked keys"],
@@ -429,7 +435,7 @@ const INITIAL_SKILLS: Skill[] = [
     name: "threat-model",
     description:
       "Generate STRIDE threat models from architecture descriptions. Identifies attack surfaces, trust boundaries, and mitigation strategies.",
-    file: "threat-model.md",
+    file: "threat-model/SKILL.md",
     installed: false,
     category: "security",
     triggers: ["/threat", "/stride", "analyze security"],
@@ -444,7 +450,7 @@ const INITIAL_SKILLS: Skill[] = [
     name: "swarm-dispatch",
     description:
       "Coordinate multi-agent task execution with dependency resolution, parallel scheduling, and progress tracking across agent instances.",
-    file: "swarm-dispatch.md",
+    file: "swarm-dispatch/SKILL.md",
     installed: false,
     category: "coord",
     triggers: ["/swarm", "/dispatch", "run agents in parallel"],
@@ -459,7 +465,7 @@ const INITIAL_SKILLS: Skill[] = [
     name: "session-replay",
     description:
       "Replay and analyze previous agent sessions to extract patterns, identify failures, and mine reusable knowledge for skill creation.",
-    file: "session-replay.md",
+    file: "session-replay/SKILL.md",
     installed: false,
     category: "coord",
     triggers: ["/replay", "/session", "review last session"],
@@ -474,7 +480,7 @@ const INITIAL_SKILLS: Skill[] = [
     name: "prompt-optimizer",
     description:
       "Analyze and optimize system prompts for clarity, token efficiency, and instruction adherence. Scores prompts on multiple dimensions.",
-    file: "prompt-optimizer.md",
+    file: "prompt-optimizer/SKILL.md",
     installed: false,
     category: "agent",
     triggers: ["/optimize-prompt", "/prompt", "improve this prompt"],
@@ -489,7 +495,7 @@ const INITIAL_SKILLS: Skill[] = [
     name: "context-packer",
     description:
       "Intelligently pack maximum relevant context into agent prompts. Uses semantic chunking and priority ranking to fit within token limits.",
-    file: "context-packer.md",
+    file: "context-packer/SKILL.md",
     installed: true,
     category: "agent",
     triggers: ["/pack", "/context", "pack context for"],

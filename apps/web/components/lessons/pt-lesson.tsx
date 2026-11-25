@@ -104,8 +104,15 @@ export function PtLesson() {
       <Section title="Essential Commands" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
         <CommandList
           commands={[
-            { command: "pt", description: "Show process overview" },
-            { command: "pt scan", description: "Quick multi-sample scan of all processes" },
+            { command: "pt", description: "Interactive triage TUI: scan, review, confirm, kill" },
+            {
+              command: "pt scan",
+              description: "Raw multi-sample process snapshot (JSON, no scoring)",
+            },
+            {
+              command: "pt agent plan --format json",
+              description: "Scored, ranked candidates with evidence (never acts)",
+            },
             {
               command: "pt run",
               description: "Interactive triage: scan, infer, plan, approve, apply",
@@ -125,8 +132,11 @@ export function PtLesson() {
       {/* Section 3: Common Scenarios */}
       <Section title="Common Scenarios" icon={<Play className="h-5 w-5" />} delay={0.3}>
         <CodeBlock
-          code={`# Quick scan: what's using CPU, memory, and I/O
+          code={`# Quick raw snapshot of CPU, memory, and I/O (JSON, no scoring)
 pt scan
+
+# Ranked kill/keep candidates with evidence (read-only)
+pt agent plan --format md
 
 # Full deep scan with every available probe
 pt deep-scan
@@ -188,7 +198,7 @@ const SCENARIOS: Scenario[] = [
     description:
       "Healthy system with typical development workloads. All processes within expected ranges.",
     terminalLines: [
-      "$ pt scan",
+      "$ pt agent plan --format md",
       "Process Triage v2.4 -- scanning 147 processes",
       "System load: 1.24 (healthy)",
       "",
@@ -298,7 +308,7 @@ const SCENARIOS: Scenario[] = [
     icon: <Flame className="h-4 w-4" />,
     description: "A cargo build process is consuming all CPU cores and thrashing swap.",
     terminalLines: [
-      "$ pt scan",
+      "$ pt agent plan --format md",
       "Process Triage v2.4 -- scanning 203 processes",
       "\x1b[31m!! WARNING: CPU saturation detected (98.7%)\x1b[0m",
       "\x1b[33m!! SWAP pressure: 87% utilized\x1b[0m",
@@ -411,7 +421,7 @@ const SCENARIOS: Scenario[] = [
     icon: <Zap className="h-4 w-4" />,
     description: "A Node.js process has a memory leak, slowly consuming all available RAM.",
     terminalLines: [
-      "$ pt scan",
+      "$ pt agent plan --format md",
       "Process Triage v2.4 -- scanning 171 processes, 3 node workers flagged",
       "",
       "\x1b[33m!! PID 2900: Memory growing 120MB/hour\x1b[0m",
@@ -635,7 +645,7 @@ const SCENARIOS: Scenario[] = [
     icon: <HardDrive className="h-4 w-4" />,
     description: "Saturated disk I/O from concurrent heavy writes blocking all processes.",
     terminalLines: [
-      "$ pt scan",
+      "$ pt agent plan --format md",
       "Process Triage v2.4 -- scanning 156 processes",
       "\x1b[31m!! Disk I/O saturated: 450MB/s write\x1b[0m",
       "\x1b[33m!! 8 processes in D (disk-wait) state\x1b[0m",

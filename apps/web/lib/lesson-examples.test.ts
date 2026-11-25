@@ -113,12 +113,13 @@ const ROWS: ExampleRow[] = [
     wrong: /apr review\b/,
     right: { pattern: /apr integrate 2 --copy/, in: [O("13_apr.md"), L("apr-lesson.tsx")] },
   },
-  // ru 1.3.1: `commit-sweep` (dry-run by default, --execute) replaced the
-  // never-shipped `agent-sweep`.
+  // ru 1.7.1 ships both `commit-sweep` (heuristic; dry-run by default,
+  // --execute) and `agent-sweep` (ntm AI sweep); only the removed
+  // `agent-sweep --prompt` form is dead.
   {
     issue: "#394",
     cli: "ru",
-    wrong: /\bagent[- ]sweep\b/i,
+    wrong: /ru agent-sweep\b[^\n"'`]*--prompt\b/,
     right: {
       pattern: /ru commit-sweep --execute/,
       in: [O("09_ru.md"), L("ru-lesson.tsx"), FLYWHEEL, README],

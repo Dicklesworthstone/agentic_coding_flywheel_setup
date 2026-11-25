@@ -232,9 +232,9 @@ ps aux | fzf | awk '{print $2}' | xargs kill
 # Environment variable browser
 env | fzf
 
-# Ctrl-T: paste selected file path
-# Ctrl-R: search command history (overlaps with atuin)
-# Alt-C: cd into selected directory`}
+# Key bindings: ACFS leaves fzf's Ctrl-T/Alt-C off (DISABLE_FZF_KEY_BINDINGS=1);
+# Ctrl-R is atuin's history search. To enable them, source fzf's key-bindings.zsh
+# yourself (Ubuntu: /usr/share/doc/fzf/examples/key-bindings.zsh).`}
             showLineNumbers
           />
         </div>

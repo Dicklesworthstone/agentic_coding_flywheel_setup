@@ -692,10 +692,12 @@ export default function CreateVPSPage() {
                   <strong>Look for:</strong> Ubuntu {ACFS_RECOMMENDED_UBUNTU} LTS
                   <br />
                   <em className="text-xs">
-                    If your provider or region only offers Ubuntu 24.04 or 22.04 LTS,
-                    complete a supported LTS upgrade to {ACFS_RECOMMENDED_UBUNTU} first rather
-                    than relying on ACFS&apos;s automatic upgrade path. Avoid non-LTS images
-                    such as 25.10, which no longer get security updates.
+                    If your provider or region only offers Ubuntu 24.04 or 22.04 LTS, that works
+                    too: ACFS never upgrades those releases unless asked, and this wizard&apos;s
+                    install command asks (it passes{" "}
+                    <code>--target-ubuntu={ACFS_RECOMMENDED_UBUNTU}</code>, adding 30–60 minutes
+                    and a reboot per hop). Avoid non-LTS images such as 25.10, which no longer get
+                    security updates.
                   </em>
                 </GuideStep>
 

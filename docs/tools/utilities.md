@@ -285,7 +285,7 @@ Inside the TUI:
 
 ## caut (coding_agent_usage_tracker)
 
-Track LLM provider usage across coding agents.
+Check remaining quota, rate-limit windows, credits, and local cost across coding-agent providers (Codex, Claude, Gemini, Cursor, Copilot, and more).
 
 ### Installation Verification
 
@@ -297,24 +297,24 @@ caut --help
 ### Basic Usage
 
 ```bash
-# Show usage summary
-caut status
+# Quota, rate-limit windows and credits per provider
+caut usage --provider all
 
-# Show detailed breakdown
-caut report --detailed
+# Local cost from agent JSONL logs
+caut cost
 
-# Export usage data
-caut export --format json > usage.json
+# Usage trend for the past week
+caut history show --days 7
 
-# Set usage alerts
-caut alert set --daily-limit 100000
+# Export usage history
+caut history export --format csv
 ```
 
 ### Use Cases
 
-- Monitor API token consumption
-- Track costs across providers
-- Set usage budgets and alerts
+- Check remaining quota before launching a swarm
+- Track local cost per provider and per session (`caut session --today`)
+- Review usage history and trends
 
 ---
 
@@ -327,11 +327,12 @@ cargo install toon_rust
 cargo install rust_proxy
 cargo install rano
 cargo install xf
-cargo install markdown_web_browser
 cargo install process_triage
 cargo install aadc
 cargo install coding_agent_usage_tracker
 ```
+
+`mdwb` (markdown_web_browser) is a Python project (FastAPI + Playwright + OCR), not a Rust crate; follow its README.
 
 Install `s2p` (source_to_prompt_tui) through its Bash installer. Published standalone binaries include the Bun runtime; building from source requires Git and Bun:
 

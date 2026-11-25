@@ -110,7 +110,8 @@ export function S2pLesson() {
 
         <TipBox variant="info">
           S2P is built with React and Ink, giving you a beautiful terminal UI. Use arrow keys to
-          navigate, Space to toggle files, and Enter to confirm your selection.
+          move (j/k also work), Space to toggle files, Ctrl+G to generate the prompt, and y to copy
+          it. There are no CLI filter flags: <code>s2p</code> takes only a directory.
         </TipBox>
       </Section>
 
@@ -123,13 +124,14 @@ export function S2pLesson() {
         </Paragraph>
         <CodeBlock
           code={`# Keyboard Controls
-↑/↓          Navigate between files
-Space        Toggle file selection
-Enter        Expand/collapse directories
-a            Select all files
-n            Deselect all files
-c            Copy to clipboard
-q / Esc      Quit`}
+j/k or ↑/↓    Move cursor
+h/l or ←/→    Collapse/expand directory
+Space/Enter   Toggle file / expand directory
+/ or f        Filter by path
+a / A         Select / deselect files matching the filter
+Ctrl+G        Generate combined prompt
+y / w         Copy / save (output view)
+Esc (twice)   Quit`}
         />
 
         <Paragraph>
@@ -147,7 +149,7 @@ q / Esc      Quit`}
         delay={0.35}
       >
         <Paragraph>
-          Explore different project types below. Toggle source files, apply glob filters, and watch
+          Explore different project types below. Toggle source files, apply a file filter, and watch
           S2P scan, measure, and combine them into a single LLM-ready prompt.
         </Paragraph>
         <InteractiveSourceCombiner />
@@ -168,15 +170,16 @@ s2p
 # 1. Navigate to src/ directory
 # 2. Select relevant TypeScript files
 # 3. Watch token count update
-# 4. Press 'c' to copy to clipboard
+# 4. Press Ctrl+G to generate, then 'y' to copy
 
 # Now paste into Claude/GPT with your question:
 # "Here's my source code. Can you help me..."`}
         />
 
         <TipBox variant="tip">
-          S2P formats the output with clear file path headers and syntax-appropriate code blocks,
-          making it easy for LLMs to understand the code structure.
+          S2P emits a structured, XML-like prompt (&lt;preamble&gt;, &lt;goal&gt;,
+          &lt;project_structure&gt;, &lt;files&gt;), with each &lt;file&gt; tagged by path, lang and
+          tokens, making it easy for LLMs to understand the code structure.
         </TipBox>
       </Section>
 
@@ -928,9 +931,11 @@ function InteractiveSourceCombiner() {
 
   const combinedPreview = useMemo(() => {
     if (selectedFiles.length === 0) return "";
-    return selectedFiles
-      .map((f) => `// ── ${f.path} ${"─".repeat(Math.max(0, 40 - f.path.length))}\n${f.content}`)
+    // Mirrors the <files> section of s2p's output (real tags also carry lang, lines, bytes)
+    const body = selectedFiles
+      .map((f) => `<file path="${f.path}" tokens="${f.tokens}">\n${f.content}\n</file>`)
       .join("\n\n");
+    return `<files>\n${body}\n</files>`;
   }, [selectedFiles]);
 
   const contextLabel = useMemo(() => {
@@ -1161,10 +1166,8 @@ function InteractiveSourceCombiner() {
                       {contextLabel})
                     </div>
                     <div>
-                      <span className="text-emerald-400">$</span>{" "}
-                      <span className="text-white/80">
-                        s2p --include=&quot;{project.globFilter}&quot; --copy
-                      </span>
+                      <span className="text-emerald-400">&gt;</span>{" "}
+                      <span className="text-white/80">[Ctrl+G] generate → [y] copy</span>
                     </div>
                     <div className="text-yellow-400">
                       Copied {selectedFiles.length} files to clipboard!
@@ -1481,9 +1484,9 @@ function InteractiveSourceCombiner() {
 
         {/* ─── Tip ─── */}
         <TipBox variant="tip">
-          In the real S2P TUI, press <strong>Space</strong> to toggle files, <strong>Enter</strong>{" "}
-          to expand directories, and <strong>c</strong> to copy the combined prompt to your
-          clipboard. Use <strong>--include</strong> for glob filtering.
+          In the real S2P TUI, press <strong>Space</strong> to toggle files, <strong>/</strong>{" "}
+          to filter by path, <strong>Ctrl+G</strong> to generate the prompt, and{" "}
+          <strong>y</strong> to copy it to your clipboard. There are no CLI filter flags.
         </TipBox>
       </div>
     </div>

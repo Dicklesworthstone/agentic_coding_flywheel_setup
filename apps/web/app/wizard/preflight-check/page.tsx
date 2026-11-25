@@ -60,7 +60,7 @@ const TROUBLESHOOTING = [
   {
     title: "Insufficient disk space",
     fixes: [
-      "Upgrade your VPS storage plan (recommended 20GB+ free)",
+      "Upgrade your VPS storage plan (at least 20GB free is required; 40GB+ recommended)",
       "If you just created the VPS, choose a larger disk size",
     ],
   },

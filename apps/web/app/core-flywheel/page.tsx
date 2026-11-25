@@ -525,7 +525,7 @@ Auth checks in place. E2E coverage for malformed upload → admin review → ret
                 prompt={`I asked 3 competing LLMs to do the exact same thing and they came up with pretty different plans which you can read below. I want you to REALLY carefully analyze their plans with an open mind and be intellectually honest about what they did that's better than your plan. Then I want you to come up with the best possible revisions to your plan that artfully and skillfully blends the "best of all worlds" to create a true, ultimate, superior hybrid version of the plan:
 
 [Paste all plans here]`}
-                where="GPT Pro web app with Extended Reasoning, or your strongest available model"
+                where="GPT-6.2 Astra in ChatGPT Work, or your strongest available model"
                 whyItWorks="Different frontier models have different blind spots. Competitive synthesis forces the model to admit where others are better and merge the strongest ideas."
               />
 
@@ -544,7 +544,7 @@ Auth checks in place. E2E coverage for malformed upload → admin review → ret
               <PromptBlock
                 title="Plan to Beads Conversion"
                 prompt={`OK so please take ALL of that and elaborate on it and use it to create a comprehensive and granular set of beads for all this with tasks, subtasks, and dependency structure overlaid, with detailed comments so that the whole thing is totally self-contained and self-documenting. The beads should be so detailed that we never need to consult back to the original markdown plan document. Remember to ONLY use the \`br\` tool to create and modify the beads and add the dependencies. Use ultrathink.`}
-                where="Claude Code with Opus"
+                where="Claude Code with Claude Opus 5.5"
                 whyItWorks="Beads become the active source of truth for execution. Once they're strong enough, you never look back at the markdown plan."
               />
 
@@ -878,7 +878,7 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
                 name="DCG"
                 fullName="Destructive Command Guard"
                 color="#FF5F56"
-                description="A Claude Code hook that blocks dangerous git and filesystem commands before execution. Sub-millisecond latency, mechanical enforcement."
+                description="A pre-execution hook for Claude Code, Codex, and other agent CLIs that blocks dangerous git, filesystem, and database commands. Sub-millisecond latency, mechanical enforcement."
                 usage="Works automatically. When a dangerous command is blocked, use safer alternatives or ask the user to run it manually."
                 command="dcg test 'rm -rf /' --explain"
               />
@@ -894,7 +894,7 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
               <HelperCard
                 icon={<Search className="h-6 w-6" />}
                 name="CASS"
-                fullName="Cross-Agent Session Search"
+                fullName="Coding Agent Session Search"
                 color="#a78bfa"
                 description="Indexes prior agent conversations so solved problems can be reused. Finds patterns, decisions, and solutions across session history."
                 usage="Search before reinventing a solution. If an agent solved a similar problem before, CASS will find it."

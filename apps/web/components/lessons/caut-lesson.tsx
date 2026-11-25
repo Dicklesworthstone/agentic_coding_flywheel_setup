@@ -52,13 +52,13 @@ export function CautLesson() {
       {/* Section 1: What Is CAUT */}
       <Section title="What Is CAUT?" icon={<BarChart3 className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>CAUT (Coding Agent Usage Tracker)</Highlight> monitors token consumption and
-          API costs across all your AI coding agents. It aggregates usage from Claude, GPT, and
-          Gemini into a single dashboard.
+          <Highlight>CAUT (Coding Agent Usage Tracker)</Highlight> checks remaining quota,
+          rate-limit windows, and credits across 16 coding-agent providers (Codex, Claude, Gemini,
+          Cursor, Copilot, and more) from one CLI, and computes local cost from agent JSONL logs.
         </Paragraph>
         <Paragraph>
-          When running multiple agents simultaneously, costs can escalate quickly. CAUT gives you
-          visibility into which agents, sessions, and providers are consuming the most tokens,
+          When running multiple agents simultaneously, quota and costs can run out quickly. CAUT
+          shows which providers are close to their limits and which sessions cost the most,
           helping you optimize your workflow.
         </Paragraph>
 
@@ -103,22 +103,22 @@ export function CautLesson() {
         <Paragraph>Get a quick overview of your usage.</Paragraph>
 
         <CodeBlock
-          code={`# Show today's usage summary
-caut summary
+          code={`# Remaining quota, rate-limit windows and credits per provider
+caut usage --provider all
 
-# Show usage for the past week
-caut summary --period 7d
+# Local cost from Claude/Codex JSONL logs
+caut cost
 
-# Show per-provider breakdown
-caut breakdown
+# Usage trend for the past week
+caut history show --days 7
 
-# Show per-session token counts
-caut sessions --sort tokens`}
+# Recent sessions with cost attribution
+caut session --list`}
           filename="Basic Usage"
         />
 
         <TipBox variant="tip">
-          Run <code>caut summary</code> at the end of each day to understand your usage patterns.
+          Run <code>caut usage</code> at the end of each day to understand your usage patterns.
         </TipBox>
       </Section>
 
@@ -128,16 +128,22 @@ caut sessions --sort tokens`}
       <Section title="Essential Commands" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
         <CommandList
           commands={[
-            { command: "caut summary", description: "Usage summary for current period" },
-            { command: "caut breakdown", description: "Per-provider cost breakdown" },
-            { command: "caut sessions", description: "Token usage by session" },
-            { command: "caut export --format csv", description: "Export usage data" },
+            {
+              command: "caut usage",
+              description: "Quota, rate-limit windows and credits per provider",
+            },
+            { command: "caut cost", description: "Local cost from agent JSONL logs" },
+            {
+              command: "caut session --today",
+              description: "Cost attribution for today's sessions",
+            },
+            { command: "caut history export --format csv", description: "Export usage history" },
           ]}
         />
 
         <TipBox variant="info">
-          CAUT reads usage data from agent log files and API response headers. No additional API
-          calls are made.
+          CAUT queries each provider through its CLI, browser cookies, OAuth tokens or API, and
+          scans local JSONL logs for cost.
         </TipBox>
       </Section>
 
@@ -148,17 +154,17 @@ caut sessions --sort tokens`}
         <Paragraph>Use CAUT data to optimize your agent spending.</Paragraph>
 
         <CodeBlock
-          code={`# Find your most expensive sessions
-caut sessions --sort cost --limit 10
+          code={`# Recent sessions and what they cost
+caut session --list --limit 10
 
-# Compare providers
-caut compare --providers anthropic,openai
+# Compare providers side by side
+caut usage --provider all
 
-# Show token efficiency (output/input ratio)
-caut efficiency
+# Live dashboard
+caut dashboard
 
-# Set a daily budget alert
-caut alert --daily-budget 50`}
+# Check provider setup and auth
+caut doctor`}
           filename="Optimization"
         />
       </Section>
@@ -170,17 +176,19 @@ caut alert --daily-budget 50`}
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
             <span className="text-emerald-400 font-semibold">CAUT + RANO</span>
-            <p className="text-white/80 text-sm mt-1">Network traffic feeds usage tracking data</p>
+            <p className="text-white/80 text-sm mt-1">
+              RANO shows raw traffic; CAUT shows quota and cost
+            </p>
           </div>
           <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/30">
             <span className="text-blue-400 font-semibold">CAUT + CAAM</span>
             <p className="text-white/80 text-sm mt-1">
-              Track usage per account for billing insights
+              Check remaining quota per provider before CAAM switches accounts
             </p>
           </div>
           <div className="p-3 rounded-lg bg-violet-500/10 border border-violet-500/30">
             <span className="text-violet-400 font-semibold">CAUT + NTM</span>
-            <p className="text-white/80 text-sm mt-1">See cost per agent in multi-agent swarms</p>
+            <p className="text-white/80 text-sm mt-1">Check provider quota before spawning a swarm</p>
           </div>
           <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
             <span className="text-amber-400 font-semibold">CAUT + TRU</span>
@@ -300,13 +308,13 @@ const SCENARIO_STEPS: ScenarioStep[] = [
     alerts: [
       { level: "error", message: "SPIKE: Burn rate jumped from $4.20/hr to $12.60/hr" },
       { level: "warn", message: "Budget will be exhausted in ~38 minutes at current rate" },
-      { level: "info", message: "5 new NTM agents spawned in session #47" },
+      { level: "info", message: "5 new agent sessions in the last 10 minutes" },
     ],
     logLines: [
       "13:05:44  ALERT  Cost spike detected: 3x normal burn rate",
-      "13:05:44  INFO   NTM session #47 spawned 5 agents",
+      "13:05:44  INFO   5 new agent sessions in the last 10 min",
       "13:05:44  WARN   Budget exhaustion ETA: 38 min",
-      "13:05:45  INFO   Auto-throttle recommendation sent to NTM",
+      "13:05:45  INFO   Consider pausing agents or rotating accounts",
     ],
   },
   {
@@ -324,12 +332,12 @@ const SCENARIO_STEPS: ScenarioStep[] = [
     },
     alerts: [
       { level: "info", message: "CAAM rotated anthropic: work-primary -> work-backup" },
-      { level: "success", message: "CAUT tracking updated for new account credentials" },
+      { level: "success", message: "CAUT detected the account switch from the credential files" },
     ],
     logLines: [
       "13:06:01  CAAM   Rotating anthropic account...",
       "13:06:01  CAAM   work-primary -> work-backup (0ms downtime)",
-      "13:06:02  CAUT   Rebinding usage tracker to work-backup",
+      "13:06:02  CAUT   Account switch detected: now reporting work-backup",
       "13:06:02  OK     Seamless handoff complete",
     ],
   },
@@ -337,7 +345,8 @@ const SCENARIO_STEPS: ScenarioStep[] = [
     id: "rate-limit",
     label: "Rate Limit Hit",
     icon: <Shield className="h-3.5 w-3.5" />,
-    description: "OpenAI account hits TPM limit. CAAM swaps to backup while CAUT logs the event.",
+    description:
+      "OpenAI account hits its limit. CAAM swaps to backup while CAUT shows when the window resets.",
     budgetUsed: 88,
     totalCost: 44.3,
     savings: 0,
@@ -355,7 +364,7 @@ const SCENARIO_STEPS: ScenarioStep[] = [
       "13:12:33  ERROR  openai/team-openai: 429 rate_limit_exceeded",
       "13:12:33  CAAM   Scanning available openai accounts...",
       "13:12:33  CAAM   Switching to team-openai-2 (12ms)",
-      "13:12:34  CAUT   Rate limit event logged for billing analysis",
+      "13:12:34  CAUT   team-openai rate-limit window resets in 45s",
     ],
   },
   {
@@ -363,7 +372,7 @@ const SCENARIO_STEPS: ScenarioStep[] = [
     label: "Optimization",
     icon: <Sparkles className="h-3.5 w-3.5" />,
     description:
-      "CAUT applies cost optimization: shifts heavy tasks to cheaper providers and enables caching.",
+      "Acting on CAUT's numbers, you shift heavy tasks to cheaper providers and reuse cached context.",
     budgetUsed: 64,
     totalCost: 32.0,
     savings: 12.3,
@@ -378,9 +387,9 @@ const SCENARIO_STEPS: ScenarioStep[] = [
       { level: "success", message: "Total savings this session: $12.30" },
     ],
     logLines: [
-      "13:18:00  OPT    Analyzing provider cost efficiency...",
-      "13:18:00  OPT    Shifting bulk tasks: anthropic -> google (-38%)",
-      "13:18:01  OPT    Enabling prompt cache for repeated context blocks",
+      "13:18:00  COST   caut cost: anthropic is the priciest per task",
+      "13:18:00  USER   Moved bulk tasks: anthropic -> google (-38%)",
+      "13:18:01  USER   Reused cached context blocks across prompts",
       "13:18:01  SAVE   $12.30 recovered vs pre-optimization trajectory",
       "13:18:01  OK     Budget utilization dropped from 88% to 64%",
     ],

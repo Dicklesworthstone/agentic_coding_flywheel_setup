@@ -541,12 +541,12 @@ export default function CompleteGuidePage() {
                   [
                     "Claude implementation",
                     COMPLETE_GUIDE_MODELS.claudeExecutor,
-                    `${COMPLETE_GUIDE_MODELS.claudeFallback} is the dependable fallback`,
+                    `${COMPLETE_GUIDE_MODELS.claudeFallback} is the faster, lower-cost fallback`,
                   ],
                   [
                     "Google planning perspective",
                     COMPLETE_GUIDE_MODELS.googlePlanner,
-                    "Deep Think is experimental and requires Google AI Ultra",
+                    "Gemini app access requires Google AI Ultra; also available via the Gemini API",
                   ],
                   [
                     "Antigravity CLI",
@@ -562,7 +562,7 @@ export default function CompleteGuidePage() {
               />
 
               <TipBox variant="info">
-                <strong>Primary sources reviewed {COMPLETE_GUIDE_REVIEWED_ON}:</strong>{" "}
+                <strong>Sources reviewed {COMPLETE_GUIDE_REVIEWED_ON}:</strong>{" "}
                 {COMPLETE_GUIDE_MODEL_SOURCES.map((source, index) => (
                   <span key={source.provider}>
                     {index > 0 ? "; " : ""}
@@ -578,8 +578,8 @@ export default function CompleteGuidePage() {
                   </span>
                 ))}
                 . {COMPLETE_GUIDE_MODELS.restrictedPreview} is intentionally excluded from the
-                general recommendation because its preview is limited to Project Glasswing and is
-                not generally available.
+                general recommendation because access is restricted to Anthropic&apos;s Life Sciences
+                and Cyber Verification programs and it is not generally available.
               </TipBox>
             </SubSection>
 
@@ -686,7 +686,10 @@ For each proposed change, give me your detailed analysis and rationale/justifica
                 start a fresh conversation in ChatGPT and do it all again once Claude Code or Codex
                 finishes integrating your last batch of suggested revisions. After four or five
                 rounds of this, you tend to reach a steady-state where the suggestions become very
-                incremental.
+                incremental. To automate these rounds, <code>apr</code> (Automated Plan Reviser
+                Pro) bundles your README and spec, runs each review round in the background, and
+                emits a Claude Code integration prompt (<code>apr run N</code>, then{" "}
+                <code>apr integrate N --copy</code>).
               </P>
 
               <P>
@@ -797,7 +800,7 @@ For each proposed change, give me your detailed analysis and rationale/justifica
             <PromptBlock
               title="Plan to Beads Conversion"
               prompt={`OK so please take ALL of that and elaborate on it more and then create a comprehensive and granular set of beads for all this with tasks, subtasks, and dependency structure overlaid, with detailed comments so that the whole thing is totally self-contained and self-documenting (including relevant background, reasoning/justification, considerations, etc.-- anything we'd want our "future self" to know about the goals and intentions and thought process and how it serves the over-arching goals of the project.) Use only the \`br\` tool to create and modify the beads and add the dependencies. Use ultrathink.`}
-              where="Claude Code with Opus"
+              where={`Claude Code with ${COMPLETE_GUIDE_MODELS.claudeExecutor}`}
               whyItWorks="This prompt forces the agent to treat plan-to-beads as a translation problem rather than task extraction. The key sentence is the requirement that beads be so detailed you never need to reopen the markdown plan. That pushes rationale, test expectations, design intent, and sequencing into the bead graph itself. Under the hood, it blocks a common failure mode where the model collapses a rich plan into terse todo items. By explicitly asking for tasks, subtasks, dependency structure, comments, and future-self context, you tell the model that memory density matters more than brevity. Restricting to the br tool prevents the agent from drifting into pseudo-beads in markdown instead of editing the actual task graph."
             />
 
@@ -917,11 +920,11 @@ For each proposed change, give me your detailed analysis and rationale/justifica
             <SubSection title="Beads CLI Quick Reference">
               <CodeBlock
                 language="bash"
-                code={`br create --title "..." --priority 2 --label backend    # Create issue
+                code={`br create --title "..." --priority 2 --labels backend   # Create issue
 br list --status open --json                             # List open issues
 br ready --json                                          # Show unblocked tasks
 br show <id>                                             # View issue details
-br update <id> --status in_progress                      # Claim task
+br update <id> --claim                                   # Atomic claim (assignee + in_progress)
 br close <id> --reason "Completed"                       # Close task
 br dep add <id> <other-id>                               # Add dependency
 br comments add <id> "Found root cause..."               # Add comment
@@ -960,7 +963,7 @@ br sync --flush-only                                     # Export to JSONL (no g
 DO NOT OVERSIMPLIFY THINGS! DO NOT LOSE ANY FEATURES OR FUNCTIONALITY!
 
 Also, make sure that as part of these beads, we include comprehensive unit tests and e2e test scripts with great, detailed logging so we can be sure that everything is working perfectly after implementation. Remember to ONLY use the \`br\` tool to create and modify the beads and to add the dependencies to beads. Use ultrathink.`}
-              where="Claude Code with Opus — run 4-6+ times"
+              where={`Claude Code with ${COMPLETE_GUIDE_MODELS.claudeExecutor} — run 4-6+ times`}
               whyItWorks="This prompt keeps the system from freezing beads too early. It tells the model to stay in plan space for as long as it is still finding meaningful improvements, which is exactly where reasoning is cheapest and most global. The warnings against oversimplifying and losing functionality are crucial because models otherwise tend to 'improve' artifacts by deleting complexity they do not fully understand. It combines local bead QA (via br) with graph QA (via bv), and forces tests into the bead definitions themselves so test work cannot be deferred into an afterthought."
             />
 
@@ -1032,8 +1035,9 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
               />
 
               <P>
-                As a final step, have Codex with GPT (high reasoning effort) do one last round using
-                the same polishing prompt. Different models catch different things.
+                As a final step, have Codex (GPT-6.2 Sol at xhigh reasoning effort, the ACFS{" "}
+                <code>cod</code> default) do one last round using the same polishing prompt.
+                Different models catch different things.
               </P>
             </SubSection>
 
@@ -1076,7 +1080,9 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
                   novelty.
                 </Fragment>,
                 <Fragment key="human-review">
-                  <strong>Human review.</strong> You review the 15 ideas and select which to pursue.
+                  <strong>Check overlaps and select.</strong> Compare the 15 ideas against open
+                  beads (<code>br list --json</code>), merge rather than duplicate, then choose which
+                  to pursue.
                 </Fragment>,
                 <Fragment key="turn-into-beads">
                   <strong>Turn into beads.</strong> Selected ideas become beads with full
@@ -1364,7 +1370,7 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
             <P>
               Each tool is essential but insufficient alone.{" "}
               <a
-                href="https://github.com/Dicklesworthstone/mcp_agent_mail"
+                href="https://github.com/Dicklesworthstone/mcp_agent_mail_rust"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors"
@@ -2820,7 +2826,10 @@ And you can't do this sort of thing using regex or a script, you MUST manually r
                     "NTM command palette",
                     "Battle-tested prompt library accessible via ntm palette",
                   ],
-                  ["Claude Code Skills", "Each tool has a dedicated skill for automated workflows"],
+                  [
+                    "Agent Skills (SKILL.md)",
+                    "Most core tools have a dedicated skill for automated workflows",
+                  ],
                 ]}
               />
             </SubSection>
@@ -2832,7 +2841,10 @@ And you can't do this sort of thing using regex or a script, you MUST manually r
                 usually means a <code>SKILL.md</code> file plus optional references, scripts, or
                 templates that tell the agent how to use a tool, how to execute a methodology, what
                 pitfalls to avoid, and what a good result looks like. A good skill is closer to
-                executable know-how than to ordinary prose documentation.
+                executable know-how than to ordinary prose documentation. Claude Code loads skills
+                from <code>~/.claude/skills/&lt;name&gt;/SKILL.md</code> or a project&apos;s{" "}
+                <code>.claude/skills/</code>; Codex reads the same format from{" "}
+                <code>~/.agents/skills/</code>.
               </P>
 
               <P>
@@ -2842,11 +2854,12 @@ And you can't do this sort of thing using regex or a script, you MUST manually r
               </P>
 
               <P>
-                Every Flywheel tool has a corresponding Claude Code skill that encodes best
-                practices and automates common workflows. Many of these skills are bundled directly
-                in the repos for the tools themselves and get installed automatically when the tool
-                is installed, which means users often benefit from them without having to think
-                about &quot;skill management&quot; explicitly. There is also a broader public skills
+                Most core Flywheel tools (br, bv, ntm, Agent Mail, cass, cm, ubs, dcg, slb, rch, and
+                others) have a corresponding agent skill that encodes best practices and automates
+                common workflows. Many tool repos ship that skill as a <code>SKILL.md</code> next to
+                the code, and some installers (for example br, rch, and pt) put it in place
+                automatically, so users often benefit without having to think about &quot;skill
+                management&quot; explicitly. There is also a broader public skills
                 collection at{" "}
                 <a
                   href="https://github.com/Dicklesworthstone/agent_flywheel_clawdbot_skills_and_integrations/tree/main/skills"
@@ -2878,8 +2891,9 @@ And you can't do this sort of thing using regex or a script, you MUST manually r
                 >
                   GitHub
                 </a>
-                . It also has a paid Pro tier with additional prompts and a dedicated CLI called{" "}
-                <code>jfp</code> for managing prompt collections. For a larger paid library of
+                . It also has a paid Pro tier with additional prompts, and an open-source CLI called{" "}
+                <code>jfp</code> for searching, copying, and exporting prompts (Pro adds sync,
+                collections, and premium packs). For a larger paid library of
                 higher-end skills, see{" "}
                 <a
                   href="https://jeffreys-skills.md"
@@ -2890,13 +2904,15 @@ And you can't do this sort of thing using regex or a script, you MUST manually r
                   jeffreys-skills.md
                 </a>
                 , a $20/month service with many of the strongest curated skills, new skills added
-                continuously, and a dedicated CLI called <code>jsm</code> for managing them.
+                continuously, and a dedicated CLI called <code>jsm</code> for managing them (jsm
+                installs into both the Claude Code and Codex skill folders; it is not part of the
+                default ACFS VPS install).
               </P>
 
               <P>
                 Both paid offerings are still under active development. That means occasional rough
-                edges. Active work is underway to fix issues quickly, feedback is appreciated, and
-                refunds are available for unhappy users.
+                edges. Active work is underway to fix issues quickly, and feedback is appreciated.
+                Check each site&apos;s terms and FAQ for refund details.
               </P>
 
               <P>
@@ -2937,14 +2953,19 @@ And you can't do this sort of thing using regex or a script, you MUST manually r
             </SubSection>
 
             <SubSection title="Vibe Mode Aliases">
-              <P>On the VPS, agents run with full permissions via short aliases:</P>
+              <P>
+                In vibe mode (the installer default), agents run with full permissions via short
+                shell shortcuts. A <code>--mode safe</code> install keeps the same names but drops
+                the permission-bypass flags (Antigravity then runs with <code>--sandbox</code>):
+              </P>
 
               <CodeBlock
                 language="bash"
-                code={`alias cc='NODE_OPTIONS="--max-old-space-size=32768" claude --dangerously-skip-permissions'
+                code={`# What the shortcuts run in vibe mode (ACFS defines cc/cod as small shell functions)
+alias cc='NODE_OPTIONS="--max-old-space-size=32768" claude --dangerously-skip-permissions'
 alias cod='codex --dangerously-bypass-approvals-and-sandbox --search -m gpt-6.2-sol -c model_reasoning_effort=xhigh -c model_reasoning_summary_format=experimental'
-alias agy='agy-locked'
-alias gmi='agy-locked'  # legacy shortcut now launches agy`}
+alias agy='$HOME/.local/bin/agy-locked'  # pins Gemini 4 Neon (XHigh), permissions, DCG hook
+alias gmi='$HOME/.local/bin/agy-locked'  # legacy shortcut: same locked launcher`}
               />
 
               <P>
@@ -2958,14 +2979,16 @@ alias gmi='agy-locked'  # legacy shortcut now launches agy`}
                 ACFS and the Flywheel tools are open source; model subscriptions, API usage, and
                 server capacity are separate choices. A starter setup can use one provider account
                 plus a modest VPS, then add capacity only after measured limits justify it. As of{" "}
-                {COMPLETE_GUIDE_REVIEWED_ON},{" "}
+                {COMPLETE_GUIDE_REVIEWED_ON}, {COMPLETE_GUIDE_MODELS.primaryPlanner} is picked from
+                the {COMPLETE_GUIDE_MODELS.primaryPlannerSurface} model picker (it is also in Codex),
+                and heavy planning use is most practical on{" "}
                 <a
                   href="https://help.openai.com/en/articles/9793128-what-is-chatgpt-pro"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-[#FF5500] underline underline-offset-4"
                 >
-                  {COMPLETE_GUIDE_MODELS.primaryPlannerSurface} is listed at $200/month
+                  ChatGPT Pro, whose tiers start at $100/month
                 </a>
                 , subject to provider terms and abuse guardrails. Before purchasing, check the live{" "}
                 <a
@@ -3052,8 +3075,8 @@ alias gmi='agy-locked'  # legacy shortcut now launches agy`}
             <SubSection title="How the Compounding Actually Works">
               <P>
                 Each session makes the next one better. Concretely:{" "}
-                <strong>Session N produces raw data</strong> — CASS automatically logs every agent
-                session. <strong>Between sessions, CM distills patterns</strong> — running{" "}
+                <strong>Session N produces raw data</strong> — each agent harness logs the
+                session and CASS indexes it. <strong>Between sessions, CM distills patterns</strong> — running{" "}
                 <code>cm reflect</code> extracts procedural rules like &quot;always run cargo check
                 after modifying Cargo.toml&quot; with confidence scores that decay without
                 reinforcement and amplify with repetition.{" "}
@@ -3064,9 +3087,11 @@ alias gmi='agy-locked'  # legacy shortcut now launches agy`}
               </P>
 
               <P>
-                The compounding is real but not automatic in the early stages. You have to actually
-                run <code>cm reflect</code>, actually review CASS session data, actually update
-                AGENTS.md with lessons learned. But even manually, spending 15 minutes between
+                The compounding is real but not automatic in the early stages. Run{" "}
+                <code>cm hook install</code> so each finished Claude Code session is reflected in
+                the background (or run <code>cm reflect</code> yourself), and you still have to
+                actually review CASS session data and actually update AGENTS.md with lessons
+                learned. But even manually, spending 15 minutes between
                 projects reviewing what worked and updating your AGENTS.md template produces
                 outsized returns on every subsequent project.
               </P>
@@ -3115,7 +3140,7 @@ PROCEDURAL MEMORY (Playbook): Distilled rules with confidence scores`}
               <CodeBlock
                 language="bash"
                 code={`cm context "Building an API" --json   # Get relevant memories for a task
-cm recall "authentication patterns"   # Search past sessions
+cm similar "authentication patterns"  # Find related playbook rules
 cm reflect                            # Update procedural memory from recent sessions
 cm mark b-8f3a2c --helpful            # Reinforce a useful rule
 cm mark b-xyz789 --harmful --reason "Caused regression"  # Flag a bad rule`}
@@ -3135,7 +3160,7 @@ cm mark b-xyz789 --harmful --reason "Caused regression"  # Flag a bad rule`}
 
 Then rewrite the skill to fix every issue you found. Make the happy path obvious, add guardrails for the common mistakes, and incorporate the best workarounds as official steps. Test the rewritten skill against the failure cases from the session logs.`}
                 where="Claude Code, targeting any skill with 10+ CASS sessions of usage data"
-                whyItWorks="This is the meta-skill pattern in action. The skill-refiner skill itself can be refined using its own session data, which is the self-referential property that makes the whole system accelerate. After 3-4 cycles, the skill is dramatically more reliable than the original. Each cycle takes less human effort because the meta-skill itself has improved."
+                whyItWorks="This is the meta-skill pattern in action. A skill-refiner skill built from this prompt can itself be refined using its own session data, which is the self-referential property that makes the whole system accelerate. After 3-4 cycles, the skill is dramatically more reliable than the original. Each cycle takes less human effort because the meta-skill itself has improved."
               />
             </SubSection>
 
@@ -3157,12 +3182,12 @@ Then rewrite the skill to fix every issue you found. Make the happy path obvious
 
               <P>
                 The mining query (user prompts live at lines 1-3 of session entries;{" "}
-                <code>--fields minimal</code> reduces output 5x):
+                <code>--fields summary</code> keeps only path, line, agent, title, and score):
               </P>
 
               <CodeBlock
                 language="bash"
-                code={`cass search "*" --workspace /data/projects/PROJECT --json --fields minimal --limit 500 \\
+                code={`cass search "*" --workspace /data/projects/PROJECT --json --fields summary --limit 500 \\
   | jq '[.hits[] | select(.line_number <= 3) | .title[0:80]]
         | group_by(.) | map({prompt: .[0], count: length})
         | sort_by(-.count) | map(select(.count >= 5)) | .[0:30]'`}
@@ -3376,14 +3401,17 @@ Then rewrite the skill to fix every issue you found. Make the happy path obvious
               <NumberedList
                 items={[
                   <Fragment key="build-baseline">
-                    <strong>Build the baseline.</strong> Create a tool. Create a skill for it using{" "}
-                    <code>sc</code> (skill creator). The first version of the skill will be
+                    <strong>Build the baseline.</strong> Create a tool. Create a skill for it with a
+                    skill-creator workflow (the author uses a private <code>sc</code> skill;{" "}
+                    <code>jsm create &lt;name&gt;</code> scaffolds a <code>SKILL.md</code> template
+                    and <code>jsm validate</code> checks it). The first version of the skill will be
                     imperfect. Ship it anyway.
                   </Fragment>,
                   <Fragment key="real-work">
                     <strong>Let agents use it in real work.</strong> Do not test in isolation.
                     Deploy the tool and skill into actual project work where agents are implementing
-                    beads, running reviews, doing real tasks. CASS automatically logs every session.
+                    beads, running reviews, doing real tasks. CASS indexes every session the
+                    harnesses log.
                   </Fragment>,
                   <Fragment key="mine-sessions">
                     <strong>Mine the sessions.</strong> After 10+ sessions of real usage, search
@@ -3521,7 +3549,7 @@ cass search "tool_name" --workspace /data/projects/PROJECT --json --limit 100`}
               </P>
 
               <P>
-                When you improve the extreme-optimization skill, every future optimization pass
+                When you improve the extreme-software-optimization skill, every future optimization pass
                 across every tool benefits. When you improve the idea-wizard skill, every future
                 brainstorming session across every project benefits. When you improve the
                 skill-refiner meta-skill, every future skill refinement benefits. The improvements
@@ -3563,7 +3591,7 @@ cass search "tool_name" --workspace /data/projects/PROJECT --json --limit 100`}
                     allocations. Useful but shallow.
                   </Fragment>,
                   <Fragment key="with-skill">
-                    <strong>With an extreme-optimization skill:</strong> The skill directs the agent
+                    <strong>With the extreme-software-optimization skill:</strong> The skill directs the agent
                     to systematically consider cache-oblivious data structures, SIMD vectorization
                     opportunities, branch-free arithmetic, van Emde Boas layout, fractional
                     cascading, and carry-less multiplication, then benchmark before and after each
@@ -3729,8 +3757,9 @@ Output (required): a revised reusable artifact plus a short note describing the 
                 >
                   GitHub
                 </a>
-                . There is also a paid Pro tier with additional prompts and a CLI called{" "}
-                <code>jfp</code> for managing prompt collections. For a larger paid library of
+                . There is also a paid Pro tier with additional prompts, and an open-source CLI
+                called <code>jfp</code> for searching, copying, and exporting prompts. For a larger
+                paid library of
                 higher-end skills, see{" "}
                 <a
                   href="https://jeffreys-skills.md"
@@ -3779,7 +3808,9 @@ Output (required): a revised reusable artifact plus a short note describing the 
               <CodeBlock
                 language="bash"
                 code={`# 1. Rent a supported Ubuntu VPS and connect over SSH
-# 2. Install the current main revision (convenient for evaluation)
+# 2. Install the current main revision (convenient for evaluation).
+#    --target-ubuntu=26.04 upgrades a 22.04/24.04 host in place first (30-60 min and a
+#    reboot per hop); omit it to keep your current Ubuntu LTS release
 ${CURRENT_INSTALL_COMMAND}
 
 # Production/reproducible alternative: pin the current ACFS release

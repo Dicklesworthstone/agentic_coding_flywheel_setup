@@ -414,7 +414,7 @@ These are installed on target VPS (not development machine).
 6. **cass_memory_system** (`cm`) — Procedural memory for agents
 7. **coding_agent_account_manager** (`caam`) — Agent auth switching
 8. **simultaneous_launch_button** (`slb`) — Two-person rule for dangerous commands
-9. **destructive_command_guard** (`dcg`) — Claude Code hook blocking dangerous commands
+9. **destructive_command_guard** (`dcg`) — Pre-execution hook (Claude Code, Codex, and other agent CLIs) blocking dangerous commands
 10. **repo_updater** (`ru`) — Multi-repo sync + AI-driven commit automation
 
 **Utilities:**
@@ -695,7 +695,7 @@ rch queue                     # See active/waiting builds
 
 If rch or its workers are unavailable, it fails open — builds run locally as normal.
 
-**Note for Codex/GPT-5.2:** Codex does not have the automatic PreToolUse hook, but you can (and should) still manually offload compute-intensive compilation commands using `rch exec -- <command>`. This avoids local resource contention when multiple agents are building simultaneously.
+**Note for Codex/GPT-6.2:** Codex does not have the automatic PreToolUse hook, but you can (and should) still manually offload compute-intensive compilation commands using `rch exec -- <command>`. This avoids local resource contention when multiple agents are building simultaneously.
 
 ---
 
@@ -851,7 +851,7 @@ git push                # Push to remote
 
 ### DCG — Destructive Command Guard
 
-DCG is a Claude Code hook that **blocks dangerous git and filesystem commands** before execution. Sub-millisecond latency, mechanical enforcement.
+DCG is a pre-execution hook for Claude Code, Codex, and other agent CLIs that **blocks dangerous git and filesystem commands** before execution. Sub-millisecond latency, mechanical enforcement.
 
 **Golden Rule:** DCG works automatically. When a dangerous command is blocked, use safer alternatives or ask the user to run it manually.
 
@@ -860,7 +860,7 @@ dcg test "<cmd>" [--explain]          # Test if a command would be blocked
 dcg packs [--enabled] [--verbose]     # List packs
 dcg allow-once <code>                 # One-time bypass code
 dcg doctor [--fix] [--format json]    # Health check + auto-fix
-dcg install [--force]                 # Register Claude Code hook
+dcg install [--force]                 # Register hooks for detected agent CLIs
 ```
 
 ### RU — Repo Updater
@@ -921,7 +921,7 @@ cm context "<task description>" --json     # Retrieve relevant context before wo
 
 ---
 
-Note for Codex/GPT-5.2:
+Note for Codex/GPT-6.2:
 
 You constantly bother me and stop working with concerned questions that look similar to this:
 

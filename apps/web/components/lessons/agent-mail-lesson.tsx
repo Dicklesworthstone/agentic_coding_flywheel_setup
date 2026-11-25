@@ -135,7 +135,7 @@ ensure_project(human_key="/data/projects/my-app")
 register_agent(
   project_key="/data/projects/my-app",
   program="claude-code",
-  model="opus-4.5"
+  model="opus-5.5"
 )`}
               language="python"
             />
@@ -222,7 +222,7 @@ acknowledge_message(
             code={`macro_start_session(
   human_key="/data/projects/my-app",
   program="claude-code",
-  model="opus-4.5",
+  model="opus-5.5",
   task_description="Implementing auth"
 )`}
           />

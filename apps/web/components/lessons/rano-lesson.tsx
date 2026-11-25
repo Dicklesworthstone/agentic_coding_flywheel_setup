@@ -11,7 +11,6 @@ import {
   Eye,
   Filter,
   Globe,
-  MapPin,
   Network,
   Play,
   Radio,
@@ -42,46 +41,47 @@ export function RanoLesson() {
   return (
     <div className="space-y-8">
       <GoalBanner>
-        Monitor and debug AI CLI network traffic to understand what your agents send and receive.
+        See which endpoints your AI CLIs and their child processes connect to, without a proxy or
+        code changes.
       </GoalBanner>
 
       {/* Section 1: What Is RANO */}
       <Section title="What Is RANO?" icon={<Network className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
           <Highlight>RANO</Highlight> is a network observer purpose-built for AI coding CLIs. It
-          intercepts HTTP requests between your local agents (Claude Code, Codex, Antigravity CLI)
-          and their APIs, logging requests and responses for analysis.
+          polls <code>/proc</code> (or macOS libproc) to map the sockets opened by Claude Code,
+          Codex CLI, Gemini CLI and their child processes to a PID and a provider. It is not a proxy
+          and never sees request or response bodies.
         </Paragraph>
         <Paragraph>
-          When agents behave unexpectedly, RANO helps you see exactly what&apos;s being sent and
-          received, making it invaluable for debugging prompt issues, token usage tracking, and
-          understanding agent behavior.
+          When agents behave unexpectedly, RANO shows which endpoints they connect to, how often
+          they reconnect, and which subprocess opened each socket.
         </Paragraph>
 
         <div className="mt-8">
           <FeatureGrid>
             <FeatureCard
               icon={<Eye className="h-5 w-5" />}
-              title="Transparent Proxy"
-              description="Zero-config interception"
+              title="No Proxy"
+              description="Polls /proc or libproc"
               gradient="from-blue-500/20 to-indigo-500/20"
             />
             <FeatureCard
               icon={<BarChart3 className="h-5 w-5" />}
-              title="Usage Stats"
-              description="Token and cost tracking"
+              title="Live Stats"
+              description="Top providers, domains and IPs"
               gradient="from-violet-500/20 to-purple-500/20"
             />
             <FeatureCard
               icon={<Filter className="h-5 w-5" />}
               title="Smart Filtering"
-              description="Provider-aware log parsing"
+              description="Provider tagging per socket"
               gradient="from-emerald-500/20 to-teal-500/20"
             />
             <FeatureCard
               icon={<Bug className="h-5 w-5" />}
-              title="Debug Mode"
-              description="Full request/response logging"
+              title="SQLite History"
+              description="report, diff and CSV/JSONL export"
               gradient="from-amber-500/20 to-orange-500/20"
             />
           </FeatureGrid>
@@ -96,75 +96,83 @@ export function RanoLesson() {
 
       {/* Section 2: Quick Start */}
       <Section title="Quick Start" icon={<Terminal className="h-5 w-5" />} delay={0.15}>
-        <Paragraph>Start observing AI CLI traffic.</Paragraph>
+        <Paragraph>Run it in a spare terminal while your agents work.</Paragraph>
 
         <CommandList
           commands={[
-            { command: "rano start", description: "Start the observer proxy" },
-            { command: "rano status", description: "Check if observer is running" },
-            { command: "rano logs", description: "View captured traffic" },
-            { command: "rano stop", description: "Stop the observer" },
+            {
+              command: "rano",
+              description: "Observe claude/codex/gemini and their children (Ctrl+C stops)",
+            },
+            { command: "rano --pattern codex --json", description: "Narrow to one CLI, emit JSON lines" },
+            { command: "rano report --latest", description: "Summarize the latest session from SQLite" },
+            { command: "rano status", description: "One-line activity summary for your prompt" },
           ]}
         />
 
         <TipBox variant="tip">
-          RANO automatically detects which AI CLIs are installed and configures interception for
-          each one.
+          With no flags RANO watches processes matching claude, codex and gemini (plus their
+          descendants). Use <code>--pattern</code>, <code>--pid</code> or{" "}
+          <code>--exclude-pattern</code> to change targets.
         </TipBox>
       </Section>
 
       <Divider />
 
-      {/* Section 3: Analyzing Traffic */}
-      <Section title="Analyzing Traffic" icon={<BarChart3 className="h-5 w-5" />} delay={0.2}>
-        <Paragraph>RANO provides structured views of captured API traffic.</Paragraph>
+      {/* Section 3: Session History */}
+      <Section title="Session History" icon={<BarChart3 className="h-5 w-5" />} delay={0.2}>
+        <Paragraph>
+          Each run is logged to SQLite (<code>observer.sqlite</code> by default), so you can
+          summarize, export, and compare sessions afterward.
+        </Paragraph>
 
         <CodeBlock
-          code={`# View recent requests with token counts
-rano logs --tokens
+          code={`# Summarize the latest session (providers, top domains/IPs)
+rano report --latest
 
-# Filter by provider
-rano logs --provider anthropic
-rano logs --provider openai
+# Last 24 hours as JSON
+rano report --since 24h --json
 
-# Show full request/response bodies
-rano logs --verbose --last 5
+# Export one provider's events
+rano export --format csv --provider anthropic > anthropic.csv
 
-# Export logs for analysis
-rano export --format json -o traffic.json`}
-          filename="Log Analysis"
+# Compare two sessions
+rano diff --old <run-id> --new <run-id>`}
+          filename="Session History"
         />
 
         <TipBox variant="info">
-          Token counts help you understand which agents are consuming the most context and optimize
-          your prompting strategy accordingly.
+          RANO records connections, not tokens or payloads. Use CAUT for usage and cost.
         </TipBox>
       </Section>
 
       <Divider />
 
-      {/* Section 4: Debug Mode */}
-      <Section title="Debug Mode" icon={<Bug className="h-5 w-5" />} delay={0.25}>
-        <Paragraph>When an agent behaves unexpectedly, debug mode captures everything.</Paragraph>
+      {/* Section 4: Alerts and Retry Detection */}
+      <Section title="Alerts and Retry Detection" icon={<Bug className="h-5 w-5" />} delay={0.25}>
+        <Paragraph>
+          When an agent behaves unexpectedly, turn on the live checks that match the symptom.
+        </Paragraph>
 
         <CodeBlock
-          code={`# Start with full debug logging
-rano start --debug
+          code={`# Live stats including UDP and listening sockets
+rano --preset verbose
 
-# Watch traffic in real-time
-rano watch
+# Warn on reconnect storms
+rano --pattern claude --retry-threshold 5 --retry-window-ms 30000
 
-# Filter for errors only
-rano logs --errors
+# Alert on long-lived connections
+rano --alert-duration-ms 30000
 
-# Show request timing
-rano logs --timing`}
-          filename="Debug Commands"
+# Single poll, then exit
+rano --once --json`}
+          filename="Live Checks"
         />
 
         <TipBox variant="warning">
-          Debug mode logs full request and response bodies, which may include sensitive data. Use it
-          for troubleshooting, then stop it when done.
+          RANO records process command lines in SQLite, log files and exports. Use{" "}
+          <code>--redact-cmdline</code> (or <code>--preset audit</code>) so secrets passed in argv
+          aren&apos;t stored.
         </TipBox>
       </Section>
 
@@ -175,19 +183,25 @@ rano logs --timing`}
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
             <span className="text-emerald-400 font-semibold">RANO + CAUT</span>
-            <p className="text-white/80 text-sm mt-1">Detailed traffic feeds into usage tracking</p>
+            <p className="text-white/80 text-sm mt-1">
+              RANO shows which endpoints were hit; CAUT shows the usage and cost
+            </p>
           </div>
           <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/30">
             <span className="text-blue-400 font-semibold">RANO + CAAM</span>
-            <p className="text-white/80 text-sm mt-1">See which account each request uses</p>
+            <p className="text-white/80 text-sm mt-1">
+              Reconnect storms are a hint to check limits or switch accounts
+            </p>
           </div>
           <div className="p-3 rounded-lg bg-violet-500/10 border border-violet-500/30">
             <span className="text-violet-400 font-semibold">RANO + NTM</span>
-            <p className="text-white/80 text-sm mt-1">Monitor traffic across all spawned agents</p>
+            <p className="text-white/80 text-sm mt-1">
+              Watch the sockets of every agent NTM spawns, children included
+            </p>
           </div>
           <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
             <span className="text-amber-400 font-semibold">RANO + Beads</span>
-            <p className="text-white/80 text-sm mt-1">Track API issues as beads for follow-up</p>
+            <p className="text-white/80 text-sm mt-1">Track network issues as beads for follow-up</p>
           </div>
         </div>
       </Section>
@@ -197,13 +211,15 @@ rano logs --timing`}
       {/* Section 6: Best Practices */}
       <Section title="Best Practices" icon={<Shield className="h-5 w-5" />} delay={0.35}>
         <TipBox variant="tip">
-          Run RANO during development to build intuition about what your agents are actually
-          sending. You&apos;ll often discover wasted tokens or redundant API calls.
+          Run RANO during development to see which endpoints your agents and their subprocesses
+          actually reach. You&apos;ll often spot redundant reconnects or hosts you didn&apos;t
+          expect.
         </TipBox>
 
         <TipBox variant="warning">
-          RANO is a debugging tool, not a permanent fixture. Running it continuously adds latency
-          and disk usage. Enable it when investigating issues, disable it otherwise.
+          RANO samples by polling, so connections that open and close between polls can be missed.
+          Treat it as an observer, not a packet log; use tcpdump or Wireshark when you need every
+          packet or the payloads.
         </TipBox>
       </Section>
     </div>
@@ -211,32 +227,50 @@ rano logs --timing`}
 }
 
 // ---------------------------------------------------------------------------
-// Interactive Network Operations Center
+// Interactive Socket Observer
 // ---------------------------------------------------------------------------
+// A simplified simulation of what RANO observes: sockets owned by monitored
+// processes (and their children), tagged with a provider and the remote
+// endpoint. RANO never sees payloads, HTTP status codes, or tokens, and it
+// never blocks or reroutes traffic.
 
 // --- Types ---
 
-interface Region {
+/** RANO tags each socket by the provider of the owning process (or its ancestor). */
+type ProviderTag = "anthropic" | "openai" | "google" | "unknown";
+type PacketType = ProviderTag | "flagged";
+
+interface ObservedNode {
   id: string;
   name: string;
   shortName: string;
+  kind: "process" | "endpoint";
+  /** Process nodes: parent in the monitored process tree. */
+  parentId?: string;
+  /** Process nodes: PID shown under the node. */
+  pid?: number;
   x: number;
   y: number;
   color: string;
 }
 
-interface NetworkPacket {
+interface SocketPacket {
   id: number;
-  fromRegion: string;
-  toRegion: string;
-  type: "normal" | "attack" | "blocked" | "cdn" | "failover";
+  fromNode: string;
+  toNode: string;
+  type: PacketType;
   progress: number;
 }
 
-interface ThreatEvent {
+interface SocketFlow {
+  from: string;
+  to: string;
+  type: PacketType;
+}
+
+interface AlertEvent {
   id: number;
-  severity: "low" | "medium" | "high" | "critical";
-  source: string;
+  severity: "info" | "warning" | "critical";
   message: string;
   timestamp: string;
 }
@@ -248,12 +282,13 @@ interface LogLine {
   type: "info" | "warning" | "error" | "success";
 }
 
-interface RegionMetrics {
-  regionId: string;
-  rps: number;
-  bandwidthMbps: number;
-  latencyMs: number;
-  status: "healthy" | "degraded" | "down";
+interface EndpointMetrics {
+  nodeId: string;
+  /** Endpoint episodes observed this session. */
+  connects: number;
+  /** Sockets open in the latest poll. */
+  active: number;
+  status: "ok" | "flagged" | "idle";
 }
 
 interface Scenario {
@@ -261,91 +296,139 @@ interface Scenario {
   title: string;
   icon: React.ReactNode;
   description: string;
-  metrics: RegionMetrics[];
-  threats: ThreatEvent[];
+  metrics: EndpointMetrics[];
+  alerts: AlertEvent[];
   logs: LogLine[];
-  packetTypes: NetworkPacket["type"][];
+  flows: SocketFlow[];
 }
 
 // --- Constants ---
 
-const REGIONS: Region[] = [
+const ENDPOINT_COLOR = "#cbd5e1";
+
+const NODES: ObservedNode[] = [
   {
-    id: "us-east",
-    name: "US East (Virginia)",
-    shortName: "US-E",
-    x: 175,
-    y: 135,
-    color: "#60a5fa",
-  },
-  { id: "us-west", name: "US West (Oregon)", shortName: "US-W", x: 95, y: 125, color: "#818cf8" },
-  { id: "eu-west", name: "EU West (Ireland)", shortName: "EU-W", x: 320, y: 100, color: "#34d399" },
-  {
-    id: "ap-east",
-    name: "Asia Pacific (Tokyo)",
-    shortName: "AP-E",
-    x: 540,
-    y: 130,
-    color: "#f472b6",
-  },
-  {
-    id: "ap-south",
-    name: "Asia Pacific (Mumbai)",
-    shortName: "AP-S",
-    x: 460,
-    y: 175,
-    color: "#fbbf24",
-  },
-  {
-    id: "sa-east",
-    name: "South America (Sao Paulo)",
-    shortName: "SA-E",
-    x: 210,
-    y: 240,
+    id: "claude",
+    name: "claude (Claude Code)",
+    shortName: "claude",
+    kind: "process",
+    pid: 2000,
+    x: 70,
+    y: 70,
     color: "#fb923c",
   },
+  {
+    id: "claude-node",
+    name: "node (child process of claude)",
+    shortName: "node",
+    kind: "process",
+    parentId: "claude",
+    pid: 2047,
+    x: 190,
+    y: 110,
+    color: "#fdba74",
+  },
+  {
+    id: "codex",
+    name: "codex (Codex CLI)",
+    shortName: "codex",
+    kind: "process",
+    pid: 3100,
+    x: 70,
+    y: 180,
+    color: "#34d399",
+  },
+  {
+    id: "codex-curl",
+    name: "curl (codex → bash → curl)",
+    shortName: "curl",
+    kind: "process",
+    parentId: "codex",
+    pid: 3188,
+    x: 190,
+    y: 220,
+    color: "#6ee7b7",
+  },
+  {
+    id: "gemini",
+    name: "gemini (Gemini CLI)",
+    shortName: "gemini",
+    kind: "process",
+    pid: 4200,
+    x: 70,
+    y: 280,
+    color: "#60a5fa",
+  },
+  {
+    id: "api-anthropic",
+    name: "api.anthropic.com",
+    shortName: "api.anthropic.com",
+    kind: "endpoint",
+    x: 520,
+    y: 50,
+    color: ENDPOINT_COLOR,
+  },
+  {
+    id: "api-openai",
+    name: "api.openai.com",
+    shortName: "api.openai.com",
+    kind: "endpoint",
+    x: 520,
+    y: 115,
+    color: ENDPOINT_COLOR,
+  },
+  {
+    id: "googleapis",
+    name: "generativelanguage.googleapis.com",
+    shortName: "…googleapis.com",
+    kind: "endpoint",
+    x: 520,
+    y: 180,
+    color: ENDPOINT_COLOR,
+  },
+  {
+    id: "github",
+    name: "github.com",
+    shortName: "github.com",
+    kind: "endpoint",
+    x: 520,
+    y: 235,
+    color: ENDPOINT_COLOR,
+  },
+  {
+    id: "unresolved",
+    name: "203.0.113.42 (no hostname)",
+    shortName: "203.0.113.42",
+    kind: "endpoint",
+    x: 520,
+    y: 290,
+    color: ENDPOINT_COLOR,
+  },
 ];
 
-const NETWORK_PATHS: Array<[string, string]> = [
-  ["us-east", "eu-west"],
-  ["us-east", "us-west"],
-  ["eu-west", "ap-east"],
-  ["ap-east", "ap-south"],
-  ["us-east", "sa-east"],
-  ["us-west", "ap-east"],
-  ["eu-west", "ap-south"],
-  ["us-east", "ap-south"],
-];
-
-const PACKET_COLORS: Record<NetworkPacket["type"], string> = {
-  normal: "#60a5fa",
-  attack: "#ef4444",
-  blocked: "#f59e0b",
-  cdn: "#34d399",
-  failover: "#a78bfa",
+const PACKET_COLORS: Record<PacketType, string> = {
+  anthropic: "#fb923c",
+  openai: "#34d399",
+  google: "#60a5fa",
+  unknown: "#94a3b8",
+  flagged: "#ef4444",
 };
 
 const SEVERITY_STYLES: Record<
-  ThreatEvent["severity"],
+  AlertEvent["severity"],
   { bg: string; border: string; text: string; dot: string }
 > = {
-  low: {
+  info: {
     bg: "bg-blue-500/10",
     border: "border-blue-500/30",
     text: "text-blue-400",
     dot: "bg-blue-400",
   },
-  medium: {
+  warning: {
     bg: "bg-yellow-500/10",
     border: "border-yellow-500/30",
     text: "text-yellow-400",
     dot: "bg-yellow-400",
-  },
-  high: {
-    bg: "bg-orange-500/10",
-    border: "border-orange-500/30",
-    text: "text-orange-400",
-    dot: "bg-orange-400",
   },
   critical: {
     bg: "bg-red-500/10",
@@ -358,371 +441,320 @@ const SEVERITY_STYLES: Record<
 function makeScenarios(): Scenario[] {
   return [
     {
-      id: "normal",
-      title: "Normal Traffic",
+      id: "baseline",
+      title: "Default Observation",
       icon: <Activity className="h-4 w-4" />,
       description:
-        "Healthy baseline traffic across all regions. All APIs responding normally with low latency.",
+        "With no flags, RANO polls for processes matching claude, codex and gemini, follows their children, and tags every socket with a provider and remote endpoint.",
       metrics: [
-        { regionId: "us-east", rps: 2450, bandwidthMbps: 180, latencyMs: 12, status: "healthy" },
-        { regionId: "us-west", rps: 1820, bandwidthMbps: 140, latencyMs: 18, status: "healthy" },
-        { regionId: "eu-west", rps: 1960, bandwidthMbps: 155, latencyMs: 24, status: "healthy" },
-        { regionId: "ap-east", rps: 1540, bandwidthMbps: 120, latencyMs: 45, status: "healthy" },
-        { regionId: "ap-south", rps: 890, bandwidthMbps: 72, latencyMs: 62, status: "healthy" },
-        { regionId: "sa-east", rps: 640, bandwidthMbps: 48, latencyMs: 78, status: "healthy" },
+        { nodeId: "api-anthropic", connects: 24, active: 3, status: "ok" },
+        { nodeId: "api-openai", connects: 11, active: 1, status: "ok" },
+        { nodeId: "googleapis", connects: 6, active: 1, status: "ok" },
+        { nodeId: "github", connects: 0, active: 0, status: "idle" },
+        { nodeId: "unresolved", connects: 0, active: 0, status: "idle" },
       ],
-      threats: [
-        {
-          id: 1,
-          severity: "low",
-          source: "192.168.1.0/24",
-          message: "Routine port scan detected",
-          timestamp: "14:23:01",
-        },
-      ],
+      alerts: [],
       logs: [
         {
           id: 1,
-          command: "rano status",
-          output: "Observer active — 6 regions healthy",
+          command: "rano",
+          output: "+ connect | anthropic | pid=2000 | claude | tcp | domain=api.anthropic.com",
           type: "success",
         },
         {
           id: 2,
-          command: "rano logs --summary",
-          output: "9,300 req/s total | 0 errors | avg 39ms",
+          command: "rano --pattern codex --once",
+          output: "+ connect | openai | pid=3100 | codex | tcp | domain=api.openai.com",
           type: "info",
         },
         {
           id: 3,
-          command: "rano watch --provider anthropic",
-          output: "Streaming: 2,450 req/s via us-east",
+          command: "rano status",
+          output: "5 active | anthropic:24 openai:11",
           type: "info",
         },
       ],
-      packetTypes: ["normal", "normal", "normal", "cdn"],
+      flows: [
+        { from: "claude", to: "api-anthropic", type: "anthropic" },
+        { from: "claude-node", to: "api-anthropic", type: "anthropic" },
+        { from: "codex", to: "api-openai", type: "openai" },
+        { from: "gemini", to: "googleapis", type: "google" },
+      ],
     },
     {
-      id: "ddos-detect",
-      title: "DDoS Detection",
-      icon: <ShieldAlert className="h-4 w-4" />,
+      id: "retry-storm",
+      title: "Retry Storm",
+      icon: <Zap className="h-4 w-4" />,
       description:
-        "Volumetric attack detected from multiple sources targeting US-East. RANO correlating traffic patterns.",
+        "Claude Code reconnects to the same endpoint again and again, a common sign of rate limiting or a flaky network. RANO sees the reconnects, not the HTTP status codes behind them.",
       metrics: [
-        {
-          regionId: "us-east",
-          rps: 48200,
-          bandwidthMbps: 4200,
-          latencyMs: 340,
-          status: "degraded",
-        },
-        { regionId: "us-west", rps: 1820, bandwidthMbps: 140, latencyMs: 22, status: "healthy" },
-        { regionId: "eu-west", rps: 12400, bandwidthMbps: 980, latencyMs: 85, status: "degraded" },
-        { regionId: "ap-east", rps: 8900, bandwidthMbps: 720, latencyMs: 120, status: "degraded" },
-        { regionId: "ap-south", rps: 890, bandwidthMbps: 72, latencyMs: 62, status: "healthy" },
-        { regionId: "sa-east", rps: 640, bandwidthMbps: 48, latencyMs: 78, status: "healthy" },
+        { nodeId: "api-anthropic", connects: 52, active: 2, status: "flagged" },
+        { nodeId: "api-openai", connects: 11, active: 1, status: "ok" },
+        { nodeId: "googleapis", connects: 6, active: 1, status: "ok" },
+        { nodeId: "github", connects: 0, active: 0, status: "idle" },
+        { nodeId: "unresolved", connects: 0, active: 0, status: "idle" },
       ],
-      threats: [
+      alerts: [
         {
           id: 1,
-          severity: "critical",
-          source: "45.33.0.0/16",
-          message: "DDoS: SYN flood on us-east (48k req/s)",
+          severity: "warning",
+          message: "Retry pattern: 7 connections to api.anthropic.com:443 in 30s",
           timestamp: "14:25:03",
         },
         {
           id: 2,
-          severity: "high",
-          source: "185.220.0.0/16",
-          message: "DDoS: HTTP flood amplification via eu-west",
-          timestamp: "14:25:05",
-        },
-        {
-          id: 3,
-          severity: "high",
-          source: "103.42.0.0/16",
-          message: "DDoS: Botnet traffic from ap-east cluster",
-          timestamp: "14:25:07",
-        },
-        {
-          id: 4,
-          severity: "medium",
-          source: "Multiple",
-          message: "Anomalous pattern: 23x baseline traffic spike",
-          timestamp: "14:25:08",
+          severity: "warning",
+          message: "Retry pattern: 5 connections to api.anthropic.com:443 in 30s",
+          timestamp: "14:25:41",
         },
       ],
       logs: [
         {
           id: 1,
-          command: "rano alert --check",
-          output: "CRITICAL: DDoS detected on us-east (48,200 req/s)",
-          type: "error",
+          command: "rano --pattern claude --retry-threshold 5 --retry-window-ms 30000",
+          output: "⚠ Retry pattern: 7 connections to api.anthropic.com:443 in 30s",
+          type: "warning",
         },
         {
           id: 2,
-          command: "rano logs --errors --last 10",
-          output: "3,421 timeouts in last 60s | source: 45.33.0.0/16",
+          command: "rano --pattern claude --json --retry-threshold 5 --retry-window-ms 30000",
+          output: '{"type":"retry_warning","count":7,"endpoint":"198.51.100.7:443","window_seconds":30}',
           type: "warning",
         },
         {
           id: 3,
-          command: "rano trace --source 45.33.0.0/16",
-          output: "Tracing: 23,000+ unique IPs, botnet signature match",
-          type: "error",
-        },
-        {
-          id: 4,
-          command: "rano mitigate --recommend",
-          output: "Suggest: enable rate-limit + geo-block on 3 CIDRs",
-          type: "warning",
+          command: "rano report --latest --top 3",
+          output: "Top Domains: api.anthropic.com 52 | api.openai.com 11 | …googleapis.com 6",
+          type: "info",
         },
       ],
-      packetTypes: ["attack", "attack", "attack", "normal", "attack"],
+      flows: [
+        { from: "claude", to: "api-anthropic", type: "flagged" },
+        { from: "claude", to: "api-anthropic", type: "flagged" },
+        { from: "claude", to: "api-anthropic", type: "anthropic" },
+        { from: "codex", to: "api-openai", type: "openai" },
+        { from: "gemini", to: "googleapis", type: "google" },
+      ],
     },
     {
-      id: "rate-limit",
-      title: "Rate Limiting Active",
-      icon: <Filter className="h-4 w-4" />,
+      id: "unexpected-endpoint",
+      title: "Unexpected Endpoint",
+      icon: <ShieldAlert className="h-4 w-4" />,
       description:
-        "Intelligent rate limiting engaged. Malicious traffic throttled while legitimate requests pass through.",
+        "A shell spawned by Codex runs curl against an address with no hostname. RANO attributes the socket to curl, tags it openai (inherited from its codex ancestor), and can show the full process chain.",
       metrics: [
-        { regionId: "us-east", rps: 3200, bandwidthMbps: 240, latencyMs: 28, status: "healthy" },
-        { regionId: "us-west", rps: 1820, bandwidthMbps: 140, latencyMs: 18, status: "healthy" },
-        { regionId: "eu-west", rps: 2100, bandwidthMbps: 170, latencyMs: 32, status: "healthy" },
-        { regionId: "ap-east", rps: 1600, bandwidthMbps: 125, latencyMs: 48, status: "healthy" },
-        { regionId: "ap-south", rps: 890, bandwidthMbps: 72, latencyMs: 62, status: "healthy" },
-        { regionId: "sa-east", rps: 640, bandwidthMbps: 48, latencyMs: 78, status: "healthy" },
+        { nodeId: "api-anthropic", connects: 24, active: 3, status: "ok" },
+        { nodeId: "api-openai", connects: 12, active: 1, status: "ok" },
+        { nodeId: "googleapis", connects: 6, active: 1, status: "ok" },
+        { nodeId: "github", connects: 0, active: 0, status: "idle" },
+        { nodeId: "unresolved", connects: 2, active: 1, status: "flagged" },
       ],
-      threats: [
+      alerts: [
         {
           id: 1,
-          severity: "medium",
-          source: "45.33.0.0/16",
-          message: "Rate limited: 44,800 req/s dropped",
+          severity: "warning",
+          message: "unknown_domain | unresolved: 203.0.113.42 | pid=3188 | curl",
           timestamp: "14:26:12",
         },
-        {
-          id: 2,
-          severity: "low",
-          source: "185.220.0.0/16",
-          message: "Rate limited: 10,200 req/s dropped",
-          timestamp: "14:26:14",
-        },
       ],
       logs: [
         {
           id: 1,
-          command: "rano ratelimit --enable --threshold 5000",
-          output: "Rate limiter active: 5,000 req/s per source",
-          type: "success",
+          command: "rano --pattern codex --alert-unknown-domain",
+          output: "[ALERT] WARNING | unknown_domain | unresolved: 203.0.113.42 | pid=3188 | curl",
+          type: "warning",
         },
         {
           id: 2,
-          command: "rano ratelimit --status",
-          output: "Dropping 55,000 req/s | Passing 10,250 req/s",
+          command: "rano --pattern codex --show-ancestry",
+          output: "+ connect | openai | ... → bash(3150) → curl(3188) | tcp | domain=unknown",
           type: "info",
         },
         {
           id: 3,
-          command: "rano logs --blocked --count",
-          output: "44,800 blocked from 45.33.0.0/16 in last 30s",
-          type: "warning",
+          command:
+            "rano export --format jsonl --since 1h | jq -r 'select(.comm == \"curl\") | .ancestry_path'",
+          output: "systemd:1,tmux:1600,bash:1700,codex:3100,bash:3150,curl:3188",
+          type: "info",
         },
       ],
-      packetTypes: ["normal", "blocked", "normal", "blocked", "normal"],
+      flows: [
+        { from: "codex-curl", to: "unresolved", type: "flagged" },
+        { from: "codex", to: "api-openai", type: "openai" },
+        { from: "claude", to: "api-anthropic", type: "anthropic" },
+        { from: "gemini", to: "googleapis", type: "google" },
+      ],
     },
     {
-      id: "geo-block",
-      title: "Geo-Blocking",
-      icon: <Globe className="h-4 w-4" />,
+      id: "long-lived",
+      title: "Long-Lived Connection",
+      icon: <Clock className="h-4 w-4" />,
       description:
-        "Geographic IP blocking enabled. Traffic from known attack regions rejected at network edge.",
+        "A streaming response keeps a Codex socket open for 45 seconds. With --alert-duration-ms, RANO flags endpoint episodes that close after more than the threshold.",
       metrics: [
-        { regionId: "us-east", rps: 2500, bandwidthMbps: 185, latencyMs: 14, status: "healthy" },
-        { regionId: "us-west", rps: 1850, bandwidthMbps: 142, latencyMs: 16, status: "healthy" },
-        { regionId: "eu-west", rps: 1980, bandwidthMbps: 158, latencyMs: 22, status: "healthy" },
-        { regionId: "ap-east", rps: 120, bandwidthMbps: 8, latencyMs: 52, status: "degraded" },
-        { regionId: "ap-south", rps: 890, bandwidthMbps: 72, latencyMs: 62, status: "healthy" },
-        { regionId: "sa-east", rps: 640, bandwidthMbps: 48, latencyMs: 78, status: "healthy" },
+        { nodeId: "api-anthropic", connects: 26, active: 2, status: "ok" },
+        { nodeId: "api-openai", connects: 14, active: 1, status: "flagged" },
+        { nodeId: "googleapis", connects: 7, active: 1, status: "ok" },
+        { nodeId: "github", connects: 0, active: 0, status: "idle" },
+        { nodeId: "unresolved", connects: 0, active: 0, status: "idle" },
       ],
-      threats: [
+      alerts: [
         {
           id: 1,
-          severity: "medium",
-          source: "ap-east CIDR block",
-          message: "Geo-block: 8,780 req/s rejected from AS4134",
+          severity: "warning",
+          message: "long_duration | 45120ms > 30000ms | pid=3100 | codex",
           timestamp: "14:27:30",
         },
-        {
-          id: 2,
-          severity: "low",
-          source: "Monitor",
-          message: "Legitimate ap-east traffic rerouted via ap-south",
-          timestamp: "14:27:32",
-        },
       ],
       logs: [
         {
           id: 1,
-          command: "rano geoblock --add 103.42.0.0/16,45.33.0.0/16",
-          output: "Geo-block enabled for 2 CIDR ranges",
-          type: "success",
-        },
-        {
-          id: 2,
-          command: "rano geoblock --status",
-          output: "Blocking: 2 ranges | Rejected: 8,780 req/s",
-          type: "info",
-        },
-        {
-          id: 3,
-          command: "rano logs --geo --provider anthropic",
-          output: "Anthropic traffic clean: 0 blocked legitimate",
-          type: "success",
-        },
-      ],
-      packetTypes: ["normal", "blocked", "normal", "cdn"],
-    },
-    {
-      id: "cdn-route",
-      title: "CDN Routing",
-      icon: <Zap className="h-4 w-4" />,
-      description:
-        "Edge caching and CDN acceleration enabled. Static API schemas cached, reducing origin load by 40%.",
-      metrics: [
-        { regionId: "us-east", rps: 1470, bandwidthMbps: 95, latencyMs: 8, status: "healthy" },
-        { regionId: "us-west", rps: 1090, bandwidthMbps: 72, latencyMs: 6, status: "healthy" },
-        { regionId: "eu-west", rps: 1180, bandwidthMbps: 80, latencyMs: 4, status: "healthy" },
-        { regionId: "ap-east", rps: 920, bandwidthMbps: 60, latencyMs: 10, status: "healthy" },
-        { regionId: "ap-south", rps: 530, bandwidthMbps: 38, latencyMs: 14, status: "healthy" },
-        { regionId: "sa-east", rps: 380, bandwidthMbps: 25, latencyMs: 12, status: "healthy" },
-      ],
-      threats: [],
-      logs: [
-        {
-          id: 1,
-          command: "rano cdn --enable --edge-cache",
-          output: "CDN layer active: 6 edge nodes online",
-          type: "success",
-        },
-        {
-          id: 2,
-          command: "rano cdn --stats",
-          output: "Cache hit: 42% | Origin load reduced 40%",
-          type: "info",
-        },
-        {
-          id: 3,
-          command: "rano logs --timing --cdn",
-          output: "Edge avg 9ms | Origin avg 45ms | Savings: 80%",
-          type: "success",
-        },
-        {
-          id: 4,
-          command: "rano watch --latency",
-          output: "Global p99 latency: 18ms (was 78ms)",
-          type: "info",
-        },
-      ],
-      packetTypes: ["cdn", "cdn", "normal", "cdn", "cdn"],
-    },
-    {
-      id: "failover",
-      title: "Failover Active",
-      icon: <Radio className="h-4 w-4" />,
-      description:
-        "US-East experiencing outage. Automatic failover routing traffic through US-West and EU-West.",
-      metrics: [
-        { regionId: "us-east", rps: 0, bandwidthMbps: 0, latencyMs: 9999, status: "down" },
-        { regionId: "us-west", rps: 4200, bandwidthMbps: 320, latencyMs: 24, status: "degraded" },
-        { regionId: "eu-west", rps: 3800, bandwidthMbps: 290, latencyMs: 35, status: "degraded" },
-        { regionId: "ap-east", rps: 1540, bandwidthMbps: 120, latencyMs: 48, status: "healthy" },
-        { regionId: "ap-south", rps: 1200, bandwidthMbps: 92, latencyMs: 55, status: "healthy" },
-        { regionId: "sa-east", rps: 980, bandwidthMbps: 74, latencyMs: 65, status: "healthy" },
-      ],
-      threats: [
-        {
-          id: 1,
-          severity: "critical",
-          source: "us-east",
-          message: "Region DOWN: us-east unresponsive for 45s",
-          timestamp: "14:30:00",
-        },
-        {
-          id: 2,
-          severity: "high",
-          source: "failover",
-          message: "Failover engaged: us-east traffic split to us-west + eu-west",
-          timestamp: "14:30:02",
-        },
-        {
-          id: 3,
-          severity: "medium",
-          source: "capacity",
-          message: "us-west at 78% capacity after failover absorption",
-          timestamp: "14:30:05",
-        },
-      ],
-      logs: [
-        {
-          id: 1,
-          command: "rano health --check",
-          output: "CRITICAL: us-east — no heartbeat for 45s",
-          type: "error",
-        },
-        {
-          id: 2,
-          command: "rano failover --trigger us-east",
-          output: "Failover active: routing to us-west (60%) + eu-west (40%)",
+          command: "rano --alert-duration-ms 30000",
+          output: "[ALERT] WARNING | long_duration | 45120ms > 30000ms | pid=3100 | codex",
           type: "warning",
         },
         {
-          id: 3,
-          command: "rano status --failover",
-          output: "us-west: 78% cap | eu-west: 65% cap | All req served",
+          id: 2,
+          command: "rano --pattern codex",
+          output: "- close | openai | pid=3100 | codex | tcp | domain=api.openai.com dur=45120ms",
           type: "info",
         },
         {
-          id: 4,
-          command: "rano logs --provider anthropic --errors",
-          output: "0 dropped requests — failover seamless",
+          id: 3,
+          command: "rano report --latest",
+          output: "Close durations: avg=2140.500ms max=45120ms samples=34",
+          type: "info",
+        },
+      ],
+      flows: [
+        { from: "codex", to: "api-openai", type: "flagged" },
+        { from: "claude", to: "api-anthropic", type: "anthropic" },
+        { from: "claude-node", to: "api-anthropic", type: "anthropic" },
+        { from: "gemini", to: "googleapis", type: "google" },
+      ],
+    },
+    {
+      id: "live-stats",
+      title: "Live Stats Views",
+      icon: <BarChart3 className="h-4 w-4" />,
+      description:
+        "While the monitor runs, RANO prints bar charts of observations by provider, domain, port or process. Here a curl child of Codex also reaches github.com.",
+      metrics: [
+        { nodeId: "api-anthropic", connects: 42, active: 3, status: "ok" },
+        { nodeId: "api-openai", connects: 18, active: 1, status: "ok" },
+        { nodeId: "googleapis", connects: 6, active: 1, status: "ok" },
+        { nodeId: "github", connects: 2, active: 1, status: "ok" },
+        { nodeId: "unresolved", connects: 0, active: 0, status: "idle" },
+      ],
+      alerts: [],
+      logs: [
+        {
+          id: 1,
+          command: "rano --preset live",
+          output: "anthropic ████████████████████░░░░ 42 (domains=1, ips=2)",
+          type: "info",
+        },
+        {
+          id: 2,
+          command: "rano --stats-view process --stats-top 3",
+          output: "Live Stats [process]  30 claude | 18 codex | 12 node",
+          type: "info",
+        },
+        {
+          id: 3,
+          command: "rano status --format '{active}/{total}'",
+          output: "6/68",
           type: "success",
         },
       ],
-      packetTypes: ["failover", "failover", "normal", "cdn"],
+      flows: [
+        { from: "claude", to: "api-anthropic", type: "anthropic" },
+        { from: "claude-node", to: "api-anthropic", type: "anthropic" },
+        { from: "codex", to: "api-openai", type: "openai" },
+        { from: "codex-curl", to: "github", type: "openai" },
+        { from: "gemini", to: "googleapis", type: "google" },
+      ],
+    },
+    {
+      id: "history",
+      title: "Report, Export & Diff",
+      icon: <Filter className="h-4 w-4" />,
+      description:
+        "The session has ended, so nothing is live. Its history is in SQLite (observer.sqlite by default): summarize it, export CSV or JSONL, or diff it against an earlier session.",
+      metrics: [
+        { nodeId: "api-anthropic", connects: 42, active: 0, status: "idle" },
+        { nodeId: "api-openai", connects: 18, active: 0, status: "idle" },
+        { nodeId: "googleapis", connects: 6, active: 0, status: "idle" },
+        { nodeId: "github", connects: 2, active: 0, status: "idle" },
+        { nodeId: "unresolved", connects: 0, active: 0, status: "idle" },
+      ],
+      alerts: [],
+      logs: [
+        {
+          id: 1,
+          command: "rano report --latest",
+          output: "Events:  136 total (68 connects, 68 closes)",
+          type: "info",
+        },
+        {
+          id: 2,
+          command: "rano export --format jsonl | jq -r '.domain // \"unknown\"' | sort | uniq -c",
+          output: "84 api.anthropic.com | 36 api.openai.com | 12 …googleapis.com | 4 github.com",
+          type: "info",
+        },
+        {
+          id: 3,
+          command: "rano diff --old morning-audit --new afternoon-audit",
+          output: "New Domains: (1 added) + github.com | New Processes: (1 appeared) + curl",
+          type: "success",
+        },
+      ],
+      flows: [],
     },
   ];
 }
 
 // ---------------------------------------------------------------------------
-// World Map SVG (simplified continents)
+// Process → endpoint socket map
 // ---------------------------------------------------------------------------
 
-function WorldMapSvg({
-  regions,
+function SocketMapSvg({
+  nodes,
   packets,
   activeScenario,
 }: {
-  regions: Region[];
-  packets: NetworkPacket[];
+  nodes: ObservedNode[];
+  packets: SocketPacket[];
   activeScenario: Scenario;
 }) {
-  const regionMap = useMemo(() => {
-    const map: Record<string, Region> = {};
-    for (const r of regions) {
-      map[r.id] = r;
+  const nodeMap = useMemo(() => {
+    const map: Record<string, ObservedNode> = {};
+    for (const n of nodes) {
+      map[n.id] = n;
     }
     return map;
-  }, [regions]);
+  }, [nodes]);
 
   const metricsMap = useMemo(() => {
-    const map: Record<string, RegionMetrics> = {};
+    const map: Record<string, EndpointMetrics> = {};
     for (const m of activeScenario.metrics) {
-      map[m.regionId] = m;
+      map[m.nodeId] = m;
     }
     return map;
   }, [activeScenario.metrics]);
+
+  const flowLinks = useMemo(() => {
+    const seen = new Set<string>();
+    const links: Array<[string, string]> = [];
+    for (const f of activeScenario.flows) {
+      const key = `${f.from}->${f.to}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        links.push([f.from, f.to]);
+      }
+    }
+    return links;
+  }, [activeScenario.flows]);
 
   return (
     <svg viewBox="0 0 640 320" className="w-full min-w-[640px] h-auto" xmlns="http://www.w3.org/2000/svg">
@@ -755,54 +787,51 @@ function WorldMapSvg({
       <rect width="640" height="320" fill="transparent" />
       <rect width="640" height="320" fill="url(#noc-grid)" />
 
-      {/* Simplified continent outlines */}
-      {/* North America */}
-      <path
-        d="M60,60 Q80,50 120,55 Q160,60 180,80 Q190,100 185,120 Q180,140 160,155 Q140,165 120,160 Q100,155 85,140 Q70,125 60,105 Q55,85 60,60Z"
-        fill="rgba(255,255,255,0.02)"
-        stroke="rgba(255,255,255,0.06)"
-        strokeWidth="0.8"
-      />
-      {/* South America */}
-      <path
-        d="M165,175 Q175,170 195,175 Q215,185 225,210 Q230,235 220,260 Q210,275 195,280 Q180,278 172,265 Q165,245 160,220 Q158,195 165,175Z"
-        fill="rgba(255,255,255,0.02)"
-        stroke="rgba(255,255,255,0.06)"
-        strokeWidth="0.8"
-      />
-      {/* Europe */}
-      <path
-        d="M290,65 Q310,55 335,60 Q355,65 360,80 Q362,95 350,105 Q340,112 325,115 Q310,118 295,110 Q285,100 282,85 Q280,75 290,65Z"
-        fill="rgba(255,255,255,0.02)"
-        stroke="rgba(255,255,255,0.06)"
-        strokeWidth="0.8"
-      />
-      {/* Africa */}
-      <path
-        d="M310,125 Q325,118 345,122 Q360,130 365,155 Q368,180 360,210 Q350,235 335,245 Q320,248 308,235 Q298,220 295,195 Q292,165 300,145 Q305,132 310,125Z"
-        fill="rgba(255,255,255,0.02)"
-        stroke="rgba(255,255,255,0.06)"
-        strokeWidth="0.8"
-      />
-      {/* Asia */}
-      <path
-        d="M380,55 Q420,45 470,50 Q520,58 555,80 Q570,100 565,125 Q555,145 535,155 Q510,162 480,165 Q450,170 420,160 Q395,148 382,130 Q370,110 372,85 Q375,65 380,55Z"
-        fill="rgba(255,255,255,0.02)"
-        stroke="rgba(255,255,255,0.06)"
-        strokeWidth="0.8"
-      />
-      {/* Australia */}
-      <path
-        d="M500,210 Q520,200 545,205 Q565,215 570,235 Q568,255 550,265 Q530,270 510,262 Q498,250 495,235 Q494,220 500,210Z"
-        fill="rgba(255,255,255,0.02)"
-        stroke="rgba(255,255,255,0.06)"
-        strokeWidth="0.8"
-      />
+      {/* Column labels */}
+      <text
+        x={130}
+        y={16}
+        textAnchor="middle"
+        fill="var(--muted-foreground)"
+        fontSize="12"
+        fontFamily="monospace"
+      >
+        monitored processes
+      </text>
+      <text
+        x={520}
+        y={16}
+        textAnchor="middle"
+        fill="var(--muted-foreground)"
+        fontSize="12"
+        fontFamily="monospace"
+      >
+        remote endpoints
+      </text>
 
-      {/* Network paths */}
-      {NETWORK_PATHS.map(([fromId, toId]) => {
-        const from = regionMap[fromId];
-        const to = regionMap[toId];
+      {/* Process tree (parent → child) */}
+      {nodes
+        .filter((n) => n.parentId)
+        .map((child) => {
+          const parent = child.parentId ? nodeMap[child.parentId] : undefined;
+          if (!parent) return null;
+          return (
+            <line
+              key={`tree-${child.id}`}
+              x1={parent.x}
+              y1={parent.y}
+              x2={child.x}
+              y2={child.y}
+              stroke="rgba(255,255,255,0.12)"
+              strokeWidth="1"
+            />
+          );
+        })}
+
+      {/* Observed socket paths */}
+      {flowLinks.map(([fromId, toId]) => {
+        const from = nodeMap[fromId];
+        const to = nodeMap[toId];
         if (!from || !to) return null;
         return (
           <line
@@ -820,8 +849,8 @@ function WorldMapSvg({
 
       {/* Animated packets */}
       {packets.map((pkt) => {
-        const from = regionMap[pkt.fromRegion];
-        const to = regionMap[pkt.toRegion];
+        const from = nodeMap[pkt.fromNode];
+        const to = nodeMap[pkt.toNode];
         if (!from || !to) return null;
         const px = from.x + (to.x - from.x) * pkt.progress;
         const py = from.y + (to.y - from.y) * pkt.progress;
@@ -841,19 +870,29 @@ function WorldMapSvg({
         );
       })}
 
-      {/* Region nodes */}
-      {regions.map((region) => {
-        const metric = metricsMap[region.id];
-        const isDown = metric?.status === "down";
-        const isDegraded = metric?.status === "degraded";
-        const ringColor = isDown ? "#ef4444" : isDegraded ? "#f59e0b" : region.color;
-        const pulseOpacity = isDown ? 0.5 : isDegraded ? 0.3 : 0.15;
+      {/* Process and endpoint nodes */}
+      {nodes.map((node) => {
+        const metric = metricsMap[node.id];
+        const isIdle = node.kind === "endpoint" && (!metric || metric.status === "idle");
+        const isFlagged = metric?.status === "flagged";
+        const ringColor = isFlagged
+          ? "#f59e0b"
+          : isIdle
+            ? "rgba(255,255,255,0.25)"
+            : node.color;
+        const pulseOpacity = isFlagged ? 0.4 : isIdle ? 0.05 : 0.15;
+        const caption =
+          node.kind === "process"
+            ? `pid ${node.pid}`
+            : isIdle
+              ? "idle"
+              : `${metric?.active ?? 0} active`;
         return (
-          <g key={region.id}>
+          <g key={node.id}>
             {/* Pulse ring */}
             <circle
-              cx={region.x}
-              cy={region.y}
+              cx={node.x}
+              cy={node.y}
               r="14"
               fill="none"
               stroke={ringColor}
@@ -870,52 +909,36 @@ function WorldMapSvg({
             </circle>
             {/* Node circle */}
             <circle
-              cx={region.x}
-              cy={region.y}
+              cx={node.x}
+              cy={node.y}
               r="8"
-              fill={isDown ? "#1a0505" : "rgba(0,0,0,0.6)"}
+              fill="rgba(0,0,0,0.6)"
               stroke={ringColor}
               strokeWidth="1.5"
             />
-            {isDown ? (
-              <text
-                x={region.x}
-                y={region.y + 1}
-                textAnchor="middle"
-                dominantBaseline="middle"
-                fill="#ef4444"
-                fontSize="12"
-                fontWeight="bold"
-              >
-                X
-              </text>
-            ) : (
-              <circle cx={region.x} cy={region.y} r="3" fill={ringColor} opacity={0.8} />
-            )}
+            <circle cx={node.x} cy={node.y} r="3" fill={ringColor} opacity={0.8} />
             {/* Label */}
             <text
-              x={region.x}
-              y={region.y - 16}
+              x={node.x}
+              y={node.y - 16}
               textAnchor="middle"
               fill="rgba(255,255,255,0.6)"
               fontSize="12"
               fontFamily="monospace"
             >
-              {region.shortName}
+              {node.shortName}
             </text>
-            {/* RPS label */}
-            {metric && (
-              <text
-                x={region.x}
-                y={region.y + 24}
-                textAnchor="middle"
-                fill="var(--muted-foreground)"
-                fontSize="12"
-                fontFamily="monospace"
-              >
-                {isDown ? "DOWN" : `${metric.rps.toLocaleString()} rps`}
-              </text>
-            )}
+            {/* PID or active-socket caption */}
+            <text
+              x={node.x}
+              y={node.y + 24}
+              textAnchor="middle"
+              fill="var(--muted-foreground)"
+              fontSize="12"
+              fontFamily="monospace"
+            >
+              {caption}
+            </text>
           </g>
         );
       })}
@@ -938,14 +961,14 @@ function MetricGauge({
   value: number;
   max: number;
   unit: string;
-  status: "healthy" | "degraded" | "down";
+  status: EndpointMetrics["status"];
 }) {
   const pct = Math.min((value / max) * 100, 100);
   const barColor =
-    status === "down"
-      ? "bg-red-500"
-      : status === "degraded"
-        ? "bg-yellow-500"
+    status === "flagged"
+      ? "bg-yellow-500"
+      : status === "idle"
+        ? "bg-white/30"
         : pct > 75
           ? "bg-amber-500"
           : "bg-emerald-500";
@@ -953,35 +976,32 @@ function MetricGauge({
     <div className="space-y-1">
       <div className="flex justify-between items-center">
         <span className="text-xs text-muted-foreground uppercase tracking-wider">{label}</span>
-        <span className="text-xs font-mono text-white/60">
-          {status === "down" ? "--" : `${value.toLocaleString()}${unit}`}
-        </span>
+        <span className="text-xs font-mono text-white/60">{`${value.toLocaleString()}${unit}`}</span>
       </div>
       <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
         <motion.div
           className={`h-full rounded-full ${barColor}`}
           initial={{ width: 0 }}
-          animate={{ width: status === "down" ? "100%" : `${pct}%` }}
+          animate={{ width: `${pct}%` }}
           transition={{ type: "spring", stiffness: 200, damping: 25 }}
-          style={status === "down" ? { opacity: 0.3 } : undefined}
         />
       </div>
     </div>
   );
 }
 
-function ThreatPanel({ threats }: { threats: ThreatEvent[] }) {
-  if (threats.length === 0) {
+function AlertPanel({ alerts }: { alerts: AlertEvent[] }) {
+  if (alerts.length === 0) {
     return (
       <div className="flex items-center justify-center py-6 gap-2">
         <CheckCircle2 className="h-4 w-4 text-emerald-400/50" />
-        <span className="text-xs text-emerald-400/50">No active threats</span>
+        <span className="text-xs text-emerald-400/50">No alerts or warnings</span>
       </div>
     );
   }
   return (
     <div className="space-y-1.5 max-h-40 overflow-y-auto">
-      {threats.map((t) => {
+      {alerts.map((t) => {
         const s = SEVERITY_STYLES[t.severity];
         return (
           <motion.div
@@ -1066,7 +1086,7 @@ function InteractiveTrafficMonitor() {
   const scenarios = useMemo(() => makeScenarios(), []);
   const [stepIndex, setStepIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [packets, setPackets] = useState<NetworkPacket[]>([]);
+  const [packets, setPackets] = useState<SocketPacket[]>([]);
   const packetIdRef = useRef(0);
   const frameRef = useRef<ReturnType<typeof requestAnimationFrame> | null>(null);
   const lastTickRef = useRef<number>(0);
@@ -1079,35 +1099,28 @@ function InteractiveTrafficMonitor() {
   // Aggregate stats
   const aggStats = useMemo(() => {
     const metrics = activeScenario.metrics;
-    const totalRps = metrics.reduce((sum, m) => sum + m.rps, 0);
-    const totalBw = metrics.reduce((sum, m) => sum + m.bandwidthMbps, 0);
-    const healthyCount = metrics.filter((m) => m.status === "healthy").length;
-    const avgLatency =
-      metrics.filter((m) => m.status !== "down").length > 0
-        ? Math.round(
-            metrics.filter((m) => m.status !== "down").reduce((sum, m) => sum + m.latencyMs, 0) /
-              metrics.filter((m) => m.status !== "down").length,
-          )
-        : 0;
-    return { totalRps, totalBw, healthyCount, regionsTotal: metrics.length, avgLatency };
+    const totalConnects = metrics.reduce((sum, m) => sum + m.connects, 0);
+    const totalActive = metrics.reduce((sum, m) => sum + m.active, 0);
+    const processCount = new Set(activeScenario.flows.map((f) => f.from)).size;
+    const alertCount = activeScenario.alerts.length;
+    return { totalConnects, totalActive, processCount, alertCount };
   }, [activeScenario]);
 
   // Spawn packets on a schedule
   const spawnPacket = useCallback(() => {
-    const types = activeScenario.packetTypes;
-    const pathIdx = Math.floor(Math.random() * NETWORK_PATHS.length);
-    const path = NETWORK_PATHS[pathIdx];
-    const typeIdx = Math.floor(Math.random() * types.length);
+    const flows = activeScenario.flows;
+    if (flows.length === 0) return;
+    const flow = flows[Math.floor(Math.random() * flows.length)];
     packetIdRef.current += 1;
-    const newPacket: NetworkPacket = {
+    const newPacket: SocketPacket = {
       id: packetIdRef.current,
-      fromRegion: path[0],
-      toRegion: path[1],
-      type: types[typeIdx],
+      fromNode: flow.from,
+      toNode: flow.to,
+      type: flow.type,
       progress: 0,
     };
     setPackets((prev) => [...prev.slice(-20), newPacket]);
-  }, [activeScenario.packetTypes]);
+  }, [activeScenario.flows]);
 
   // Animation loop for packet progress
   useEffect(() => {
@@ -1203,7 +1216,7 @@ function InteractiveTrafficMonitor() {
         <div className="text-center">
           <div className="inline-flex items-center gap-2 mb-2">
             <Globe className="h-4 w-4 text-blue-400" />
-            <p className="text-sm font-semibold text-white/80">Network Operations Center</p>
+            <p className="text-sm font-semibold text-white/80">Socket Observer</p>
             {isPlaying && (
               <motion.div
                 animate={inView ? { opacity: [1, 0.3, 1] } : { opacity: 1 }}
@@ -1216,7 +1229,8 @@ function InteractiveTrafficMonitor() {
             )}
           </div>
           <p className="text-xs text-muted-foreground">
-            Step through network scenarios to see how RANO monitors and responds to traffic events
+            Step through scenarios to see which sockets RANO attributes to which process, and the
+            commands that surface them (simulated; RANO observes and reports, it never blocks)
           </p>
         </div>
 
@@ -1272,70 +1286,62 @@ function InteractiveTrafficMonitor() {
         {/* Top-level aggregate stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <NocStatCard
-            label="Total RPS"
-            value={aggStats.totalRps.toLocaleString()}
+            label="Connects"
+            value={aggStats.totalConnects.toLocaleString()}
             icon={<Activity className="h-3 w-3" />}
             color="text-blue-400"
           />
           <NocStatCard
-            label="Bandwidth"
-            value={`${aggStats.totalBw} Mbps`}
-            icon={<Zap className="h-3 w-3" />}
+            label="Active"
+            value={`${aggStats.totalActive} sockets`}
+            icon={<Radio className="h-3 w-3" />}
             color="text-violet-400"
           />
           <NocStatCard
-            label="Regions"
-            value={`${aggStats.healthyCount}/${aggStats.regionsTotal}`}
-            icon={<MapPin className="h-3 w-3" />}
-            color={
-              aggStats.healthyCount < aggStats.regionsTotal ? "text-amber-400" : "text-emerald-400"
-            }
+            label="Processes"
+            value={`${aggStats.processCount}`}
+            icon={<Eye className="h-3 w-3" />}
+            color="text-emerald-400"
           />
           <NocStatCard
-            label="Avg Latency"
-            value={`${aggStats.avgLatency}ms`}
-            icon={<Clock className="h-3 w-3" />}
-            color={
-              aggStats.avgLatency > 100
-                ? "text-red-400"
-                : aggStats.avgLatency > 50
-                  ? "text-amber-400"
-                  : "text-emerald-400"
-            }
+            label="Alerts"
+            value={`${aggStats.alertCount}`}
+            icon={<ShieldAlert className="h-3 w-3" />}
+            color={aggStats.alertCount > 0 ? "text-amber-400" : "text-emerald-400"}
           />
         </div>
 
         {/* Main grid: Map + Panels */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* World Map */}
+          {/* Socket Map */}
           <div className="lg:col-span-2 rounded-2xl border border-white/[0.08] bg-black/30 overflow-hidden relative">
             <div className="px-3 py-2 border-b border-white/[0.06] flex items-center justify-between">
               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Global Traffic Map
+                Process → Endpoint Sockets
               </span>
               <div className="flex items-center gap-3">
                 {Object.entries(PACKET_COLORS).map(([type, color]) => (
                   <div key={type} className="flex items-center gap-1">
                     <div className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
-                    <span className="text-xs text-muted-foreground capitalize">{type}</span>
+                    <span className="text-xs text-muted-foreground">{type}</span>
                   </div>
                 ))}
               </div>
             </div>
-            <DiagramScroller label="Network operations world map" minWidth={640}>
+            <DiagramScroller label="Map of process-to-endpoint sockets" minWidth={640}>
               <div className="p-2">
-                <WorldMapSvg regions={REGIONS} packets={packets} activeScenario={activeScenario} />
+                <SocketMapSvg nodes={NODES} packets={packets} activeScenario={activeScenario} />
               </div>
             </DiagramScroller>
           </div>
 
-          {/* Right sidebar: Metrics + Threats */}
+          {/* Right sidebar: Endpoint activity + Alerts */}
           <div className="space-y-4">
-            {/* Region Metrics */}
+            {/* Endpoint Activity */}
             <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] overflow-hidden">
               <div className="px-3 py-2 border-b border-white/[0.06]">
                 <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Region Metrics
+                  Endpoint Activity
                 </span>
               </div>
               <div className="p-3 space-y-3">
@@ -1349,33 +1355,36 @@ function InteractiveTrafficMonitor() {
                     className="space-y-3"
                   >
                     {activeScenario.metrics.map((m) => {
-                      const region = REGIONS.find((r) => r.id === m.regionId);
-                      if (!region) return null;
+                      const node = NODES.find((n) => n.id === m.nodeId);
+                      if (!node) return null;
                       return (
-                        <div key={m.regionId} className="space-y-1.5">
+                        <div key={m.nodeId} className="space-y-1.5">
                           <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 min-w-0">
                               <div
-                                className="h-2 w-2 rounded-full"
+                                className="h-2 w-2 rounded-full shrink-0"
                                 style={{
                                   backgroundColor:
-                                    m.status === "down"
-                                      ? "#ef4444"
-                                      : m.status === "degraded"
-                                        ? "#f59e0b"
-                                        : region.color,
+                                    m.status === "flagged"
+                                      ? "#f59e0b"
+                                      : m.status === "idle"
+                                        ? "rgba(255,255,255,0.25)"
+                                        : node.color,
                                 }}
                               />
-                              <span className="text-xs font-mono text-white/60">
-                                {region.shortName}
+                              <span
+                                className="text-xs font-mono text-white/60 truncate"
+                                title={node.name}
+                              >
+                                {node.shortName}
                               </span>
                             </div>
                             <span
                               className={`text-xs font-bold uppercase tracking-wider ${
-                                m.status === "down"
-                                  ? "text-red-400"
-                                  : m.status === "degraded"
-                                    ? "text-yellow-400"
+                                m.status === "flagged"
+                                  ? "text-yellow-400"
+                                  : m.status === "idle"
+                                    ? "text-muted-foreground"
                                     : "text-emerald-400"
                               }`}
                             >
@@ -1383,17 +1392,17 @@ function InteractiveTrafficMonitor() {
                             </span>
                           </div>
                           <MetricGauge
-                            label="Req/s"
-                            value={m.rps}
-                            max={50000}
+                            label="Connects"
+                            value={m.connects}
+                            max={60}
                             unit=""
                             status={m.status}
                           />
                           <MetricGauge
-                            label="Latency"
-                            value={m.latencyMs}
-                            max={500}
-                            unit="ms"
+                            label="Active"
+                            value={m.active}
+                            max={5}
+                            unit=""
                             status={m.status}
                           />
                         </div>
@@ -1404,16 +1413,16 @@ function InteractiveTrafficMonitor() {
               </div>
             </div>
 
-            {/* Threat Detection Panel */}
+            {/* Alerts Panel */}
             <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] overflow-hidden">
               <div className="px-3 py-2 border-b border-white/[0.06] flex items-center justify-between">
                 <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Threat Detection
+                  Alerts &amp; Warnings
                 </span>
-                {activeScenario.threats.length > 0 && (
+                {activeScenario.alerts.length > 0 && (
                   <span className="text-xs font-mono text-red-400">
-                    {activeScenario.threats.length} alert
-                    {activeScenario.threats.length !== 1 ? "s" : ""}
+                    {activeScenario.alerts.length} alert
+                    {activeScenario.alerts.length !== 1 ? "s" : ""}
                   </span>
                 )}
               </div>
@@ -1426,7 +1435,7 @@ function InteractiveTrafficMonitor() {
                     exit={{ opacity: 0 }}
                     transition={{ type: "spring", stiffness: 200, damping: 25 }}
                   >
-                    <ThreatPanel threats={activeScenario.threats} />
+                    <AlertPanel alerts={activeScenario.alerts} />
                   </motion.div>
                 </AnimatePresence>
               </div>

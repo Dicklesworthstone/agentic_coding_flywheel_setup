@@ -464,7 +464,7 @@ INSTALL_STACK_NTM
     log_success "stack.ntm installed"
 }
 
-# Like gmail for coding agents; MCP HTTP server + token; installs beads tools
+# Like gmail for coding agents; Rust MCP server + am CLI; Git archive + SQLite index; local HTTP service on 127.0.0.1:8765
 acfs_generated_install_stack_mcp_agent_mail() {
     local module_id="stack.mcp_agent_mail"
     acfs_require_contract "module:${module_id}" || return 1
@@ -1014,7 +1014,7 @@ INSTALL_STACK_MCP_AGENT_MAIL
     log_success "stack.mcp_agent_mail installed"
 }
 
-# Local-first knowledge management with hybrid semantic search (ms)
+# Local-first skill management with hybrid search and MCP integration (ms)
 acfs_generated_install_stack_meta_skill() {
     local module_id="stack.meta_skill"
     acfs_require_contract "module:${module_id}" || return 1
@@ -1284,7 +1284,7 @@ INSTALL_STACK_AUTOMATED_PLAN_REVISER
     log_success "stack.automated_plan_reviser installed"
 }
 
-# Curated battle-tested prompts for AI agents - browse and install as skills (jfp)
+# Curated battle-tested prompts for AI agents - browse, search, copy, and export (jfp)
 acfs_generated_install_stack_jeffreysprompts() {
     local module_id="stack.jeffreysprompts"
     acfs_require_contract "module:${module_id}" || return 1
@@ -2468,7 +2468,7 @@ INSTALL_STACK_SLB
     log_success "stack.slb installed"
 }
 
-# Destructive Command Guard - Claude Code hook blocking dangerous git/fs commands
+# Destructive Command Guard - pre-execution hook (Claude Code, Codex, Gemini, Copilot, Cursor, and more) blocking destructive git/fs/database commands
 acfs_generated_install_stack_dcg() {
     local module_id="stack.dcg"
     acfs_require_contract "module:${module_id}" || return 1
@@ -3032,7 +3032,7 @@ INSTALL_STACK_RCH
     log_success "stack.rch installed"
 }
 
-# WezTerm Automata (wa) - terminal automation and orchestration for AI agents
+# WezTerm Automata (wa) - superseded by FrankenTerm (ft); not installed by ACFS
 acfs_generated_install_stack_wezterm_automata() {
     local module_id="stack.wezterm_automata"
     acfs_require_contract "module:${module_id}" || return 1

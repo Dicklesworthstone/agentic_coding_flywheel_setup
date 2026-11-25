@@ -45,19 +45,20 @@ export function RustProxyLesson() {
   return (
     <div className="space-y-8">
       <GoalBanner>
-        Route and inspect network traffic through a transparent proxy for debugging API issues.
+        Route only selected domains through an upstream HTTP proxy, machine-wide, without a global
+        system proxy.
       </GoalBanner>
 
       {/* Section 1: What Is Rust Proxy */}
       <Section title="What Is Rust Proxy?" icon={<Shield className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>Rust Proxy</Highlight> is a high-performance transparent proxy for inspecting
-          HTTP/HTTPS traffic between your tools and external services. It sits between clients and
-          servers, logging requests and responses without modifying them.
+          <Highlight>Rust Proxy</Highlight> is a targeted, machine-wide transparent proxy for Linux.
+          iptables + ipset redirect only the domains you list into a local daemon, which tunnels
+          them through your chosen upstream HTTP proxy.
         </Paragraph>
         <Paragraph>
-          When debugging network issues with AI APIs or other services, Rust Proxy lets you see
-          exactly what&apos;s going over the wire without changing your application configuration.
+          Everything else stays direct, and no app needs proxy settings. It routes traffic; it does
+          not inspect or decrypt it.
         </Paragraph>
 
         <div className="mt-8">
@@ -71,7 +72,7 @@ export function RustProxyLesson() {
             <FeatureCard
               icon={<Lock className="h-5 w-5" />}
               title="HTTPS Support"
-              description="TLS interception capable"
+              description="Tunnels TLS via CONNECT, no MITM"
               gradient="from-violet-500/20 to-purple-500/20"
             />
             <FeatureCard
@@ -82,8 +83,8 @@ export function RustProxyLesson() {
             />
             <FeatureCard
               icon={<Eye className="h-5 w-5" />}
-              title="Full Logging"
-              description="Headers, bodies, timing"
+              title="Proxy Stats"
+              description="Bytes, ping, health, failover"
               gradient="from-amber-500/20 to-orange-500/20"
             />
           </FeatureGrid>
@@ -94,26 +95,33 @@ export function RustProxyLesson() {
 
       {/* Section 2: Quick Start */}
       <Section title="Quick Start" icon={<Play className="h-5 w-5" />} delay={0.15}>
-        <Paragraph>Start the proxy and route traffic through it.</Paragraph>
+        <Paragraph>
+          Register an upstream proxy, list the domains that should use it, then start the routing
+          daemon.
+        </Paragraph>
 
         <CodeBlock
-          code={`# Start the proxy on default port
-rust_proxy start
+          code={`# Create ~/.config/rust_proxy/config.toml
+rust_proxy init
 
-# Start on a specific port
-rust_proxy start --port 8080
+# Register an upstream HTTP proxy
+rust_proxy proxy add mesh-us us-wa.proxymesh.com:31280 --username-env PROXY_USER --password-env PROXY_PASS
 
-# Route curl traffic through the proxy
-HTTPS_PROXY=http://localhost:8080 curl https://api.example.com
+# Pick the domains that should go through it
+rust_proxy targets add api.openai.com --provider openai
 
-# View captured traffic
-rust_proxy logs`}
+# Activate, then run the daemon (iptables + ipset need root)
+rust_proxy activate --select
+sudo rust_proxy daemon
+
+# Verify
+rust_proxy status`}
           filename="Basic Usage"
         />
 
         <TipBox variant="tip">
-          Set <code>HTTPS_PROXY</code> environment variable to route any tool&apos;s traffic through
-          the proxy.
+          No <code>HTTPS_PROXY</code> needed: the daemon redirects only traffic bound for your target
+          domains, machine-wide. Linux and IPv4 only.
         </TipBox>
       </Section>
 
@@ -123,10 +131,13 @@ rust_proxy logs`}
       <Section title="Essential Commands" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
         <CommandList
           commands={[
-            { command: "rust_proxy start", description: "Start the proxy server" },
-            { command: "rust_proxy start --port 8080", description: "Start on a specific port" },
-            { command: "rust_proxy logs", description: "View captured traffic" },
-            { command: "rust_proxy stop", description: "Stop the proxy" },
+            { command: "rust_proxy init", description: "Create the default config" },
+            { command: "rust_proxy targets list", description: "Show the domains that get proxied" },
+            { command: "rust_proxy activate --select", description: "Choose the active upstream proxy" },
+            { command: "sudo rust_proxy daemon", description: "Run the routing daemon (root)" },
+            { command: "rust_proxy status --json", description: "Daemon, routing and rule status" },
+            { command: "rust_proxy list", description: "Upstream proxies with bytes and ping stats" },
+            { command: "sudo rust_proxy deactivate", description: "Stop routing and clear iptables/ipset" },
           ]}
         />
       </Section>
@@ -134,26 +145,30 @@ rust_proxy logs`}
       <Divider />
 
       {/* Section 4: Use Cases */}
-      <Section title="Debugging Scenarios" icon={<Settings className="h-5 w-5" />} delay={0.25}>
-        <Paragraph>Common situations where Rust Proxy helps.</Paragraph>
+      <Section title="Routing Diagnostics" icon={<Settings className="h-5 w-5" />} delay={0.25}>
+        <Paragraph>
+          Check how a destination will be routed and whether the upstream proxy is healthy.
+        </Paragraph>
 
         <CodeBlock
-          code={`# Debug API authentication issues
-HTTPS_PROXY=http://localhost:8080 \
-  claude "hello" 2>/dev/null
-rust_proxy logs --last 1 --headers
+          code={`# Would this destination be proxied?
+rust_proxy test https://api.anthropic.com --verbose
 
-# Measure API latency
-rust_proxy logs --timing
+# Trace the CONNECT flow
+rust_proxy trace api.anthropic.com --tls
 
-# Filter by domain
-rust_proxy logs --domain api.anthropic.com`}
-          filename="Debug Scenarios"
+# Upstream latency
+rust_proxy ping --count 5
+
+# Health check
+rust_proxy doctor`}
+          filename="Diagnostics"
         />
 
         <TipBox variant="warning">
-          Rust Proxy can log sensitive data including API keys in headers. Use it only for debugging
-          and stop it when done.
+          The daemon edits iptables/ipset rules, so <code>daemon</code>, <code>deactivate</code> and{" "}
+          <code>cleanup-stale</code> need sudo. Run <code>sudo rust_proxy deactivate</code> to
+          restore direct routing.
         </TipBox>
 
         <div className="mt-8">
@@ -169,16 +184,21 @@ rust_proxy logs --domain api.anthropic.com`}
           <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
             <span className="text-emerald-400 font-semibold">RP + RANO</span>
             <p className="text-white/80 text-sm mt-1">
-              Low-level proxy complements RANO&apos;s AI-specific observer
+              RANO shows which process talks to which provider; RP decides which of those
+              connections leave through the upstream proxy
             </p>
           </div>
           <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/30">
-            <span className="text-blue-400 font-semibold">RP + CAUT</span>
-            <p className="text-white/80 text-sm mt-1">Traffic data feeds usage tracking</p>
+            <span className="text-blue-400 font-semibold">RP + NTM</span>
+            <p className="text-white/80 text-sm mt-1">
+              Every agent pane gets the same routing, with no per-pane proxy env vars
+            </p>
           </div>
           <div className="p-3 rounded-lg bg-violet-500/10 border border-violet-500/30">
             <span className="text-violet-400 font-semibold">RP + CAAM</span>
-            <p className="text-white/80 text-sm mt-1">Verify which API keys are being used</p>
+            <p className="text-white/80 text-sm mt-1">
+              CAAM switches accounts; RP only picks the network path and never sees API keys
+            </p>
           </div>
           <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
             <span className="text-amber-400 font-semibold">RP + Beads</span>
@@ -201,7 +221,7 @@ const SPRING_SNAPPY = { type: "spring", stiffness: 400, damping: 35 } as const;
 
 interface ProxyRule {
   id: string;
-  type: "allow" | "modify" | "block" | "rate-limit" | "cache" | "inspect";
+  type: "target" | "direct" | "upstream" | "health" | "policy" | "reload";
   pattern: string;
   action: string;
   matched: boolean;
@@ -210,16 +230,20 @@ interface ProxyRule {
 interface RequestHeader {
   key: string;
   value: string;
+  /** Added by rust_proxy itself (the client never sends it). */
   modified?: boolean;
   redacted?: boolean;
 }
 
 interface TimingBreakdown {
   dns: number;
-  tls: number;
+  /** Daemon: accept the redirected socket and pick an upstream proxy. */
   proxyProcessing: number;
+  /** CONNECT round trip to the upstream HTTP proxy. */
+  connect: number;
+  /** End-to-end TLS handshake, passed through the tunnel untouched. */
+  tls: number;
   serverWait: number;
-  transfer: number;
 }
 
 interface LogEntry {
@@ -233,414 +257,508 @@ interface ScenarioStep {
   label: string;
   icon: React.ReactNode;
   description: string;
+  /** CONNECT (tunneled), DIRECT (never redirected) or TRACE (diagnostic run). */
   method: string;
   url: string;
-  domain: string;
-  path: string;
+  /** Upstream proxy that carries the tunnel ("" when none does). */
+  upstream: string;
+  /** Status of the tunnel request; 0 when rust_proxy never handles the connection. */
   statusCode: number;
   statusText: string;
+  /** What rust_proxy sends to the upstream proxy. */
   requestHeaders: RequestHeader[];
+  /** What comes back (from the upstream proxy, or from the daemon itself). */
   responseHeaders: RequestHeader[];
   timing: TimingBreakdown;
   totalLatency: number;
-  bodyPreview: string;
+  payloadNote: string;
   rules: ProxyRule[];
   logs: LogEntry[];
   packetColor: string;
   responseColor: string;
-  flowState: "normal" | "modified" | "blocked" | "rate-limited" | "cached" | "inspected";
+  flowState: "tunneled" | "direct" | "failover" | "rejected" | "reloaded" | "traced";
 }
 
 const SCENARIOS: ScenarioStep[] = [
   {
-    id: "normal",
-    label: "Normal Request",
-    icon: <Globe className="h-3 w-3" />,
+    id: "tunneled",
+    label: "Target: Tunneled",
+    icon: <Lock className="h-3 w-3" />,
     description:
-      "A standard GET request passes through the proxy transparently. No modifications, no blocks - just logged for inspection.",
-    method: "GET",
-    url: "https://api.github.com/repos/user/project",
-    domain: "api.github.com",
-    path: "/repos/user/project",
+      "api.anthropic.com is a target, so iptables redirects it to the daemon, which tunnels it through the upstream proxy with CONNECT. TLS passes through untouched.",
+    method: "CONNECT",
+    url: "api.anthropic.com -> 160.79.104.10:443",
+    upstream: "mesh-us",
     statusCode: 200,
-    statusText: "OK",
+    statusText: "Connection established",
     requestHeaders: [
-      { key: "Host", value: "api.github.com" },
-      { key: "Accept", value: "application/vnd.github.v3+json" },
-      { key: "Authorization", value: "Bearer ghp_...redacted", redacted: true },
-      { key: "User-Agent", value: "curl/8.4.0" },
+      { key: "Request-Line", value: "CONNECT 160.79.104.10:443 HTTP/1.1" },
+      { key: "Host", value: "160.79.104.10:443" },
+      {
+        key: "Proxy-Authorization",
+        value: "Basic ...redacted",
+        modified: true,
+        redacted: true,
+      },
     ],
-    responseHeaders: [
-      { key: "Content-Type", value: "application/json; charset=utf-8" },
-      { key: "X-RateLimit-Remaining", value: "4832" },
-      { key: "X-GitHub-Request-Id", value: "D4F2:1A3B:8C2E" },
-      { key: "Cache-Control", value: "private, max-age=60" },
-    ],
-    timing: { dns: 4, tls: 22, proxyProcessing: 1, serverWait: 68, transfer: 14 },
-    totalLatency: 109,
-    bodyPreview: '{\n  "id": 123456,\n  "full_name": "user/project",\n  "stargazers_count": 42\n}',
+    responseHeaders: [{ key: "Status-Line", value: "HTTP/1.1 200 Connection established" }],
+    timing: { dns: 4, proxyProcessing: 0.3, connect: 38, tls: 52, serverWait: 1180 },
+    totalLatency: 1274.3,
+    payloadNote:
+      "Encrypted TLS records, copied byte-for-byte in both directions.\nrust_proxy never terminates TLS, so request and response bodies\n(and the client's API key) are never visible to it.",
     rules: [
-      { id: "r1", type: "allow", pattern: "*.github.com", action: "Pass through", matched: true },
+      {
+        id: "r1",
+        type: "target",
+        pattern: "api.anthropic.com",
+        action: "IP in ipset rust_proxy_targets",
+        matched: true,
+      },
       {
         id: "r2",
-        type: "block",
-        pattern: "*.tracking.io",
-        action: "Block request",
-        matched: false,
+        type: "upstream",
+        pattern: "mesh-us",
+        action: "Active proxy (healthy)",
+        matched: true,
       },
       {
         id: "r3",
-        type: "rate-limit",
-        pattern: "*.openai.com",
-        action: "10 req/min",
+        type: "direct",
+        pattern: "everything else",
+        action: "Not redirected",
         matched: false,
       },
     ],
     logs: [
-      { timestamp: "14:22:01.342", level: "info", message: "New connection from 127.0.0.1:54212" },
-      { timestamp: "14:22:01.343", level: "debug", message: "Rule match: *.github.com -> ALLOW" },
       {
-        timestamp: "14:22:01.345",
+        timestamp: "14:22:01.342",
+        level: "debug",
+        message: "Redirected connection, original destination 160.79.104.10:443",
+      },
+      {
+        timestamp: "14:22:01.342",
+        level: "debug",
+        message: "Selected proxy for connection proxy=mesh-us strategy=Single",
+      },
+      {
+        timestamp: "14:22:01.380",
         level: "info",
-        message: "GET api.github.com/repos/user/project -> 200 (109ms)",
+        message: "CONNECT 160.79.104.10:443 via mesh-us -> 200 (38ms)",
+      },
+      {
+        timestamp: "14:22:02.616",
+        level: "info",
+        message: "Tunnel closed: 4.1 KB sent, 18.7 KB received",
       },
     ],
     packetColor: "#60a5fa",
     responseColor: "#34d399",
-    flowState: "normal",
+    flowState: "tunneled",
   },
   {
-    id: "modified-header",
-    label: "Header Injection",
-    icon: <Settings className="h-3 w-3" />,
+    id: "direct",
+    label: "Non-Target: Direct",
+    icon: <Globe className="h-3 w-3" />,
     description:
-      "The proxy injects a custom tracing header to correlate requests across services. The original request is untouched.",
-    method: "POST",
-    url: "https://api.anthropic.com/v1/messages",
-    domain: "api.anthropic.com",
-    path: "/v1/messages",
-    statusCode: 200,
-    statusText: "OK",
-    requestHeaders: [
-      { key: "Host", value: "api.anthropic.com" },
-      { key: "Content-Type", value: "application/json" },
-      { key: "X-API-Key", value: "sk-ant-...redacted", redacted: true },
-      { key: "X-Proxy-Trace-Id", value: "rp-7f3a2b1c-e9d4", modified: true },
-      { key: "X-Forwarded-For", value: "192.168.1.100", modified: true },
-    ],
-    responseHeaders: [
-      { key: "Content-Type", value: "application/json" },
-      { key: "X-Request-Id", value: "req_01HXYZ..." },
-      { key: "X-Proxy-Latency", value: "2ms", modified: true },
-    ],
-    timing: { dns: 2, tls: 18, proxyProcessing: 2, serverWait: 1180, transfer: 38 },
-    totalLatency: 1240,
-    bodyPreview:
-      '{\n  "content": [{\n    "type": "text",\n    "text": "Hello! How can I help?"\n  }]\n}',
+      "api.github.com is not a target, so its IPs are not in the ipset. iptables leaves the connection alone: it goes straight out and the daemon never sees it.",
+    method: "DIRECT",
+    url: "api.github.com -> 140.82.112.6:443",
+    upstream: "",
+    statusCode: 0,
+    statusText: "Not redirected",
+    requestHeaders: [],
+    responseHeaders: [],
+    timing: { dns: 4, proxyProcessing: 0, connect: 0, tls: 22, serverWait: 68 },
+    totalLatency: 94,
+    payloadNote:
+      "Nothing to show: the connection was never redirected, so rust_proxy\nsent no CONNECT request and adds no overhead.",
     rules: [
       {
         id: "r1",
-        type: "modify",
-        pattern: "*.anthropic.com",
-        action: "Add trace header",
+        type: "target",
+        pattern: "api.github.com",
+        action: "Not in targets list",
+        matched: false,
+      },
+      {
+        id: "r2",
+        type: "direct",
+        pattern: "140.82.112.6",
+        action: "No ipset match: normal routing",
         matched: true,
       },
-      { id: "r2", type: "modify", pattern: "*", action: "Add X-Forwarded-For", matched: true },
-      { id: "r3", type: "allow", pattern: "*", action: "Pass through", matched: true },
     ],
     logs: [
-      { timestamp: "14:23:15.001", level: "info", message: "New connection from 127.0.0.1:54218" },
+      { timestamp: "14:23:15.001", level: "info", message: "$ rust_proxy test api.github.com" },
+      { timestamp: "14:23:15.006", level: "info", message: "Resolved IPs: 140.82.112.6" },
       {
-        timestamp: "14:23:15.002",
+        timestamp: "14:23:15.006",
+        level: "warn",
+        message: "WOULD NOT BE PROXIED (direct connection)",
+      },
+      {
+        timestamp: "14:23:15.006",
         level: "debug",
-        message: "Rule match: *.anthropic.com -> MODIFY (trace header)",
+        message: "Daemon log: no entry (connection never redirected)",
+      },
+    ],
+    packetColor: "#60a5fa",
+    responseColor: "#34d399",
+    flowState: "direct",
+  },
+  {
+    id: "failover",
+    label: "Failover",
+    icon: <Gauge className="h-3 w-3" />,
+    description:
+      "Health checks against mesh-us keep failing, so auto-failover sends new tunnels to the next proxy by priority. Failback returns to mesh-us after it recovers.",
+    method: "CONNECT",
+    url: "api.openai.com -> 162.159.140.245:443",
+    upstream: "backup-eu",
+    statusCode: 200,
+    statusText: "Connection established",
+    requestHeaders: [
+      { key: "Request-Line", value: "CONNECT 162.159.140.245:443 HTTP/1.1" },
+      { key: "Host", value: "162.159.140.245:443" },
+      {
+        key: "Proxy-Authorization",
+        value: "Basic ...redacted",
+        modified: true,
+        redacted: true,
+      },
+    ],
+    responseHeaders: [{ key: "Status-Line", value: "HTTP/1.1 200 Connection established" }],
+    timing: { dns: 3, proxyProcessing: 0.4, connect: 64, tls: 58, serverWait: 940 },
+    totalLatency: 1065.4,
+    payloadNote:
+      "Same encrypted TLS stream, now carried by backup-eu.\nFailover changes the route for new connections only;\nthe client needs no reconfiguration.",
+    rules: [
+      {
+        id: "r1",
+        type: "target",
+        pattern: "api.openai.com",
+        action: "IP in ipset rust_proxy_targets",
+        matched: true,
       },
       {
-        timestamp: "14:23:15.002",
-        level: "info",
-        message: "Injected X-Proxy-Trace-Id: rp-7f3a2b1c-e9d4",
+        id: "r2",
+        type: "health",
+        pattern: "mesh-us",
+        action: "Health check failed",
+        matched: true,
       },
       {
-        timestamp: "14:23:16.242",
+        id: "r3",
+        type: "upstream",
+        pattern: "backup-eu",
+        action: "Next by priority (healthy)",
+        matched: true,
+      },
+    ],
+    logs: [
+      {
+        timestamp: "14:24:02.100",
+        level: "warn",
+        message: "Proxy health check failed proxy_id=mesh-us",
+      },
+      {
+        timestamp: "14:24:02.101",
+        level: "warn",
+        message: "Failover triggered from=mesh-us to=backup-eu",
+      },
+      {
+        timestamp: "14:24:05.410",
+        level: "debug",
+        message: "Selected proxy for connection proxy=backup-eu",
+      },
+      {
+        timestamp: "14:24:05.474",
         level: "info",
-        message: "POST api.anthropic.com/v1/messages -> 200 (1240ms)",
+        message: "CONNECT 162.159.140.245:443 via backup-eu -> 200 (64ms)",
       },
     ],
     packetColor: "#f59e0b",
     responseColor: "#34d399",
-    flowState: "modified",
+    flowState: "failover",
   },
   {
-    id: "blocked",
-    label: "Blocked Request",
+    id: "rejected",
+    label: "All Proxies Down",
     icon: <Ban className="h-3 w-3" />,
     description:
-      "A request to a blocked domain is intercepted by the proxy. The client receives a 403 immediately without the request ever reaching the server.",
-    method: "POST",
-    url: "https://telemetry.tracking.io/v2/events",
-    domain: "telemetry.tracking.io",
-    path: "/v2/events",
-    statusCode: 403,
-    statusText: "Forbidden (Proxy)",
-    requestHeaders: [
-      { key: "Host", value: "telemetry.tracking.io" },
-      { key: "Content-Type", value: "application/json" },
-      { key: "User-Agent", value: "analytics-sdk/2.1" },
-    ],
+      "No upstream proxy is healthy. The default fail_closed policy refuses the connection instead of letting target traffic leak out directly.",
+    method: "CONNECT",
+    url: "api.anthropic.com -> 160.79.104.10:443",
+    upstream: "",
+    statusCode: 503,
+    statusText: "No healthy proxy",
+    requestHeaders: [],
     responseHeaders: [
-      { key: "X-Proxy-Blocked", value: "true", modified: true },
-      { key: "X-Block-Rule", value: "*.tracking.io", modified: true },
+      { key: "Status-Line", value: "HTTP/1.1 503 Service Unavailable" },
+      { key: "Content-Type", value: "text/plain" },
+      { key: "Connection", value: "close" },
     ],
-    timing: { dns: 0, tls: 0, proxyProcessing: 1, serverWait: 0, transfer: 0 },
-    totalLatency: 1,
-    bodyPreview: '{\n  "error": "Request blocked by proxy rule",\n  "rule": "*.tracking.io"\n}',
+    timing: { dns: 4, proxyProcessing: 0.4, connect: 0, tls: 0, serverWait: 0 },
+    totalLatency: 4.4,
+    payloadNote:
+      "No tunnel was opened and nothing was sent upstream. The daemon\nanswers \"No healthy proxy available\" itself and closes the socket,\nso the client sees a failed connection.",
     rules: [
-      { id: "r1", type: "block", pattern: "*.tracking.io", action: "Block request", matched: true },
+      {
+        id: "r1",
+        type: "target",
+        pattern: "api.anthropic.com",
+        action: "IP in ipset rust_proxy_targets",
+        matched: true,
+      },
       {
         id: "r2",
-        type: "block",
-        pattern: "*.ads.network",
-        action: "Block request",
-        matched: false,
+        type: "health",
+        pattern: "mesh-us, backup-eu",
+        action: "All unhealthy",
+        matched: true,
+      },
+      {
+        id: "r3",
+        type: "policy",
+        pattern: "fail_closed (default)",
+        action: "Reject; never go direct",
+        matched: true,
       },
     ],
     logs: [
-      { timestamp: "14:24:02.100", level: "info", message: "New connection from 127.0.0.1:54220" },
       {
-        timestamp: "14:24:02.100",
+        timestamp: "14:25:30.001",
         level: "warn",
-        message: "BLOCKED: telemetry.tracking.io matches *.tracking.io",
+        message: "Proxy health check failed proxy_id=mesh-us",
       },
       {
-        timestamp: "14:24:02.101",
+        timestamp: "14:25:30.002",
+        level: "warn",
+        message: "Proxy health check failed proxy_id=backup-eu",
+      },
+      {
+        timestamp: "14:25:41.310",
+        level: "error",
+        message: "Degradation policy failed: No healthy proxy available (fail_closed policy)",
+      },
+      {
+        timestamp: "14:25:41.310",
         level: "info",
-        message: "Returned 403 to client (1ms, request never sent)",
+        message: "Sent 503 to client; connection closed",
       },
     ],
     packetColor: "#ef4444",
     responseColor: "#ef4444",
-    flowState: "blocked",
+    flowState: "rejected",
   },
   {
-    id: "rate-limited",
-    label: "Rate Limited",
-    icon: <Gauge className="h-3 w-3" />,
-    description:
-      "The proxy enforces a rate limit. After 10 requests/minute to OpenAI, subsequent requests are queued and retried with exponential backoff.",
-    method: "POST",
-    url: "https://api.openai.com/v1/chat/completions",
-    domain: "api.openai.com",
-    path: "/v1/chat/completions",
-    statusCode: 429,
-    statusText: "Too Many Requests",
-    requestHeaders: [
-      { key: "Host", value: "api.openai.com" },
-      { key: "Content-Type", value: "application/json" },
-      { key: "Authorization", value: "Bearer sk-...redacted", redacted: true },
-    ],
-    responseHeaders: [
-      { key: "X-Proxy-Queued", value: "true", modified: true },
-      { key: "X-Proxy-Queue-Position", value: "3", modified: true },
-      { key: "Retry-After", value: "6" },
-    ],
-    timing: { dns: 0, tls: 0, proxyProcessing: 6200, serverWait: 0, transfer: 0 },
-    totalLatency: 6200,
-    bodyPreview:
-      '{\n  "error": {\n    "type": "rate_limit_exceeded",\n    "message": "Rate limit: 10 req/min"\n  }\n}',
-    rules: [
-      {
-        id: "r1",
-        type: "rate-limit",
-        pattern: "*.openai.com",
-        action: "10 req/min",
-        matched: true,
-      },
-      { id: "r2", type: "allow", pattern: "*", action: "Pass through", matched: false },
-    ],
-    logs: [
-      { timestamp: "14:25:30.001", level: "info", message: "New connection from 127.0.0.1:54225" },
-      {
-        timestamp: "14:25:30.002",
-        level: "warn",
-        message: "Rate limit hit: api.openai.com (11/10 per min)",
-      },
-      {
-        timestamp: "14:25:30.002",
-        level: "info",
-        message: "Request queued, position #3. Retry in 6s.",
-      },
-      { timestamp: "14:25:36.204", level: "info", message: "Queue drained. Forwarding request..." },
-      {
-        timestamp: "14:25:36.204",
-        level: "warn",
-        message: "Upstream returned 429. Client notified.",
-      },
-    ],
-    packetColor: "#f59e0b",
-    responseColor: "#f59e0b",
-    flowState: "rate-limited",
-  },
-  {
-    id: "cached",
-    label: "Cached Response",
+    id: "reloaded",
+    label: "Live Reload",
     icon: <Database className="h-3 w-3" />,
     description:
-      "The proxy serves a cached response for a previously-seen identical request. Zero network round-trip, sub-millisecond latency.",
-    method: "GET",
-    url: "https://registry.npmjs.org/express/latest",
-    domain: "registry.npmjs.org",
-    path: "/express/latest",
+      "You add a target while the daemon runs. It applies the config change live and updates the ipset: no restart, no dropped tunnels.",
+    method: "CONNECT",
+    url: "generativelanguage.googleapis.com -> 142.250.72.10:443",
+    upstream: "mesh-us",
     statusCode: 200,
-    statusText: "OK (Cached)",
+    statusText: "Connection established",
     requestHeaders: [
-      { key: "Host", value: "registry.npmjs.org" },
-      { key: "Accept", value: "application/json" },
-      { key: "If-None-Match", value: '"abc123"' },
-    ],
-    responseHeaders: [
-      { key: "Content-Type", value: "application/json" },
-      { key: "X-Proxy-Cache", value: "HIT", modified: true },
-      { key: "X-Cache-Age", value: "42s", modified: true },
-      { key: "X-Cache-TTL", value: "118s remaining", modified: true },
-    ],
-    timing: { dns: 0, tls: 0, proxyProcessing: 0.3, serverWait: 0, transfer: 0.2 },
-    totalLatency: 0.5,
-    bodyPreview:
-      '{\n  "name": "express",\n  "version": "4.18.2",\n  "description": "Fast web framework"\n}',
-    rules: [
-      { id: "r1", type: "cache", pattern: "*.npmjs.org", action: "Cache 180s", matched: true },
-      { id: "r2", type: "allow", pattern: "*", action: "Pass through", matched: false },
-    ],
-    logs: [
-      { timestamp: "14:26:10.500", level: "info", message: "New connection from 127.0.0.1:54230" },
+      { key: "Request-Line", value: "CONNECT 142.250.72.10:443 HTTP/1.1" },
+      { key: "Host", value: "142.250.72.10:443" },
       {
-        timestamp: "14:26:10.500",
-        level: "debug",
-        message: "Cache HIT for registry.npmjs.org/express/latest",
+        key: "Proxy-Authorization",
+        value: "Basic ...redacted",
+        modified: true,
+        redacted: true,
       },
-      { timestamp: "14:26:10.500", level: "info", message: "Served from cache (0.5ms, age: 42s)" },
     ],
-    packetColor: "#a78bfa",
-    responseColor: "#a78bfa",
-    flowState: "cached",
-  },
-  {
-    id: "tls-inspection",
-    label: "TLS Inspection",
-    icon: <FileSearch className="h-3 w-3" />,
-    description:
-      "The proxy performs TLS termination and re-encryption for deep inspection. Certificate details and encrypted payload are visible.",
-    method: "POST",
-    url: "https://api.anthropic.com/v1/messages",
-    domain: "api.anthropic.com",
-    path: "/v1/messages",
-    statusCode: 200,
-    statusText: "OK",
-    requestHeaders: [
-      { key: "Host", value: "api.anthropic.com" },
-      { key: "Content-Type", value: "application/json" },
-      { key: "X-API-Key", value: "sk-ant-api03-...full-key-visible", redacted: false },
-      { key: ":scheme", value: "https (terminated at proxy)" },
-    ],
-    responseHeaders: [
-      { key: "Content-Type", value: "application/json" },
-      { key: "X-TLS-Version", value: "TLSv1.3", modified: true },
-      { key: "X-TLS-Cipher", value: "TLS_AES_256_GCM_SHA384", modified: true },
-      { key: "X-Proxy-Cert", value: "proxy-ca.pem (self-signed)", modified: true },
-    ],
-    timing: { dns: 3, tls: 45, proxyProcessing: 8, serverWait: 920, transfer: 24 },
-    totalLatency: 1000,
-    bodyPreview:
-      '{\n  "model": "claude-sonnet-4-6-20250514",\n  "content": [{\n    "text": "Decrypted response visible"\n  }]\n}',
+    responseHeaders: [{ key: "Status-Line", value: "HTTP/1.1 200 Connection established" }],
+    timing: { dns: 5, proxyProcessing: 0.3, connect: 40, tls: 48, serverWait: 620 },
+    totalLatency: 713.3,
+    payloadNote:
+      "The new target applies to new connections. Tunnels opened before\nthe reload keep running untouched.",
     rules: [
       {
         id: "r1",
-        type: "inspect",
-        pattern: "*.anthropic.com",
-        action: "TLS intercept + log body",
+        type: "reload",
+        pattern: "config.toml",
+        action: "Change detected, applied live",
         matched: true,
       },
-      { id: "r2", type: "modify", pattern: "*", action: "Add trace header", matched: true },
+      {
+        id: "r2",
+        type: "target",
+        pattern: "generativelanguage.googleapis.com",
+        action: "Added to ipset",
+        matched: true,
+      },
+      {
+        id: "r3",
+        type: "upstream",
+        pattern: "mesh-us",
+        action: "Active proxy (healthy)",
+        matched: true,
+      },
     ],
     logs: [
-      { timestamp: "14:27:05.100", level: "info", message: "New connection from 127.0.0.1:54235" },
       {
-        timestamp: "14:27:05.102",
-        level: "debug",
-        message: "TLS termination: presenting proxy CA cert to client",
-      },
-      {
-        timestamp: "14:27:05.110",
-        level: "debug",
-        message: "Re-encrypting to upstream with TLSv1.3",
-      },
-      {
-        timestamp: "14:27:05.118",
+        timestamp: "14:26:10.500",
         level: "info",
-        message: "Deep inspection: request body logged (1.2KB)",
+        message: "$ rust_proxy targets add generativelanguage.googleapis.com --provider google",
+      },
+      { timestamp: "14:26:10.742", level: "info", message: "Configuration hot-reloaded" },
+      { timestamp: "14:26:10.918", level: "info", message: "Routing generation applied" },
+      {
+        timestamp: "14:26:12.031",
+        level: "info",
+        message: "CONNECT 142.250.72.10:443 via mesh-us -> 200 (40ms)",
+      },
+    ],
+    packetColor: "#a78bfa",
+    responseColor: "#34d399",
+    flowState: "reloaded",
+  },
+  {
+    id: "traced",
+    label: "Test & Trace",
+    icon: <FileSearch className="h-3 w-3" />,
+    description:
+      "test predicts whether a destination would be proxied. trace --tls runs DNS, proxy selection, CONNECT and a TLS handshake through the upstream, timing each step.",
+    method: "TRACE",
+    url: "rust_proxy trace api.anthropic.com --tls",
+    upstream: "mesh-us",
+    statusCode: 200,
+    statusText: "Connection established",
+    requestHeaders: [
+      { key: "Request-Line", value: "CONNECT api.anthropic.com:443 HTTP/1.1" },
+      { key: "Host", value: "api.anthropic.com:443" },
+      {
+        key: "Proxy-Authorization",
+        value: "Basic ...redacted",
+        modified: true,
+        redacted: true,
+      },
+    ],
+    responseHeaders: [{ key: "Status-Line", value: "HTTP/1.1 200 Connection established" }],
+    timing: { dns: 6, proxyProcessing: 0.2, connect: 41, tls: 55, serverWait: 0 },
+    totalLatency: 102.2,
+    payloadNote:
+      "trace stops after the TLS handshake and sends no API request.\nAdd --json (or --format toon) for machine-readable steps.",
+    rules: [
+      {
+        id: "r1",
+        type: "target",
+        pattern: "api.anthropic.com",
+        action: "test: WOULD BE PROXIED via 'mesh-us'",
+        matched: true,
       },
       {
-        timestamp: "14:27:06.100",
-        level: "info",
-        message: "POST api.anthropic.com/v1/messages -> 200 (1000ms)",
+        id: "r2",
+        type: "upstream",
+        pattern: "mesh-us",
+        action: "Proxy selection (strategy: Single)",
+        matched: true,
       },
+      {
+        id: "r3",
+        type: "health",
+        pattern: "TLS handshake",
+        action: "Completed through the tunnel",
+        matched: true,
+      },
+    ],
+    logs: [
+      {
+        timestamp: "14:27:05.100",
+        level: "info",
+        message: "DNS resolution: Resolved 1 IP(s): 160.79.104.10 (6ms)",
+      },
+      {
+        timestamp: "14:27:05.100",
+        level: "info",
+        message: "Proxy selection: Selected mesh-us (strategy: Single)",
+      },
+      { timestamp: "14:27:05.141", level: "info", message: "CONNECT request: 200 (41ms)" },
+      { timestamp: "14:27:05.196", level: "info", message: "TLS handshake: ok (55ms)" },
     ],
     packetColor: "#ec4899",
     responseColor: "#34d399",
-    flowState: "inspected",
+    flowState: "traced",
   },
 ];
 
 // --- SVG Flow Diagram Component ---
 
 function FlowDiagram({ scenario, animating }: { scenario: ScenarioStep; animating: boolean }) {
-  const isBlocked = scenario.flowState === "blocked";
-  const isCached = scenario.flowState === "cached";
+  const isRejected = scenario.flowState === "rejected";
+  const isDirect = scenario.flowState === "direct";
+  const isTunneled = !isRejected && !isDirect;
 
-  // SVG path coordinates
-  const clientX = 60;
-  const proxyX = 250;
-  const serverX = 440;
-  const midY = 50;
+  // SVG path coordinates: client -> rust_proxy daemon -> upstream HTTP proxy -> API
+  const clientX = 50;
+  const proxyX = 180;
+  const upstreamX = 315;
+  const serverX = 445;
+  const midY = 42;
+  const bypassY = 92;
 
   return (
     <div className="rounded-xl border border-white/[0.08] bg-black/30 p-4 overflow-hidden">
-      <DiagramScroller label="Request flow diagram" minWidth={500}>
-      <svg viewBox="0 0 500 100" className="w-full h-auto" aria-label="Request flow diagram">
-        {/* Connection lines */}
+      <DiagramScroller label="Routing flow diagram" minWidth={500}>
+      <svg viewBox="0 0 500 100" className="w-full h-auto" aria-label="Routing flow diagram">
+        {/* Connection lines (client -> daemon is the iptables REDIRECT hop) */}
         <line
           x1={clientX + 30}
           y1={midY}
-          x2={proxyX - 30}
+          x2={proxyX - 34}
           y2={midY}
           stroke="white"
-          strokeOpacity={0.1}
+          strokeOpacity={isDirect ? 0.04 : 0.1}
           strokeWidth={1.5}
           strokeDasharray="4 4"
         />
-        {!isBlocked && (
-          <line
-            x1={proxyX + 30}
-            y1={midY}
-            x2={serverX - 30}
-            y2={midY}
-            stroke="white"
-            strokeOpacity={0.1}
-            strokeWidth={1.5}
-            strokeDasharray="4 4"
-          />
-        )}
-        {isBlocked && (
-          <line
-            x1={proxyX + 30}
-            y1={midY}
-            x2={serverX - 30}
-            y2={midY}
-            stroke="red"
-            strokeOpacity={0.15}
-            strokeWidth={1.5}
-            strokeDasharray="2 6"
-          />
+        <line
+          x1={proxyX + 34}
+          y1={midY}
+          x2={upstreamX - 38}
+          y2={midY}
+          stroke={isRejected ? "red" : "white"}
+          strokeOpacity={isRejected ? 0.15 : isDirect ? 0.04 : 0.1}
+          strokeWidth={1.5}
+          strokeDasharray={isRejected ? "2 6" : "4 4"}
+        />
+        <line
+          x1={upstreamX + 38}
+          y1={midY}
+          x2={serverX - 30}
+          y2={midY}
+          stroke={isRejected ? "red" : "white"}
+          strokeOpacity={isRejected ? 0.15 : isDirect ? 0.04 : 0.1}
+          strokeWidth={1.5}
+          strokeDasharray={isRejected ? "2 6" : "4 4"}
+        />
+
+        {/* Direct path: not in the ipset, so iptables never redirects it */}
+        {isDirect && (
+          <g>
+            <polyline
+              points={`${clientX},${midY + 20} ${clientX},${bypassY} ${serverX},${bypassY} ${serverX},${midY + 20}`}
+              fill="none"
+              stroke="rgba(52,211,153,0.35)"
+              strokeWidth={1.5}
+              strokeDasharray="4 4"
+            />
+            <text
+              x={(clientX + serverX) / 2}
+              y={bypassY - 6}
+              textAnchor="middle"
+              fill="rgba(52,211,153,0.8)"
+              fontSize={12}
+              fontFamily="monospace"
+            >
+              direct (no ipset match)
+            </text>
+          </g>
         )}
 
         {/* Client node */}
@@ -666,79 +784,116 @@ function FlowDiagram({ scenario, animating }: { scenario: ScenarioStep; animatin
           Client
         </text>
 
-        {/* Proxy node */}
-        <rect
-          x={proxyX - 32}
-          y={midY - 22}
-          width={64}
-          height={44}
-          rx={8}
-          fill="rgba(167,139,250,0.1)"
-          stroke="rgba(167,139,250,0.3)"
-          strokeWidth={1}
-        />
-        <text
-          x={proxyX}
-          y={midY - 3}
-          textAnchor="middle"
-          fill="rgba(167,139,250,0.8)"
-          fontSize={12}
-          fontFamily="monospace"
-          fontWeight={600}
-        >
-          Rust
-        </text>
-        <text
-          x={proxyX}
-          y={midY + 12}
-          textAnchor="middle"
-          fill="rgba(167,139,250,0.8)"
-          fontSize={12}
-          fontFamily="monospace"
-          fontWeight={600}
-        >
-          Proxy
-        </text>
+        {/* rust_proxy daemon node */}
+        <g opacity={isDirect ? 0.35 : 1}>
+          <rect
+            x={proxyX - 32}
+            y={midY - 22}
+            width={64}
+            height={44}
+            rx={8}
+            fill="rgba(167,139,250,0.1)"
+            stroke="rgba(167,139,250,0.3)"
+            strokeWidth={1}
+          />
+          <text
+            x={proxyX}
+            y={midY - 3}
+            textAnchor="middle"
+            fill="rgba(167,139,250,0.8)"
+            fontSize={12}
+            fontFamily="monospace"
+            fontWeight={600}
+          >
+            Rust
+          </text>
+          <text
+            x={proxyX}
+            y={midY + 12}
+            textAnchor="middle"
+            fill="rgba(167,139,250,0.8)"
+            fontSize={12}
+            fontFamily="monospace"
+            fontWeight={600}
+          >
+            Proxy
+          </text>
+        </g>
 
-        {/* Server node */}
+        {/* Upstream HTTP proxy node */}
+        <g opacity={isTunneled ? 1 : 0.35}>
+          <rect
+            x={upstreamX - 36}
+            y={midY - 22}
+            width={72}
+            height={44}
+            rx={8}
+            fill={isRejected ? "rgba(239,68,68,0.05)" : "rgba(245,158,11,0.1)"}
+            stroke={isRejected ? "rgba(239,68,68,0.2)" : "rgba(245,158,11,0.3)"}
+            strokeWidth={1}
+          />
+          <text
+            x={upstreamX}
+            y={midY - 3}
+            textAnchor="middle"
+            fill={isRejected ? "rgba(239,68,68,0.6)" : "rgba(245,158,11,0.85)"}
+            fontSize={12}
+            fontFamily="monospace"
+            fontWeight={600}
+          >
+            Upstream
+          </text>
+          <text
+            x={upstreamX}
+            y={midY + 12}
+            textAnchor="middle"
+            fill={isRejected ? "rgba(239,68,68,0.6)" : "rgba(245,158,11,0.85)"}
+            fontSize={12}
+            fontFamily="monospace"
+          >
+            {scenario.upstream || (isRejected ? "all down" : "unused")}
+          </text>
+        </g>
+
+        {/* API server node */}
         <rect
           x={serverX - 28}
           y={midY - 20}
           width={56}
           height={40}
           rx={8}
-          fill={isBlocked ? "rgba(239,68,68,0.05)" : "rgba(52,211,153,0.1)"}
-          stroke={isBlocked ? "rgba(239,68,68,0.15)" : "rgba(52,211,153,0.3)"}
+          fill={isRejected ? "rgba(239,68,68,0.05)" : "rgba(52,211,153,0.1)"}
+          stroke={isRejected ? "rgba(239,68,68,0.15)" : "rgba(52,211,153,0.3)"}
           strokeWidth={1}
         />
         <text
           x={serverX}
-          y={midY + 1}
+          y={midY + 4}
           textAnchor="middle"
-          fill={isBlocked ? "rgba(239,68,68,0.4)" : "rgba(52,211,153,0.8)"}
+          fill={isRejected ? "rgba(239,68,68,0.4)" : "rgba(52,211,153,0.8)"}
           fontSize={12}
           fontFamily="monospace"
           fontWeight={600}
         >
-          Server
+          API
         </text>
 
-        {/* Blocked X mark */}
-        {isBlocked && (
+        {/* Rejected X mark: no tunnel is opened */}
+        {isRejected && (
           <g>
             <line
-              x1={proxyX + 55}
+              x1={proxyX + 57}
               y1={midY - 12}
-              x2={proxyX + 75}
+              x2={proxyX + 77}
               y2={midY + 12}
               stroke="rgba(239,68,68,0.6)"
               strokeWidth={2}
               strokeLinecap="round"
             />
             <line
-              x1={proxyX + 75}
+              x1={proxyX + 77}
               y1={midY - 12}
-              x2={proxyX + 55}
+              x2={proxyX + 57}
               y2={midY + 12}
               stroke="rgba(239,68,68,0.6)"
               strokeWidth={2}
@@ -747,54 +902,27 @@ function FlowDiagram({ scenario, animating }: { scenario: ScenarioStep; animatin
           </g>
         )}
 
-        {/* Cache badge on proxy */}
-        {isCached && (
-          <g>
-            <rect
-              x={proxyX - 24}
-              y={midY + 26}
-              width={48}
-              height={18}
-              rx={4}
-              fill="rgba(167,139,250,0.2)"
-              stroke="rgba(167,139,250,0.3)"
-              strokeWidth={0.5}
-            />
-            <text
-              x={proxyX}
-              y={midY + 39}
-              textAnchor="middle"
-              fill="rgba(167,139,250,0.9)"
-              fontSize={12}
-              fontFamily="monospace"
-              fontWeight={600}
-            >
-              CACHE
-            </text>
-          </g>
-        )}
-
-        {/* Animated request packet: client -> proxy */}
-        {animating && (
+        {/* Animated packet: client -> daemon (iptables REDIRECT) */}
+        {animating && !isDirect && (
           <motion.circle
             cx={clientX + 30}
             cy={midY}
             r={4}
             fill={scenario.packetColor}
             initial={{ cx: clientX + 30, opacity: 0 }}
-            animate={{ cx: proxyX - 30, opacity: [0, 1, 1, 0.5] }}
+            animate={{ cx: proxyX - 34, opacity: [0, 1, 1, 0.5] }}
             transition={{ duration: 0.8, ease: "easeInOut", repeat: Infinity, repeatDelay: 1.4 }}
           />
         )}
 
-        {/* Animated packet: proxy -> server (only if not blocked/cached) */}
-        {animating && !isBlocked && !isCached && (
+        {/* Animated tunnel: daemon -> upstream proxy -> API */}
+        {animating && isTunneled && (
           <motion.circle
-            cx={proxyX + 30}
+            cx={proxyX + 34}
             cy={midY}
             r={4}
             fill={scenario.packetColor}
-            initial={{ cx: proxyX + 30, opacity: 0 }}
+            initial={{ cx: proxyX + 34, opacity: 0 }}
             animate={{ cx: serverX - 30, opacity: [0, 1, 1, 0.5] }}
             transition={{
               duration: 0.8,
@@ -806,8 +934,8 @@ function FlowDiagram({ scenario, animating }: { scenario: ScenarioStep; animatin
           />
         )}
 
-        {/* Animated response: server -> proxy -> client */}
-        {animating && !isBlocked && !isCached && (
+        {/* Animated response: API -> upstream -> daemon -> client */}
+        {animating && isTunneled && (
           <motion.circle
             cx={serverX - 30}
             cy={midY + 8}
@@ -825,33 +953,44 @@ function FlowDiagram({ scenario, animating }: { scenario: ScenarioStep; animatin
           />
         )}
 
-        {/* Cached response: proxy -> client directly */}
-        {animating && isCached && (
+        {/* Direct traffic: client -> API, bypassing rust_proxy entirely */}
+        {animating && isDirect && (
           <motion.circle
-            cx={proxyX - 30}
-            cy={midY + 8}
+            cx={clientX}
+            cy={bypassY}
+            r={4}
+            fill={scenario.packetColor}
+            initial={{ cx: clientX, opacity: 0 }}
+            animate={{ cx: serverX, opacity: [0, 1, 1, 0.5] }}
+            transition={{ duration: 1, ease: "easeInOut", repeat: Infinity, repeatDelay: 1.2 }}
+          />
+        )}
+        {animating && isDirect && (
+          <motion.circle
+            cx={serverX}
+            cy={bypassY - 1}
             r={3}
             fill={scenario.responseColor}
-            initial={{ cx: proxyX - 30, opacity: 0 }}
-            animate={{ cx: clientX + 30, opacity: [0, 0.8, 0.8, 0] }}
+            initial={{ cx: serverX, opacity: 0 }}
+            animate={{ cx: clientX, opacity: [0, 0.8, 0.8, 0] }}
             transition={{
-              duration: 0.5,
+              duration: 1,
               ease: "easeInOut",
-              delay: 0.6,
+              delay: 1.1,
               repeat: Infinity,
-              repeatDelay: 1.7,
+              repeatDelay: 1.2,
             }}
           />
         )}
 
-        {/* Blocked response: proxy -> client (error) */}
-        {animating && isBlocked && (
+        {/* Rejected: the daemon answers the client itself (fail_closed) */}
+        {animating && isRejected && (
           <motion.circle
-            cx={proxyX - 30}
+            cx={proxyX - 34}
             cy={midY + 8}
             r={3}
             fill="#ef4444"
-            initial={{ cx: proxyX - 30, opacity: 0 }}
+            initial={{ cx: proxyX - 34, opacity: 0 }}
             animate={{ cx: clientX + 30, opacity: [0, 0.8, 0.8, 0] }}
             transition={{
               duration: 0.5,
@@ -863,9 +1002,9 @@ function FlowDiagram({ scenario, animating }: { scenario: ScenarioStep; animatin
           />
         )}
 
-        {/* Method + status labels */}
+        {/* Method + tunnel status labels */}
         <text
-          x={clientX + 80}
+          x={clientX + 34}
           y={midY - 28}
           fill="var(--muted-foreground)"
           fontSize={12}
@@ -873,16 +1012,18 @@ function FlowDiagram({ scenario, animating }: { scenario: ScenarioStep; animatin
         >
           {scenario.method}
         </text>
-        <text
-          x={serverX - 80}
-          y={midY - 28}
-          textAnchor="end"
-          fill={scenario.statusCode >= 400 ? "rgba(239,68,68,0.6)" : "rgba(52,211,153,0.6)"}
-          fontSize={12}
-          fontFamily="monospace"
-        >
-          {scenario.statusCode} {scenario.statusText.split(" ")[0]}
-        </text>
+        {scenario.statusCode > 0 && (
+          <text
+            x={(proxyX + upstreamX) / 2}
+            y={midY - 28}
+            textAnchor="middle"
+            fill={scenario.statusCode >= 400 ? "rgba(239,68,68,0.6)" : "rgba(52,211,153,0.6)"}
+            fontSize={12}
+            fontFamily="monospace"
+          >
+            {scenario.statusCode}
+          </text>
+        )}
       </svg>
       </DiagramScroller>
     </div>
@@ -920,6 +1061,9 @@ function HeaderTree({ headers, title }: { headers: RequestHeader[]; title: strin
             className="overflow-hidden"
           >
             <div className="px-3 pb-2 space-y-0.5">
+              {headers.length === 0 && (
+                <div className="font-mono text-xs text-muted-foreground">Nothing sent</div>
+              )}
               {headers.map((h) => (
                 <div
                   key={h.key}
@@ -935,7 +1079,7 @@ function HeaderTree({ headers, title }: { headers: RequestHeader[]; title: strin
                   </span>
                   {h.modified && (
                     <span className="shrink-0 px-1 py-0.5 rounded text-xs bg-amber-500/10 text-amber-400/80 border border-amber-500/20">
-                      INJECTED
+                      ADDED
                     </span>
                   )}
                   {h.redacted && (
@@ -958,10 +1102,10 @@ function HeaderTree({ headers, title }: { headers: RequestHeader[]; title: strin
 function LatencyWaterfall({ timing, total }: { timing: TimingBreakdown; total: number }) {
   const segments = [
     { label: "DNS", value: timing.dns, color: "bg-sky-400" },
+    { label: "Daemon", value: timing.proxyProcessing, color: "bg-amber-400" },
+    { label: "CONNECT", value: timing.connect, color: "bg-blue-400" },
     { label: "TLS", value: timing.tls, color: "bg-violet-400" },
-    { label: "Proxy", value: timing.proxyProcessing, color: "bg-amber-400" },
     { label: "Server", value: timing.serverWait, color: "bg-emerald-400" },
-    { label: "Transfer", value: timing.transfer, color: "bg-blue-400" },
   ];
 
   const maxVal = Math.max(total, 1);
@@ -981,7 +1125,7 @@ function LatencyWaterfall({ timing, total }: { timing: TimingBreakdown; total: n
           const pct = (seg.value / maxVal) * 100;
           return (
             <div key={seg.label} className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground font-mono w-12 text-right">
+              <span className="text-xs text-muted-foreground font-mono w-14 text-right">
                 {seg.label}
               </span>
               <div className="flex-1 h-3 rounded-full bg-white/[0.04] overflow-hidden">
@@ -1007,18 +1151,18 @@ function LatencyWaterfall({ timing, total }: { timing: TimingBreakdown; total: n
 
 function RuleEnginePanel({ rules }: { rules: ProxyRule[] }) {
   const typeColors: Record<string, string> = {
-    allow: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
-    modify: "text-amber-400 bg-amber-500/10 border-amber-500/20",
-    block: "text-red-400 bg-red-500/10 border-red-500/20",
-    "rate-limit": "text-orange-400 bg-orange-500/10 border-orange-500/20",
-    cache: "text-violet-400 bg-violet-500/10 border-violet-500/20",
-    inspect: "text-pink-400 bg-pink-500/10 border-pink-500/20",
+    target: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
+    direct: "text-sky-400 bg-sky-500/10 border-sky-500/20",
+    upstream: "text-amber-400 bg-amber-500/10 border-amber-500/20",
+    health: "text-orange-400 bg-orange-500/10 border-orange-500/20",
+    policy: "text-red-400 bg-red-500/10 border-red-500/20",
+    reload: "text-violet-400 bg-violet-500/10 border-violet-500/20",
   };
 
   return (
     <div className="space-y-2">
       <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-        Rule Engine
+        Routing Decision
       </span>
       <div className="space-y-1">
         {rules.map((rule) => (
@@ -1075,7 +1219,7 @@ function LogStream({ logs, active }: { logs: LogEntry[]; active: boolean }) {
     <div className="space-y-2">
       <div className="flex items-center gap-2">
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-          Proxy Log
+          Log
         </span>
         <motion.div
           animate={active ? { opacity: [1, 0.3, 1] } : { opacity: 1 }}
@@ -1110,33 +1254,33 @@ function LogStream({ logs, active }: { logs: LogEntry[]; active: boolean }) {
 
 function FlowStateBadge({ state }: { state: ScenarioStep["flowState"] }) {
   const config: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-    normal: {
-      label: "PassThrough",
+    tunneled: {
+      label: "Tunneled via Upstream",
       color: "border-emerald-500/30 bg-emerald-500/10 text-emerald-400",
       icon: <CheckCircle className="h-3 w-3" />,
     },
-    modified: {
-      label: "Headers Modified",
-      color: "border-amber-500/30 bg-amber-500/10 text-amber-400",
-      icon: <Settings className="h-3 w-3" />,
+    direct: {
+      label: "Direct (Not Redirected)",
+      color: "border-sky-500/30 bg-sky-500/10 text-sky-400",
+      icon: <Globe className="h-3 w-3" />,
     },
-    blocked: {
-      label: "Request Blocked",
-      color: "border-red-500/30 bg-red-500/10 text-red-400",
-      icon: <Ban className="h-3 w-3" />,
-    },
-    "rate-limited": {
-      label: "Rate Limited",
+    failover: {
+      label: "Failed Over",
       color: "border-orange-500/30 bg-orange-500/10 text-orange-400",
       icon: <Gauge className="h-3 w-3" />,
     },
-    cached: {
-      label: "Served from Cache",
+    rejected: {
+      label: "Fail Closed",
+      color: "border-red-500/30 bg-red-500/10 text-red-400",
+      icon: <Ban className="h-3 w-3" />,
+    },
+    reloaded: {
+      label: "Hot Reloaded",
       color: "border-violet-500/30 bg-violet-500/10 text-violet-400",
       icon: <Database className="h-3 w-3" />,
     },
-    inspected: {
-      label: "TLS Inspected",
+    traced: {
+      label: "Route Traced",
       color: "border-pink-500/30 bg-pink-500/10 text-pink-400",
       icon: <FileSearch className="h-3 w-3" />,
     },
@@ -1168,9 +1312,9 @@ function DetailTabBar({
   onChange: (t: DetailTab) => void;
 }) {
   const tabs: { id: DetailTab; label: string; icon: React.ReactNode }[] = [
-    { id: "headers", label: "Headers", icon: <Eye className="h-3 w-3" /> },
+    { id: "headers", label: "Tunnel", icon: <Eye className="h-3 w-3" /> },
     { id: "waterfall", label: "Timing", icon: <Clock className="h-3 w-3" /> },
-    { id: "rules", label: "Rules", icon: <Shield className="h-3 w-3" /> },
+    { id: "rules", label: "Routing", icon: <Shield className="h-3 w-3" /> },
     { id: "logs", label: "Logs", icon: <Terminal className="h-3 w-3" /> },
   ];
 
@@ -1256,7 +1400,7 @@ function InteractiveTrafficInspectorImpl() {
               <Activity className="h-4 w-4 text-muted-foreground" />
             </motion.div>
             <span className="text-xs font-semibold text-white/60 uppercase tracking-wider">
-              Traffic Inspector
+              Routing Inspector
             </span>
             <motion.div
               animate={inView ? { opacity: [1, 0.3, 1] } : { opacity: 1 }}
@@ -1371,20 +1515,22 @@ function InteractiveTrafficInspectorImpl() {
           >
             <span
               className={
-                scenario.method === "POST"
-                  ? "text-amber-400/80 font-semibold"
-                  : "text-emerald-400/80 font-semibold"
+                scenario.method === "DIRECT"
+                  ? "text-emerald-400/80 font-semibold"
+                  : "text-amber-400/80 font-semibold"
               }
             >
               {scenario.method}
             </span>
             <span className="text-muted-foreground truncate">{scenario.url}</span>
             <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
-            <span
-              className={`font-semibold shrink-0 ${scenario.statusCode >= 400 ? "text-red-400" : "text-emerald-400/70"}`}
-            >
-              {scenario.statusCode}
-            </span>
+            {scenario.statusCode > 0 && (
+              <span
+                className={`font-semibold shrink-0 ${scenario.statusCode >= 400 ? "text-red-400" : "text-emerald-400/70"}`}
+              >
+                {scenario.statusCode}
+              </span>
+            )}
             <span
               className={`shrink-0 ${scenario.statusCode >= 400 ? "text-red-400/80" : "text-muted-foreground"}`}
             >
@@ -1428,17 +1574,17 @@ function InteractiveTrafficInspectorImpl() {
           >
             {activeTab === "headers" && (
               <div className="space-y-3">
-                <HeaderTree headers={scenario.requestHeaders} title="Request Headers" />
-                <HeaderTree headers={scenario.responseHeaders} title="Response Headers" />
-                {/* Body preview */}
+                <HeaderTree headers={scenario.requestHeaders} title="Sent to Upstream Proxy" />
+                <HeaderTree headers={scenario.responseHeaders} title="Reply" />
+                {/* Payload: rust_proxy never decrypts it */}
                 <div className="rounded-lg border border-white/[0.06] bg-black/30 overflow-hidden">
                   <div className="px-3 py-2 border-b border-white/[0.04]">
                     <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                      Response Body
+                      Payload
                     </span>
                   </div>
                   <pre className="px-3 py-2 font-mono text-xs text-muted-foreground leading-relaxed overflow-x-auto whitespace-pre">
-                    {scenario.bodyPreview}
+                    {scenario.payloadNote}
                   </pre>
                 </div>
               </div>
@@ -1461,21 +1607,19 @@ function InteractiveTrafficInspectorImpl() {
                   </div>
                   <div className="p-3 rounded-lg border border-white/[0.06] bg-white/[0.02] text-center">
                     <span className="text-xs uppercase tracking-wider text-muted-foreground block">
-                      Proxy Overhead
+                      Tunnel Setup
                     </span>
                     <span className="text-sm font-mono text-amber-400/70 font-semibold">
-                      {scenario.timing.proxyProcessing < 1
-                        ? `${scenario.timing.proxyProcessing}ms`
-                        : `${Math.round(scenario.timing.proxyProcessing)}ms`}
+                      {`${Math.round(scenario.timing.proxyProcessing + scenario.timing.connect)}ms`}
                     </span>
                   </div>
                   <div className="p-3 rounded-lg border border-white/[0.06] bg-white/[0.02] text-center">
                     <span className="text-xs uppercase tracking-wider text-muted-foreground block">
-                      Overhead %
+                      Setup %
                     </span>
                     <span className="text-sm font-mono text-white/60 font-semibold">
                       {scenario.totalLatency > 0
-                        ? `${((scenario.timing.proxyProcessing / scenario.totalLatency) * 100).toFixed(1)}%`
+                        ? `${(((scenario.timing.proxyProcessing + scenario.timing.connect) / scenario.totalLatency) * 100).toFixed(1)}%`
                         : "0%"}
                     </span>
                   </div>
@@ -1493,8 +1637,9 @@ function InteractiveTrafficInspectorImpl() {
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/[0.06]">
           <Eye className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
           <span className="text-xs text-muted-foreground">
-            Step through 6 proxy scenarios. Each shows the full request lifecycle: flow
-            visualization, headers, latency waterfall, rule matching, and live logs.
+            Step through 6 routing scenarios. Each shows the path a connection takes, the CONNECT
+            exchange with the upstream proxy, a latency breakdown, the routing decision, and log
+            lines. Payloads never appear: rust_proxy does not decrypt TLS.
           </span>
         </div>
       </div>

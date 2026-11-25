@@ -124,7 +124,7 @@ ensure_project(human_key="/data/projects/my-app")
 register_agent(
   project_key="/data/projects/my-app",
   program="codex-cli",
-  model="gpt-5",
+  model="gpt-6.2-sol",
   task_description="bd-1234 checkout validation"
 )`}
           filename="Preflight"

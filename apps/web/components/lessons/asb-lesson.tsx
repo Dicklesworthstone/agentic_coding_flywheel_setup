@@ -52,11 +52,12 @@ export function AsbLesson() {
         <Paragraph>
           <Highlight>ASB (Agent Settings Backup)</Highlight> is a smart backup tool for AI coding
           agent configuration folders. It backs up settings for Claude Code, Cursor, Codex CLI,
-          Antigravity CLI, and other agents to a single versioned archive.
+          Antigravity CLI (under ~/.gemini), and other agents, each into its own git repository
+          under ~/.agent_settings_backups.
         </Paragraph>
         <Paragraph>
-          When you provision a new machine or recover from a misconfiguration, ASB restores all your
-          agent settings, skills, hooks, and preferences in one command.
+          When you provision a new machine or recover from a misconfiguration, ASB restores each
+          agent&apos;s settings, skills, hooks, and preferences to any earlier commit or tag.
         </Paragraph>
 
         <div className="mt-8">
@@ -64,13 +65,13 @@ export function AsbLesson() {
             <FeatureCard
               icon={<Save className="h-5 w-5" />}
               title="Multi-Agent Backup"
-              description="Claude, Cursor, Codex, Antigravity configs in one archive"
+              description="One git repo per agent: Claude, Cursor, Codex, Gemini, and more"
               gradient="from-emerald-500/20 to-green-500/20"
             />
             <FeatureCard
               icon={<FolderSync className="h-5 w-5" />}
               title="One-Command Restore"
-              description="Restore all settings to a new machine instantly"
+              description="Restore an agent to its latest backup, a commit, or a tag"
               gradient="from-blue-500/20 to-indigo-500/20"
             />
             <FeatureCard
@@ -82,7 +83,7 @@ export function AsbLesson() {
             <FeatureCard
               icon={<Shield className="h-5 w-5" />}
               title="Selective Restore"
-              description="Restore specific agents or specific config files"
+              description="Restore one agent without touching the others"
               gradient="from-purple-500/20 to-violet-500/20"
             />
           </FeatureGrid>
@@ -99,9 +100,12 @@ export function AsbLesson() {
         <CommandList
           commands={[
             { command: "asb backup", description: "Create a backup of all agent settings" },
-            { command: "asb restore", description: "Restore settings from latest backup" },
-            { command: "asb list", description: "List available backup snapshots" },
-            { command: "asb diff", description: "Show changes since last backup" },
+            {
+              command: "asb restore claude",
+              description: "Restore one agent from its latest backup (preview with --dry-run)",
+            },
+            { command: "asb list", description: "List agents and their backup status" },
+            { command: "asb diff claude", description: "Show changes since last backup" },
           ]}
         />
 
@@ -119,11 +123,11 @@ export function AsbLesson() {
           code={`# Back up all agent configs
 asb backup
 
-# Restore to a fresh machine
-asb restore
+# Restore an agent (latest backup, or a commit/tag from asb history)
+asb restore claude
 
 # See what changed since last backup
-asb diff`}
+asb diff claude`}
         />
       </Section>
     </div>
@@ -149,7 +153,7 @@ const AGENTS: AgentConfig[] = [
     shortName: "claude",
     color: "text-orange-400",
     bgColor: "bg-orange-500",
-    files: ["CLAUDE.md", "hooks.json", "settings.json"],
+    files: ["CLAUDE.md", "settings.json", "skills/"],
     sizeMB: 2.4,
   },
   {
@@ -165,15 +169,15 @@ const AGENTS: AgentConfig[] = [
     shortName: "codex",
     color: "text-emerald-400",
     bgColor: "bg-emerald-500",
-    files: ["config.yaml", "instructions.md"],
+    files: ["config.toml", "AGENTS.md"],
     sizeMB: 0.9,
   },
   {
-    name: "Antigravity CLI",
-    shortName: "agy",
+    name: "Antigravity / Gemini (~/.gemini)",
+    shortName: "gemini",
     color: "text-violet-400",
     bgColor: "bg-violet-500",
-    files: ["settings.json", "hooks.json", "AGENTS.md"],
+    files: ["settings.json", "GEMINI.md"],
     sizeMB: 1.1,
   },
   {
@@ -212,45 +216,45 @@ const SCENARIOS: Scenario[] = [
     label: "Scheduled Backup",
     icon: <Clock className="h-4 w-4" />,
     description:
-      "Automated daily backup captures all agent configs into a timestamped snapshot archive.",
-    command: "asb backup --scheduled",
+      "Automated daily backup commits every agent's config into its own git repository.",
+    command: "asb schedule --cron --interval daily",
     terminalLines: [
-      "$ asb backup --scheduled",
-      "Scheduled backup starting...",
-      "Scanning 6 agent configurations...",
-      "  claude: 3 files (2.4 MB)",
-      "  cursor: 3 files (1.8 MB)",
-      "  codex: 2 files (0.9 MB)",
-      "  gemini: 2 files (1.1 MB)",
-      "  aider: 2 files (0.6 MB)",
-      "  cline: 2 files (1.3 MB)",
-      "Compressing archive... 8.1 MB -> 3.2 MB",
-      "Snapshot saved: backup-2026-03-12T08:00.tar.gz",
-      "Checksum: sha256:a4f8c2...verified",
+      "$ asb schedule --cron --interval daily",
+      "✓ Installed cron schedule (daily)",
+      "",
+      "# 08:00: cron runs asb backup",
+      "Backing up 6 agents...",
+      "  claude: committed a1b2c3d (Backup 2026-03-12 08:00)",
+      "  cursor: committed 4e5f6a7 (Backup 2026-03-12 08:00)",
+      "  codex: committed 8b9c0d1 (Backup 2026-03-12 08:00)",
+      "  gemini: committed 2e3f4a5 (Backup 2026-03-12 08:00)",
+      "  aider: no changes detected",
+      "  cline: committed 6b7c8d9 (Backup 2026-03-12 08:00)",
+      "Backup location: ~/.agent_settings_backups",
       "Scheduled backup complete!",
     ],
     highlights:
-      "All configs captured on schedule with automatic compression and checksum verification.",
+      "All configs captured on schedule as git commits, so every earlier state stays restorable.",
   },
   {
     id: "pre-deploy",
     label: "Pre-Deploy Snapshot",
     icon: <Shield className="h-4 w-4" />,
     description: "Create a safety snapshot before deploying major agent configuration changes.",
-    command: "asb backup --tag pre-deploy-v3",
+    command: "asb tag claude pre-deploy-v3",
     terminalLines: [
-      "$ asb backup --tag pre-deploy-v3",
-      "Creating tagged snapshot...",
-      "Tag: pre-deploy-v3",
-      "Scanning configurations...",
-      "  All 6 agents detected",
-      "  14 config files total",
-      "Generating integrity checksums...",
-      "  claude: sha256:7b2f91...ok",
-      "  cursor: sha256:e3a4d8...ok",
-      "  codex:  sha256:1c9fb0...ok",
-      "Snapshot tagged and stored",
-      "Retention: 30 days (policy: default)",
+      "$ asb backup claude",
+      "✓ Created backup commit for claude",
+      "✓ Backed up claude",
+      "",
+      "$ asb tag claude pre-deploy-v3",
+      "✓ Tagged claude backup as 'pre-deploy-v3' (7b2f91a)",
+      "",
+      "$ asb history claude",
+      "  7b2f91a  Backup claude: 2026-03-12 (3 files changed)  [pre-deploy-v3]",
+      "  a1b2c3d  Backup claude: 2026-03-12 (1 files changed)",
+      "  e3a4d82  Backup claude: 2026-03-11 (2 files changed)",
+      "",
       "Safe to proceed with deployment!",
     ],
     highlights:
@@ -261,21 +265,21 @@ const SCENARIOS: Scenario[] = [
     label: "Disaster Recovery",
     icon: <AlertTriangle className="h-4 w-4" />,
     description: "Recover all agent configs after catastrophic data loss or system reinstall.",
-    command: "asb restore --latest",
+    command: "asb restore claude",
     terminalLines: [
-      "$ asb restore --latest",
-      "Finding latest snapshot...",
-      "Found: backup-2026-03-12T08:00.tar.gz",
-      "Verifying archive integrity...",
-      "  Checksum: sha256:a4f8c2...match!",
-      "Restoring 6 agent configurations...",
-      "  ~/.claude/    -> 3 files restored",
-      "  ~/.cursor/    -> 3 files restored",
-      "  ~/.codex/     -> 2 files restored",
-      "  ~/.gemini/    -> 2 files restored",
-      "  ~/.aider/     -> 2 files restored",
-      "  ~/.cline/     -> 2 files restored",
-      "All 14 files restored successfully!",
+      "$ asb import claude-backup-2026-03-12.tar.gz",
+      "✓ Imported backup",
+      "",
+      "$ asb restore claude",
+      "Restoring claude from latest commit (a1b2c3d)...",
+      "✓ Restored claude from backup",
+      "",
+      "$ asb restore cursor",
+      "✓ Restored cursor from backup",
+      "",
+      "$ asb restore codex",
+      "✓ Restored codex from backup",
+      "Repeat for each agent you need back.",
     ],
     highlights: "Full disaster recovery restores every agent to its last known good state.",
   },
@@ -283,22 +287,21 @@ const SCENARIOS: Scenario[] = [
     id: "selective",
     label: "Selective Restore",
     icon: <FileCheck className="h-4 w-4" />,
-    description: "Restore only specific agents or files without touching other configurations.",
-    command: "asb restore --agent claude --agent cursor",
+    description: "Roll one agent back to a tagged commit without touching the other agents.",
+    command: "asb restore claude pre-deploy-v3",
     terminalLines: [
-      "$ asb restore --agent claude --agent cursor",
-      "Selective restore mode",
-      "Target agents: claude, cursor",
-      "Loading snapshot: backup-2026-03-12T08:00.tar.gz",
-      "Extracting selected configs...",
+      "$ asb --dry-run restore claude pre-deploy-v3",
+      "Would restore claude to tag pre-deploy-v3 (7b2f91a)",
+      "",
+      "$ asb restore claude pre-deploy-v3",
+      "Restoring claude from pre-deploy-v3...",
       "  ~/.claude/CLAUDE.md      -> restored",
-      "  ~/.claude/hooks.json     -> restored",
+      "  ~/.claude/skills/        -> restored",
       "  ~/.claude/settings.json  -> restored",
-      "  ~/.cursor/settings.json  -> restored",
-      "  ~/.cursor/rules/         -> restored",
-      "  ~/.cursor/mcp.json       -> restored",
-      "Skipped: codex, gemini, aider, cline",
-      "6 files restored (2 agents)",
+      "✓ Restored claude from backup",
+      "",
+      "Untouched: cursor, codex, gemini, aider, cline",
+      "1 agent restored to its pre-deploy state",
     ],
     highlights: "Restore just what you need. Other agent configs remain untouched.",
   },
@@ -307,21 +310,21 @@ const SCENARIOS: Scenario[] = [
     label: "Cross-VPS Migration",
     icon: <Copy className="h-4 w-4" />,
     description: "Export a portable backup and import it on a completely new VPS.",
-    command: "asb export --portable | ssh new-vps asb import",
+    command: 'asb export claude - | ssh new-vps "asb import -"',
     terminalLines: [
-      "$ asb export --portable",
-      "Creating portable archive...",
-      "Including all 6 agent configs",
-      "Embedding metadata and checksums...",
-      "Archive: asb-portable-2026-03-12.tar.gz (3.2 MB)",
+      "$ asb export claude",
+      "✓ Exported claude",
+      "Archive: claude-backup-2026-03-12.tar.gz (3.2 MB)",
       "",
-      "$ scp asb-portable-*.tar.gz user@new-vps:~/",
+      "$ scp claude-backup-*.tar.gz user@new-vps:~/",
       "Transferred: 3.2 MB -> new-vps",
       "",
-      "$ ssh new-vps asb import asb-portable-*.tar.gz",
-      "Importing portable archive...",
-      "Verified integrity: all checksums match",
-      "All 6 agents configured on new VPS!",
+      "$ ssh new-vps asb import claude-backup-*.tar.gz",
+      "✓ Imported backup",
+      "",
+      "# Or stream it in one step:",
+      '$ asb export claude - | ssh new-vps "asb import -"',
+      "Then run asb restore claude on the new VPS",
     ],
     highlights: "Portable exports bundle everything needed to replicate your setup on any machine.",
   },
@@ -329,13 +332,14 @@ const SCENARIOS: Scenario[] = [
     id: "verify",
     label: "Backup Verification",
     icon: <Hash className="h-4 w-4" />,
-    description: "Verify backup integrity and compare checksums against live configurations.",
-    command: "asb verify --snapshot latest",
+    description:
+      "Verify each backup repo's integrity, then check which live configs drifted since the last backup.",
+    command: "asb verify",
     terminalLines: [
-      "$ asb verify --snapshot latest",
-      "Loading snapshot metadata...",
-      "Computing live checksums...",
-      "",
+      "$ asb verify",
+      "Running git fsck on 6 backup repos...",
+      "✓ All backups verified: 6 OK",
+      "Live config vs last backup (asb diff, per agent):",
       "Agent       Backup      Live        Status",
       "----------- ----------- ----------- ------",
       "claude      sha256:7b2f sha256:7b2f  MATCH",
@@ -346,9 +350,10 @@ const SCENARIOS: Scenario[] = [
       "cline       sha256:b6f2 sha256:b6f2  MATCH",
       "",
       "5/6 agents match. 1 has drifted.",
-      "Run: asb backup --agent aider to update",
+      "Run: asb diff aider, then asb backup aider",
     ],
-    highlights: "Verification detects config drift so you know exactly when to re-backup.",
+    highlights:
+      "asb verify checks every backup repo; asb diff shows config drift so you know when to re-backup.",
   },
 ];
 
@@ -488,10 +493,10 @@ function VpsStateDiagram({
         {isMigration ? "Portable Archive" : "Snapshot Store"}
       </text>
       <text x={378} y={66} textAnchor="middle" fill="var(--muted-foreground)" className="text-xs font-mono">
-        .tar.gz compressed
+        {isMigration ? ".tar.gz export" : "per-agent git repo"}
       </text>
       <text x={378} y={82} textAnchor="middle" fill="var(--muted-foreground)" className="text-xs font-mono">
-        sha256 verified
+        commits + tags
       </text>
 
       {/* Progress bar inside snapshot box */}
@@ -587,7 +592,7 @@ function StorageTimeline({ visible }: { visible: boolean }) {
     <div className="space-y-2">
       <div className="flex items-center justify-between text-xs text-muted-foreground font-mono px-1">
         <span>Backup History</span>
-        <span>Retention: 30 days</span>
+        <span>Full git history</span>
       </div>
       <div className="space-y-1.5">
         {TIMELINE_DATA.map((entry, i) => {
@@ -730,16 +735,17 @@ function ChecksumVerification({
 // =============================================================================
 
 function RetentionChart({ visible }: { visible: boolean }) {
+  // Commits per agent repo (asb keeps full git history; nothing is pruned automatically).
   const bars = [
-    { label: "Daily", count: 7, max: 7, color: "bg-blue-500/30" },
-    { label: "Weekly", count: 4, max: 4, color: "bg-violet-500/30" },
-    { label: "Monthly", count: 3, max: 6, color: "bg-emerald-500/30" },
-    { label: "Tagged", count: 2, max: 10, color: "bg-amber-500/30" },
+    { label: "claude", count: 42, max: 42, color: "bg-blue-500/30" },
+    { label: "cursor", count: 31, max: 42, color: "bg-violet-500/30" },
+    { label: "codex", count: 27, max: 42, color: "bg-emerald-500/30" },
+    { label: "Tagged", count: 2, max: 42, color: "bg-amber-500/30" },
   ];
 
   return (
     <div className="space-y-2">
-      <div className="text-xs text-muted-foreground font-mono px-1">Retention Policy</div>
+      <div className="text-xs text-muted-foreground font-mono px-1">Commits per Agent Repo</div>
       <div className="space-y-2">
         {bars.map((bar, i) => (
           <motion.div
@@ -760,9 +766,7 @@ function RetentionChart({ visible }: { visible: boolean }) {
                 transition={{ type: "spring", stiffness: 200, damping: 25, delay: i * 0.1 + 0.2 }}
               />
               <div className="absolute inset-0 flex items-center justify-end px-1.5">
-                <span className="text-xs font-mono text-muted-foreground">
-                  {bar.count}/{bar.max}
-                </span>
+                <span className="text-xs font-mono text-muted-foreground">{bar.count}</span>
               </div>
             </div>
           </motion.div>
@@ -1129,9 +1133,10 @@ function InteractiveBackupRestoreImpl() {
                   {AGENTS.map((agent, i) => {
                     const isActive = phase === "running" && progress > (i + 0.5) / AGENTS.length;
                     const isDone = phase === "done";
-                    const isSelective = scenario.id === "selective";
-                    const isIncluded =
-                      !isSelective || agent.shortName === "claude" || agent.shortName === "cursor";
+                    // Selective restore and the migration export both act on one agent (claude).
+                    const isSingleAgent =
+                      scenario.id === "selective" || scenario.id === "migration";
+                    const isIncluded = !isSingleAgent || agent.shortName === "claude";
                     const statusLabel = isDone
                       ? isIncluded
                         ? "Restored"

@@ -170,23 +170,26 @@ export function RuLesson() {
       {/* Section 4: AI Code Review */}
       <Section title="AI Code Review" icon={<CheckCircle className="h-5 w-5" />} delay={0.23}>
         <Paragraph>
-          RU can orchestrate AI-assisted code reviews across your repos using{" "}
-          <Highlight>ru review</Highlight>. The review system integrates with ntm&apos;s robot mode
-          to spawn Claude agents for thorough analysis.
+          RU can orchestrate AI-assisted reviews of open GitHub issues and pull requests across
+          your repos using <Highlight>ru review</Highlight>. The review system integrates with
+          ntm&apos;s robot mode to spawn Claude agents for thorough analysis.
         </Paragraph>
 
         <CommandList
           commands={[
-            { command: "ru review", description: "Review uncommitted changes in current repo" },
-            { command: "ru review --plan", description: "Create detailed review plan first" },
-            { command: "ru review --all", description: "Review all dirty repos" },
-            { command: "ru review --scope=security", description: "Focus on security issues" },
+            {
+              command: "ru review",
+              description: "Prioritize open GitHub issues/PRs across your repos (plan mode)",
+            },
+            { command: "ru review --dry-run", description: "Discovery only, no agent sessions" },
+            { command: "ru review --priority=high", description: "Only high and critical items" },
+            { command: "ru review --apply --push", description: "Execute approved plans and push" },
           ]}
         />
 
         <TipBox variant="tip">
           Combine with <code>ubs</code> for comprehensive coverage: run <code>ubs .</code> for
-          static analysis, then <code>ru review</code> for semantic understanding.
+          static analysis, then <code>ru review</code> to work through open issues and PRs.
         </TipBox>
       </Section>
 
@@ -705,7 +708,7 @@ function InteractiveRepoSync() {
     const cloneOrder = ["ntm", "beads_rust", "cass", "slb", "dcg"];
     const delay = 200;
 
-    addTerminalLine("$ ru sync --clone");
+    addTerminalLine("$ ru sync --clone-only");
     addTerminalLine("Scanning repos.d/ manifest...");
 
     addTimer(() => addTerminalLine(`Found ${cloneOrder.length} missing repos to clone`), 600);

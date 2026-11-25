@@ -42,29 +42,39 @@ export function WaLesson() {
   return (
     <div className="space-y-8">
       <GoalBanner>
-        Coordinate multiple AI coding agents running in WezTerm with real-time observation and
-        automation.
+        Coordinate multiple AI coding agents with FrankenTerm (ft), the successor to WezTerm
+        Automata (wa), using real-time observation and automation.
       </GoalBanner>
 
-      {/* Section 1: What Is WA */}
-      <Section title="What Is WA?" icon={<Monitor className="h-5 w-5" />} delay={0.1}>
+      {/* Section 1: What Is FrankenTerm */}
+      <Section title="What Is FrankenTerm?" icon={<Monitor className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>WezTerm Automata (WA)</Highlight> is a terminal hypervisor that captures pane
-          output in real-time, detects agent state transitions through pattern matching, and enables
-          event-driven automation.
+          <Highlight>FrankenTerm (ft)</Highlight>, the successor to WezTerm Automata (wa), is a
+          swarm-native terminal platform that captures pane output in real time, detects agent
+          state transitions through pattern matching, and enables event-driven automation.
         </Paragraph>
         <Paragraph>
           When running multiple AI agents, you need to know when they hit rate limits, complete
-          tasks, or need approval. WA observes all panes with sub-50ms latency and can trigger
-          automated responses.
+          tasks, or need approval. ft records those events as they happen, keeps a searchable
+          history of every pane, and lets one agent drive another through a policy gate.
         </Paragraph>
+        <Paragraph>
+          The old <code>wezterm_automata</code> repository now redirects to FrankenTerm, and there
+          is no <code>wa</code> binary anymore. ACFS does not install ft; install it separately
+          with FrankenTerm&apos;s own signed installer:
+        </Paragraph>
+
+        <CodeBlock
+          code={`curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/frankenterm/main/install.sh | bash`}
+          filename="Install FrankenTerm (not part of ACFS)"
+        />
 
         <div className="mt-8">
           <FeatureGrid>
             <FeatureCard
               icon={<Eye className="h-5 w-5" />}
               title="Real-time Observation"
-              description="Sub-50ms pane monitoring"
+              description="Low-latency pane delta capture"
               gradient="from-cyan-500/20 to-teal-500/20"
             />
             <FeatureCard
@@ -76,13 +86,13 @@ export function WaLesson() {
             <FeatureCard
               icon={<Search className="h-5 w-5" />}
               title="Full-Text Search"
-              description="FTS5 with BM25 ranking"
+              description="SQLite FTS5: lexical, semantic, hybrid"
               gradient="from-emerald-500/20 to-teal-500/20"
             />
             <FeatureCard
               icon={<Shield className="h-5 w-5" />}
-              title="Safety Engine"
-              description="Capability gates & audit trails"
+              title="Policy Gate"
+              description="Approvals & audit trail on every send"
               gradient="from-amber-500/20 to-orange-500/20"
             />
           </FeatureGrid>
@@ -94,8 +104,9 @@ export function WaLesson() {
       {/* Section 2: How It Works */}
       <Section title="How It Works" icon={<Play className="h-5 w-5" />} delay={0.15}>
         <Paragraph>
-          WA runs as a daemon that observes all WezTerm panes, detects patterns, and exposes a Robot
-          Mode API for agent integration.
+          ft runs a watcher (<code>ft watch</code>) that observes every pane on its own terminal
+          engine (a vendored, in-tree fork of WezTerm&apos;s mux), detects patterns, and exposes a
+          Robot Mode API for agent integration.
         </Paragraph>
 
         <div className="mt-8">
@@ -103,21 +114,22 @@ export function WaLesson() {
         </div>
 
         <CodeBlock
-          code={`# WA observes terminal panes
+          code={`# ft watch observes terminal panes
 Agent types: "Thinking..."
          ↓
 # Pattern detection engine
          ↓
 Agent completes: "Done!"
          ↓
-# Event triggers automation
+# Detection event is recorded
          ↓
-WA notifies other agents via mail`}
+A workflow or your orchestrator reacts (policy-gated)`}
           filename="Observation Flow"
         />
 
         <TipBox variant="tip">
-          WA uses delta extraction instead of full buffer snapshots for minimal overhead.
+          ft captures bounded pane-output deltas (recording explicit gaps when it can&apos;t keep
+          continuity) instead of full buffer snapshots, keeping overhead low.
         </TipBox>
       </Section>
 
@@ -129,15 +141,16 @@ WA notifies other agents via mail`}
 
         <CommandList
           commands={[
-            { command: "wa daemon start", description: "Start the observation daemon" },
-            { command: "wa daemon status", description: "Check daemon status" },
-            { command: "wa robot state", description: "View all panes as JSON" },
-            { command: 'wa search "query"', description: "Search captured output" },
+            { command: "ft watch", description: "Start the background watcher" },
+            { command: "ft status --health", description: "Check watcher and pane health" },
+            { command: "ft robot state", description: "View all panes as JSON" },
+            { command: 'ft search "query"', description: "Search captured output" },
           ]}
         />
 
         <TipBox variant="warning">
-          WA requires WezTerm to be running. It won&apos;t work with other terminal emulators.
+          ft runs on its own vendored WezTerm-fork engine and needs a reachable FrankenTerm mux; it
+          does not drive tmux. ACFS does not install it (use the installer in the frankenterm repo).
         </TipBox>
       </Section>
 
@@ -145,23 +158,33 @@ WA notifies other agents via mail`}
 
       {/* Section 4: Robot Mode */}
       <Section title="Robot Mode API" icon={<Activity className="h-5 w-5" />} delay={0.25}>
-        <Paragraph>Robot Mode provides a JSON API for machine-to-machine communication.</Paragraph>
+        <Paragraph>
+          Robot Mode provides a JSON (or lower-token TOON) API for machine-to-machine
+          communication. Pane IDs are numeric.
+        </Paragraph>
 
         <CommandList
           commands={[
-            { command: "wa robot state", description: "Get all pane states as JSON" },
-            { command: "wa robot get-text <pane_id>", description: "Get pane output" },
-            { command: 'wa robot send <pane_id> "cmd"', description: "Send input to pane" },
-            { command: "wa robot wait-for <pane_id> <pattern>", description: "Wait for pattern" },
+            { command: "ft robot state", description: "Get all pane states as JSON" },
+            { command: "ft robot get-text <pane_id> --tail 50", description: "Get pane output" },
+            {
+              command: 'ft robot send <pane_id> "cmd"',
+              description: "Send input to pane (policy-gated)",
+            },
+            {
+              command: 'ft robot wait-for <pane_id> "pattern"',
+              description: "Wait for a pattern (no sleep loops)",
+            },
+            { command: "ft robot events --unhandled", description: "Recent detection events" },
           ]}
         />
 
         <CodeBlock
           code={`# Example: Wait for agent completion
-wa robot wait-for 42 "Task complete"
+ft robot wait-for 42 "Task complete"
 
-# Then trigger next action
-wa robot send 43 "Start next task"`}
+# Then trigger next action (passes through the policy gate)
+ft robot send 43 "Start next task"`}
           filename="Robot Mode Example"
         />
       </Section>
@@ -170,24 +193,28 @@ wa robot send 43 "Start next task"`}
 
       {/* Section 5: Pattern Detection */}
       <Section title="Pattern Detection" icon={<Eye className="h-5 w-5" />} delay={0.3}>
-        <Paragraph>WA detects state transitions for common AI agents.</Paragraph>
+        <Paragraph>ft&apos;s built-in rule packs detect state transitions for common AI agents.</Paragraph>
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="p-3 rounded-lg bg-cyan-500/10 border border-cyan-500/30">
             <span className="text-cyan-400 font-semibold">Claude Code</span>
-            <p className="text-white/80 text-sm mt-1">Rate limits, approvals, completions</p>
+            <p className="text-white/80 text-sm mt-1">
+              Usage and rate limits, approvals, compaction, session end
+            </p>
           </div>
           <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
             <span className="text-emerald-400 font-semibold">Codex CLI</span>
-            <p className="text-white/80 text-sm mt-1">Task completion, errors, waiting</p>
+            <p className="text-white/80 text-sm mt-1">Usage warnings and limits, rate limits, auth</p>
           </div>
           <div className="p-3 rounded-lg bg-violet-500/10 border border-violet-500/30">
-            <span className="text-violet-400 font-semibold">Antigravity CLI</span>
-            <p className="text-white/80 text-sm mt-1">Response completion, quota warnings</p>
+            <span className="text-violet-400 font-semibold">Gemini CLI</span>
+            <p className="text-white/80 text-sm mt-1">Usage limits, rate limits, auth prompts</p>
           </div>
           <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
             <span className="text-amber-400 font-semibold">Custom Patterns</span>
-            <p className="text-white/80 text-sm mt-1">Define your own detection rules</p>
+            <p className="text-white/80 text-sm mt-1">
+              Define your own rules (<code>ft rules</code>)
+            </p>
           </div>
         </div>
       </Section>
@@ -196,7 +223,7 @@ wa robot send 43 "Start next task"`}
 
       {/* Section 6: Tool Integration */}
       <Section title="Tool Integration" icon={<Zap className="h-5 w-5" />} delay={0.35}>
-        <Paragraph>WA integrates seamlessly with other flywheel tools.</Paragraph>
+        <Paragraph>How ft relates to other flywheel tools.</Paragraph>
 
         <div className="space-y-4">
           <motion.div
@@ -205,10 +232,10 @@ wa robot send 43 "Start next task"`}
             transition={{ delay: 0.4 }}
             className="p-4 rounded-xl border border-border/50 bg-card/30"
           >
-            <h3 className="font-semibold text-primary mb-2">WA + NTM</h3>
+            <h3 className="font-semibold text-primary mb-2">ft vs. NTM</h3>
             <p className="text-muted-foreground text-sm">
-              WA automatically observes agents spawned by NTM. Use NTM to spawn agents and WA to
-              monitor their state.
+              ft is an alternative operator cockpit to NTM. It runs its own terminal engine rather
+              than tmux, so it observes panes in FrankenTerm, not the tmux sessions NTM spawns.
             </p>
           </motion.div>
           <motion.div
@@ -217,10 +244,10 @@ wa robot send 43 "Start next task"`}
             transition={{ delay: 0.45 }}
             className="p-4 rounded-xl border border-border/50 bg-card/30"
           >
-            <h3 className="font-semibold text-primary mb-2">WA + Agent Mail</h3>
+            <h3 className="font-semibold text-primary mb-2">ft + Agent Mail</h3>
             <p className="text-muted-foreground text-sm">
-              State changes detected by WA can trigger Agent Mail notifications. Coordinate agent
-              handoffs through mail threads.
+              Agent Mail file reservations are one of ft&apos;s built-in coordination primitives,
+              so agents driven through ft can avoid editing the same files.
             </p>
           </motion.div>
           <motion.div
@@ -229,10 +256,10 @@ wa robot send 43 "Start next task"`}
             transition={{ delay: 0.5 }}
             className="p-4 rounded-xl border border-border/50 bg-card/30"
           >
-            <h3 className="font-semibold text-primary mb-2">WA + Beads</h3>
+            <h3 className="font-semibold text-primary mb-2">ft + Beads</h3>
             <p className="text-muted-foreground text-sm">
-              When WA detects task completion, it can update bead status. Track agent progress
-              through your issue tracker.
+              Incident bundles from <code>ft reproduce export</code> include a Beads coordination
+              snapshot, so a reviewer can see what work was in flight when something broke.
             </p>
           </motion.div>
         </div>
@@ -246,15 +273,17 @@ wa robot send 43 "Start next task"`}
 
         <CommandList
           commands={[
-            { command: "wa doctor", description: "Run diagnostic checks" },
-            { command: "wa daemon status", description: "Check daemon health" },
-            { command: "wa logs --tail 50", description: "View recent logs" },
+            { command: "ft doctor", description: "Run diagnostic checks" },
+            { command: "ft status --health", description: "Check watcher health" },
+            { command: "ft triage", description: "Summarize health, crashes, and events" },
+            { command: "ft why deny.alt_screen", description: "Explain a policy denial" },
           ]}
         />
 
         <TipBox variant="info">
-          Run <code>wa doctor</code> if pattern detection isn&apos;t working. It checks WezTerm
-          connectivity and daemon status.
+          Run <code>ft doctor</code> if pattern detection isn&apos;t working. It checks the
+          environment and reports which mux backend ft can reach. There is no <code>logs</code>{" "}
+          command; use <code>ft triage</code> and <code>ft robot events</code> instead.
         </TipBox>
       </Section>
     </div>
@@ -264,8 +293,8 @@ wa robot send 43 "Start next task"`}
 /* =============================================================================
  * InteractiveTerminalObserver — Agent Workspace Observatory
  *
- * Multi-pane view showing what agents are doing across tmux sessions with
- * activity heatmap, productivity metrics, timeline, and monitoring commands.
+ * Multi-pane view showing what agents are doing across FrankenTerm panes with
+ * activity heatmap, productivity metrics, timeline, and ft commands.
  * ========================================================================== */
 
 // --- Types ---
@@ -369,11 +398,11 @@ const SCENARIOS: Scenario[] = [
       { time: "14:35", agent: 42, event: "Writing auth.ts (47 lines)", type: "success" },
     ],
     monitorOutput: [
-      '$ wa robot state | jq ".panes[] | {id,status}"',
-      '{"id": 42, "status": "active"}',
-      '{"id": 43, "status": "idle"}',
-      '{"id": 44, "status": "idle"}',
-      '{"id": 45, "status": "idle"}',
+      "$ ft robot state | jq -c '.data[] | {pane_id, title}'",
+      '{"pane_id":42,"title":"claude-code"}',
+      '{"pane_id":43,"title":"zsh"}',
+      '{"pane_id":44,"title":"zsh"}',
+      '{"pane_id":45,"title":"zsh"}',
     ],
     alertMessage: null,
   },
@@ -456,11 +485,12 @@ const SCENARIOS: Scenario[] = [
       { time: "14:35", agent: 42, event: "6 routes created", type: "success" },
     ],
     monitorOutput: [
-      "$ wa robot state --summary",
-      "Active agents: 4/4",
-      "Total lines changed: 436",
-      "Files touched: 23",
-      "Swarm health: OPTIMAL",
+      "$ ft list",
+      "Panes (4 observed, 0 ignored):",
+      "  42  observed  claude-code",
+      "  43  observed  claude-code",
+      "  44  observed  codex",
+      "  45  observed  claude-code",
     ],
     alertMessage: null,
   },
@@ -532,17 +562,18 @@ const SCENARIOS: Scenario[] = [
     timeline: [
       { time: "14:40", agent: 44, event: "Fix attempt #1: src/utils.ts", type: "warning" },
       { time: "14:41", agent: 44, event: "Fix attempt #2: src/utils.ts", type: "warning" },
-      { time: "14:42", agent: 44, event: "LOOP DETECTED: 3+ retries", type: "error" },
+      { time: "14:42", agent: 44, event: "Same ESLint error 3x in a row", type: "error" },
       { time: "14:42", agent: 45, event: "Task completed successfully", type: "success" },
     ],
     monitorOutput: [
-      "$ wa robot state --alerts",
-      "ALERT: Pane #44 loop detected",
-      '  Pattern: "ESLint: 3 errors"',
-      "  Repeats: 3 (threshold: 2)",
-      "  Action: Notify + escalate",
+      '$ ft search "ESLint: 3 errors" --pane 44',
+      'Search results for "ESLint: 3 errors" (3 hits):',
+      "1. 14:42 pane:44  ESLint: 3 errors remaining",
+      "2. 14:41 pane:44  ESLint: 3 errors remaining",
+      "3. 14:40 pane:44  ESLint: 3 errors remaining",
     ],
-    alertMessage: "Loop detected on pane #44 -- agent retrying same fix. Consider intervention.",
+    alertMessage:
+      "Same lint error keeps repeating on pane #44 -- the agent is retrying the same fix. Consider intervention.",
   },
   {
     label: "Agent Making Progress",
@@ -615,17 +646,17 @@ const SCENARIOS: Scenario[] = [
       { time: "14:55", agent: 43, event: "Building PaymentForm", type: "info" },
     ],
     monitorOutput: [
-      '$ wa search "tests passing" --pane 42',
-      "[14:54] 14/14 tests passing",
-      "[14:52]  8/8 tests passing",
-      "[14:50]  3/3 tests passing",
-      "Progress: consistent upward trend",
+      '$ ft search "tests passing" --pane 42',
+      'Search results for "tests passing" (3 hits):',
+      "1. 14:54 pane:42  14/14 tests passing",
+      "2. 14:52 pane:42  8/8 tests passing",
+      "3. 14:50 pane:42  3/3 tests passing",
     ],
     alertMessage: null,
   },
   {
     label: "Agent Rate Limited",
-    description: "Agent #42 hit API rate limit, WA reroutes work",
+    description: "Agent #42 hit an API rate limit; ft flags it and the work moves to pane #43",
     panes: [
       {
         id: 42,
@@ -635,7 +666,7 @@ const SCENARIOS: Scenario[] = [
           { text: "$ claude --project api-server", color: "text-emerald-400" },
           { text: "Writing src/routes/orders.ts...", color: "text-white/70" },
           { text: "ERROR: Rate limit exceeded (429)", color: "text-red-400" },
-          { text: "Retrying in 58s...", color: "text-yellow-400" },
+          { text: "Retrying in 58 seconds...", color: "text-yellow-400" },
         ],
         linesChanged: 167,
         filesTouched: 7,
@@ -647,7 +678,7 @@ const SCENARIOS: Scenario[] = [
         name: "claude-code",
         status: "active",
         lines: [
-          { text: "--- Work rerouted from pane #42 ---", color: "text-amber-400" },
+          { text: "--- Task handed over from pane #42 ---", color: "text-amber-400" },
           { text: "$ claude --project api-server", color: "text-emerald-400" },
           { text: "Continuing orders.ts from pane #42", color: "text-cyan-400" },
           { text: "Writing remaining routes...", color: "text-white/70" },
@@ -687,23 +718,23 @@ const SCENARIOS: Scenario[] = [
       { path: "tests/orders.test.ts", heat: 0.6, agent: 44 },
     ],
     timeline: [
-      { time: "15:01", agent: 42, event: "Rate limit 429 detected", type: "error" },
-      { time: "15:01", agent: 42, event: "WA: Routing work to pane #43", type: "warning" },
-      { time: "15:02", agent: 43, event: "Picked up task from pane #42", type: "info" },
+      { time: "15:01", agent: 42, event: "Rate limit 429 in pane output", type: "error" },
+      { time: "15:01", agent: 42, event: "ft event: claude_code.rate_limit.detected", type: "warning" },
+      { time: "15:02", agent: 43, event: "Task re-sent via ft robot send", type: "info" },
       { time: "15:03", agent: 43, event: "Continuing orders.ts", type: "success" },
     ],
     monitorOutput: [
-      "$ wa robot state --alerts",
-      "RATE_LIMIT: Pane #42 (429)",
-      "  Cooldown: 58s remaining",
-      "  Rerouted to: Pane #43",
-      "  Status: Work continuing",
+      "$ ft robot events --unhandled | jq -c '.data.events[] | {pane_id, rule_id}'",
+      '{"pane_id":42,"rule_id":"claude_code.rate_limit.detected"}',
+      '$ ft robot send 43 "Continue src/routes/orders.ts from pane 42"',
+      '{"ok":true,"data":{"pane_id":43,...}}',
     ],
-    alertMessage: "Rate limit on pane #42 -- work automatically rerouted to pane #43.",
+    alertMessage:
+      "Rate limit on pane #42 -- ft recorded the event; the task was re-sent to pane #43 with ft robot send.",
   },
   {
     label: "Agent Completing Task",
-    description: "Agent #42 finishes, triggers downstream agents",
+    description: "Agent #42 finishes; an orchestrator waiting on it starts downstream agents",
     panes: [
       {
         id: 42,
@@ -771,17 +802,17 @@ const SCENARIOS: Scenario[] = [
     ],
     timeline: [
       { time: "15:10", agent: 42, event: "TASK COMPLETE: API server", type: "success" },
-      { time: "15:10", agent: 42, event: "WA: Triggering downstream agents", type: "info" },
+      { time: "15:10", agent: 42, event: "ft robot wait-for matched", type: "info" },
       { time: "15:11", agent: 43, event: "Started: Integration tests", type: "info" },
       { time: "15:11", agent: 44, event: "Started: Changelog update", type: "info" },
       { time: "15:11", agent: 45, event: "Started: Staging deploy", type: "info" },
     ],
     monitorOutput: [
-      "$ wa robot state --summary",
-      "Pane #42: COMPLETE (512 lines)",
-      "Pane #43: triggered -> integration",
-      "Pane #44: triggered -> changelog",
-      "Pane #45: triggered -> deploy",
+      `$ ft robot wait-for 42 "Task complete" | jq -c '.data | {pane_id, matched}'`,
+      '{"pane_id":42,"matched":true}',
+      '$ ft robot send 43 "Run the integration suite"',
+      '$ ft robot send 44 "Update CHANGELOG.md"',
+      '$ ft robot send 45 "Prepare the staging deploy"',
     ],
     alertMessage: null,
   },
@@ -1052,7 +1083,7 @@ function MonitorTerminal({ lines, active }: { lines: string[]; active: boolean }
     <div className="rounded-lg border border-white/[0.08] bg-black/60 overflow-hidden">
       <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-white/[0.06] bg-white/[0.02]">
         <BarChart3 className="h-3 w-3 text-cyan-400" />
-        <span className="text-xs text-muted-foreground font-mono">wa monitor</span>
+        <span className="text-xs text-muted-foreground font-mono">operator shell (ft)</span>
       </div>
       <div className="p-2.5 font-mono text-xs leading-relaxed space-y-0.5">
         {lines.map((line, i) => (
@@ -1064,15 +1095,13 @@ function MonitorTerminal({ lines, active }: { lines: string[]; active: boolean }
             className={
               line.startsWith("$")
                 ? "text-emerald-400"
-                : line.startsWith("ALERT") || line.startsWith("RATE_LIMIT")
+                : line.includes("rate_limit") || line.includes("errors remaining")
                   ? "text-red-400"
-                  : line.includes("COMPLETE") ||
-                      line.includes("OPTIMAL") ||
-                      line.includes("passing") ||
-                      line.includes("continuing") ||
-                      line.includes("trend")
+                  : line.includes('"matched":true') ||
+                      line.includes('"ok":true') ||
+                      line.includes("passing")
                     ? "text-emerald-400"
-                    : line.includes("triggered")
+                    : line.startsWith("Search results") || line.startsWith("Panes (")
                       ? "text-amber-400"
                       : "text-white/60"
             }
@@ -1162,7 +1191,7 @@ function InteractiveTerminalObserver() {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-black/40 border border-white/[0.08] font-mono text-sm flex-shrink-0">
             <Eye className="h-3.5 w-3.5 text-violet-400" />
-            <span className="text-violet-400 text-xs">WA Observatory</span>
+            <span className="text-violet-400 text-xs">FrankenTerm Observatory</span>
           </div>
           <AnimatePresence mode="wait">
             <motion.div

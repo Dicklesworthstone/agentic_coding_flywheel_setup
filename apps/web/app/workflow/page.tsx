@@ -416,7 +416,12 @@ const CLOUD_SERVICES = [
   { name: "Cloudflare", purpose: "Domain purchase, DNS, CDN", tool: "wrangler", icon: Globe },
   { name: "Vercel", purpose: "Frontend hosting & deployment", tool: "vercel", icon: Rocket },
   { name: "Supabase", purpose: "Database, auth, storage", tool: "supabase", icon: Database },
-  { name: "Google Cloud", purpose: "Analytics (GA4)", tool: "gcloud", icon: BarChart3 },
+  {
+    name: "Google Cloud",
+    purpose: "Analytics (GA4); gcloud is not installed by ACFS",
+    tool: "gcloud",
+    icon: BarChart3,
+  },
 ];
 
 const FLYWHEEL_CYCLE = [
@@ -954,11 +959,11 @@ export default function WorkflowPage() {
                   rel="noopener noreferrer"
                   className="inline-flex min-h-6 items-center text-primary hover:underline"
                 >
-                  ChatGPT 5.2 Pro
+                  GPT-6.2 Astra
                 </a>{" "}
-                and describe your project in detail. Be thorough about what you want to build, user
-                experience, and technical requirements. Ask it to create a comprehensive
-                implementation plan.
+                in ChatGPT Work and describe your project in detail. Be thorough about what you
+                want to build, user experience, and technical requirements. Ask it to create a
+                comprehensive implementation plan.
               </p>
             </WorkflowStep>
 
@@ -971,7 +976,7 @@ export default function WorkflowPage() {
                   rel="noopener noreferrer"
                   className="inline-flex min-h-6 items-center text-primary hover:underline"
                 >
-                  Claude Opus 4.5
+                  Claude Fable 5.2
                 </a>{" "}
                 and{" "}
                 <a
@@ -980,10 +985,10 @@ export default function WorkflowPage() {
                   rel="noopener noreferrer"
                   className="inline-flex min-h-6 items-center text-primary hover:underline"
                 >
-                  Gemini 3 with Deep Think
+                  Gemini 4 Carbon
                 </a>
-                . Each model produces different insights: GPT-5.2 excels at system design, Claude
-                Opus 4.5 at code quality, Gemini 3 at creative features.
+                . Each model produces different insights: GPT-6.2 Astra excels at system design,
+                Claude Fable 5.2 at code quality, Gemini 4 Carbon at creative features.
               </p>
             </WorkflowStep>
 
@@ -1046,14 +1051,14 @@ export default function WorkflowPage() {
           <div className="space-y-2">
             <WorkflowStep number={1} title="Create Your Project Session" color="bg-emerald-500">
               <CommandCard
-                command="ntm new myproject"
-                description="Create a new tmux session for your project"
+                command="ntm spawn myproject --cc=1"
+                description="Create a session for your project with a Claude Code pane"
               />
             </WorkflowStep>
 
             <WorkflowStep number={2} title="Generate Beads from Your Plan" color="bg-emerald-500">
               <p className="mb-3">
-                In Claude Code with Opus 4.5, paste your final plan and use this prompt:
+                In Claude Code with Claude Opus 5.5, paste your final plan and use this prompt:
               </p>
               <CodeBlock code={PROMPT_CREATE_BEADS} language="prompt" />
             </WorkflowStep>
@@ -1137,8 +1142,8 @@ export default function WorkflowPage() {
                 multiple terminal panes, each running a coding agent:
               </p>
               <CommandCard
-                command="ntm spawn myproject 8"
-                description="Create 8 agent panes in your project session"
+                command="ntm spawn myproject --cc=4 --cod=2 --agy=2"
+                description="Create 8 agent panes (4 Claude Code, 2 Codex, 2 Antigravity) in your project session"
               />
               <p className="text-xs mt-2">
                 Run 3+ machines with multiple subscriptions (e.g., 5 ChatGPT Pro, 5 Claude Max, 3
@@ -1181,7 +1186,8 @@ export default function WorkflowPage() {
               <p>
                 DCG blocks destructive commands before they run. SLB handles the &quot;two-person
                 rule&quot; for high-risk operations (e.g., deleting Kubernetes nodes), requiring
-                quorum approvals via Agent Mail.
+                quorum approvals from separate reviewer sessions (Agent Mail carries the
+                notifications).
               </p>
             </WorkflowStep>
           </div>
@@ -1247,7 +1253,8 @@ export default function WorkflowPage() {
 
           <SimplerGuide>
             <GuideExplain term="Memory with CM">
-              Agents store and retrieve: Procedural playbooks, episodic sessions, semantic facts.
+              Agents store and retrieve: episodic sessions (via CASS), working-memory diaries, and
+              procedural playbook rules.
               Core pipeline: Generate context → Reflect → Curate playbook → Validate. This enables
               cross-session learning and improvement.
             </GuideExplain>
@@ -1359,8 +1366,8 @@ export default function WorkflowPage() {
                 UI/UX Polish Pass
               </h4>
               <p className="text-sm text-muted-foreground mb-2">
-                When you&apos;re dissatisfied but lack energy to engage directly (use with Opus 4.5
-                or GPT 5.2):
+                When you&apos;re dissatisfied but lack energy to engage directly (use with Claude
+                Opus 5.5 or GPT-6.2 Sol at xhigh effort):
               </p>
               <CodeBlock code={PROMPT_SCRUTINIZE_UI} language="prompt" />
             </div>
@@ -1370,11 +1377,16 @@ export default function WorkflowPage() {
             <GuideSection title="The Model Hierarchy">
               <ul className="space-y-2 text-sm">
                 <li>
-                  <strong>Opus 4.5 / GPT-5.2-Codex with extra-high effort:</strong> Use for
-                  scrutinize_ui, check_orm, and high-stakes analysis. These require deep reasoning.
+                  <strong>
+                    Claude Opus 5.5 / GPT-6.2 Sol at xhigh effort (the ACFS{" "}
+                    <code className="bg-muted px-1 rounded">cod</code> default):
+                  </strong>{" "}
+                  Use for scrutinize_ui, check_orm, and high-stakes analysis. These require deep
+                  reasoning. For the hardest problems, GPT-6.2 Astra is also available in Codex (
+                  <code className="bg-muted px-1 rounded">codex -m gpt-6.2-astra</code>).
                 </li>
                 <li>
-                  <strong>Opus 4.5 / GPT-5.2-Codex with high effort:</strong> Great for
+                  <strong>Claude Opus 5.5 / GPT-6.2 Sol at high effort:</strong> Great for
                   fresh_review, fix_bug, work_on_beads, and routine coding. Fast and reliable.
                 </li>
                 <li>
@@ -1561,9 +1573,9 @@ export default function WorkflowPage() {
           <SimplerGuide>
             <GuideExplain term="How to set up the command palette">
               NTM includes a command palette feature. Add prompts to{" "}
-              <code className="bg-muted px-1 rounded">~/.config/ntm/prompts.yaml</code> and bind a
-              keyboard shortcut to open the palette. Each prompt triggers in any active agent
-              session with a single keypress.
+              <code className="bg-muted px-1 rounded">~/.config/ntm/command_palette.md</code> and
+              run <code className="bg-muted px-1 rounded">ntm bind</code> to open the palette with
+              F6. Pick a prompt, then press a number key to choose which agents receive it.
             </GuideExplain>
             <GuideTip>
               <strong>Hardware tip:</strong> A small programmable keypad (~$60 on Temu) can be
@@ -1629,7 +1641,8 @@ export default function WorkflowPage() {
           <SimplerGuide>
             <GuideTip>
               <strong>Come back 3+ hours later</strong> to see incredible work done autonomously.
-              This works especially well with GPT 5.2 with extra effort. Run this cycle multiple
+              This works especially well with GPT-6.2 Sol at xhigh effort in Codex (the ACFS{" "}
+              <code className="bg-muted px-1 rounded">cod</code> default). Run this cycle multiple
               times a day across all your projects!
             </GuideTip>
             <GuideCaution>
@@ -1646,12 +1659,13 @@ export default function WorkflowPage() {
           gradient="bg-gradient-to-br from-slate-500 to-zinc-600"
         >
           <p className="text-muted-foreground mb-4">
-            After Part One is complete, run this script to configure all cloud service CLI tools:
+            After Part One is complete, run this wizard to sign in your coding agents and log in to
+            the cloud CLIs:
           </p>
 
           <CommandCard
             command="acfs services-setup"
-            description="Run the cloud services setup wizard"
+            description="Configure AI agents and cloud services"
           />
 
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
@@ -1668,7 +1682,7 @@ export default function WorkflowPage() {
                 </div>
                 <p className="text-sm text-muted-foreground mb-2">{service.purpose}</p>
                 <code className="text-xs bg-muted px-2 py-1 rounded font-mono">
-                  bun add -g {service.tool}
+                  {service.tool}
                 </code>
               </motion.div>
             ))}
@@ -1677,8 +1691,8 @@ export default function WorkflowPage() {
           <SimplerGuide>
             <GuideExplain term="Why a separate setup script?">
               The main Agent Flywheel installer focuses on development tools. This second script
-              handles cloud service configuration, which requires your specific accounts and API
-              keys. Running them separately keeps initial setup fast.
+              handles agent sign-in and cloud service configuration, which require your specific
+              accounts and API keys. Running them separately keeps initial setup fast.
             </GuideExplain>
             <GuideTip>
               <strong>Supabase IPv4 note:</strong> some Supabase projects expose the direct Postgres
@@ -1750,7 +1764,7 @@ export default function WorkflowPage() {
               {[
                 {
                   color: "from-amber-500 to-orange-600",
-                  text: "Plan with 3 AI models: ChatGPT 5.2 Pro, Opus 4.5, Gemini 3 → synthesize best ideas",
+                  text: "Plan with 3 AI models: GPT-6.2 Astra, Claude Fable 5.2, Gemini 4 Carbon → synthesize best ideas",
                 },
                 {
                   color: "from-amber-500 to-orange-600",

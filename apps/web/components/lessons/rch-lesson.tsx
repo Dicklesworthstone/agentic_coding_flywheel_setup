@@ -49,9 +49,10 @@ export function RchLesson() {
       {/* Section 1: What Is RCH */}
       <Section title="What Is RCH?" icon={<Cpu className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>RCH (Remote Compilation Helper)</Highlight> transparently intercepts cargo
-          commands and routes them to powerful remote build servers. Your local machine stays
-          responsive while heavy Rust compilations run elsewhere.
+          <Highlight>RCH (Remote Compilation Helper)</Highlight> transparently intercepts build
+          commands (cargo, go, gcc/clang, make/cmake/ninja, bun/tsc, nix) and routes them to
+          powerful remote build servers. Your local machine stays responsive while heavy
+          compilations run elsewhere.
         </Paragraph>
         <Paragraph>
           When running multiple AI agents that all trigger builds, your local CPU becomes a
@@ -70,7 +71,7 @@ export function RchLesson() {
             <FeatureCard
               icon={<Zap className="h-5 w-5" />}
               title="Transparent"
-              description="Works via Claude Code hook"
+              description="Claude Code hook plus a cargo shim for other agents"
               gradient="from-violet-500/20 to-purple-500/20"
             />
             <FeatureCard
@@ -167,16 +168,20 @@ cargo build --release
         <CodeBlock
           code={`# Workers are stored in ~/.config/rch/workers.toml
 [[workers]]
-name = "build-server-1"
-host = "ubuntu@192.168.1.100"
-slots = 48
+id = "build-server-1"
+host = "192.168.1.100"
+user = "ubuntu"
+identity_file = "~/.ssh/id_ed25519"
+total_slots = 48
 priority = 100
 tags = ["fast", "baremetal"]
 
 [[workers]]
-name = "build-server-2"
-host = "ubuntu@192.168.1.101"
-slots = 16
+id = "build-server-2"
+host = "192.168.1.101"
+user = "ubuntu"
+identity_file = "~/.ssh/id_ed25519"
+total_slots = 16
 priority = 80
 tags = ["secondary"]`}
           filename="~/.config/rch/workers.toml"
@@ -216,8 +221,8 @@ tags = ["secondary"]`}
           code={`# View current config
 rch config show
 
-# Set default worker
-rch config set default_worker=build-server-1
+# Change a setting (key and value are separate arguments)
+rch config set general.log_level debug
 
 # Update RCH binaries locally and on all workers
 rch update --fleet`}

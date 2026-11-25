@@ -127,8 +127,8 @@ export function BeadsLesson() {
                 description: "Add a dependency",
               },
               {
-                command: "br sync",
-                description: "Sync with git remote",
+                command: "br sync --flush-only",
+                description: "Export DB to .beads/issues.jsonl (never runs git)",
               },
             ]}
           />
@@ -313,8 +313,8 @@ export function BeadsLesson() {
             description="Unblocks dependent work faster"
           />
           <BestPractice
-            title="Run br sync at session end"
-            description="Keeps .beads/ in sync across agents and machines"
+            title="Run br sync --flush-only before committing"
+            description="Confirms .beads/issues.jsonl matches the DB; then commit .beads/ with your code"
           />
         </div>
 
@@ -335,7 +335,7 @@ export function BeadsLesson() {
 $ br ready
 
 # Get smart triage recommendations
-$ bv --robot-triage | jq '.quick_ref'
+$ bv --robot-triage | jq '.triage.quick_ref'
 
 # Create a task
 $ br create "Add login page" -t feature -p 2
@@ -343,8 +343,8 @@ $ br create "Add login page" -t feature -p 2
 # Start working on it
 $ br update bd-1 --status=in_progress
 
-# Sync when done
-$ br sync`}
+# Final export check before committing (br never runs git)
+$ br sync --flush-only`}
           showLineNumbers
         />
       </Section>
@@ -518,7 +518,7 @@ const WORKFLOW_STEPS = [
     id: "sync",
     title: "Sync to JSONL",
     description: "Persist state to .beads/issues.jsonl",
-    command: "br sync",
+    command: "br sync --flush-only",
     icon: "sync",
   },
 ] as const;
@@ -981,9 +981,9 @@ function InteractiveDependencyGraph() {
     // Step 5: sync
     const step5 = setTimeout(() => {
       setActiveStep(5);
-      addTerminalLine("$ br sync");
+      addTerminalLine("$ br sync --flush-only");
       addTerminalLine("  Synced 9 issues to .beads/issues.jsonl");
-      addTerminalLine("  Committed to git.");
+      addTerminalLine("  (br never runs git: git add .beads/ && git commit)");
       const tEnd = setTimeout(() => {
         setIsAutoPlaying(false);
       }, 0);

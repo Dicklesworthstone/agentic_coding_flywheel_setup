@@ -138,11 +138,11 @@ export function SafetyToolsLesson() {
               description: "Request approval and execute when approved",
             },
             {
-              command: "slb approve <id> --session-id <sid>",
+              command: "slb approve <id> --session-id <sid> --session-key <key>",
               description: "Approve a pending request",
             },
             {
-              command: 'slb reject <id> --session-id <sid> --reason "..."',
+              command: 'slb reject <id> --session-id <sid> --session-key <key> --reason "..."',
               description: "Reject a pending request",
             },
             {
@@ -163,8 +163,8 @@ export function SafetyToolsLesson() {
       >
         <Paragraph>
           <Highlight>DCG</Highlight> blocks dangerous commands before they run. It inspects every
-          command from Claude Code and stops destructive patterns like hard resets, force pushes,
-          and recursive deletes.
+          shell command from Claude Code, Codex, Antigravity, and other hooked agent CLIs and stops
+          destructive patterns like hard resets, force pushes, and recursive deletes.
         </Paragraph>
         <Paragraph>
           If a command is safe, it runs normally. If it&apos;s risky, DCG blocks it and suggests a
@@ -193,7 +193,7 @@ export function SafetyToolsLesson() {
             },
             {
               command: "dcg install",
-              description: "Register DCG as a Claude Code hook",
+              description: "Register DCG hooks for detected agent CLIs",
             },
             {
               command: "dcg allow-once <code>",
@@ -230,12 +230,12 @@ export function SafetyToolsLesson() {
           <CaamFeature
             icon={<RefreshCw className="h-5 w-5" />}
             title="Instant Switching"
-            description="Switch accounts in under 100ms via symlink swap"
+            description="Switch accounts in under 100ms by swapping auth files"
           />
           <CaamFeature
             icon={<Eye className="h-5 w-5" />}
             title="Multi-Tool Support"
-            description="Works with Claude, Codex, and Antigravity CLIs"
+            description="Works with Claude, Codex, Antigravity, Gemini, Grok, OpenCode, and Cursor"
           />
           <CaamFeature
             icon={<Lock className="h-5 w-5" />}
@@ -299,7 +299,7 @@ export function SafetyToolsLesson() {
 
       {/* Integration with Agents */}
       <Section title="Integration with Agents" icon={<Zap className="h-5 w-5" />} delay={0.45}>
-        <Paragraph>DCG, SLB, and CAAM integrate with Claude Code, Codex, and Gemini:</Paragraph>
+        <Paragraph>DCG, SLB, and CAAM integrate with Claude Code, Codex, and Antigravity:</Paragraph>
 
         <div className="mt-6">
           <CodeBlock
@@ -312,12 +312,12 @@ $ claude "reset the repo"
 $ claude "delete all test files"
 > SLB: This command requires approval
 > Waiting for second approval...
-> Run 'slb approve req-123 --session-id <sid>' from another session
+> Run 'slb approve req-123 --session-id <sid> --session-key <key>' from another session
 
 # Example: Switch Claude accounts for a project
 $ caam activate claude work@company.com
 > Activated profile 'work@company.com' for claude
-> Symlink updated in 47ms
+> Auth files swapped in 47ms
 
 $ claude "continue the project"
 > Using profile: work@company.com`}
@@ -385,7 +385,7 @@ $ claude "continue the project"
             commands={[
               "slb pending",
               "slb run <cmd> --reason ...",
-              "slb approve <id> --session-id ...",
+              "slb approve <id> --session-id ... --session-key ...",
               "slb status <id>",
             ]}
             color="from-red-500/20 to-rose-500/20"

@@ -804,7 +804,7 @@ test("narrow agent selection omits unselected cloud agents and spot checks acros
   const view = await f.settle();
   const commands = view.cards.map((card) => card.props.command);
   assert.ok(commands.includes("claude --version"));
-  assert.ok(commands.includes("claude"));
+  assert.ok(commands.includes("claude auth login"));
   for (const forbidden of [
     "bun --version",
     "ms --version",
@@ -1165,7 +1165,7 @@ for (const [moduleId, executable] of [
 for (const [moduleId, expected, absent] of [
   ["acfs.doctor", "acfs doctor", "onboard"],
   ["acfs.onboard", "onboard", "acfs doctor"],
-  ["stack.ntm", "ntm new myproject", "onboard"],
+  ["stack.ntm", "ntm create myproject --panes=1", "onboard"],
 ]) {
   test(`compact handoff includes only the selected ${moduleId} capability`, async () => {
     const f = fixture();
@@ -1183,7 +1183,7 @@ test("a complete toolset retains the original beginner guide", async () => {
   const view = await completedOnboarding(f);
   const commands = view.cards.map((card) => card.props.command);
   assert.ok(commands.includes("cc"));
-  assert.ok(commands.includes("ntm new myproject"));
+  assert.ok(commands.includes("ntm create myproject --panes=1"));
   assert.ok(commands.includes("acfs newproj --guided"));
   assert.match(view.text(), /Your Daily Workflow/);
   assert.match(view.text(), /Finding Your Way Around/);
@@ -1215,7 +1215,7 @@ test("command-builder edits cannot rewrite the acknowledged handoff's tools or r
   const commands = view.cards.map((card) => card.props.command);
   assert.ok(commands.includes("vercel --help"));
   assert.ok(!commands.includes("cc"));
-  assert.ok(!commands.includes("ntm new myproject"));
+  assert.ok(!commands.includes("ntm create myproject --panes=1"));
   assert.ok(!commands.includes("acfs doctor"));
   assert.ok(commands.includes("ssh -i ~/.ssh/acfs_ed25519 developer@203.0.113.42"));
   assert.ok(commands.every((command) => !command.includes("different-user@")));

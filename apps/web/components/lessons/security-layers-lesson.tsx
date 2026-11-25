@@ -93,7 +93,8 @@ export function SecurityLayersLesson() {
         delay={0.15}
       >
         <Paragraph>
-          DCG is a Claude Code hook that runs <Highlight>before every command execution</Highlight>.
+          DCG is a pre-execution hook (Claude Code, Codex, Antigravity, and other agent CLIs) that
+          runs <Highlight>before every command execution</Highlight>.
           It uses ast-grep internally for structural pattern matching, operating at sub-millisecond
           latency — agents don&apos;t even notice it&apos;s there.
         </Paragraph>
@@ -118,7 +119,7 @@ dcg test "git push --force origin feature-x" --explain
 
 # DCG packs (rule bundles)
 dcg packs --enabled
-# → git-safety, filesystem-safety, database-safety, k8s-safety
+# → core.git, core.filesystem (always on), plus packs you enable
 
 # Health check
 dcg doctor --format json`}
@@ -150,6 +151,9 @@ dcg doctor --format json`}
           code={`# Initialize SLB in a project
 slb init
 
+# Default "independent" policy refuses local approvals; opt in first
+slb config set general.approval_policy same_host
+
 # Agent 1 wants to force-push (DCG would normally block)
 slb request "git push --force origin main" --reason "Rewrite history on my feature branch"
 # → Launch request created: slb-a7f3
@@ -157,19 +161,18 @@ slb request "git push --force origin main" --reason "Rewrite history on my featu
 # Agent 1 sees:
 # ⚠️ CRITICAL: Requires approval before execution
 
-# Human reviews and approves
-slb approve slb-a7f3
+# Human reviews and approves (from a separate reviewer session)
+slb approve slb-a7f3 --session-id <reviewer-id> --session-key <reviewer-key>
 
 # Now the command can execute
 slb execute slb-a7f3
 
-# Policies for automated workflows
-slb config set policy auto_reject     # Reject all by default
-slb config set policy auto_approve_warn  # Auto-approve with warning
+# Policy for unattended workflows
+slb config set general.timeout_action auto_reject   # Reject if nobody reviews in time
 
-# Watch agent activity in real-time
-slb watch --session-id my-agent
-# → Live stream of all commands the agent tries`}
+# Reviewing agents stream pending requests
+slb watch --session-id <reviewer-id> --json
+# → NDJSON events for every request awaiting review`}
           filename="SLB Workflow"
         />
 
@@ -189,36 +192,33 @@ slb watch --session-id my-agent
         delay={0.25}
       >
         <Paragraph>
-          CAAM manages <Highlight>multiple API provider accounts</Highlight> with automatic rotation
-          on rate limits. This prevents a single compromised or rate-limited key from stopping all
-          agents.
+          CAAM manages <Highlight>multiple subscription logins per agent CLI</Highlight> with
+          automatic rotation on rate limits. This prevents a single compromised or rate-limited
+          account from stopping all agents.
         </Paragraph>
 
         <CodeBlock
-          code={`# List all configured accounts
-caam list
-# → claude-1 (active, 847/1000 requests)
-# → claude-2 (standby, 12/1000 requests)
-# → codex-1 (active, 230/500 requests)
+          code={`# List saved profiles
+caam ls
 
-# Switch active account
-caam switch claude-2
+# Switch the active Claude account
+caam activate claude personal@gmail.com
 
-# Auto-rotate when rate limited
-caam config set auto-rotate true
-caam config set cooldown-minutes 15
+# Mark the exhausted account so rotation skips it
+caam cooldown set claude/work@company.com --minutes 15
 
-# Add a new account
-caam add claude-3 --provider anthropic --key-file ~/.keys/claude3
+# Let caam pick the best available account
+caam next claude
 
-# Check rate limit status
-caam status --all
-# → Shows usage, remaining quota, cooldown timers
+# Save a newly logged-in account
+caam backup claude third@company.com
 
-# In agent swarms, each agent gets a different account
-# Agent 1 → claude-1
-# Agent 2 → claude-2
-# Agent 3 → codex-1
+# Check live quota and reset times
+caam limits claude
+
+# In agent swarms, each agent runs in its own isolated profile
+# caam exec claude agent-1 -- ...
+# caam exec claude agent-2 -- ...
 # No single account gets overwhelmed`}
           filename="CAAM Account Management"
         />
@@ -296,7 +296,7 @@ slb request "DROP DATABASE test_db" --reason "Recreate the throwaway test DB"
 # → slb-b2e9 created, awaiting approval
 
 # Step 3: Human reviews, sees it's a test DB, approves
-slb approve slb-b2e9
+slb approve slb-b2e9 --session-id <reviewer-id> --session-key <reviewer-key>
 
 # Step 4: Command executes safely through SLB
 slb execute slb-b2e9

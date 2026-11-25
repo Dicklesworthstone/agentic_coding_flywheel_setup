@@ -394,7 +394,7 @@ const SOURCES: SourceInfo[] = [
     borderColor: "border-purple-500/30",
     bgColor: "bg-purple-500/10",
     glowColor: "bg-purple-500/[0.06]",
-    url: "x.com/i/grok/share/r4v8n2q1",
+    url: "grok.com/share/r4v8n2q1",
     title: "Regex Patterns for Log Parsing",
     messages: [
       { role: "user", content: "I need regex patterns to parse nginx access logs." },

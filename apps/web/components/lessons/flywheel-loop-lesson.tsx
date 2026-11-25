@@ -350,13 +350,7 @@ git init
 
 # 3. Initialize beads for task tracking
 br init
-
-# (Recommended) Create a dedicated Beads sync branch
-# Beads uses git worktrees for syncing; syncing to your current branch (often \`main\`)
-# can cause worktree conflicts. Once you have a \`main\` branch and a remote, run:
-git branch beads-sync main
-git push -u origin beads-sync
-br config set sync.branch=beads-sync
+# br never commits, pushes, or uses worktrees: commit .beads/ with your code
 
 # 4. Spawn your agents
 ntm spawn my-first-project --cc=2 --cod=1 --agy=1

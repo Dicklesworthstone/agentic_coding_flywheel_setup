@@ -50,7 +50,8 @@ export function CasrLesson() {
         <Paragraph>
           <Highlight>CASR (Cross-Agent Session Resumer)</Highlight> converts and resumes AI coding
           sessions across different providers. Start a session in Claude Code, continue it in Codex
-          CLI, and pick it back up in Antigravity CLI without losing context.
+          CLI, and pick it back up in Gemini CLI without losing context. (Antigravity sessions can
+          be read and resumed elsewhere, but agy is not a conversion target.)
         </Paragraph>
         <Paragraph>
           CASR extracts conversation context, code changes, and decisions into a portable format
@@ -63,7 +64,7 @@ export function CasrLesson() {
             <FeatureCard
               icon={<ArrowRightLeft className="h-5 w-5" />}
               title="Provider Agnostic"
-              description="Convert sessions between Claude, Codex, and Antigravity"
+              description="Convert sessions between Claude, Codex, Gemini, and 14 more providers"
               gradient="from-violet-500/20 to-purple-500/20"
             />
             <FeatureCard
@@ -131,7 +132,8 @@ casr resume cod <session-id> --dry-run
 # Convert it and resume in Codex CLI
 casr resume cod <session-id>
 
-# Target aliases: cc, cod, gmi, agy, cur, cln, aid, amp, opc, gpt`}
+# Target aliases: cc, cod, gmi, cur, cln, aid, amp, gpt, pi, fac, kr, grk, cwb, vib, ocl
+# (agy is source-only; opc writes legacy DBs only)`}
         />
       </Section>
 

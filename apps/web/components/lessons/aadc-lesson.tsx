@@ -34,21 +34,22 @@ export function AadcLesson() {
   return (
     <div className="space-y-8">
       <GoalBanner>
-        Fix malformed ASCII art diagrams that AI agents produce with misaligned boxes and broken
-        lines.
+        Fix the ragged right borders that AI agents (and your own edits) leave in ASCII
+        diagrams.
       </GoalBanner>
 
       {/* Section 1: What Is AADC */}
       <Section title="What Is AADC?" icon={<AlignLeft className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>AADC (ASCII Art Diagram Corrector)</Highlight> automatically fixes alignment
-          issues, broken box edges, and misconnected lines in ASCII diagrams. AI models frequently
-          generate diagrams with subtle rendering errors that AADC corrects.
+          <Highlight>AADC (ASCII Art Diagram Corrector)</Highlight> automatically fixes misaligned
+          right borders in ASCII diagrams by adding padding, never deleting content. It handles
+          ASCII boxes (<code>+ - |</code>) and Unicode box-drawing characters alike.
         </Paragraph>
         <Paragraph>
-          When agents produce architecture diagrams, flowcharts, or tables in ASCII, the output
-          often has columns that don&apos;t align, boxes with gaps, or connectors that miss their
-          targets. AADC detects and repairs these issues.
+          When agents write boxed diagrams, or you edit the text inside a box, the closing borders
+          drift out of line. AADC finds diagram blocks on its own (no markers needed) and pads
+          each line so its right border lands in the same column. A line that opens with a border
+          but lost its closing one gets the border back.
         </Paragraph>
 
         <div className="mt-8">
@@ -56,13 +57,13 @@ export function AadcLesson() {
             <FeatureCard
               icon={<Wand2 className="h-5 w-5" />}
               title="Auto-Repair"
-              description="Fix alignment and spacing"
+              description="Pads right borders into line"
               gradient="from-blue-500/20 to-indigo-500/20"
             />
             <FeatureCard
               icon={<AlignLeft className="h-5 w-5" />}
               title="Box Detection"
-              description="Repair broken box edges"
+              description="Finds ASCII and Unicode boxes"
               gradient="from-violet-500/20 to-purple-500/20"
             />
             <FeatureCard
@@ -73,8 +74,8 @@ export function AadcLesson() {
             />
             <FeatureCard
               icon={<Copy className="h-5 w-5" />}
-              title="Clipboard"
-              description="Copy fixed output directly"
+              title="Stdin/Stdout"
+              description="Pipe from and to the clipboard"
               gradient="from-amber-500/20 to-orange-500/20"
             />
           </FeatureGrid>
@@ -88,17 +89,17 @@ export function AadcLesson() {
         <Paragraph>Fix a diagram from a file or stdin.</Paragraph>
 
         <CodeBlock
-          code={`# Fix a diagram file
-aadc fix diagram.txt
+          code={`# Fix a diagram file (result goes to stdout)
+aadc diagram.txt
 
 # Pipe from clipboard
-pbpaste | aadc fix
+pbpaste | aadc
 
 # Fix and copy result
-aadc fix diagram.txt | pbcopy
+aadc diagram.txt | pbcopy
 
 # Show what changed
-aadc fix --diff diagram.txt`}
+aadc --diff diagram.txt`}
           filename="Basic Usage"
         />
 
@@ -113,9 +114,14 @@ aadc fix --diff diagram.txt`}
       <Section title="Essential Commands" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
         <CommandList
           commands={[
-            { command: "aadc fix <file>", description: "Fix alignment issues in a diagram" },
-            { command: "aadc fix --diff <file>", description: "Show changes as a diff" },
-            { command: "aadc check <file>", description: "Check for issues without fixing" },
+            { command: "aadc <file>", description: "Fix right-border alignment (to stdout)" },
+            { command: "aadc -i <file>", description: "Fix in place (add --backup for a .bak)" },
+            { command: "aadc --diff <file>", description: "Show changes as a diff" },
+            {
+              command: "aadc --dry-run <file>",
+              description: "Check only; exit 3 if fixes are needed",
+            },
+            { command: "aadc -r docs/", description: "Process .txt and .md files recursively" },
             { command: "aadc --help", description: "Show all available options" },
           ]}
         />
@@ -125,31 +131,28 @@ aadc fix --diff diagram.txt`}
 
       {/* Section 4: Example */}
       <Section title="Before and After" icon={<Settings className="h-5 w-5" />} delay={0.25}>
-        <Paragraph>AADC fixes common AI-generated diagram issues.</Paragraph>
+        <Paragraph>AADC pads short lines until every right border lines up.</Paragraph>
 
         <CodeBlock
-          code={`# Before (broken):
-+--------+    +-------+
-| Client  |-->| Server|
-+--------+    +-------+
-                  |
-              +-------+
-              |  DB   |
-              +------+
+          code={`# Before (ragged right border):
++------------------+
+| Short|
+| Much longer text |
+| Medium|
++------------------+
 
-# After (fixed):
-+----------+    +--------+
-|  Client  |--->| Server |
-+----------+    +--------+
-                    |
-                +--------+
-                |   DB   |
-                +--------+`}
+# After (aadc diagram.txt):
++------------------+
+| Short            |
+| Much longer text |
+| Medium           |
++------------------+`}
           filename="Correction Example"
         />
 
         <TipBox variant="info">
-          AADC handles box edges, connector lines, padding, and column alignment in a single pass.
+          AADC only adds whitespace padding to align right borders, iterating until each block
+          converges. It leaves GFM tables and language-tagged code fences alone.
         </TipBox>
 
         <div className="mt-8">
@@ -197,181 +200,125 @@ interface DiagramScenario {
   broken: string[];
   fixed: string[];
   issues: string[];
-  command: string;
-  diagramType: string;
+  /** File name passed to `aadc -v` in the simulated terminal */
+  file: string;
+  /** Diagram blocks aadc detects (0 for content it leaves alone) */
+  blocks: number;
 }
 
+// Every "fixed" diagram below is what aadc's monotone padding produces: spaces
+// are inserted before a short right border (or a missing border is added at the
+// target column). Nothing is ever deleted, and left edges are never touched.
 const DIAGRAM_SCENARIOS: DiagramScenario[] = [
   {
-    id: "flowchart",
-    label: "Flowchart",
-    icon: "~",
-    diagramType: "Flowchart",
-    command: "aadc fix --type flowchart diagram.txt",
+    id: "ascii-box",
+    label: "ASCII Box",
+    icon: "+",
+    file: "diagram.txt",
+    blocks: 1,
     broken: [
-      "+--------+    +-------+",
-      "| Client  |-->| Server|",
-      "+--------+    +-------+",
-      "                  |    ",
-      "              +-------+",
-      "              |  DB   |",
-      "              +------+ ",
+      "+------------------+",
+      "| Short|",
+      "| Much longer text |",
+      "| Medium|",
+      "+------------------+",
     ],
     fixed: [
-      "+----------+    +--------+",
-      "|  Client  |--->| Server |",
-      "+----------+    +--------+",
-      "                    |     ",
-      "                +--------+",
-      "                |   DB   |",
-      "                +--------+",
+      "+------------------+",
+      "| Short            |",
+      "| Much longer text |",
+      "| Medium           |",
+      "+------------------+",
     ],
-    issues: ["Mismatched box widths", "Broken bottom edge on DB", "Arrow connector too short"],
+    issues: ["Line 2: right border 12 cols short", "Line 4: right border 11 cols short"],
   },
   {
-    id: "table",
-    label: "Table",
+    id: "unicode-box",
+    label: "Unicode Box",
     icon: "#",
-    diagramType: "Table",
-    command: "aadc fix --type table models.txt",
+    file: "architecture.md",
+    blocks: 1,
     broken: [
-      "+------+-------+------+",
-      "| Name | Tokens| Cost |",
-      "+------+-------+------+",
-      "| Claude | 480K | $7.20|",
-      "| GPT  | 320K  | $3.20|",
-      "+------+-------+------+",
+      "┌────────────────┐",
+      "│ API Gateway│",
+      "│ Authentication │",
+      "│ Rate Limiting│",
+      "└────────────────┘",
     ],
     fixed: [
-      "+--------+--------+-------+",
-      "| Name   | Tokens | Cost  |",
-      "+--------+--------+-------+",
-      "| Claude | 480K   | $7.20 |",
-      "| GPT    | 320K   | $3.20 |",
-      "+--------+--------+-------+",
+      "┌────────────────┐",
+      "│ API Gateway    │",
+      "│ Authentication │",
+      "│ Rate Limiting  │",
+      "└────────────────┘",
     ],
-    issues: ["Column widths inconsistent", "Cell padding uneven", "Row separators misaligned"],
+    issues: ["Line 2: right border 4 cols short", "Line 4: right border 2 cols short"],
   },
   {
-    id: "sequence",
-    label: "Sequence",
+    id: "missing-border",
+    label: "Missing Border",
     icon: "|",
-    diagramType: "Sequence Diagram",
-    command: "aadc fix --type sequence auth.txt",
+    file: "services.txt",
+    blocks: 1,
     broken: [
-      " Client       Server      DB  ",
-      "   |            |          |   ",
-      "   |--login---->|          |   ",
-      "   |            |--query-->|   ",
-      "   |            |<--rows---|   ",
-      "   |<--token----|          |   ",
-      "   |            |          |   ",
+      "+----------------------+",
+      "| Agent Mail           |",
+      "| File reservations",
+      "| Threaded messages|",
+      "+----------------------+",
     ],
     fixed: [
-      " Client        Server       DB ",
-      "   |             |           |  ",
-      "   |---login---->|           |  ",
-      "   |             |---query-->|  ",
-      "   |             |<---rows---|  ",
-      "   |<---token----|           |  ",
-      "   |             |           |  ",
+      "+----------------------+",
+      "| Agent Mail           |",
+      "| File reservations    |",
+      "| Threaded messages    |",
+      "+----------------------+",
     ],
-    issues: ["Lifeline spacing uneven", "Arrow lengths inconsistent", "Header alignment off"],
+    issues: ["Line 3: right border missing", "Line 4: right border 4 cols short"],
   },
   {
-    id: "classdiag",
-    label: "Class",
+    id: "edited-box",
+    label: "After an Edit",
     icon: "=",
-    diagramType: "Class Diagram",
-    command: "aadc fix --type class models.txt",
+    file: "CHECKLIST.md",
+    blocks: 1,
     broken: [
-      "+----------+     +--------+",
-      "| BaseModel |     | Config|",
-      "+----------+     +--------+",
-      "| +name    |     | +path |",
-      "| +type     |     | +env  |",
-      "+----------+     +--------+",
-      "      ^                    ",
-      "      |                    ",
-      "+----------+               ",
-      "| UserModel|               ",
-      "+----------+               ",
-      "| +email  |               ",
-      "+----------+               ",
+      "╔══════════════════════════╗",
+      "║ Deploy checklist         ║",
+      "║ 1. Run tests║",
+      "║ 2. Bump version and tag  ║",
+      "║ 3. Publish release║",
+      "╚══════════════════════════╝",
     ],
     fixed: [
-      "+-----------+    +--------+",
-      "| BaseModel |    | Config |",
-      "+-----------+    +--------+",
-      "| +name     |    | +path  |",
-      "| +type     |    | +env   |",
-      "+-----------+    +--------+",
-      "      ^                    ",
-      "      |                    ",
-      "+-----------+              ",
-      "| UserModel |              ",
-      "+-----------+              ",
-      "| +email    |              ",
-      "+-----------+              ",
+      "╔══════════════════════════╗",
+      "║ Deploy checklist         ║",
+      "║ 1. Run tests             ║",
+      "║ 2. Bump version and tag  ║",
+      "║ 3. Publish release       ║",
+      "╚══════════════════════════╝",
     ],
-    issues: ["Box widths mismatched", "Field padding inconsistent", "Inheritance line offset"],
+    issues: ["Line 3: right border 13 cols short", "Line 5: right border 7 cols short"],
   },
   {
-    id: "tree",
-    label: "Tree",
-    icon: "/",
-    diagramType: "File Tree",
-    command: "aadc fix --type tree structure.txt",
+    id: "gfm-table",
+    label: "Markdown Table",
+    icon: "~",
+    file: "README.md",
+    blocks: 0,
     broken: [
-      "project/          ",
-      "|- src/           ",
-      " |- index.ts     ",
-      " |- utils/       ",
-      "  |- helpers.ts  ",
-      "  |- format.ts   ",
-      "|- tests/         ",
-      " |- index.test.ts",
-      "|- package.json   ",
+      "| Tool | Job |",
+      "|------|-----|",
+      "| aadc | Align right borders |",
+      "| s2p | Build prompts |",
     ],
     fixed: [
-      "project/              ",
-      "+-- src/               ",
-      "|   +-- index.ts       ",
-      "|   +-- utils/         ",
-      "|       +-- helpers.ts ",
-      "|       +-- format.ts  ",
-      "+-- tests/             ",
-      "|   +-- index.test.ts  ",
-      "+-- package.json       ",
+      "| Tool | Job |",
+      "|------|-----|",
+      "| aadc | Align right borders |",
+      "| s2p | Build prompts |",
     ],
-    issues: [
-      "Missing tree connectors",
-      "Indentation inconsistent",
-      "No branch lines",
-      "Leaf nodes unaligned",
-    ],
-  },
-  {
-    id: "pipeline",
-    label: "Pipeline",
-    icon: ">",
-    diagramType: "Pipeline Diagram",
-    command: "aadc fix --type pipeline ci.txt",
-    broken: [
-      "[Lint]-->[Test]-->[Build]-->[Deploy]",
-      "  |        |        |         |     ",
-      " 2m      5m       3m        8m     ",
-      "  |        |        |         |     ",
-      " pass    pass     pass      pass    ",
-    ],
-    fixed: [
-      "[Lint]--->[Test]--->[Build]--->[Deploy]",
-      "  |         |         |          |     ",
-      " 2m        5m        3m         8m     ",
-      "  |         |         |          |     ",
-      " pass      pass      pass       pass   ",
-    ],
-    issues: ["Arrow lengths unequal", "Column alignment broken", "Status row misaligned"],
+    issues: ["GFM table: left untouched by design"],
   },
 ];
 
@@ -461,13 +408,20 @@ function InteractiveDiagramFixerImpl() {
 
     handleReset();
 
-    // Phase 1: Scanning
+    // Phase 1: Scanning (mirrors `aadc -v` verbose output on stderr)
     setPhase("scanning");
+    const totalLines = scenario.broken.length;
+    const revisions = scenario.broken.filter((line, i) => line !== scenario.fixed[i]).length;
     const scanLines = [
-      `$ ${scenario.command}`,
-      `[aadc] Detecting diagram type...`,
-      `[aadc] Type: ${scenario.diagramType}`,
-      `[aadc] Scanning for structural issues...`,
+      `$ aadc -v ${scenario.file}`,
+      `Processing ${scenario.file} (${totalLines} lines)...`,
+      `Found ${scenario.blocks} diagram block(s)`,
+      ...(scenario.blocks > 0 ? [`  Block 1: lines 1-${totalLines} (confidence: 100%)`] : []),
+    ];
+    const summaryLines = [
+      "─── Summary ───",
+      `  Blocks: ${scenario.blocks} found, ${scenario.blocks} processed, 0 skipped`,
+      `  Revisions: ${revisions} applied, 0 skipped`,
     ];
 
     let delay = 0;
@@ -477,27 +431,28 @@ function InteractiveDiagramFixerImpl() {
       pushTimer(setTimeout(() => addTerminalLine(captured), delay));
     }
 
-    // Report each issue
-    for (let i = 0; i < scenario.issues.length; i++) {
-      const issue = scenario.issues[i];
-      delay += 300;
+    // Nothing to fix (e.g. a GFM table): aadc passes the input through unchanged
+    if (scenario.blocks === 0 || revisions === 0) {
+      delay += 400;
       pushTimer(
         setTimeout(() => {
-          addTerminalLine(`[aadc]  ! Issue ${i + 1}: ${issue}`);
+          summaryLines.forEach(addTerminalLine);
+          setPhase("done");
+          setShowDiff(true);
+          setHealthScore(100);
         }, delay),
       );
+      return;
     }
 
     delay += 400;
     pushTimer(
       setTimeout(() => {
-        addTerminalLine(`[aadc] Found ${scenario.issues.length} issues. Repairing...`);
         setPhase("repairing");
       }, delay),
     );
 
-    // Phase 2: Repairing line by line, char by char
-    const totalLines = scenario.broken.length;
+    // Phase 2: Padding line by line, char by char
     for (let lineIdx = 0; lineIdx < totalLines; lineIdx++) {
       const fixedLine = scenario.fixed[lineIdx];
       const charCount = fixedLine.length;
@@ -523,17 +478,17 @@ function InteractiveDiagramFixerImpl() {
           // Update health score progressively
           const progress = Math.round(((capturedLineIdx + 1) / totalLines) * 100);
           setHealthScore(progress);
-          addTerminalLine(`[aadc]  + Line ${capturedLineIdx + 1}/${totalLines} repaired`);
         }, delay),
       );
     }
 
-    // Phase 3: Done
+    // Phase 3: Done (one pass applies every revision; the second finds none)
     delay += 300;
     pushTimer(
       setTimeout(() => {
-        addTerminalLine(`[aadc] All ${totalLines} lines repaired.`);
-        addTerminalLine(`[aadc] Diagram health: 100%`);
+        addTerminalLine(`    Iteration 1: applied ${revisions} revision(s)`);
+        addTerminalLine("    Converged after 1 iteration(s)");
+        summaryLines.forEach(addTerminalLine);
         setPhase("done");
         setShowDiff(true);
         setHealthScore(100);
@@ -626,12 +581,16 @@ function InteractiveDiagramFixerImpl() {
                 }`}
               >
                 {phase === "done"
-                  ? "Repaired"
+                  ? scenario.blocks === 0
+                    ? "Left Untouched"
+                    : "Repaired"
                   : phase === "repairing"
                     ? "Repairing..."
                     : phase === "scanning"
                       ? "Scanning..."
-                      : "Broken"}
+                      : scenario.blocks === 0
+                        ? "Not a Diagram"
+                        : "Broken"}
               </span>
             </motion.div>
           </AnimatePresence>
@@ -776,7 +735,7 @@ function InteractiveDiagramFixerImpl() {
             <div className="flex items-center gap-2 px-1">
               <Settings className="h-3 w-3 text-muted-foreground" />
               <span className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
-                {showDiff ? "Diff View" : "Original (Broken)"}
+                {showDiff ? "Diff View" : "Original Input"}
               </span>
             </div>
             <div className="rounded-xl border border-white/[0.08] bg-black/50 p-3 font-mono text-xs leading-relaxed overflow-x-auto min-h-[180px]">
@@ -917,8 +876,8 @@ function InteractiveDiagramFixerImpl() {
             ) : (
               terminalLines.map((line, i) => {
                 const isCommand = line.startsWith("$");
-                const isError = line.includes("! Issue");
-                const isSuccess = line.includes("repaired") || line.includes("100%");
+                const isError = line.includes("Found 0 diagram");
+                const isSuccess = line.includes("applied") || line.includes("Converged");
 
                 return (
                   <motion.div
@@ -995,7 +954,7 @@ function InteractiveDiagramFixerImpl() {
           ) : phase === "repairing" ? (
             <>
               <Sparkles className="h-4 w-4 animate-pulse" />
-              Repairing characters...
+              Padding right borders...
             </>
           ) : phase === "done" ? (
             <>
@@ -1005,7 +964,7 @@ function InteractiveDiagramFixerImpl() {
           ) : (
             <>
               <Play className="h-4 w-4" />
-              Run aadc fix
+              Run aadc
             </>
           )}
         </motion.button>

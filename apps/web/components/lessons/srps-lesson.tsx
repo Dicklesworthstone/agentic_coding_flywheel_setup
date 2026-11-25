@@ -128,8 +128,8 @@ $ systemctl status ananicy-cpp
             code={`# Launch the monitoring TUI
 $ sysmoni
 
-# See per-process CPU/memory with ananicy rule status
-# q to quit, arrows to navigate, s to sort, f to filter`}
+# See per-process CPU/memory/IO/FD with nice values (throttled highlighted)
+# q to quit, arrows to navigate, s to cycle sort, / to filter, f to freeze`}
             language="bash"
           />
         </div>
@@ -137,7 +137,7 @@ $ sysmoni
         <BulletList
           items={[
             "Per-process CPU and memory usage",
-            "ananicy rule status for each process",
+            "Nice value per process, throttled processes highlighted",
             "Nice level and scheduling class",
             "Real-time updates (configurable interval)",
           ]}
@@ -216,10 +216,10 @@ $ sysmoni
           <CodeBlock
             code={`# Example: add rule for a custom heavy process
 $ echo '{"name": "my-heavy-process", "nice": 19, "sched": "idle", "ioclass": "idle"}' | \\
-    sudo tee /etc/ananicy.d/00-default/99-custom.rules
+    sudo tee /etc/ananicy.d/10-local/my-heavy-process.rules
 
-# Restart to apply
-$ sudo systemctl restart ananicy-cpp`}
+# Reload rules (handles a stale ananicy mutex)
+$ srps-reload-rules`}
             language="bash"
           />
         </div>
@@ -276,8 +276,8 @@ $ systemctl status ananicy-cpp
 # View recent logs
 $ journalctl -u ananicy-cpp -n 50
 
-# Validate all rule files
-$ ananicy-cpp --config-test
+# Show the rules that actually apply
+$ sudo ananicy-cpp dump rules
 
 # Uninstall if needed
 $ curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/system_resource_protection_script/main/install.sh | bash -s -- --uninstall`}
@@ -435,10 +435,10 @@ const TERMINAL_LINES = [
   { cmd: "  Monitoring 47 processes with ananicy-cpp rules", delay: 1.2 },
   { cmd: "$ systemctl status ananicy-cpp", delay: 2.8 },
   { cmd: "  Active: active (running) since Mon 2026-03-09 14:32:01 UTC", delay: 3.6 },
-  { cmd: "$ cat /etc/ananicy.d/00-default/rustc.rules", delay: 5.0 },
+  { cmd: "$ grep rustc /etc/ananicy.d/zz-srps/*.rules", delay: 5.0 },
   { cmd: '  {"name": "rustc", "nice": 19, "sched": "idle", "ioclass": "idle"}', delay: 5.8 },
-  { cmd: "$ srps --status", delay: 7.2 },
-  { cmd: "  Governor: active | Throttled: 4 processes | Uptime: 72h", delay: 8.0 },
+  { cmd: "$ check-throttled", delay: 7.2 },
+  { cmd: "  Currently Throttled (nice>0): rustc, cargo, node, tsc", delay: 8.0 },
 ];
 
 function useAnimationFrame(callback: (dt: number) => void, active: boolean) {

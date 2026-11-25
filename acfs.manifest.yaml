@@ -1816,7 +1816,7 @@ modules:
       features:
         - "Named agent panes with type classification"
         - "Broadcast prompts to agent types"
-        - "Session persistence across reboots"
+        - "Saved sessions resume after reboots (ntm sessions save/resume)"
         - "Dashboard view of active agents"
       tech_stack: ["Go", "Bubble Tea", "tmux"]
       use_cases:
@@ -1824,7 +1824,7 @@ modules:
         - "Organizing dev environments by project"
         - "Managing long-running agent sessions"
       language: "Go"
-      stars: 69
+      stars: 467
       cli_name: "ntm"
     dependencies:
       - cli.modern
@@ -1840,7 +1840,7 @@ modules:
       - ntm --help
 
   - id: stack.mcp_agent_mail
-    description: Like gmail for coding agents; MCP HTTP server + token; installs beads tools
+    description: Like gmail for coding agents; Rust MCP server + am CLI; Git archive + SQLite index; local HTTP service on 127.0.0.1:8765
     category: stack
     phase: 9
     run_as: target_user
@@ -1857,16 +1857,17 @@ modules:
       features:
         - "Threaded messaging between AI agents"
         - "Advisory file reservations"
-        - "SQLite-backed persistent storage"
+        - "Git-backed archive with SQLite indexing"
         - "MCP integration for any compatible agent"
-      tech_stack: ["Rust", "SQLite"]
+      tech_stack: ["Rust", "SQLite", "Git", "Tantivy"]
       use_cases:
         - "Coordinating file ownership across parallel agents"
         - "Passing context between session restarts"
         - "Building audit trails of agent decisions"
       language: "Rust"
-      stars: 1400
+      stars: 284
       cli_name: "am"
+      command_example: "am robot status"
     dependencies:
       - lang.bun
       - lang.uv
@@ -2300,7 +2301,7 @@ modules:
       - "Server liveness and readiness are verified after install"
 
   - id: stack.meta_skill
-    description: Local-first knowledge management with hybrid semantic search (ms)
+    description: Local-first skill management with hybrid search and MCP integration (ms)
     category: stack
     phase: 9
     run_as: target_user
@@ -2325,8 +2326,9 @@ modules:
         - "Building team-wide skill libraries"
         - "Packaging and sharing skills"
       language: "Rust"
-      stars: 10
+      stars: 217
       cli_name: "ms"
+      command_example: "ms search \"error handling\""
     dependencies:
       - lang.rust
       - lang.uv
@@ -2368,7 +2370,7 @@ modules:
         - "Catching architectural flaws early"
         - "Creating implementation-ready plans for agents"
       language: "Bash"
-      stars: 85
+      stars: 69
       cli_name: "apr"
     dependencies:
       - lang.rust
@@ -2384,7 +2386,7 @@ modules:
       - apr --version || true
 
   - id: stack.jeffreysprompts
-    description: Curated battle-tested prompts for AI agents - browse and install as skills (jfp)
+    description: Curated battle-tested prompts for AI agents - browse, search, copy, and export (jfp)
     category: stack
     phase: 9
     run_as: target_user
@@ -2394,22 +2396,22 @@ modules:
     web:
       display_name: "JeffreysPrompts CLI"
       short_name: "JFP"
-      tagline: "Browse and install battle-tested prompts as Claude Code skills"
+      tagline: "Browse, search, copy, and export battle-tested prompts for AI agents"
       icon: "sparkles"
       color: "#EC4899"
       href: "https://jeffreysprompts.com"
       features:
-        - "One-command skill installation"
+        - "Fuzzy search and fzf-style picker (jfp i)"
         - "Browsable prompt categories"
-        - "Claude Code skills integration"
+        - "Copy, render, and Markdown export"
         - "MCP server for agent access"
-      tech_stack: ["TypeScript", "Bun", "Claude Code Skills API"]
+      tech_stack: ["TypeScript", "Bun", "MCP"]
       use_cases:
         - "Bootstrapping a new project with proven prompts"
         - "Discovering prompts for specific domains"
         - "Sharing effective prompts across teams"
       language: "TypeScript"
-      stars: 120
+      stars: 119
       cli_name: "jfp"
     installed_check:
       run_as: target_user
@@ -2448,7 +2450,7 @@ modules:
         - "Cleaning up zombie processes"
         - "Identifying memory hogs"
       language: "Rust"
-      stars: 45
+      stars: 29
       cli_name: "pt"
       command_example: "pt scan --format json"
       lesson_slug: "pt"
@@ -2492,7 +2494,7 @@ modules:
         - "CI/CD pipeline integration"
         - "Catching AI-generated code errors"
       language: "Bash"
-      stars: 132
+      stars: 320
       cli_name: "ubs"
       command_example: "ubs file.ts"
     dependencies:
@@ -2534,13 +2536,13 @@ modules:
         - "Dependency graph tracking"
         - "Labels, priorities, comments"
         - "JSON output for agents"
-      tech_stack: ["Rust", "Serde", "JSONL"]
+      tech_stack: ["Rust", "SQLite (FrankenSQLite)", "JSONL"]
       use_cases:
         - "Tracking tasks that travel with the code"
         - "Building dependency graphs"
         - "Enabling agents to manage work queues"
       language: "Rust"
-      stars: 128
+      stars: 1164
       cli_name: "br"
       cli_aliases: []
       command_example: "br ready --json"
@@ -2584,7 +2586,7 @@ modules:
         - "Visualizing complex dependency graphs"
         - "Generating execution plans for AI agents"
       language: "Go"
-      stars: 891
+      stars: 1736
       cli_name: "bv"
       command_example: "bv --robot-triage"
     dependencies:
@@ -2620,13 +2622,13 @@ modules:
         - "Sub-second search over millions of messages"
         - "Robot mode for AI agent integration"
         - "TUI for interactive exploration"
-      tech_stack: ["Rust", "Tantivy", "Ratatui", "JSONL parsing"]
+      tech_stack: ["Rust", "Quill BM25 (frankensearch)", "FrankenTUI", "FrankenSQLite"]
       use_cases:
         - "Finding how a similar bug was fixed before"
         - "Retrieving context from past project work"
         - "Building on previous agent conversations"
       language: "Rust"
-      stars: 307
+      stars: 1230
       cli_name: "cass"
       command_example: "cass search \"auth error\" --robot"
     dependencies:
@@ -2664,13 +2666,13 @@ modules:
         - "MCP integration for any compatible agent"
         - "Automatic memory consolidation"
         - "Cross-session context persistence"
-      tech_stack: ["TypeScript", "Bun", "MCP Protocol", "SQLite"]
+      tech_stack: ["TypeScript", "Bun", "MCP Protocol", "YAML playbooks"]
       use_cases:
         - "Remembering project conventions across sessions"
         - "Learning from past debugging sessions"
         - "Building institutional knowledge over time"
       language: "TypeScript"
-      stars: 152
+      stars: 471
       cli_name: "cm"
       command_example: "cm context \"task\" --json"
     dependencies:
@@ -2706,15 +2708,15 @@ modules:
       features:
         - "Sub-100ms account switching"
         - "Multi-provider support"
-        - "Automatic key rotation"
-        - "Session state preservation"
-      tech_stack: ["TypeScript", "Bun", "Keychain"]
+        - "Smart rotation with cooldowns and live quota (caam next, caam run)"
+        - "Isolated profiles for parallel sessions"
+      tech_stack: ["Go", "Cobra", "Bubble Tea", "SQLite"]
       use_cases:
-        - "Switching between API keys when hitting rate limits"
+        - "Switching subscription logins (Claude Max, ChatGPT Pro, Gemini) when hitting usage limits"
         - "Managing multiple agent accounts"
-        - "Automated credential rotation"
-      language: "TypeScript"
-      stars: 45
+        - "Running parallel agents on separate accounts"
+      language: "Go"
+      stars: 215
       cli_name: "caam"
       command_example: "caam status"
     dependencies:
@@ -2743,7 +2745,7 @@ modules:
       tagline: "Two-person rule for dangerous command approval"
       icon: "shield-check"
       color: "#F59E0B"
-      href: "https://github.com/Dicklesworthstone/simultaneous_launch_button"
+      href: "https://github.com/Dicklesworthstone/slb"
       features:
         - "Two-person rule enforcement"
         - "Command queue with approval workflow"
@@ -2755,7 +2757,7 @@ modules:
         - "Adding safety gates to autonomous agent workflows"
         - "Audit trail of dangerous command approvals"
       language: "Go"
-      stars: 49
+      stars: 82
       cli_name: "slb"
     dependencies:
       - lang.go
@@ -2772,7 +2774,7 @@ modules:
       - export PATH="$HOME/go/bin:$PATH" && slb >/dev/null 2>&1 || slb --help >/dev/null 2>&1
 
   - id: stack.dcg
-    description: Destructive Command Guard - Claude Code hook blocking dangerous git/fs commands
+    description: Destructive Command Guard - pre-execution hook (Claude Code, Codex, Gemini, Copilot, Cursor, and more) blocking destructive git/fs/database commands
     category: stack
     phase: 9
     run_as: target_user
@@ -2797,11 +2799,11 @@ modules:
         - "Auditing dangerous commands from agents"
         - "Training wheels for new AI agent setups"
       language: "Rust"
-      stars: 89
+      stars: 6381
       cli_name: "dcg"
       command_example: "dcg doctor"
     dependencies:
-      - agents.claude   # dcg is a Claude Code hook, only useful if Claude is installed
+      - agents.claude   # dcg's installer also hooks Codex/Gemini/Copilot/Cursor/OpenCode/omp; agy needs dcg install --agy
     installed_check:
       run_as: target_user
       command: "command -v dcg"
@@ -2885,7 +2887,7 @@ modules:
         - "CI/CD repo management"
         - "Automated codebase maintenance"
       language: "Bash"
-      stars: 67
+      stars: 133
       cli_name: "ru"
       command_example: "ru sync --parallel 4"
     dependencies:
@@ -2929,7 +2931,7 @@ modules:
         - "Multi-model research synthesis"
         - "Scientific methodology workflows"
       language: "TypeScript"
-      stars: 28
+      stars: 93
       cli_name: "brenner"
     dependencies:
       - lang.rust
@@ -2959,12 +2961,12 @@ modules:
     web:
       display_name: "Remote Compilation Helper"
       short_name: "RCH"
-      tagline: "Transparent Rust build offloading to remote workers"
+      tagline: "Transparent build offloading (Rust, Go, C/C++, Bun, Nix) to remote workers"
       icon: "cpu"
       color: "#6366F1"
       href: "https://github.com/Dicklesworthstone/remote_compilation_helper"
       features:
-        - "Transparent cargo interception"
+        - "Transparent cargo/go/gcc/bun interception (hook + cargo shim)"
         - "Multi-worker pool with priority scheduling"
         - "Incremental artifact sync"
         - "Daemon mode with status monitoring"
@@ -2974,7 +2976,7 @@ modules:
         - "Reducing local CPU usage during heavy compilation"
         - "Distributing builds across remote servers"
       language: "Rust"
-      stars: 35
+      stars: 71
       cli_name: "rch"
       command_example: "rch status"
       lesson_slug: "rch"
@@ -2996,33 +2998,36 @@ modules:
     # Superseded by FrankenTerm and not part of the default install. Kept so
     # doctor and installed checks still recognize an existing wa binary;
     # selecting it no longer builds anything (see the install step).
-    description: WezTerm Automata (wa) - terminal automation and orchestration for AI agents
+    description: WezTerm Automata (wa) - superseded by FrankenTerm (ft); not installed by ACFS
     category: stack
     phase: 9
     run_as: target_user
     optional: true
     enabled_by_default: false
     tags: [optional, automation]
+    # The web block describes the successor, FrankenTerm, so /flywheel and
+    # /tldr can show it. It deliberately has no cli_name: the generator only
+    # puts modules with a cli_name into manifest-commands.ts, so neither `wa`
+    # nor `ft` is listed on /learn/commands as a command ACFS installs.
     web:
-      display_name: "WezTerm Automata"
-      short_name: "WA"
-      tagline: "Terminal hypervisor for multi-agent automation"
+      display_name: "FrankenTerm"
+      short_name: "FT"
+      tagline: "Swarm-native terminal platform (successor to wa); not installed by ACFS"
       icon: "monitor"
       color: "#06B6D4"
-      href: "https://github.com/Dicklesworthstone/wezterm_automata"
+      href: "https://github.com/Dicklesworthstone/frankenterm"
       features:
-        - "Real-time terminal observation"
-        - "Intelligent pattern detection"
-        - "Robot Mode JSON API"
-        - "Event-driven automation"
-      tech_stack: ["Rust", "WezTerm API", "SQLite FTS5"]
+        - "Real-time pane capture with explicit gap records"
+        - "Pattern and change-point agent-state detection"
+        - "Robot Mode JSON/TOON API and MCP server"
+        - "Policy-gated sends and transactional workflows"
+      tech_stack: ["Rust", "Vendored WezTerm-fork engine", "SQLite FTS5", "asupersync"]
       use_cases:
-        - "Detecting agent rate limits and errors"
+        - "Detecting agent usage limits and errors"
         - "Coordinating multi-agent workflows"
         - "Searching across captured terminal sessions"
       language: "Rust"
-      stars: 42
-      cli_name: "wa"
+      stars: 129
     dependencies:
       - base.system
     installed_check:
@@ -3076,7 +3081,7 @@ modules:
         - "Large compilation jobs"
         - "Heavy test suite runs"
       language: "Go"
-      stars: 50
+      stars: 31
       cli_name: "sysmoni"
     dependencies:
       - base.system
@@ -3117,13 +3122,13 @@ modules:
         - "Progressive delivery (fast initial + quality refinement)"
         - "Local ML model support"
         - "JSON API for agent integration"
-      tech_stack: ["Rust", "Tantivy", "ONNX", "BM25"]
+      tech_stack: ["Rust", "Quill BM25", "Model2Vec", "ONNX"]
       use_cases:
         - "Local code and document search"
         - "AI agent knowledge retrieval"
         - "Hybrid search across project artifacts"
       language: "Rust"
-      stars: 30
+      stars: 97
       cli_name: "fsfs"
       command_example: "fsfs search \"query\""
       lesson_slug: "fsfs"
@@ -3167,7 +3172,7 @@ modules:
         - "Automated cleanup of build artifacts"
         - "Monitoring disk usage across projects"
       language: "Rust"
-      stars: 20
+      stars: 34
       cli_name: "sbh"
       command_example: "sbh status"
       lesson_slug: "sbh"
@@ -3202,7 +3207,7 @@ modules:
       features:
         - "Cross-provider session conversion"
         - "Canonical session model"
-        - "14+ provider support"
+        - "17-provider support"
         - "Session listing and inspection (casr list, casr info)"
       tech_stack: ["Rust", "SQLite", "JSONL"]
       use_cases:
@@ -3210,7 +3215,7 @@ modules:
         - "Migrating session history between providers"
         - "Building unified session archives"
       language: "Rust"
-      stars: 25
+      stars: 130
       cli_name: "casr"
       command_example: "casr resume cod <session-id>"
       lesson_slug: "casr"
@@ -3251,9 +3256,9 @@ modules:
       use_cases:
         - "Releasing when GitHub Actions quota is exhausted"
         - "Local release testing before push"
-        - "Cross-platform builds from single machine"
+        - "Cross-platform builds across your own Linux/macOS/Windows hosts"
       language: "Bash"
-      stars: 15
+      stars: 80
       cli_name: "dsr"
       command_example: "dsr release ntm 1.2.3"
       lesson_slug: "dsr"
@@ -3297,7 +3302,7 @@ modules:
         - "Restoring agent configs after reinstall"
         - "Tracking config changes over time"
       language: "Bash"
-      stars: 10
+      stars: 37
       cli_name: "asb"
       command_example: "asb backup"
       lesson_slug: "asb"
@@ -3379,7 +3384,7 @@ modules:
         - "Ensuring agents follow project conventions"
         - "Maintaining consistency across long sessions"
       language: "Bash"
-      stars: 40
+      stars: 55
       cli_name: "claude-post-compact-reminder"
       cli_aliases: ["pcr"]
       command_example: "printf '{\"session_id\":\"demo\",\"source\":\"compact\"}\\n' | claude-post-compact-reminder"
@@ -3518,7 +3523,7 @@ modules:
         - "Capturing and reusing hard-won project rules"
         - "Advisory pre-flight risk lookup before destructive commands"
       language: "Rust"
-      stars: 25
+      stars: 99
       cli_name: "ee"
       command_example: "ee pack \"fix the auth bug\""
       lesson_slug: "ee"
@@ -3562,7 +3567,7 @@ modules:
         - "Producing reproducible PDF documentation for review"
         - "Rendering docs to HTML and PDF in CI with JSON status output"
       language: "Rust"
-      stars: 30
+      stars: 112
       cli_name: "fmd"
       command_example: "fmd README.md --out README.html"
       lesson_slug: "fmd"
@@ -3606,7 +3611,7 @@ modules:
         - "Single-shot scripted agent runs in pipelines"
         - "Long sessions with bounded-resource storage and fast resume"
       language: "Rust"
-      stars: 45
+      stars: 2011
       cli_name: "pi"
       command_example: "pi \"refactor this function\""
       lesson_slug: "pi"
@@ -3650,7 +3655,7 @@ modules:
         - "Selectively restoring a subset of sessions from a saved plan"
         - "Pre-flighting recovery readiness before you need it"
       language: "Bash"
-      stars: 15
+      stars: 8
       cli_name: "pfr"
       command_example: "pfr --dry-run"
       lesson_slug: "pfr"
@@ -3687,17 +3692,17 @@ modules:
       color: "#64748B"
       href: "https://github.com/Dicklesworthstone/giil"
       features:
-        - "iCloud share link support"
-        - "CLI-based image download"
-        - "No browser required"
+        - "iCloud, Dropbox, Google Photos, and Google Drive share links"
+        - "Full-resolution originals via headless Chromium (Dropbox uses direct curl)"
+        - "Album mode (--all) and multi-URL batches"
         - "Works over SSH"
-      tech_stack: ["Bash", "curl", "iCloud API"]
+      tech_stack: ["Bash", "Node.js", "Playwright", "Sharp"]
       use_cases:
         - "Sharing screenshots for remote debugging"
         - "Getting images to headless servers"
         - "AI agent image analysis workflows"
       language: "Bash"
-      stars: 24
+      stars: 46
       cli_name: "giil"
     dependencies:
       - base.system   # giil installer auto-installs Node.js + Playwright if needed
@@ -3737,7 +3742,7 @@ modules:
         - "Preserving code solutions from chat"
         - "Building a local knowledge base from AI interactions"
       language: "TypeScript"
-      stars: 156
+      stars: 29
       cli_name: "csctf"
     dependencies:
       - base.system   # csctf provides prebuilt binaries; installer handles deps
@@ -3777,7 +3782,7 @@ modules:
         - "Researching past discussions"
         - "Building on ideas from tweet history"
       language: "Rust"
-      stars: 156
+      stars: 116
       cli_name: "xf"
     dependencies:
       - lang.rust
@@ -3803,22 +3808,22 @@ modules:
     web:
       display_name: "Token-Optimized Notation"
       short_name: "TRU"
-      tagline: "Compress source code for maximum LLM context efficiency"
+      tagline: "Encode JSON as TOON so structured data costs fewer LLM tokens"
       icon: "minimize-2"
       color: "#06B6D4"
       href: "https://github.com/Dicklesworthstone/toon_rust"
       features:
-        - "40-70% token count reduction"
-        - "Multi-language support"
-        - "Token count statistics"
-        - "Reversible compression"
+        - "40-60% fewer tokens than JSON on typical payloads"
+        - "JSON to TOON and back (--decode)"
+        - "Token estimates (--stats)"
+        - "Key folding and tab/pipe delimiters"
       tech_stack: ["Rust"]
       use_cases:
-        - "Fitting more code context into LLM requests"
-        - "Reducing API costs for large codebases"
-        - "Preparing code for context-limited models"
+        - "Fitting more structured data into LLM requests"
+        - "Shrinking JSON tool output before agents read it"
+        - "Round-tripping JSON through TOON in agent pipelines"
       language: "Rust"
-      stars: 156
+      stars: 30
       cli_name: "toon"
     dependencies:
       - lang.rust
@@ -3836,7 +3841,7 @@ modules:
       - "Installer/checksum key is tru (the toon_rust Cargo package); the binary it installs is named toon"
 
   - id: utils.rano
-    description: rano - Network observer for AI CLIs with request/response logging
+    description: rano - Network observer that attributes AI CLI sockets to processes and providers
     category: tools
     phase: 9
     run_as: target_user
@@ -3846,22 +3851,22 @@ modules:
     web:
       display_name: "Network Observer"
       short_name: "RANO"
-      tagline: "Monitor AI CLI network traffic for debugging and analysis"
+      tagline: "Monitor AI CLI network connections for debugging and analysis"
       icon: "network"
       color: "#F59E0B"
       href: "https://github.com/Dicklesworthstone/rano"
       features:
-        - "Transparent HTTP proxy interception"
-        - "Provider-aware log parsing"
-        - "Token and cost tracking"
-        - "Real-time traffic monitoring"
+        - "Socket-to-PID attribution via /proc or libproc (no proxy)"
+        - "Provider tags: anthropic, openai, google"
+        - "SQLite history with report, diff and export"
+        - "Live stats, alerts and retry-storm detection"
       tech_stack: ["Rust"]
       use_cases:
         - "Debugging unexpected agent behavior"
-        - "Tracking API token consumption"
-        - "Analyzing prompt efficiency"
+        - "Spotting retry storms and unexpected endpoints"
+        - "Auditing which subprocess talks to which provider"
       language: "Rust"
-      stars: 156
+      stars: 33
       cli_name: "rano"
     dependencies:
       - lang.rust
@@ -3892,17 +3897,17 @@ modules:
       color: "#10B981"
       href: "https://github.com/Dicklesworthstone/markdown_web_browser"
       features:
-        - "Clean content extraction"
-        - "Code block preservation"
-        - "Link handling"
-        - "Pipe-friendly output"
-      tech_stack: ["Rust"]
+        - "Headless Chrome capture of JS-rendered pages"
+        - "Screenshot tiles OCR'd into Markdown"
+        - "Per-tile provenance and links.json"
+        - "Resumable batch jobs and embeddings search"
+      tech_stack: ["Python", "FastAPI", "Playwright", "olmOCR"]
       use_cases:
         - "Feeding documentation to AI agents"
         - "Archiving web content locally"
         - "Building LLM-ready research corpora"
-      language: "Rust"
-      stars: 156
+      language: "Python"
+      stars: 191
       cli_name: "mdwb"
     dependencies:
       - lang.rust
@@ -3943,7 +3948,7 @@ modules:
         - "Creating reproducible prompt templates"
         - "Managing context window budget"
       language: "TypeScript"
-      stars: 156
+      stars: 23
       cli_name: "s2p"
     dependencies:
       - lang.bun
@@ -3961,7 +3966,7 @@ modules:
       - s2p --help
 
   - id: utils.rust_proxy
-    description: rust_proxy - Transparent proxy routing for debugging network traffic
+    description: rust_proxy - Targeted transparent proxy routing selected domains through an upstream HTTP proxy
     category: tools
     phase: 9
     run_as: target_user
@@ -3971,22 +3976,22 @@ modules:
     web:
       display_name: "Rust Proxy"
       short_name: "RP"
-      tagline: "Transparent proxy routing for network traffic debugging"
+      tagline: "Route only selected domains through an upstream proxy"
       icon: "shield"
       color: "#6366F1"
       href: "https://github.com/Dicklesworthstone/rust_proxy"
       features:
-        - "Transparent HTTP/HTTPS proxying"
-        - "Request/response logging"
-        - "Latency measurement"
-        - "Header inspection"
+        - "Per-domain targeting via iptables + ipset"
+        - "Upstream HTTP proxy tunneling"
+        - "Health checks, failover and latency stats"
+        - "Live config reload"
       tech_stack: ["Rust"]
       use_cases:
-        - "Debugging API communication issues"
-        - "Measuring request latency"
-        - "Inspecting headers and payloads"
+        - "Routing AI-provider API traffic through a chosen proxy"
+        - "Machine-wide proxying without per-app config"
+        - "Measuring upstream proxy latency"
       language: "Rust"
-      stars: 156
+      stars: 9
       cli_name: "rust_proxy"
     dependencies:
       - lang.rust
@@ -4006,7 +4011,7 @@ modules:
       - rust_proxy --help || rust_proxy --version
 
   - id: utils.aadc
-    description: aadc - ASCII diagram corrector for fixing malformed ASCII art
+    description: aadc - ASCII diagram corrector that realigns ragged right borders
     category: tools
     phase: 9
     run_as: target_user
@@ -4016,22 +4021,22 @@ modules:
     web:
       display_name: "ASCII Art Diagram Corrector"
       short_name: "AADC"
-      tagline: "Fix malformed ASCII diagrams from AI output"
+      tagline: "Fix ragged right borders in ASCII diagrams from AI output"
       icon: "align-left"
       color: "#EC4899"
       href: "https://github.com/Dicklesworthstone/aadc"
       features:
-        - "Auto-repair box alignment"
-        - "Connector line fixing"
+        - "Right-border alignment by padding"
+        - "Never removes content"
         - "Before/after diff preview"
-        - "Clipboard integration"
+        - "Recursive, watch and pre-commit hook modes"
       tech_stack: ["Rust"]
       use_cases:
         - "Fixing AI-generated architecture diagrams"
         - "Cleaning up ASCII flowcharts"
         - "Producing clean documentation"
       language: "Rust"
-      stars: 156
+      stars: 32
       cli_name: "aadc"
     dependencies:
       - lang.rust
@@ -4066,17 +4071,17 @@ modules:
       color: "#14B8A6"
       href: "https://github.com/Dicklesworthstone/coding_agent_usage_tracker"
       features:
-        - "Multi-provider usage aggregation"
-        - "Per-session token breakdown"
-        - "Cost estimation and trends"
-        - "Export to CSV/JSON"
+        - "Quota, rate-limit windows and credits across 16 providers"
+        - "Per-session cost attribution (caut session)"
+        - "Local cost from agent JSONL logs and usage trends"
+        - "History export to CSV/JSON"
       tech_stack: ["Rust"]
       use_cases:
         - "Monitoring daily API spend"
         - "Comparing provider costs"
         - "Optimizing agent token usage"
       language: "Rust"
-      stars: 156
+      stars: 93
       cli_name: "caut"
     dependencies:
       - lang.rust

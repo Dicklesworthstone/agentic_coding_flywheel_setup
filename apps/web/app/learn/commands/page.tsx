@@ -132,16 +132,17 @@ const COMMANDS: CommandEntry[] = [
   },
   {
     name: "gmi",
-    fullName: "Gemini CLI (legacy)",
+    fullName: "Antigravity CLI (legacy gmi shortcut)",
     description: "Legacy shortcut retained for old habits; now launches locked `agy`",
     example: 'gmi -p "explain the repo structure"',
     category: "agents",
-    learnMoreHref: "/learn/tools/gemini-cli",
+    learnMoreHref: "/learn/tools/antigravity-cli",
   },
   {
     name: "claude",
     fullName: "Claude Code",
-    description: "Full command (same as `cc` on ACFS)",
+    description:
+      "Bare binary; `cc` adds a larger Node memory limit and, in vibe mode, --dangerously-skip-permissions",
     example: "claude --help",
     category: "agents",
     learnMoreHref: "/learn/tools/claude-code",
@@ -149,7 +150,8 @@ const COMMANDS: CommandEntry[] = [
   {
     name: "codex",
     fullName: "Codex CLI",
-    description: "Full command (same as `cod` on ACFS)",
+    description:
+      "Bare binary; `cod` adds --search, the pinned model/effort, and (vibe mode) --dangerously-bypass-approvals-and-sandbox",
     example: "codex --help",
     category: "agents",
     learnMoreHref: "/learn/tools/codex-cli",
@@ -256,7 +258,7 @@ const COMMANDS: CommandEntry[] = [
     name: "dcg allow-once",
     fullName: "DCG Allow Once",
     description: "Bypass a block using the short code from denial message",
-    example: "dcg allow-once ABC-123",
+    example: "dcg allow-once 123456",
     category: "stack",
     learnMoreHref: "/learn/tools/dcg",
   },

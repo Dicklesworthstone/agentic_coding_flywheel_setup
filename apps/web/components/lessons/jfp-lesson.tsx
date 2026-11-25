@@ -46,15 +46,15 @@ export function JfpLesson() {
   return (
     <div className="space-y-8">
       <GoalBanner>
-        Discover and install curated prompts for agentic coding with JeffreysPrompts.
+        Discover, copy, and export curated prompts for agentic coding with JeffreysPrompts.
       </GoalBanner>
 
       {/* Section 1: What Is JFP */}
       <Section title="What Is JFP?" icon={<GraduationCap className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
           <Highlight>JFP (JeffreysPrompts.com CLI)</Highlight> gives you access to a curated library
-          of battle-tested prompts for Claude, GPT, and other AI coding agents. Browse, copy, and
-          install prompts directly as Claude Code skills.
+          of battle-tested prompts for Claude, GPT, and other AI coding agents. Browse, copy, render,
+          and export prompts as markdown. Skills are managed separately by its sibling CLI, jsm.
         </Paragraph>
         <Paragraph>
           The CLI and website share the same prompt library, so use whichever interface fits your
@@ -77,8 +77,8 @@ export function JfpLesson() {
             />
             <FeatureCard
               icon={<Download className="h-5 w-5" />}
-              title="Install"
-              description="Install as Claude Code skills"
+              title="Export"
+              description="Export prompts as markdown files (jfp export)"
               gradient="from-emerald-500/20 to-teal-500/20"
             />
             <FeatureCard
@@ -121,9 +121,9 @@ export function JfpLesson() {
             {
               command: "jsm install <id>",
               description:
-                "Install as a Claude Code skill (skill management moved from jfp to jsm)",
+                "Install a jeffreys-skills.md skill (separate jsm CLI; subscription required)",
             },
-            { command: "jsm list", description: "List installed skills" },
+            { command: "jsm list", description: "List installed skills (jsm)" },
           ]}
         />
 
@@ -147,10 +147,16 @@ jfp list
 # Search for code review prompts
 jfp search "code review"
 
-# Install a prompt as a skill (jsm owns skill management now)
+# Copy a prompt to paste into your agent
+jfp copy idea-wizard
+
+# Skills are separate: install jsm (not in the default ACFS install),
+# sign in with a jeffreys-skills.md subscription, then install the skill
+curl -fsSL https://jeffreys-skills.md/install.sh | bash
+jsm login --remote
 jsm install idea-wizard
 
-# Use in Claude Code
+# Use the skill in Claude Code
 /idea-wizard "build a REST API"`}
         />
       </Section>
@@ -586,23 +592,23 @@ const TERMINAL_LINES = [
   { type: "output" as const, text: "" },
   {
     type: "result" as const,
-    text: "  1. perf-review-pro    Performance-focused code review     4.9",
+    text: "  1. deep-performance-audit  Deep Performance Audit",
   },
   {
     type: "result" as const,
-    text: "  2. bundle-analyzer    Bundle size optimization review      4.7",
+    text: "  2. peer-code-reviewer      Peer Code Reviewer",
   },
   {
     type: "result" as const,
-    text: "  3. render-audit       React re-render analysis             4.6",
+    text: "  3. bug-hunter              The Bug Hunter",
   },
   { type: "output" as const, text: "" },
-  { type: "command" as const, text: "$ jsm install perf-review-pro" },
-  { type: "progress" as const, text: "Downloading prompt template..." },
-  { type: "progress" as const, text: "Installing as Claude Code skill..." },
-  { type: "success" as const, text: "Installed! Use with: /perf-review-pro <file_or_directory>" },
+  { type: "command" as const, text: "$ jfp copy deep-performance-audit" },
+  { type: "progress" as const, text: "Fetching prompt..." },
+  { type: "progress" as const, text: "Copying to clipboard..." },
+  { type: "success" as const, text: "Copied! Paste it into your agent session." },
   { type: "output" as const, text: "" },
-  { type: "command" as const, text: "$ /perf-review-pro app/checkout/" },
+  { type: "command" as const, text: "> [pasted prompt] Target: app/checkout/" },
   { type: "output" as const, text: "Analyzing checkout flow for performance issues..." },
   { type: "output" as const, text: "" },
   { type: "agent" as const, text: "I'll review app/checkout/ for performance issues." },
@@ -1401,7 +1407,7 @@ function AgentTerminalTab() {
     <div ref={rootRef} className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted-foreground">
-          Watch a prompt being searched, installed, and executed in an agent terminal.
+          Watch a prompt being searched, copied, and run in an agent terminal.
         </p>
         <button
           onClick={startSimulation}

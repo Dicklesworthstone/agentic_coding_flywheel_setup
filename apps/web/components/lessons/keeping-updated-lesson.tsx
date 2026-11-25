@@ -83,7 +83,7 @@ export function KeepingUpdatedLesson() {
           <UpdateItem
             icon={<Bot className="h-4 w-4" />}
             label="Coding agents"
-            description="Claude, Codex, Antigravity"
+            description="Claude, Codex, Antigravity (+ omp, Grok, OpenCode if installed)"
           />
           <UpdateItem
             icon={<Settings className="h-4 w-4" />}
@@ -124,6 +124,12 @@ export function KeepingUpdatedLesson() {
             title="Skip Stack Tools"
             description="The Agent Flywheel stack (ntm, slb, ubs, etc.) is included by default. Skip it when you want a faster run:"
             command="acfs-update --no-stack"
+          />
+
+          <UpdatePattern
+            title="Hold One Tool Back"
+            description="If one tool ships a regression, pin just that tool instead of pausing all updates (acfs holds lists holds; acfs unhold releases one):"
+            command='acfs hold br --reason "regression in latest release"'
           />
         </div>
       </Section>
@@ -208,8 +214,8 @@ sudo dpkg --configure -a`}
           <TroubleshootingCard
             title="Agent update failed"
             description="Try updating directly:"
-            solution={`# Claude
-claude update --channel latest
+            solution={`# Claude (acfs-update itself re-runs the checksum-pinned claude.ai installer)
+claude update
 
 # Codex
 bun install -g --trust @openai/codex@latest
@@ -623,10 +629,10 @@ const REPOS: RepoNode[] = [
     id: "ntm",
     name: "NTM Stack",
     shortName: "NTM",
-    versionFrom: "0.9.3",
-    versionTo: "0.9.4",
+    versionFrom: "1.38.1",
+    versionTo: "1.39.0",
     category: "stack",
-    dependsOn: ["apt", "supabase"],
+    dependsOn: ["apt"],
   },
   {
     id: "dcg",
@@ -675,13 +681,13 @@ const SCENARIOS: Scenario[] = [
       "[shell] Pulling oh-my-zsh latest... done",
       "[shell] Pulling p10k... done",
       "[shell] Pulling zsh-plugins... done",
-      "[agents] claude update --channel latest",
+      "[agents] Claude Code (verified installer) updated",
       "[agents] codex updated to 0.1.25",
       "[agents] agy updated to 1.0.12",
       "[cloud] wrangler 3.91.0 -> 3.92.0",
       "[cloud] supabase 1.200.3 -> 1.201.0",
       "[cloud] vercel 37.8.0 -> 37.9.0",
-      "[stack] ntm 0.9.3 -> 0.9.4",
+      "[stack] ntm 1.38.1 -> 1.39.0",
       "[stack] dcg 0.4.1 -> 0.4.2",
       "All 12 components updated successfully!",
     ],
@@ -728,9 +734,9 @@ const SCENARIOS: Scenario[] = [
   },
   {
     id: "conflict",
-    label: "Version Conflict",
+    label: "Version Hold",
     description:
-      "NTM and Supabase CLI have conflicting dependency requirements. The resolver detects and handles it.",
+      "You pinned Supabase CLI with acfs hold after a bad release. The updater skips it, names the hold, and updates everything else.",
     command: "acfs-update",
     repoSequence: [
       { repoId: "apt", finalStatus: "updated", delay: 0 },
@@ -745,10 +751,10 @@ const SCENARIOS: Scenario[] = [
         repoId: "supabase",
         finalStatus: "conflict",
         delay: 1000,
-        errorMsg: "Needs @supabase/auth@2.x",
+        errorMsg: "Held by acfs hold (regression in 1.201.0)",
       },
       { repoId: "vercel", finalStatus: "updated", delay: 1100 },
-      { repoId: "ntm", finalStatus: "conflict", delay: 1300, errorMsg: "Needs @supabase/auth@1.x" },
+      { repoId: "ntm", finalStatus: "updated", delay: 1300 },
       { repoId: "dcg", finalStatus: "updated", delay: 1400 },
     ],
     terminalLines: [
@@ -757,13 +763,10 @@ const SCENARIOS: Scenario[] = [
       "[shell] All shell tools updated",
       "[agents] All agents updated",
       "[cloud] wrangler updated",
-      "[cloud] supabase 1.200.3 -> 1.201.0",
-      "CONFLICT: supabase@1.201.0 needs @supabase/auth@2.x",
-      "  but ntm@0.9.4 requires @supabase/auth@1.x",
+      "[cloud] supabase: HELD at 1.200.3 (reason: regression in 1.201.0)",
       "[cloud] vercel updated",
-      "[stack] ntm: dependency conflict detected",
-      "Resolution: Pin supabase@1.200.3 until ntm updates",
-      "10/12 components updated, 2 conflicts resolved",
+      "[stack] ntm 1.38.1 -> 1.39.0",
+      "11/12 components updated, 1 held (acfs holds lists it; acfs unhold supabase releases it)",
     ],
   },
   {

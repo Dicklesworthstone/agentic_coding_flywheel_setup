@@ -117,7 +117,7 @@ export function NtmCoreLesson() {
             subcommand &apos;robot&apos;”), bypass duplicate-checking:
             <div className="mt-4 space-y-3">
               <CodeBlock code='ntm send myproject --no-cass-check "Analyze this codebase and summarize what it does"' />
-              <CodeBlock code='ntm --robot-send myproject --msg "Analyze this codebase and summarize what it does" --all' />
+              <CodeBlock code='ntm --robot-send myproject --msg "Analyze this codebase and summarize what it does"' />
             </div>
           </TipBox>
 
@@ -229,7 +229,7 @@ const AGENTS: AgentPaneV2[] = [
   {
     id: "cc1",
     name: "Claude-1",
-    model: "claude-sonnet-4-6",
+    model: "claude-opus-5-5",
     flag: "--cc",
     color: "#f97316",
     colorLight: "#fdba74",
@@ -237,7 +237,7 @@ const AGENTS: AgentPaneV2[] = [
     spawnStep: 1,
     angle: 30,
     terminalLines: [
-      "$ claude --model sonnet",
+      "$ claude --model opus",
       "Analyzing codebase...",
       "Found 147 source files",
       "Mapping dependencies...",
@@ -248,7 +248,7 @@ const AGENTS: AgentPaneV2[] = [
   {
     id: "cc2",
     name: "Claude-2",
-    model: "claude-sonnet-4-6",
+    model: "claude-opus-5-5",
     flag: "--cc",
     color: "#f97316",
     colorLight: "#fdba74",
@@ -256,7 +256,7 @@ const AGENTS: AgentPaneV2[] = [
     spawnStep: 2,
     angle: 90,
     terminalLines: [
-      "$ claude --model sonnet",
+      "$ claude --model opus",
       "Scanning test coverage...",
       "Running static checks...",
       "Checking type safety...",
@@ -267,7 +267,7 @@ const AGENTS: AgentPaneV2[] = [
   {
     id: "cod1",
     name: "Codex",
-    model: "codex-mini",
+    model: "gpt-6.2-sol",
     flag: "--cod",
     color: "#10b981",
     colorLight: "#6ee7b7",
@@ -275,7 +275,7 @@ const AGENTS: AgentPaneV2[] = [
     spawnStep: 3,
     angle: 150,
     terminalLines: [
-      "$ codex --model mini",
+      "$ codex -m gpt-6.2-sol",
       "Linting source files...",
       "Auto-fixing 23 issues...",
       "Optimizing imports...",
@@ -308,9 +308,9 @@ const TOTAL_STEPS = 8;
 
 const STEP_COMMANDS: Record<number, string> = {
   0: "ntm spawn myproject --cc=2 --cod=1 --agy=1",
-  1: "Spawning Claude-1 (claude-sonnet-4-6)...",
-  2: "Spawning Claude-2 (claude-sonnet-4-6)...",
-  3: "Spawning Codex (codex-mini)...",
+  1: "Spawning Claude-1 (claude-opus-5-5)...",
+  2: "Spawning Claude-2 (claude-opus-5-5)...",
+  3: "Spawning Codex (gpt-6.2-sol)...",
   4: "Spawning Antigravity (Gemini 4 Neon)...",
   5: 'ntm send myproject "Analyze this codebase"',
   6: "Agents working in parallel...",

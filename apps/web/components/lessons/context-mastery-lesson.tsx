@@ -34,7 +34,7 @@ export function ContextMasteryLesson() {
             <FeatureCard
               icon={<Minimize2 className="h-5 w-5" />}
               title="TRU"
-              description="40-70% token reduction via compression"
+              description="JSON to TOON: ~30-60% fewer tokens on tabular data"
               gradient="from-emerald-500/20 to-teal-500/20"
             />
             <FeatureCard
@@ -98,29 +98,26 @@ toon results.toon`}
       {/* Section 3: S2P Bundling */}
       <Section title="Bundle with S2P" icon={<FileCode className="h-5 w-5" />} delay={0.2}>
         <Paragraph>
-          <Highlight>S2P (Source to Prompt)</Highlight> combines multiple source files into a
-          single, well-structured prompt with automatic token counting. Instead of agents reading
-          files one by one, give them everything at once.
+          <Highlight>S2P (Source to Prompt)</Highlight> is a terminal UI that combines the files
+          you pick into a single, well-structured prompt with live token counting. Instead of
+          agents reading files one by one, give them everything at once.
         </Paragraph>
 
         <CodeBlock
-          code={`# Bundle all TypeScript files in a directory
-s2p src/api/ --include "*.ts"
+          code={`# Launch the TUI on a directory (s2p takes only a path)
+s2p src/
 
-# Bundle with token count for each file
-s2p src/ --include "*.ts" --show-tokens
-
-# Exclude test files and node_modules
-s2p src/ --include "*.ts" --exclude "*test*,*spec*"
-
-# Output to clipboard for pasting
-s2p src/components/ --include "*.tsx" --clipboard`}
+# Inside the TUI:
+#   / or f   filter by path          Space   toggle a file
+#   a        select filter matches   3       select all TypeScript files
+#   Ctrl+G   generate the prompt     y       copy it (w saves to a file)`}
           filename="S2P Bundling"
         />
 
         <TipBox variant="info">
-          S2P shows token counts per file, so you can see which files are consuming the most
-          context. Drop large auto-generated files that agents rarely need.
+          S2P shows a live token estimate for your selection and tags every file in the output
+          with its own token count, so you can see which files are consuming the most context.
+          Drop large auto-generated files that agents rarely need.
         </TipBox>
       </Section>
 
@@ -216,8 +213,8 @@ cm context "implement rate limiting" --json
           <div className="flex items-start gap-3 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
             <ArrowDown className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
             <span className="text-white/90 text-sm">
-              <strong className="text-emerald-400">Step 4: TRU Compress</strong> — Shrink the bundle
-              by 40-70% before sending
+              <strong className="text-emerald-400">Step 4: TRU Encode</strong> — Convert any JSON
+              in the bundle (manifests, tool output) to TOON before sending
             </span>
           </div>
         </div>
@@ -225,8 +222,8 @@ cm context "implement rate limiting" --json
         <div className="mt-6 p-4 rounded-lg bg-white/[0.03] border border-white/[0.08]">
           <p className="text-sm text-white/70">
             <strong className="text-white">Result:</strong> An agent that starts with distilled
-            knowledge, targeted solutions, and compressed source — fitting 10x more useful
-            information into the same context window.
+            knowledge, targeted solutions, curated source, and compact structured data — fitting
+            far more useful information into the same context window.
           </p>
         </div>
       </Section>

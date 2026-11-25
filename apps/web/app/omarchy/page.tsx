@@ -168,8 +168,8 @@ interface ToolEntry {
 const THIRD_PARTY_HREFS: Record<string, string> = {
   claude: "https://github.com/anthropics/claude-code",
   codex: "https://github.com/openai/codex",
-  agy: "https://antigravity.google/",
-  opencode: "https://github.com/sst/opencode",
+  agy: "https://antigravity.google/cli",
+  opencode: "https://opencode.ai/docs",
   omp: "https://omp.sh",
   grok: "https://x.ai/cli",
   bun: "https://github.com/oven-sh/bun",
@@ -322,12 +322,8 @@ const TOOLS: ToolEntry[] = [
     description: "Storage Ballast Helper: reserve disk to survive full-disk events",
     tier: "flywheel",
   },
-  {
-    name: "sysmoni",
-    description:
-      "System Resource Protection: deprioritizes background processes so the workstation stays responsive",
-    tier: "flywheel",
-  },
+  // sysmoni (stack.srps) is deliberately absent: the manifest limits it to
+  // Ubuntu (families: [ubuntu]) because SRPS's upstream installer is apt-only.
   {
     name: "fmd",
     description: "Franken Markdown: one binary turns Markdown into HTML and PDF",
@@ -340,7 +336,8 @@ const TOOLS: ToolEntry[] = [
   },
   {
     name: "giil",
-    description: "Get Image from Internet Link: pull iCloud and Dropbox shares into the terminal",
+    description:
+      "Get Image from Internet Link: pull iCloud, Dropbox, Google Photos, and Drive shares into the terminal",
     tier: "flywheel",
   },
   {
@@ -355,7 +352,7 @@ const TOOLS: ToolEntry[] = [
   },
   {
     name: "toon",
-    description: "Token-Optimized Notation: compress source code for LLM context",
+    description: "Token-Optimized Object Notation: encode JSON as TOON to cut LLM tokens",
     tier: "flywheel",
   },
   {
@@ -396,7 +393,7 @@ const TOOLS: ToolEntry[] = [
   },
   {
     name: "rust_proxy",
-    description: "Rust Proxy: transparent proxy routing for network debugging",
+    description: "Rust Proxy: route selected domains through an upstream proxy",
     tier: "flywheel",
   },
   // Third-party: agents, runtimes, and CLIs the stack depends on.

@@ -44,15 +44,15 @@ export function CaamLesson() {
       {/* Section 1: What Is CAAM */}
       <Section title="What Is CAAM?" icon={<Users className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>CAAM (Coding Agent Account Manager)</Highlight> manages multiple API accounts
-          across AI providers (Anthropic, OpenAI, Google) and automatically switches between them
-          when rate limits hit. Instead of waiting for cooldowns, your agents keep working on the
+          <Highlight>CAAM (Coding Agent Account Manager)</Highlight> saves the subscription logins
+          (Claude Max, GPT Pro, Gemini Ultra, and more) of each agent CLI and swaps between them
+          when usage limits hit. Instead of waiting for cooldowns, your agents keep working on the
           next available account.
         </Paragraph>
         <Paragraph>
-          When running agent swarms with NTM, each agent consumes API quota fast. CAAM tracks
-          per-account rate limit state and rotates credentials so agents experience near-zero
-          downtime from throttling.
+          When running agent swarms with NTM, each agent consumes quota fast. CAAM tracks
+          per-profile cooldown state and swaps auth files so agents experience near-zero downtime
+          from throttling.
         </Paragraph>
 
         <div className="mt-8">
@@ -60,7 +60,7 @@ export function CaamLesson() {
             <FeatureCard
               icon={<ArrowLeftRight className="h-5 w-5" />}
               title="Account Switching"
-              description="Rotate across multiple API keys per provider"
+              description="Swap saved subscription logins in under 100ms"
               gradient="from-blue-500/20 to-indigo-500/20"
             />
             <FeatureCard
@@ -78,7 +78,7 @@ export function CaamLesson() {
             <FeatureCard
               icon={<Key className="h-5 w-5" />}
               title="Multi-Provider"
-              description="Anthropic, OpenAI, Google in one system"
+              description="Claude, Codex, Antigravity, Gemini, Grok, OpenCode, Cursor"
               gradient="from-amber-500/20 to-orange-500/20"
             />
           </FeatureGrid>
@@ -92,29 +92,29 @@ export function CaamLesson() {
 
       {/* Section 2: Quick Start */}
       <Section title="Quick Start" icon={<Key className="h-5 w-5" />} delay={0.15}>
-        <Paragraph>Register your accounts, then let CAAM handle switching.</Paragraph>
+        <Paragraph>Save each logged-in account once, then let CAAM handle switching.</Paragraph>
 
         <CodeBlock
-          code={`# Add an Anthropic account
-caam add --provider anthropic --name "work-account" --key sk-ant-...
+          code={`# Log in to each account once with the tool's normal flow, then save it
+caam backup claude work@example.com
 
-# Add a second account for the same provider
-caam add --provider anthropic --name "personal" --key sk-ant-...
+# /login to the second account inside Claude Code, then save it too
+caam backup claude personal@example.com
 
-# Add an OpenAI account
-caam add --provider openai --name "openai-main" --key sk-...
+# Same for Codex, Antigravity (agy), Gemini, Grok, OpenCode, Cursor
+caam backup codex team@example.com
 
-# List all registered accounts
-caam list
+# List saved profiles
+caam ls
 
-# Check which account is active
+# Check which profile is active for each tool
 caam status`}
           filename="Account Setup"
         />
 
         <TipBox variant="warning">
-          API keys are stored encrypted on disk. Never commit the CAAM config directory to version
-          control.
+          Saved profiles are copies of each CLI&apos;s auth files under
+          ~/.local/share/caam/vault. Treat that directory like credentials and never commit it.
         </TipBox>
       </Section>
 
@@ -124,19 +124,28 @@ caam status`}
       <Section title="Essential Commands" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
         <CommandList
           commands={[
-            { command: "caam list", description: "List all registered accounts with status" },
-            { command: "caam status", description: "Show active account and rate limit state" },
-            { command: "caam switch <name>", description: "Manually switch to a specific account" },
-            { command: "caam rotate", description: "Auto-switch to the next available account" },
-            { command: "caam cooldown <name>", description: "Mark an account as rate-limited" },
-            { command: "caam reset <name>", description: "Clear cooldown state for an account" },
-            { command: "caam remove <name>", description: "Remove an account from CAAM" },
+            { command: "caam ls", description: "List saved profiles" },
+            { command: "caam status", description: "Show the active profile and health per tool" },
+            {
+              command: "caam activate <tool> <profile>",
+              description: "Switch to a specific saved profile",
+            },
+            {
+              command: "caam next <tool>",
+              description: "Rotate to the best available profile (alias: rotate)",
+            },
+            {
+              command: "caam cooldown set <tool>/<profile>",
+              description: "Mark a profile as rate-limited",
+            },
+            { command: "caam cooldown clear <tool>/<profile>", description: "Clear a cooldown early" },
+            { command: "caam delete <tool> <profile>", description: "Remove a saved profile" },
           ]}
         />
 
         <TipBox variant="tip">
-          Use <code>caam rotate</code> in your agent startup scripts. It picks the account with the
-          lowest recent usage and longest time since last rate limit.
+          Use <code>caam next claude</code> in your agent startup scripts. It picks the healthiest
+          profile that is not cooling down (add --usage-aware to factor in live quota).
         </TipBox>
       </Section>
 
@@ -145,34 +154,31 @@ caam status`}
       {/* Section 4: Rate Limit Strategy */}
       <Section title="Rate Limit Strategy" icon={<RefreshCw className="h-5 w-5" />} delay={0.25}>
         <Paragraph>
-          CAAM tracks three signals per account to make intelligent rotation decisions:
+          CAAM combines cooldowns, profile health, and live quota to make rotation decisions:
         </Paragraph>
 
         <CodeBlock
-          code={`# View rate limit details for all accounts
-caam status --verbose
+          code={`# Live quota for every saved Claude profile
+caam limits claude
 
-# Example output:
-# PROVIDER    ACCOUNT       STATUS    COOLDOWN   TOKENS/24H
-# anthropic   work-account  active    --         142,000
-# anthropic   personal      ready     --         23,000
-# openai      openai-main   cooldown  4m 32s     89,000
+# Pick the best profile (cooldown, health, recency, plan, live quota)
+caam next claude --usage-aware
 
-# Auto-rotate picks "personal" (lowest usage, no cooldown)
-caam rotate
+# When an agent hits a rate limit, mark the active profile (default 60 min)
+caam cooldown set claude
 
-# When an agent hits a rate limit, mark the account
-caam cooldown work-account --ttl 5m
+# Or mark a specific profile for a custom duration
+caam cooldown set claude/work-account --minutes 5
 
-# CAAM automatically skips accounts still in cooldown
-caam rotate  # → switches to "personal"`}
+# Rotation skips profiles that are still cooling down
+caam next claude`}
           filename="Rate Limit Management"
         />
 
         <TipBox variant="info">
-          CAAM&apos;s rotation algorithm weighs three factors: cooldown TTL remaining, tokens used
-          in the last 24 hours, and time since the account was last rate-limited. This prevents
-          hot-spotting on a single account.
+          CAAM&apos;s smart rotation scores cooldown state, token health, recency (it avoids
+          profiles used in the last 30 minutes) and plan type, plus a little random jitter. This
+          prevents hot-spotting on a single account.
         </TipBox>
       </Section>
 
@@ -181,22 +187,21 @@ caam rotate  # → switches to "personal"`}
       {/* Section 5: NTM Integration */}
       <Section title="CAAM + Agent Swarms" icon={<ShieldCheck className="h-5 w-5" />} delay={0.3}>
         <Paragraph>
-          When NTM spawns multiple agents, each one can be assigned a different CAAM account to
+          When NTM spawns multiple agents, each one can run in its own isolated CAAM profile to
           maximize throughput.
         </Paragraph>
 
         <CodeBlock
-          code={`# In your NTM spawn config, assign accounts per agent:
-# Agent 1 uses work-account, Agent 2 uses personal, etc.
+          code={`# Give each parallel agent its own isolated profile
+caam profile add claude agent-2
+caam login claude agent-2
+caam exec claude agent-2 -- "implement feature X"
 
-# Check which agents are using which accounts
-caam status --by-session
+# List running caam sessions
+caam sessions
 
-# Monitor aggregate usage across all agents
-caam usage --period 1h
-
-# Set a budget ceiling (CAAM refuses to rotate when exceeded)
-caam budget --daily 100 --provider anthropic`}
+# Usage history across profiles for the last day
+caam usage --days 1`}
           filename="Multi-Agent Setup"
         />
 
@@ -210,7 +215,7 @@ caam budget --daily 100 --provider anthropic`}
           <div className="p-3 rounded-lg bg-violet-500/10 border border-violet-500/30">
             <span className="text-violet-400 font-semibold">CAAM + CAUT</span>
             <p className="text-white/80 text-sm mt-1">
-              Track per-account costs alongside usage metrics
+              Check each provider&apos;s remaining quota before CAAM switches accounts
             </p>
           </div>
           <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
@@ -222,7 +227,8 @@ caam budget --daily 100 --provider anthropic`}
           <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
             <span className="text-amber-400 font-semibold">CAAM + ASB</span>
             <p className="text-white/80 text-sm mt-1">
-              Back up account configs across machines with ASB
+              Back up agent settings with ASB (credential files are excluded by default; CAAM
+              keeps the logins)
             </p>
           </div>
         </div>
@@ -380,16 +386,16 @@ const SCENARIOS: Scenario[] = [
     ],
     activeAccountId: "a1",
     terminalLines: [
-      "$ caam status --verbose",
-      "CAAM Account Manager v3.2.1",
+      "$ caam limits",
+      "Live limits for saved profiles",
       "",
-      "PROVIDER    ACCOUNT        STATUS   COOLDOWN  TOKENS/24H",
-      "anthropic   work-primary   active   --        142,000",
-      "anthropic   work-backup    standby  --         23,000",
-      "openai      openai-main    standby  --         67,000",
-      "google      gemini-pro     standby  --         11,000",
+      "TOOL        PROFILE        STATUS   COOLDOWN  TOKENS/24H",
+      "claude      work-primary   active   --        142,000",
+      "claude      work-backup    standby  --         23,000",
+      "codex       openai-main    standby  --         67,000",
+      "gemini      gemini-pro     standby  --         11,000",
       "",
-      "Active: work-primary (anthropic)",
+      "Active: work-primary (claude)",
       "Rate limit headroom: 78%",
     ],
     rotationEvent: null,
@@ -454,16 +460,16 @@ const SCENARIOS: Scenario[] = [
     ],
     activeAccountId: "a1",
     terminalLines: [
-      "$ caam status --verbose",
+      "$ caam limits",
       "! WARNING: work-primary at 87% rate limit",
       "",
-      "PROVIDER    ACCOUNT        STATUS   COOLDOWN  TOKENS/24H",
-      "anthropic   work-primary   active   --        392,000",
-      "anthropic   work-backup    standby  --         23,000",
-      "openai      openai-main    standby  --         97,000",
-      "google      gemini-pro     standby  --         18,000",
+      "TOOL        PROFILE        STATUS   COOLDOWN  TOKENS/24H",
+      "claude      work-primary   active   --        392,000",
+      "claude      work-backup    standby  --         23,000",
+      "codex       openai-main    standby  --         97,000",
+      "gemini      gemini-pro     standby  --         18,000",
       "",
-      "! Pre-selecting work-backup for rotation",
+      "! Best next claude profile: work-backup",
       "  Estimated switch time: <100ms",
     ],
     rotationEvent: null,
@@ -528,16 +534,16 @@ const SCENARIOS: Scenario[] = [
     ],
     activeAccountId: "a2",
     terminalLines: [
-      "$ caam rotate",
+      "$ caam next claude",
       "! Rate limit hit on work-primary",
       "  Switching to work-backup...",
       "  Switch completed in 47ms",
       "",
-      "$ caam cooldown work-primary --ttl 5m",
+      "$ caam cooldown set claude/work-primary --minutes 5",
       "Cooldown set: work-primary (5m 0s remaining)",
       "",
       "$ caam status",
-      "Active: work-backup (anthropic)",
+      "Active: work-backup (claude)",
       "Cooldown: work-primary (4m 53s)",
     ],
     rotationEvent: { from: "a1", to: "a2" },
@@ -602,17 +608,17 @@ const SCENARIOS: Scenario[] = [
     ],
     activeAccountId: "a2",
     terminalLines: [
-      "$ caam status --verbose",
-      "CAAM Account Manager v3.2.1",
+      "$ caam limits",
+      "Live limits for saved profiles",
       "",
-      "PROVIDER    ACCOUNT        STATUS    COOLDOWN  TOKENS/24H",
-      "anthropic   work-primary   cooldown  3m 42s    450,000",
-      "anthropic   work-backup    active    --        156,000",
-      "openai      openai-main    standby   --         97,000",
-      "google      gemini-pro     standby   --         18,000",
+      "TOOL        PROFILE        STATUS    COOLDOWN  TOKENS/24H",
+      "claude      work-primary   cooldown  3m 42s    450,000",
+      "claude      work-backup    active    --        156,000",
+      "codex       openai-main    standby   --         97,000",
+      "gemini      gemini-pro     standby   --         18,000",
       "",
-      "Active: work-backup (anthropic)",
-      "Next rotation candidate: openai-main",
+      "Active: work-backup (claude)",
+      "work-primary rejoins rotation when its cooldown ends",
     ],
     rotationEvent: null,
     switchTimeMs: 0,
@@ -623,7 +629,7 @@ const SCENARIOS: Scenario[] = [
     icon: ArrowLeftRight,
     color: "sky",
     description:
-      "High-throughput swarm mode: CAAM balances load across all providers. Each account stays below 60% to avoid rate limits entirely.",
+      "High-throughput swarm: each agent runs in its own isolated profile via caam exec, so load spreads across every account and no single one hits its limit.",
     accounts: [
       {
         id: "a1",
@@ -676,17 +682,17 @@ const SCENARIOS: Scenario[] = [
     ],
     activeAccountId: "a1",
     terminalLines: [
-      "$ caam status --by-session",
-      "CAAM Multi-Provider Balance Mode",
+      "$ caam sessions",
+      "Running isolated profiles (caam exec)",
       "",
-      "SESSION   PROVIDER    ACCOUNT        TOKENS/HR",
-      "agent-1   anthropic   work-primary   12,400",
-      "agent-2   anthropic   work-backup    11,800",
-      "agent-3   openai      openai-main    15,200",
-      "agent-4   google      gemini-pro      9,600",
+      "SESSION   TOOL        PROFILE        TOKENS/HR",
+      "agent-1   claude      work-primary   12,400",
+      "agent-2   claude      work-backup    11,800",
+      "agent-3   codex       openai-main    15,200",
+      "agent-4   gemini      gemini-pro      9,600",
       "",
-      "All accounts below 60% threshold",
-      "Balance score: 0.91 (excellent)",
+      "4 sessions on 4 separate profiles",
+      "No profile above 60% of its limit",
     ],
     rotationEvent: null,
     switchTimeMs: 0,

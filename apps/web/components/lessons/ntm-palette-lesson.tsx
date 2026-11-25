@@ -76,41 +76,43 @@ export function NtmPaletteLesson() {
 
       {/* Palette Categories */}
       <Section title="Palette Categories" icon={<Layers className="h-5 w-5" />} delay={0.15}>
-        <Paragraph>The prompts are organized into categories:</Paragraph>
+        <Paragraph>
+          The palette ACFS ships groups its prompts into categories. Some of the main ones:
+        </Paragraph>
 
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <CategoryCard
             icon={<Layers className="h-5 w-5" />}
-            title="Architecture & Design"
-            items={["System design analysis", "Architecture review", "API design patterns"]}
+            title="Analysis & Review"
+            items={["Fresh review", "Check other agents' work", "Apply UBS"]}
             gradient="from-violet-500/20 to-purple-500/20"
             delay={0.1}
           />
           <CategoryCard
             icon={<Code2 className="h-5 w-5" />}
-            title="Code Quality"
-            items={["Code review prompts", "Refactoring suggestions", "Bug hunting strategies"]}
+            title="Coding & Development"
+            items={["Fix bug", "Create tests", "Build UI/UX"]}
             gradient="from-sky-500/20 to-blue-500/20"
             delay={0.2}
           />
           <CategoryCard
             icon={<TestTube className="h-5 w-5" />}
-            title="Testing"
-            items={["Test generation", "Coverage analysis", "Edge case discovery"]}
+            title="Planning & Workflow"
+            items={["Turn plan into beads", "Use BV", "Next bead"]}
             gradient="from-emerald-500/20 to-teal-500/20"
             delay={0.3}
           />
           <CategoryCard
             icon={<FileText className="h-5 w-5" />}
             title="Documentation"
-            items={["README generation", "API documentation", "Inline comment review"]}
+            items={["Improve README", "Revise README", "Add missing features to README"]}
             gradient="from-amber-500/20 to-orange-500/20"
             delay={0.4}
           />
           <CategoryCard
             icon={<Bug className="h-5 w-5" />}
-            title="Debugging"
-            items={["Error analysis", "Performance profiling", "Memory leak detection"]}
+            title="Agent Coordination"
+            items={["Default new agent", "Check and respond to mail", "Introduce to fellow agents"]}
             gradient="from-red-500/20 to-rose-500/20"
             delay={0.5}
           />
@@ -162,7 +164,7 @@ ntm send myproject -t code_review --file src/main.go`}
 
       {/* Example Prompts */}
       <Section title="Example Prompts" icon={<Sparkles className="h-5 w-5" />} delay={0.25}>
-        <Paragraph>Here are a few examples from the palette:</Paragraph>
+        <Paragraph>Here are two examples of the kind of prompt the palette holds:</Paragraph>
 
         <div className="mt-8 space-y-6">
           <ExamplePrompt
@@ -206,14 +208,18 @@ Create a simple diagram if helpful.`}
 
         <div className="mt-6">
           <CodeBlock
-            code={`# Location of custom prompts
-~/.acfs/palette/custom/`}
+            code={`# The palette file (ACFS installs it next to ntm's config)
+~/.config/ntm/command_palette.md
+
+# Fallback when that file doesn't exist: the current directory
+./command_palette.md`}
           />
         </div>
 
         <Paragraph>
-          Create <InlineCode>.md</InlineCode> files with your prompts, and they&apos;ll appear in
-          the palette.
+          Add a <InlineCode>## Category</InlineCode> heading and a{" "}
+          <InlineCode>### key | Label</InlineCode> entry followed by your prompt text, and it&apos;ll
+          appear in the palette.
         </Paragraph>
       </Section>
 
@@ -458,12 +464,12 @@ const PALETTE_COMMANDS: PaletteCommand[] = [
   {
     id: "new-session",
     title: "New Session",
-    description: "Create a new tmux session with agent panes pre-configured",
+    description: "Scaffold a brand-new project and start a tmux session for it",
     category: "Session Management",
     shortcut: ["Ctrl", "B", "N"],
-    params: "--name <session>",
+    params: "<project>",
     fullText:
-      "ntm new <project>\nCreate a fresh NTM session with tmux panes auto-configured for your agents.\nSets up the project directory, initializes agent windows, and attaches.\n\nOptions:\n  --agents <n>   Number of agent panes (default: 3)\n  --layout <l>   Layout preset: wide, tall, tiled\n  --attach       Auto-attach after creation",
+      "ntm new <project>\nAlias of ntm quick: scaffold a brand-new project under projects_base\n(git init, VSCode settings, Claude config) and start a detached tmux\nsession for it. Fails if the directory already exists.\n\nOptions:\n  --no-git       Skip git initialization\n  --no-session   Scaffold only, no tmux session\n  -t <template>  Project template: go, python, node, rust",
   },
   {
     id: "attach-session",
@@ -472,16 +478,16 @@ const PALETTE_COMMANDS: PaletteCommand[] = [
     category: "Session Management",
     shortcut: ["Ctrl", "B", "A"],
     fullText:
-      "ntm attach <session>\nRe-attach to a running NTM session. If the session has active agents,\nthey continue working while you were detached.\n\nOptions:\n  --readonly     Attach in read-only mode\n  --target <w>   Attach to specific window",
+      "ntm attach <session>\nRe-attach to a running NTM session (alias: ntm a). Inside tmux it\nswitches to that session instead. Agents keep working while you\nare detached.",
   },
   {
     id: "kill-session",
     title: "Kill Session",
-    description: "Gracefully terminate a session and all its agents",
+    description: "Terminate a session and all its agents",
     category: "Session Management",
     shortcut: ["Ctrl", "B", "K"],
     fullText:
-      "ntm kill <session>\nGracefully shuts down agents, saves state, and destroys the session.\n\nOptions:\n  --force        Skip graceful shutdown\n  --save-state   Save agent context before killing",
+      "ntm kill <session>\nKill a tmux session and all its panes (asks for confirmation).\n\nOptions:\n  --force        Skip confirmation\n  --summarize    Generate a session summary before killing\n  --pane <n>     Remove only one pane; the session survives",
   },
   {
     id: "list-sessions",
@@ -490,7 +496,7 @@ const PALETTE_COMMANDS: PaletteCommand[] = [
     category: "Session Management",
     shortcut: ["Ctrl", "B", "L"],
     fullText:
-      "ntm ls\nDisplay all running NTM sessions with:\n- Session name and uptime\n- Number of active agents\n- Current working directory\n- Resource usage (CPU/memory)",
+      "ntm ls\nDisplay all running tmux sessions with:\n- Session name (plus project and label for labeled sessions)\n- Window count\n- Attached or detached state\n- Agent counts by type (e.g. 2 CC, 1 COD, 1 AGY)",
   },
   // Agent Control
   {
@@ -501,7 +507,7 @@ const PALETTE_COMMANDS: PaletteCommand[] = [
     shortcut: ["Ctrl", "B", "S"],
     params: "<session> <prompt>",
     fullText:
-      "ntm send <session> <prompt>\nBroadcast a prompt to all active agent panes simultaneously.\nAgents receive the prompt and begin processing in parallel.\n\nOptions:\n  --pane <n>     Send to one specific pane\n  --file <path>  Send contents of a file as prompt\n  --delay <dur>  Stagger delivery between agents (e.g. 5s)",
+      "ntm send <session> <prompt>\nBroadcast a prompt to all active agent panes simultaneously.\nAgents receive the prompt and begin processing in parallel.\n\nOptions:\n  --pane <n>     Send to one specific pane\n  --file <path>  Send contents of a file as prompt\n  --batch <file> Send several prompts from a file, in order\n  --delay <dur>  Wait between batch prompts (e.g. 5s)",
     starred: true,
   },
   {
@@ -555,42 +561,41 @@ const PALETTE_COMMANDS: PaletteCommand[] = [
   {
     id: "status-overview",
     title: "Status Overview",
-    description: "Dashboard view of all agents, tasks, and resource usage",
+    description: "Detailed view of a session's panes, agents, and bead assignments",
     category: "Monitoring",
     shortcut: ["Ctrl", "B", "D"],
     fullText:
-      "ntm status\nShow a rich dashboard with:\n- Agent activity status (idle/working/error)\n- Current task description for each agent\n- CPU and memory per agent process\n- Time elapsed on current task\n- Token usage summary",
+      "ntm status <session>\nShow detailed information about a session:\n- All panes with their titles and current commands\n- Agent type counts\n- Session directory\n- Bead assignments (with --assignments)\n\nOptions:\n  --watch        Refresh continuously",
     starred: true,
   },
   {
     id: "tail-logs",
     title: "Tail Logs",
-    description: "Stream agent logs in real-time with filtering",
+    description: "Aggregate recent agent output with filtering",
     category: "Monitoring",
     shortcut: ["Ctrl", "B", "G"],
     params: "--filter <pattern>",
     fullText:
-      "ntm logs\nStream real-time logs from all agents with color coding.\n\nOptions:\n  --agent <n>    Filter to specific agent\n  --level <l>    Filter by level: debug, info, warn, error\n  --since <t>    Show logs since timestamp\n  --follow       Continuously stream (default)",
+      "ntm logs <session>\nAggregate recent output from all agent panes.\n\nOptions:\n  --panes <list>  Only these pane indices (e.g. 1,2)\n  --filter <re>   Filter lines by regex\n  --follow        Stream new lines continuously\n  --aggregate     Interleaved view with [type:pane] prefixes",
   },
   {
     id: "agent-diff",
     title: "Agent Diff",
-    description: "View file changes made by agents since session start",
+    description: "Compare the output of two agent panes",
     category: "Monitoring",
     shortcut: ["Ctrl", "B", "I"],
     fullText:
-      "ntm diff\nShow a unified diff of all changes agents have made.\nGrouped by agent with color-coded additions and deletions.\n\nOptions:\n  --agent <n>    Changes from specific agent\n  --stat         Show diffstat summary only\n  --staged       Include staged changes only",
+      "ntm diff [session] <pane1> <pane2>\nCompare two agent panes' output to see how their approaches differ.\nPanes can be given by index (1) or title (cc_1). For files agents\nchanged, use ntm changes.\n\nOptions:\n  --unified      Show a unified diff\n  --code-only    Compare only extracted code blocks",
   },
   // Configuration
   {
     id: "config-agents",
-    title: "Configure Agent Count",
-    description: "Set the default number of agent panes for new sessions",
+    title: "Edit Config",
+    description: "Open ntm's config.toml to change defaults like pane count",
     category: "Configuration",
     shortcut: ["Ctrl", "Shift", "A"],
-    params: "--count <n>",
     fullText:
-      "ntm config agents <count>\nSet default agent count for new sessions (1-8).\nCurrent default is stored in ~/.ntm/config.yaml.\n\nOptions:\n  --global       Set globally\n  --project      Set for current project only",
+      "ntm config edit\nOpen ~/.config/ntm/config.toml in $EDITOR. The default pane count\nfor ntm create is [tmux] default_panes; spawn counts are set per\ncommand (--cc=2 --cod=1) or with recipes (ntm spawn myproject -r full-stack).\n\nRelated:\n  ntm config show   Print the effective configuration\n  ntm config path   Print the config file path",
   },
   {
     id: "config-theme",
@@ -599,7 +604,7 @@ const PALETTE_COMMANDS: PaletteCommand[] = [
     category: "Configuration",
     shortcut: ["Ctrl", "Shift", "T"],
     fullText:
-      "ntm config theme <name>\nSwitch NTM visual theme.\n\nAvailable themes:\n  dark       Dark background with green accents (default)\n  midnight   Deep blue tones\n  solarized  Solarized dark variant\n  minimal    Minimal borders, maximum content",
+      'theme = "<name>" in ~/.config/ntm/config.toml\nSwitch the NTM visual theme (or set NTM_THEME for one shell).\n\nAvailable themes:\n  auto       Match the terminal background (default)\n  mocha      Catppuccin Mocha (dark)\n  macchiato  Catppuccin Macchiato\n  latte      Catppuccin Latte (light)\n  nord       Nord\n  plain      No colors',
   },
   {
     id: "config-model",
@@ -607,9 +612,8 @@ const PALETTE_COMMANDS: PaletteCommand[] = [
     description: "Choose the default AI model for agent panes",
     category: "Configuration",
     shortcut: ["Ctrl", "Shift", "M"],
-    params: "--model <name>",
     fullText:
-      "ntm config model <name>\nSet the default AI model for new agent panes.\n\nSupported models:\n  claude-opus     Most capable, best for complex tasks\n  claude-sonnet   Fast and balanced\n  gpt-4o          OpenAI alternative\n  custom          Use custom API endpoint",
+      "[models] in ~/.config/ntm/config.toml\nDefault models per agent type: default_claude, default_codex,\ndefault_antigravity, default_pi, and more.\n\nOverride per spawn with N:model:\n  ntm spawn myproject --cc=2:opus --cc=1:sonnet\n  ntm add myproject --cc=1:opus",
   },
   // Quick Actions
   {
@@ -619,7 +623,7 @@ const PALETTE_COMMANDS: PaletteCommand[] = [
     category: "Quick Actions",
     shortcut: ["Ctrl", "B", "1"],
     fullText:
-      'ntm send <session> -t code_review --file <path>\nSend the built-in code_review prompt template to the agents.\nThe prompt covers security, performance, readability, and edge cases.\n\nEquivalent to: opening `ntm palette` and picking "Code Review"',
+      'ntm send <session> -t code_review --file <path>\nSend the built-in code_review prompt template to the agents.\nThe prompt covers security, performance, readability, and edge cases.\n\nPalette alternative: open `ntm palette` and pick "Fresh Review"',
     starred: true,
   },
   {
@@ -629,7 +633,7 @@ const PALETTE_COMMANDS: PaletteCommand[] = [
     category: "Quick Actions",
     shortcut: ["Ctrl", "B", "2"],
     fullText:
-      'ntm send <session> -t test --file <path>\nSend the built-in test prompt template so the agents write\ncomprehensive tests using the project\'s testing framework conventions.\n\nEquivalent to: opening `ntm palette` and picking "Test Generation"',
+      'ntm send <session> -t test --file <path>\nSend the built-in test prompt template so the agents write\ncomprehensive tests using the project\'s testing framework conventions.\n\nPalette alternative: open `ntm palette` and pick "Create Tests"',
   },
   {
     id: "quick-fix",
@@ -638,7 +642,7 @@ const PALETTE_COMMANDS: PaletteCommand[] = [
     category: "Quick Actions",
     shortcut: ["Ctrl", "B", "3"],
     fullText:
-      'ntm send <session> -t fix --var issue="<error>" --file <path>\nSend the built-in fix template with the error text. The agent will\ntrace the error, identify root cause, and suggest a fix.\n(Pipe a log in instead: cat error.log | ntm send <session> --cc)\n\nEquivalent to: opening `ntm palette` and picking "Error Analysis"',
+      'ntm send <session> -t fix --var issue="<error>" --file <path>\nSend the built-in fix template with the error text. The agent will\ntrace the error, identify root cause, and suggest a fix.\n(Pipe a log in instead: cat error.log | ntm send <session> --cc)\n\nPalette alternative: open `ntm palette` and pick "Fix Bug"',
   },
   {
     id: "quick-docs",
@@ -647,7 +651,7 @@ const PALETTE_COMMANDS: PaletteCommand[] = [
     category: "Quick Actions",
     shortcut: ["Ctrl", "B", "4"],
     fullText:
-      'ntm send <session> -t document --file <path>\nSend the built-in document template so the agents add\ndoc comments, function descriptions, and usage examples.\n\nEquivalent to: opening `ntm palette` and picking "Inline Comments"',
+      'ntm send <session> -t document --file <path>\nSend the built-in document template so the agents add\ndoc comments, function descriptions, and usage examples.\n\nThe shipped palette has no inline-docs prompt; add your own to\ncommand_palette.md if you use this often.',
   },
 ];
 
@@ -902,7 +906,7 @@ function InteractivePaletteBrowser() {
     setIsTerminalTyping(true);
     setTerminalLines((prev) => [
       ...prev.slice(-4),
-      `$ ntm palette --select "${cmd.title}"`,
+      `> Selected: ${cmd.title}`,
       `> Category: ${cmd.category}`,
       `> ${cmd.description}`,
       "",
@@ -957,7 +961,7 @@ function InteractivePaletteBrowser() {
     }, 1500);
     setTerminalLines((prev) => [
       ...prev.slice(-4),
-      `$ ntm send --palette "${activeCommand.title}"`,
+      `> Enter → target: All agents (key 1)`,
       "> Sent to 3 agents",
       "!  All agents received prompt",
       "",

@@ -75,8 +75,8 @@ export function AprLesson() {
             />
             <FeatureCard
               icon={<Zap className="h-5 w-5" />}
-              title="Fast"
-              description="Get improved plans in seconds"
+              title="Background Runs"
+              description="10-60 minute deep-reasoning rounds run in the background"
               gradient="from-amber-500/20 to-orange-500/20"
             />
           </FeatureGrid>
@@ -104,7 +104,7 @@ export function AprLesson() {
           commands={[
             {
               command: "apr setup",
-              description: "Configure a workflow (plan file, output dir) once",
+              description: "Configure a workflow (README, spec, and implementation docs) once",
             },
             {
               command: "apr run 1",
@@ -137,7 +137,7 @@ export function AprLesson() {
           code={`# 1. Generate initial plan with Claude Code
 # (Claude creates plan.md)
 
-# 2. Point APR at it once (interactive wizard: plan file, output dir)
+# 2. Point APR at it once (interactive wizard: README, spec, implementation docs)
 apr setup
 
 # 3. Run revision rounds until the diff between rounds gets small

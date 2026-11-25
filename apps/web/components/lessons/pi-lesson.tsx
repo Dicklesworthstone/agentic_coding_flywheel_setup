@@ -31,7 +31,7 @@ export function PiLesson() {
         </Paragraph>
         <Paragraph>
           It is multi-provider, including <Highlight>zero-config local models</Highlight> via
-          ollama, llama.cpp, and LM Studio, so you can run a full coding agent with no API key at
+          ollama, llama.cpp, and mistral.rs, so you can run a full coding agent with no API key at
           all.
         </Paragraph>
 
@@ -81,8 +81,8 @@ export function PiLesson() {
             },
             { command: "pi --continue", description: "Resume the most recent session" },
             {
-              command: "cat ~/.pi/agent/models.json",
-              description: "Inspect the local-model config (ollama, llama.cpp, LM Studio)",
+              command: 'pi --provider ollama --model llama3 -p "hi"',
+              description: "Use a built-in local provider (ollama, llamacpp, mistralrs) with no API key",
             },
           ]}
         />
@@ -94,16 +94,17 @@ export function PiLesson() {
       <Section title="Running Without an API Key" icon={<Play className="h-5 w-5" />} delay={0.3}>
         <Paragraph>
           Point <Highlight>pi</Highlight> at a local model server and it works with no cloud
-          account. Local models are auto-detected for common servers, and custom endpoints go in{" "}
+          account. Pick a built-in local provider with --provider; other OpenAI-compatible
+          endpoints go in{" "}
           <Highlight>~/.pi/agent/models.json</Highlight>.
         </Paragraph>
         <CodeBlock
           code={`# Start a local model server (any of these)
 ollama serve
-# ...or llama.cpp / LM Studio
+# ...or llama.cpp's llama-server / mistral.rs
 
-# Then run pi; local model servers are discovered automatically
-pi "write unit tests for src/parser.rs"
+# Then point pi at it explicitly
+pi --provider ollama --model llama3 "write unit tests for src/parser.rs"
 
 # Custom endpoints live in ~/.pi/agent/models.json`}
         />

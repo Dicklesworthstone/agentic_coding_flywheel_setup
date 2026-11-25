@@ -47,7 +47,7 @@ export function CiCdLesson() {
             <FeatureCard
               icon={<Shield className="h-5 w-5" />}
               title="UBS Scanner"
-              description="1000+ bug patterns across 9 languages"
+              description="1000+ bug patterns across 15 languages"
               gradient="from-red-500/20 to-rose-500/20"
             />
             <FeatureCard
@@ -94,15 +94,15 @@ ubs . --fail-on-warning
 # Output SARIF for GitHub Code Scanning
 ubs . --format=sarif > results.sarif
 
-# Focus on specific bug categories
+# Focus on the resource-lifecycle category pack
 ubs . --category=resource-lifecycle
-ubs . --category=security
+ubs --list-categories          # category ids for --skip
 
 # Generate an HTML report for review
 ubs . --html-report=scan-results.html
 
 # Compare against a baseline (only show new bugs)
-ubs . --comparison=baseline.json`}
+ubs . --comparison=baseline.json --new-only`}
           filename="UBS Commands"
         />
 
@@ -135,7 +135,7 @@ if command -v ubs &>/dev/null; then
   fi
 fi
 
-# DCG is separate: it runs as a Claude Code hook, not a Git hook.`}
+# DCG is separate: it runs as an agent pre-execution hook, not a Git hook.`}
           filename=".git/hooks/pre-commit"
         />
 
@@ -171,7 +171,7 @@ bv --robot-triage
 
 # Track scan results over time
 ubs . --format=json > scans/$(date +%Y%m%d).json
-ubs . --comparison=scans/20260310.json
+ubs . --comparison=scans/20260310.json --new-only
 # → Shows only NEW bugs since the baseline`}
           filename="Beads Export"
         />

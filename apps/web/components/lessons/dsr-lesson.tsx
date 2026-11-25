@@ -83,7 +83,7 @@ export function DsrLesson() {
             <FeatureCard
               icon={<GitBranch className="h-5 w-5" />}
               title="Cross-Platform"
-              description="Build for multiple OS targets from one machine"
+              description="Linux via act; macOS and Windows natively on your build hosts over SSH"
               gradient="from-green-500/20 to-emerald-500/20"
             />
             <FeatureCard
@@ -114,7 +114,7 @@ export function DsrLesson() {
               command: "dsr build --repo ntm",
               description: "Build a tool's artifacts without publishing",
             },
-            { command: "dsr status", description: "Check release readiness" },
+            { command: "dsr status", description: "Health, config, signing and last-run summary" },
             { command: "dsr --help", description: "Show all options" },
           ]}
         />
@@ -130,7 +130,7 @@ export function DsrLesson() {
       {/* Section 3: Common Scenarios */}
       <Section title="Common Scenarios" icon={<Play className="h-5 w-5" />} delay={0.3}>
         <CodeBlock
-          code={`# Check if you're ready to release
+          code={`# Check host health, config and the last run
 dsr status
 
 # Build release artifacts locally
@@ -195,7 +195,7 @@ const TOOL_SCENARIOS: ToolScenario[] = [
     icon: Layers,
     toolName: "ntm",
     version: "v2.4.1",
-    description: "Node Tool Manager release with cross-platform binaries",
+    description: "Named Tmux Manager release with cross-platform binaries",
     command: "dsr release ntm 2.4.1",
     targets: PLATFORM_TARGETS,
     checksumPrefix: "a3f8c2",
@@ -206,7 +206,7 @@ const TOOL_SCENARIOS: ToolScenario[] = [
     icon: Server,
     toolName: "ubs",
     version: "v1.8.0",
-    description: "Universal Build System packaging for all platforms",
+    description: "Ultimate Bug Scanner packaging for all platforms",
     command: "dsr release ubs 1.8.0",
     targets: PLATFORM_TARGETS,
     checksumPrefix: "e7d1b9",
@@ -217,7 +217,7 @@ const TOOL_SCENARIOS: ToolScenario[] = [
     icon: Eye,
     toolName: "bv",
     version: "v3.1.2",
-    description: "Build Verifier release with integrity checks",
+    description: "Beads Viewer release with integrity checks",
     command: "dsr release bv 3.1.2",
     targets: PLATFORM_TARGETS.slice(0, 2),
     checksumPrefix: "4b2e7a",
@@ -228,7 +228,7 @@ const TOOL_SCENARIOS: ToolScenario[] = [
     icon: Shield,
     toolName: "cass",
     version: "v4.0.0",
-    description: "CASS Agent Safety System with signed artifacts",
+    description: "Coding Agent Session Search with signed artifacts",
     command: "dsr release cass 4.0.0 --verify-tag",
     targets: PLATFORM_TARGETS,
     checksumPrefix: "f9c3d5",

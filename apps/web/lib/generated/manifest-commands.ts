@@ -109,7 +109,7 @@ export const manifestCommands: ManifestCommand[] = [
     moduleCategory: "stack",
     cliName: "dcg",
     cliAliases: [],
-    description: "Destructive Command Guard - Claude Code hook blocking dangerous git/fs commands",
+    description: "Destructive Command Guard - pre-execution hook (Claude Code, Codex, Gemini, Copilot, Cursor, and more) blocking destructive git/fs/database commands",
     commandExample: "dcg doctor",
     docsUrl: "https://github.com/Dicklesworthstone/destructive_command_guard",
   },
@@ -159,7 +159,7 @@ export const manifestCommands: ManifestCommand[] = [
     moduleCategory: "stack",
     cliName: "jfp",
     cliAliases: [],
-    description: "Curated battle-tested prompts for AI agents - browse and install as skills (jfp)",
+    description: "Curated battle-tested prompts for AI agents - browse, search, copy, and export (jfp)",
     docsUrl: "https://jeffreysprompts.com",
   },
   {
@@ -168,7 +168,8 @@ export const manifestCommands: ManifestCommand[] = [
     moduleCategory: "stack",
     cliName: "am",
     cliAliases: [],
-    description: "Like gmail for coding agents; MCP HTTP server + token; installs beads tools",
+    description: "Like gmail for coding agents; Rust MCP server + am CLI; Git archive + SQLite index; local HTTP service on 127.0.0.1:8765",
+    commandExample: "am robot status",
     docsUrl: "https://github.com/Dicklesworthstone/mcp_agent_mail_rust",
   },
   {
@@ -177,7 +178,8 @@ export const manifestCommands: ManifestCommand[] = [
     moduleCategory: "stack",
     cliName: "ms",
     cliAliases: [],
-    description: "Local-first knowledge management with hybrid semantic search (ms)",
+    description: "Local-first skill management with hybrid search and MCP integration (ms)",
+    commandExample: "ms search \"error handling\"",
     docsUrl: "https://github.com/Dicklesworthstone/meta_skill",
   },
   {
@@ -258,7 +260,7 @@ export const manifestCommands: ManifestCommand[] = [
     cliName: "slb",
     cliAliases: [],
     description: "Two-person rule for dangerous commands (optional guardrails)",
-    docsUrl: "https://github.com/Dicklesworthstone/simultaneous_launch_button",
+    docsUrl: "https://github.com/Dicklesworthstone/slb",
   },
   {
     moduleId: "stack.srps",
@@ -290,21 +292,12 @@ export const manifestCommands: ManifestCommand[] = [
     docsUrl: "https://github.com/Dicklesworthstone/ultimate_bug_scanner",
   },
   {
-    moduleId: "stack.wezterm_automata",
-    displayName: "WezTerm Automata",
-    moduleCategory: "stack",
-    cliName: "wa",
-    cliAliases: [],
-    description: "WezTerm Automata (wa) - terminal automation and orchestration for AI agents",
-    docsUrl: "https://github.com/Dicklesworthstone/wezterm_automata",
-  },
-  {
     moduleId: "utils.aadc",
     displayName: "ASCII Art Diagram Corrector",
     moduleCategory: "tools",
     cliName: "aadc",
     cliAliases: [],
-    description: "aadc - ASCII diagram corrector for fixing malformed ASCII art",
+    description: "aadc - ASCII diagram corrector that realigns ragged right borders",
     docsUrl: "https://github.com/Dicklesworthstone/aadc",
   },
   {
@@ -349,7 +342,7 @@ export const manifestCommands: ManifestCommand[] = [
     moduleCategory: "tools",
     cliName: "rano",
     cliAliases: [],
-    description: "rano - Network observer for AI CLIs with request/response logging",
+    description: "rano - Network observer that attributes AI CLI sockets to processes and providers",
     docsUrl: "https://github.com/Dicklesworthstone/rano",
   },
   {
@@ -358,7 +351,7 @@ export const manifestCommands: ManifestCommand[] = [
     moduleCategory: "tools",
     cliName: "rust_proxy",
     cliAliases: [],
-    description: "rust_proxy - Transparent proxy routing for debugging network traffic",
+    description: "rust_proxy - Targeted transparent proxy routing selected domains through an upstream HTTP proxy",
     docsUrl: "https://github.com/Dicklesworthstone/rust_proxy",
   },
   {

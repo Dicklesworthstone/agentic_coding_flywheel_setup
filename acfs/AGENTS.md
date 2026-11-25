@@ -479,7 +479,7 @@ rg -l -t rust 'unwrap\(' | xargs ast-grep run -l Rust -p '$X.unwrap()' --json
 | `casr providers` | Check which agent/provider handoffs CASR can resume |
 | `dsr repos validate` | Validate DSR repository configuration before direct DSR execution |
 | `ru status --fetch` | Inspect repo drift before starting a swarm or large maintenance pass |
-| `asb backup --all` | Back up agent settings before risky hook/config experiments |
+| `asb backup` | Back up all detected agents' settings before risky hook/config experiments |
 | `test -x "$HOME/.local/bin/claude-post-compact-reminder"` | Verify the PCR hook script exists before checking Claude settings |
 | `ee pack "<task>"` | Build a token-budgeted context pack of durable project memory before starting non-trivial work |
 | `fmd README.md --out README.html` | Render Markdown to a polished self-contained HTML (or `--to pdf`) without a browser or LaTeX |

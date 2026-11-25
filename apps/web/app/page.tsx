@@ -227,7 +227,7 @@ const FEATURES = [
       <>
         <Jargon term="claude-code">Claude Code</Jargon>, <Jargon term="codex">Codex CLI</Jargon>,
         and <Jargon term="antigravity-cli">Antigravity CLI</Jargon>, all configured with optimal
-        settings for coding.
+        settings for coding. Grok CLI, oh-my-pi, and OpenCode are opt-in extras.
       </>
     ),
     gradient: "bg-[oklch(0.7_0.2_330)]",
@@ -970,7 +970,7 @@ const PRICING_ITEMS = [
     name: "ChatGPT Pro",
     price: "$200",
     period: "/month",
-    description: "GPT-5.6 Sol Pro for extended thinking planning",
+    description: "GPT-6.2 Astra in ChatGPT Work for deep planning",
     icon: Cpu,
     gradient: "from-emerald-400 to-teal-500",
     note: "Essential for plan documents",
@@ -1630,7 +1630,7 @@ export default function HomePage() {
                   NTM
                 </a>
                 <a
-                  href="https://github.com/Dicklesworthstone/mcp_agent_mail"
+                  href="https://github.com/Dicklesworthstone/mcp_agent_mail_rust"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex min-h-6 items-center rounded-sm underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"

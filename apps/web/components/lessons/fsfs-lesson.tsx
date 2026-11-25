@@ -99,7 +99,10 @@ export function FsfsLesson() {
           commands={[
             { command: "fsfs index .", description: "Index the current directory" },
             { command: 'fsfs search "query"', description: "Search indexed files" },
-            { command: 'fsfs search --semantic "concept"', description: "Semantic-only search" },
+            {
+              command: 'fsfs search --quality-only "concept"',
+              description: "Semantic (quality tier) only, no BM25",
+            },
             { command: "fsfs status", description: "Show index statistics" },
           ]}
         />
@@ -140,7 +143,7 @@ fsfs index ~/projects/my-app
 fsfs search "error handling retry"
 
 # Find conceptually similar code
-fsfs search --semantic "authentication middleware"`}
+fsfs search --quality-only "authentication middleware"`}
         />
       </Section>
     </div>
@@ -302,7 +305,7 @@ const SCENARIOS: QueryScenario[] = [
     fusionTimeMs: 5,
     insight:
       "BM25 barely matches (no exact terms in code). Semantic search finds 4 highly relevant results by understanding the intent.",
-    command: 'fsfs search --semantic "prevent cascading failures"',
+    command: 'fsfs search --quality-only "prevent cascading failures"',
   },
   {
     id: "typo",
@@ -463,7 +466,7 @@ const SCENARIOS: QueryScenario[] = [
     fusionTimeMs: 3,
     insight:
       "BM25 returns zero results (no German tokens in codebase). Semantic search bridges the language gap via multilingual embeddings.",
-    command: 'fsfs search --semantic "Fehlerbehandlung Wiederholung"',
+    command: 'fsfs search "Fehlerbehandlung Wiederholung"',
   },
   {
     id: "rerank",
