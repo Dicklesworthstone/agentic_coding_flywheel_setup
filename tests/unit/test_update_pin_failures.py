@@ -299,7 +299,8 @@ class PinFailureTests(unittest.TestCase):
 ROLLBACK_COMMON = r'''
 source "$UPDATE_TEST_LIBRARY"
 source "$REPO_ROOT/scripts/lib/security.sh"
-DRY_RUN=false FORCE_MODE=false VERBOSE=false QUIET=true ABORT_ON_FAILURE=false
+DRY_RUN=false FORCE_MODE=false ABORT_ON_FAILURE=false
+VERBOSE="${TEST_VERBOSE:-false}" QUIET="${TEST_QUIET:-true}"
 UPDATE_LOG_FILE="$TEST_ROOT/update.log"
 RED='' GREEN='' YELLOW='' CYAN='' BOLD='' DIM='' NC=''
 SUCCESS_COUNT=0 SKIP_COUNT=0 FAIL_COUNT=0
@@ -333,7 +334,8 @@ rm() { :; }
 
 class RollbackFailureTests(unittest.TestCase):
     def fixture(self, action="broken", installer_exit=17, *, initial=True,
-                command="direct", expected=17, transient=False, pin=None, tool="fixturetool"):
+                command="direct", expected=17, transient=False, pin=None, tool="fixturetool",
+                verbose=False, quiet=True):
         base = Path(tempfile.mkdtemp(prefix="acfs-rollback-test-"))
         (base / "bin").mkdir()
         (base / "originals").mkdir()
@@ -361,9 +363,14 @@ case "$TEST_ACTION" in
     nonexec)
         cp "$TEST_ROOT/originals/healthy" "$TEST_ROOT/bin/fixturetool"
         chmod 0644 "$TEST_ROOT/bin/fixturetool" ;;
-    missing|directory)
-        mv "$TEST_ROOT/bin/fixturetool" "$TEST_ROOT/installer-displaced"
-        if [[ "$TEST_ACTION" == directory ]]; then mkdir "$TEST_ROOT/bin/fixturetool"; fi ;;
+    missing|directory|dangling)
+        if [[ -e "$TEST_ROOT/bin/fixturetool" || -L "$TEST_ROOT/bin/fixturetool" ]]; then
+            mv "$TEST_ROOT/bin/fixturetool" "$TEST_ROOT/installer-displaced"
+        fi
+        if [[ "$TEST_ACTION" == directory ]]; then mkdir "$TEST_ROOT/bin/fixturetool"; fi
+        if [[ "$TEST_ACTION" == dangling ]]; then
+            ln -s "$TEST_ROOT/missing-payload" "$TEST_ROOT/bin/fixturetool"
+        fi ;;
     unchanged) : ;;
     *) exit 99 ;;
 esac
@@ -378,6 +385,7 @@ exit "$TEST_INSTALLER_EXIT"
             "REPO_ROOT": str(ROOT), "TEST_ROOT": str(base), "NO_COLOR": "1",
             "ACFS_INTERACTIVE": "false", "TEST_ACTION": action,
             "TEST_TOOL": tool,
+            "TEST_VERBOSE": str(verbose).lower(), "TEST_QUIET": str(quiet).lower(),
             "TEST_INSTALLER_EXIT": str(installer_exit), "TEST_TRANSIENT": str(transient).lower(),
             "TEST_PIN": actual_pin if pin is None else pin,
             "UPDATE_TEST_LIBRARY": os.environ.get("ACFS_UPDATE_TEST_LIBRARY", str(ROOT / "scripts/lib/update.sh")),
@@ -386,6 +394,7 @@ exit "$TEST_INSTALLER_EXIT"
             "direct": 'update_run_verified_installer "$TEST_TOOL"',
             "captured": 'update_run_command_capture_with_retry fixture update_run_verified_installer "$TEST_TOOL"',
             "consumer": 'update_run_verified_installer_or_existing_on_transient fixture "$TEST_TOOL" fixturetool fixturetool',
+            "summary": 'run_cmd "fixture tool" update_run_verified_installer "$TEST_TOOL"; print_summary',
         }
         body = ROLLBACK_COMMON + '\nrc=0\n' + commands[command] + r''' || rc=$?
 printf 'COUNTS=%s,%s,%s\n' "$SUCCESS_COUNT" "$SKIP_COUNT" "$FAIL_COUNT"
@@ -444,13 +453,58 @@ exit "$rc"
                 self.assertFalse((base / "state/acfs/update-rollback.state").exists())
                 if status == 0: self.assertIn("VERIFICATION UNAVAILABLE", output)
 
-    def test_fresh_unverifiable_install_preserves_per_tool_delegation(self):
-        for status in (0, 17):
-            with self.subTest(status=status):
-                base, active, _, _, _, _ = self.fixture("unchanged", status, initial=False, expected=status)
-                self.assertFalse(active.exists())
+    def test_fresh_zero_exit_install_requires_a_working_command(self):
+        for action in ("unchanged", "nonexec", "directory", "dangling", "broken"):
+            with self.subTest(action=action):
+                base, active, _, pin, _, output = self.fixture(action, 0, initial=False, expected=1)
                 self.assertFalse((base / "bin/fixturetool.prev").exists())
-                self.assertFalse((base / "state/acfs/update-rollback.state").exists())
+                state = (base / "state/acfs/update-rollback.state").read_text().split()
+                self.assertEqual(state[0:2], ["fixturetool", "1"])
+                self.assertEqual(state[3:], [pin, "v2.0.0"])
+                self.assertIn("POST-INSTALL VERIFICATION FAILED", output)
+                self.assertIn("No previous fixturetool binary retained", output)
+                self.assertNotIn("ROLLED BACK", output)
+                self.assertEqual((base / "events").read_text().splitlines(), ["download", "execute"])
+                if action == "unchanged": self.assertFalse(active.exists())
+                if action == "nonexec": self.assertFalse(os.access(active, os.X_OK))
+                if action == "directory": self.assertTrue(active.is_dir())
+                if action == "dangling": self.assertTrue(active.is_symlink())
+
+    def test_fresh_healthy_install_passes_without_a_rollback_copy(self):
+        base, active, versions, _, _, output = self.fixture("healthy", 0, initial=False, expected=0)
+        self.assertEqual(active.read_bytes(), versions["healthy"])
+        self.assertFalse((base / "bin/fixturetool.prev").exists())
+        self.assertFalse((base / "state/acfs/update-rollback.state").exists())
+        self.assertNotIn("VERIFICATION FAILED", output)
+
+    def test_fresh_installer_failure_preserves_its_original_exit_status(self):
+        base, active, _, _, _, _ = self.fixture("unchanged", 17, initial=False, expected=17)
+        self.assertFalse(active.exists())
+        self.assertFalse((base / "bin/fixturetool.prev").exists())
+        self.assertFalse((base / "state/acfs/update-rollback.state").exists())
+
+    def test_fresh_missing_command_is_failure_in_every_summary_mode(self):
+        for quiet, verbose in ((True, True), (False, True), (True, False), (False, False)):
+            with self.subTest(quiet=quiet, verbose=verbose):
+                base, active, _, _, _, output = self.fixture(
+                    "unchanged", 0, initial=False, command="summary", expected=0,
+                    tool="br", quiet=quiet, verbose=verbose,
+                )
+                self.assertFalse(active.exists())
+                self.assertIn("COUNTS=0,0,1", output)
+                self.assertNotIn("All updates completed successfully!", output)
+                self.assertIn("POST-INSTALL VERIFICATION FAILED for br", (base / "update.log").read_text())
+
+    def test_fresh_missing_command_cannot_be_retried_into_a_backoff_skip(self):
+        for command in ("captured", "consumer"):
+            with self.subTest(command=command):
+                base, active, _, _, _, output = self.fixture(
+                    "unchanged", 0, initial=False, command=command, expected=1, transient=True,
+                )
+                self.assertFalse(active.exists())
+                self.assertEqual((base / "events").read_text().splitlines(), ["download", "execute"])
+                self.assertNotIn("BACKOFF:", output)
+                if command == "consumer": self.assertIn("COUNTS=0,0,1", output)
 
     def test_shell_function_installer_retains_its_no_binary_exception(self):
         base, active, versions, _, inode, _ = self.fixture("unchanged", tool="nvm")
@@ -458,6 +512,15 @@ exit "$rc"
         self.assertEqual(active.stat().st_ino, inode)
         self.assertFalse((base / "bin/fixturetool.prev").exists())
         self.assertFalse((base / "state/acfs/update-rollback.state").exists())
+
+    def test_fresh_shell_function_install_retains_its_explicit_no_binary_exception(self):
+        base, active, _, _, _, output = self.fixture(
+            "unchanged", 0, initial=False, expected=0, tool="nvm",
+        )
+        self.assertFalse(active.exists())
+        self.assertFalse((base / "bin/fixturetool.prev").exists())
+        self.assertFalse((base / "state/acfs/update-rollback.state").exists())
+        self.assertNotIn("VERIFICATION FAILED", output)
 
     def test_directory_at_restore_target_cannot_absorb_backup_or_report_success(self):
         for status in (0, 17):
@@ -537,6 +600,8 @@ class SharedRollbackSafetyTests(unittest.TestCase):
         prefix = r'''
 source "$UPDATE_TEST_LIBRARY"
 real_target_runner="$(declare -f update_run_in_target_context)"
+real_tool_resolver="$(declare -f update_tool_binary_path)"
+real_binary_resolver="$(declare -f update_binary_path)"
 ''' + ROLLBACK_COMMON
         self.shell_count += 1
         output_path = self.base / f"shell-{self.shell_count}.log"
@@ -567,6 +632,106 @@ real_target_runner="$(declare -f update_run_in_target_context)"
         log = self.base / "update.log"
         if log.exists():
             self.assertNotIn("ROLLED BACK", log.read_text())
+
+    ASB_CONTEXT = r'''
+eval "$real_target_runner"
+eval "$real_tool_resolver"
+eval "$real_binary_resolver"
+TARGET_USER="$(update_current_user)"
+# Redirect only home metadata; execution keeps the real same-account runner.
+update_target_home() { printf '%s\n' "$TEST_ROOT"; }
+'''
+
+    def prepare_asb_destination(self):
+        default = self.base / ".local/bin/asb"
+        default.parent.mkdir(parents=True)
+        default.write_text('#!/bin/bash\nprintf "default-decoy\\n" >> "$TEST_ROOT/events"\nprintf "asb 1.0.0\\n"\n')
+        default.chmod(0o755)
+        payload = self.base / "asb-payload"
+        payload.write_text('#!/bin/bash\nprintf "asb-probe:%s\\n" "$0" >> "$TEST_ROOT/events"\nprintf "asb 2.0.0\\n"\n')
+        payload.chmod(0o755)
+        return default, payload
+
+    def test_asb_custom_destinations_use_the_target_home_and_actual_payload(self):
+        default, payload = self.prepare_asb_destination()
+        original_default = default.read_bytes()
+        self.write_installer('destination="${DEST:-$HOME/.local/bin}"\nmkdir -p "$destination"\n'
+                             'cp "$TEST_ROOT/asb-payload" "$destination/asb"')
+        for value, destination in ((str(self.base / "absolute custom bin"), self.base / "absolute custom bin"),
+                                   ("relative custom bin", self.base / "relative custom bin")):
+            with self.subTest(destination=value):
+                output = self.shell(self.ASB_CONTEXT + r'''
+update_run_asb_installer
+printf 'FOUND=%s\n' "$(update_tool_binary_path asb)"
+''', TEST_TOOL="asb", DEST=value)
+                self.assertIn(f"FOUND={destination}/asb", output)
+                self.assertEqual((destination / "asb").read_bytes(), payload.read_bytes())
+                self.assertIn(f"asb-probe:{destination}/asb", self.events())
+                self.assertEqual(default.read_bytes(), original_default)
+                self.assertFalse(default.with_name("asb.prev").exists())
+                self.assertNotIn("default-decoy", self.events())
+
+    def test_missing_asb_custom_destination_cannot_borrow_a_default_command(self):
+        default, _ = self.prepare_asb_destination()
+        before = default.read_bytes()
+        output = self.shell(self.ASB_CONTEXT + 'update_run_asb_installer\n',
+                            code=1, TEST_TOOL="asb", DEST=str(self.base / "missing custom bin"))
+        self.assertIn("POST-INSTALL VERIFICATION FAILED for asb", output)
+        self.assertEqual(default.read_bytes(), before)
+        self.assertFalse(default.with_name("asb.prev").exists())
+        self.assertNotIn("default-decoy", self.events())
+
+    def test_broken_asb_custom_destination_cannot_borrow_a_default_command(self):
+        default, _ = self.prepare_asb_destination()
+        before = default.read_bytes()
+        self.write_installer('mkdir -p "$DEST"\ncp "$TEST_ROOT/broken" "$DEST/asb"')
+        output = self.shell(self.ASB_CONTEXT + 'update_run_asb_installer\n',
+                            code=1, TEST_TOOL="asb", DEST=str(self.base / "broken custom bin"))
+        self.assertIn("POST-INSTALL VERIFICATION FAILED for asb", output)
+        self.assertEqual(default.read_bytes(), before)
+        self.assertFalse(default.with_name("asb.prev").exists())
+        self.assertNotIn("default-decoy", self.events())
+
+    def test_asb_destination_removed_by_target_transport_uses_the_target_default(self):
+        default, payload = self.prepare_asb_destination()
+        custom = self.base / "caller custom bin/asb"
+        custom.parent.mkdir()
+        custom.write_text('#!/bin/bash\nprintf "caller-decoy\\n" >> "$TEST_ROOT/events"\n')
+        custom.chmod(0o755)
+        original_custom = custom.read_bytes()
+        self.write_installer('destination="${DEST:-$HOME/.local/bin}"\nmkdir -p "$destination"\n'
+                             'cp "$TEST_ROOT/asb-payload" "$destination/asb"')
+        output = self.shell(self.ASB_CONTEXT + r'''
+# Model a transport that removes DEST; the native runner still executes the
+# installer and lookup in the same target environment and working directory.
+update_run_in_target_context() (
+    unset DEST
+    eval "$real_target_runner"
+    update_run_in_target_context "$@"
+)
+update_run_asb_installer
+printf 'FOUND=%s\n' "$(update_tool_binary_path asb)"
+''', TEST_TOOL="asb", DEST=str(custom.parent))
+        self.assertIn(f"FOUND={default}", output)
+        self.assertEqual(default.read_bytes(), payload.read_bytes())
+        self.assertEqual(custom.read_bytes(), original_custom)
+        self.assertNotIn("caller-decoy", self.events())
+
+    def test_asb_custom_destination_rolls_back_its_own_payload(self):
+        default, payload = self.prepare_asb_destination()
+        original_default = default.read_bytes()
+        custom = self.base / "retained custom bin/asb"
+        custom.parent.mkdir()
+        custom.write_bytes(payload.read_bytes())
+        custom.chmod(0o755)
+        self.write_installer('cp "$TEST_ROOT/broken" "$DEST/asb"')
+        output = self.shell(self.ASB_CONTEXT + 'update_run_asb_installer\n',
+                            code=1, TEST_TOOL="asb", DEST=str(custom.parent))
+        self.assertIn("ROLLED BACK: restored previous asb binary", output)
+        self.assertEqual(custom.read_bytes(), payload.read_bytes())
+        self.assertEqual(default.read_bytes(), original_default)
+        self.assertFalse(default.with_name("asb.prev").exists())
+        self.assertNotIn("default-decoy", self.events())
 
     def test_claude_changed_installer_pin_lifts_rollback_backoff(self):
         output = self.shell(r'''
@@ -2335,6 +2500,7 @@ result
         prefix = r'''
 source "$UPDATE_TEST_LIBRARY"
 runtime_target_runner="$(declare -f update_run_in_target_context)"
+runtime_shared_verifier="$(declare -f update_verify_tool_or_rollback)"
 ''' + COMMON + self.SETUP
         result = subprocess.run(
             ["/bin/bash", "--noprofile", "--norc", "-c", prefix + (body or self.ALL_RUNTIMES)],
@@ -2361,6 +2527,32 @@ runtime_target_runner="$(declare -f update_run_in_target_context)"
             self.assertIn(f"command:{tool}:--version", self.events())
         self.assertEqual((self.base / "args-rust").read_text().splitlines(),
                          ["-y", "--default-toolchain", "nightly", "--no-modify-path"])
+
+    def test_shared_verifier_preserves_fresh_rust_toolchain_readiness(self):
+        self.selection("lang.rust")
+        output = self.shell('eval "$runtime_shared_verifier"\n' + self.ALL_RUNTIMES)
+        self.assertIn("COUNTS=1,0,0,0", output)
+        for tool in ("cargo", "rustc"):
+            self.assertIn(f"command:{tool}:--version", self.events())
+        self.assertNotIn("smoke", self.events())
+        self.assertFalse((self.home / ".cargo/bin/rust").exists())
+
+    def test_shared_verifier_does_not_accept_missing_rust_toolchain(self):
+        self.selection("lang.rust")
+        output = self.shell('eval "$runtime_shared_verifier"\n' + self.ALL_RUNTIMES,
+                            TEST_PAYLOAD="missing")
+        self.assertIn("COUNTS=0,0,1,0", output)
+        self.assertNotIn("smoke", self.events())
+        self.assertFalse(any(event.startswith("command:") for event in self.events()))
+
+    def test_shared_verifier_does_not_accept_rust_without_nightly(self):
+        self.selection("lang.rust")
+        output = self.shell('eval "$runtime_shared_verifier"\n' + self.ALL_RUNTIMES,
+                            TEST_NIGHTLY_PRESENT="false")
+        self.assertIn("COUNTS=0,0,1,0", output)
+        self.assertNotIn("smoke", self.events())
+        self.assertTrue(any(event.startswith("command:rustup:run nightly ") for event in self.events()))
+        self.assertFalse(any(event.startswith("command:cargo:") for event in self.events()))
 
     def test_normal_update_preserves_skip_for_absent_runtimes(self):
         self.assertIn("COUNTS=0,3,0,0", self.shell(TEST_FORCE="false"))

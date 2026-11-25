@@ -1089,6 +1089,32 @@ update_tool_binary_path() {
     primary_bin="$(update_preferred_user_bin_dir 2>/dev/null || true)"
 
     case "$tool" in
+        asb)
+            if [[ -n "${DEST:-}" ]]; then
+                # ASB honors DEST inside the target account. A transport may
+                # remove it, and relative destinations are relative to that
+                # runner's home, not this updater's working directory. Query
+                # that same context before choosing a snapshot or smoke probe.
+                local asb_shell=""
+                asb_shell="$(update_system_binary_path sh)" || return 1
+                candidate="$(update_run_in_target_context "" "$asb_shell" -c '
+                    if [ -n "${DEST:-}" ]; then
+                        case "$DEST" in
+                            /*) ;;
+                            *) DEST="$(pwd -P)/$DEST" || exit 1 ;;
+                        esac
+                        printf "%s/asb\n" "${DEST%/}"
+                    fi
+                ')" || return 1
+                if [[ -n "$candidate" ]]; then
+                    # An unrelated default command cannot prove this explicit
+                    # destination was installed or recovered successfully.
+                    [[ -x "$candidate" && ! -d "$candidate" ]] || return 1
+                    printf '%s\n' "$candidate"
+                    return 0
+                fi
+            fi
+            ;;
         grok)
             # Grok's command may deliberately belong to Cursor. Snapshot and
             # smoke-check only the payload to which the verified command binds.
@@ -6249,6 +6275,7 @@ update_tool_rollback_binary_name() {
     local tool="${1:-}"
     case "$tool" in
         nvm) printf '%s\n' "" ;;                     # shell function, not a binary
+        rust) printf '%s\n' "" ;;                    # toolchain tree; runtime repair verifies nightly cargo/rustc
         pcr) printf '%s\n' "claude-post-compact-reminder" ;;
         brenner_bot) printf '%s\n' "brenner" ;;
         antigravity) printf '%s\n' "agy" ;;
@@ -6668,12 +6695,12 @@ update_verify_tool_or_rollback() {
 
     local new_path=""
     new_path="$(update_tool_binary_path "$binary_name" 2>/dev/null || true)"
-    if [[ -z "$new_path" && -z "$prev_path" ]]; then
-        # A fresh install with no single discoverable binary still delegates
-        # verification to its per-tool wrapper. A retained installation that
-        # disappeared or lost executability must instead reach rollback.
-        return 0
-    fi
+    # A named command is required even on a fresh install. Most stack tools
+    # call this shared wrapper directly, without another per-tool verifier;
+    # an installer exiting zero without publishing an executable is a failed
+    # install, not a successful update with nothing to check. Tools that do not
+    # expose a single command (nvm and the Rust toolchain) opt out explicitly
+    # above; their runtime wrappers perform the required readiness checks.
 
     if update_tool_smoke_check "$tool" "$new_path"; then
         update_rollback_state_clear "$tool" || true
@@ -8545,8 +8572,9 @@ check_reboot_required() {
 
 # A failed first install can leave a selected runtime absent. --force repairs
 # it through the same checksum/hold/account boundary used for other tools.
-# Fresh installers do not have a retained binary for the generic rollback
-# verifier, so readiness must be established before run_cmd records success.
+# Supplement shared command checks with runtime-specific readiness before
+# run_cmd records success. Rust has no single executable named "rust"; its
+# rustup-managed toolchain requires explicit nightly cargo/rustc checks below.
 # shellcheck disable=SC2317,SC2329  # invoked indirectly via run_cmd()
 update_install_missing_runtime() {
     local tool="${1:-}" target_user="" target_home="" current_user=""
