@@ -101,13 +101,15 @@ export function FlywheelDiagram() {
       <div className="absolute inset-0 noise-overlay opacity-[0.02] mix-blend-overlay pointer-events-none" />
       <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-[radial-gradient(ellipse_at_top_right,rgba(167,139,250,0.03),transparent_60%)] pointer-events-none" />
 
-      <div className="relative z-10 flex flex-col gap-10 border-b border-white/[0.04] pb-12 lg:flex-row lg:items-start lg:justify-between">
+      {/* Stacked at every width: the guide column (~900px) is too narrow
+          for the title, the controls and the 640px loop diagram side by side. */}
+      <div className="relative z-10 flex flex-col gap-8 border-b border-white/[0.04] pb-10">
         <div className="max-w-2xl">
           <div className="text-xs font-bold uppercase tracking-widest text-primary/80 flex items-center gap-3 mb-4">
-            <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse shadow-[0_0_8px_rgba(var(--primary-rgb),0.8)]" />
+            <span className="w-1.5 h-1.5 rounded-full bg-primary" />
             Interactive Visualization
           </div>
-          <h3 className="text-3xl font-black tracking-tight text-white sm:text-4xl lg:text-5xl leading-[1.15] drop-shadow-lg">
+          <h3 className="font-serif text-[1.875rem] font-normal leading-[1.08] tracking-[-0.01em] text-white sm:text-[2.375rem]">
             Why the flywheel compounds instead of spinning in place
           </h3>
           <p className="mt-6 text-[1.1rem] leading-relaxed text-zinc-400 font-light">
@@ -121,7 +123,7 @@ export function FlywheelDiagram() {
           </p>
         </div>
 
-        <div className="flex flex-col items-start lg:items-end gap-5">
+        <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-3">
             <span className="text-xs font-bold uppercase tracking-[0.3em] text-white/30">
               Simulation Depth
@@ -165,7 +167,7 @@ export function FlywheelDiagram() {
         </div>
       </div>
 
-      <div className="relative z-10 mt-16 grid gap-12 xl:grid-cols-[1.2fr_0.8fr] items-center">
+      <div className="relative z-10 mt-12 grid items-center gap-12">
         <div
           className="relative min-w-0 overflow-x-auto p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
           role="region"
@@ -360,7 +362,7 @@ export function FlywheelDiagram() {
                   />
                   Focused Context
                 </div>
-                <h4 className="text-4xl sm:text-5xl font-black text-white tracking-tight leading-none drop-shadow-md">
+                <h4 className="font-serif text-[2.5rem] font-normal leading-none tracking-[-0.01em] text-white sm:text-[3rem]">
                   {currentStage.label}
                 </h4>
                 <p className="mt-2 text-[1.1rem] leading-relaxed text-zinc-300 font-light">

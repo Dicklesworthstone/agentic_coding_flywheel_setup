@@ -39,9 +39,9 @@ const STEPS: Step[] = [
     label: "Plan",
     icon: FileText,
     color: "#a78bfa",
-    action: "Ask 3+ frontier models for competing plans, synthesize into one",
-    output: "A markdown plan covering workflows, architecture, and tests",
-    timing: "~1-3 hours",
+    action: "Ask 3+ frontier models for competing plans, then merge them into one",
+    output: "A markdown plan covering workflows, constraints, architecture, and tests",
+    timing: "Hours, not minutes",
     inLoop: false,
   },
   {
@@ -49,9 +49,9 @@ const STEPS: Step[] = [
     label: "Encode",
     icon: GitBranch,
     color: "#FF5500",
-    action: "Convert plan into beads with dependencies using br",
-    output: "A dependency graph of 50-500 self-contained beads",
-    timing: "~30-60 minutes",
+    action: "Have an agent convert the plan into beads with br, then polish them 4-6 times",
+    output: "A dependency graph of self-contained beads (dozens to hundreds)",
+    timing: "Hours, including polish",
     inLoop: false,
   },
   {
@@ -59,9 +59,9 @@ const STEPS: Step[] = [
     label: "Route",
     icon: Compass,
     color: "#FFBD2E",
-    action: "Run bv --robot-triage to find highest-leverage ready bead",
+    action: "Run bv --robot-triage to find the most useful ready bead",
     output: "Ranked recommendations with scores and unblock counts",
-    timing: "< 1 second",
+    timing: "Seconds",
     inLoop: true,
   },
   {
@@ -69,9 +69,9 @@ const STEPS: Step[] = [
     label: "Coordinate",
     icon: Mail,
     color: "#FF5500",
-    action: "Claim bead in Agent Mail, reserve files, announce to swarm",
-    output: "Thread + file reservations visible to all agents",
-    timing: "~ 30 seconds",
+    action: "Claim the bead in br, reserve files and announce it in Agent Mail",
+    output: "Claim, thread, and file reservations visible to all agents",
+    timing: "A few tool calls",
     inLoop: true,
   },
   {
@@ -80,9 +80,9 @@ const STEPS: Step[] = [
     icon: Code,
     iconAlt: CheckCircle,
     color: "#22c55e",
-    action: "Implement, test, fresh-eyes review, close bead, repeat from step 3",
-    output: "Working code + tests, updated graph, next bead queued",
-    timing: "10-60 minutes per bead",
+    action: "Implement, test, fresh-eyes review, close the bead, repeat from step 3",
+    output: "Working code + tests, an updated graph, the next bead ready",
+    timing: "Minutes to hours per bead",
     inLoop: true,
   },
 ];
@@ -472,15 +472,14 @@ export function OperatingRhythmViz() {
       {/* ---- HEADER ---- */}
       <div className="relative z-10 mb-8 sm:mb-10">
         <div className="text-xs font-bold uppercase tracking-widest text-[#FF5500] mb-2 flex items-center gap-2">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#FF5500] animate-pulse shadow-[0_0_8px_rgba(255,85,0,0.8)]" />
+          <span className="w-1.5 h-1.5 rounded-full bg-[#FF5500]" />
           Operating Rhythm
         </div>
-        <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-          From plan to production in five steps
+        <h3 className="font-serif text-[1.875rem] font-normal leading-[1.08] tracking-[-0.01em] text-white sm:text-[2.375rem]">
+          From plan to working code in five steps
         </h3>
         <p className="mt-2 text-sm text-zinc-400 font-light max-w-xl">
-          Steps 3-5 repeat for every bead. You stop thinking about the process after the second
-          cycle.
+          Steps 3-5 repeat for every bead. After a few cycles, the loop becomes routine.
         </p>
       </div>
 

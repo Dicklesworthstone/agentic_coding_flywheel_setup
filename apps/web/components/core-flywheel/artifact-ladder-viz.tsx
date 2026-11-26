@@ -68,7 +68,7 @@ const STAGES: readonly Stage[] = [
     icon: GitBranch,
     artifact: "Encoded executable work",
     meaning: "Dependencies and boundaries are explicit.",
-    nextAction: "Ask bv what matters next.",
+    nextAction: "Polish it 4-6 times, then ask bv what matters next.",
     color: "#FF5500",
     glowColor: "rgba(255,85,0,0.2)",
   },
@@ -77,8 +77,8 @@ const STAGES: readonly Stage[] = [
     label: "Ready Bead",
     icon: Zap,
     artifact: "Unblocked bead",
-    meaning: "Can be started now.",
-    nextAction: "Claim it and reserve surface.",
+    meaning: "All its dependencies are closed, so it can start now.",
+    nextAction: "Claim it in br and reserve its files in Agent Mail.",
     color: "#FFBD2E",
     glowColor: "rgba(255,189,46,0.2)",
   },
@@ -86,9 +86,9 @@ const STAGES: readonly Stage[] = [
     id: "claimed-bead",
     label: "Claimed Bead",
     icon: User,
-    artifact: "Agent working on it",
+    artifact: "In-progress bead with an owner",
     meaning: "The swarm can see who owns it.",
-    nextAction: "Implement, test, update progress.",
+    nextAction: "Implement, test, and post progress in its thread.",
     color: "#a78bfa",
     glowColor: "rgba(167,139,250,0.2)",
   },
@@ -96,8 +96,8 @@ const STAGES: readonly Stage[] = [
     id: "completed-bead",
     label: "Completed Bead",
     icon: CheckCircle,
-    artifact: "Finished work",
-    meaning: "The graph has changed.",
+    artifact: "Closed bead",
+    meaning: "The graph has changed; beads that waited on it may now be ready.",
     nextAction: "Ask bv for the next best ready bead.",
     color: "#22c55e",
     glowColor: "rgba(34,197,94,0.2)",
@@ -325,7 +325,7 @@ function DetailPanel({ stage, reducedMotion }: { stage: Stage; reducedMotion: bo
           <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: stage.color }} />
           Active Stage
         </div>
-        <h4 className="text-3xl font-black tracking-tight text-white sm:text-4xl leading-none">
+        <h4 className="font-serif text-[2.25rem] font-normal leading-none tracking-[-0.01em] text-white sm:text-[2.75rem]">
           {stage.label}
         </h4>
       </div>
@@ -573,7 +573,7 @@ export function ArtifactLadderViz() {
             <div className="w-8 h-px bg-[#FF5500]/30" />
             Artifact Progression
           </div>
-          <h3 className="mt-6 text-3xl font-black tracking-[-0.04em] text-white sm:text-4xl lg:text-5xl leading-[1.1]">
+          <h3 className="mt-6 font-serif text-[1.875rem] font-normal leading-[1.08] tracking-[-0.01em] text-white sm:text-[2.375rem]">
             What you produce at each stage
           </h3>
           <p className="mt-8 text-[1.1rem] leading-relaxed text-zinc-400 font-extralight">

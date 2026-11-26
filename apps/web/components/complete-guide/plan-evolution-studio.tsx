@@ -118,10 +118,10 @@ export function PlanEvolutionStudio() {
       <div className="relative z-10 flex flex-col gap-6 border-b border-white/[0.04] bg-white/[0.01] p-6 sm:p-8 backdrop-blur-md lg:flex-row lg:items-end lg:justify-between">
         <div>
           <div className="text-xs font-bold uppercase tracking-widest text-[#FF5500] flex items-center gap-2 mb-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#FF5500] animate-pulse shadow-[0_0_8px_rgba(255,85,0,0.8)]" />
+            <span className="w-1.5 h-1.5 rounded-full bg-[#FF5500]" />
             Interactive Studio
           </div>
-          <h4 className="text-xl font-black tracking-tight text-white sm:text-2xl">
+          <h4 className="font-serif text-[1.875rem] font-normal leading-[1.08] tracking-[-0.01em] text-white sm:text-[2.375rem]">
             Best-of-all-worlds synthesis
           </h4>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-zinc-400 font-light">

@@ -2,24 +2,60 @@
 
 import {
   AlertTriangle,
+  ArrowUp,
   Check,
   ChevronDown,
   Copy,
   Info,
   Lightbulb,
-  Quote,
-  Terminal,
-  Zap,
+  Link2,
+  ListTree,
+  SquareTerminal,
 } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
+import {
+  createContext,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "react";
+import { BottomSheet } from "@/components/ui/bottom-sheet";
 import {
   CodeBlock as SharedCodeBlock,
   type CodeBlockProps as SharedCodeBlockProps,
 } from "@/components/ui/code-block";
-import { copyTextToClipboard } from "@/lib/utils";
+import {
+  COPY_FAILURE_MESSAGE,
+  COPY_SUCCESS_MESSAGE,
+  useCopyFeedback,
+} from "@/lib/hooks/useCopyFeedback";
+import { useReducedMotion } from "@/lib/hooks/useReducedMotion";
+import { cn } from "@/lib/utils";
 
 export { FlywheelDiagram } from "./flywheel-diagram";
+
+// Shared type scale for the long-form guides. Body copy is 17px on phones and
+// 18px from `sm`, at a measure of ~68 characters; figures, tables and prompt
+// panels use the full article width.
+const BODY_TEXT = "text-[1.0625rem] leading-[1.75] text-zinc-300 sm:text-[1.125rem]";
+const MEASURE = "max-w-[68ch]";
+const ACCENT = "#FF5500";
+
+/** Stable, readable fragment ids for sub-headings ("planning-the-foundation-bundle"). */
+export function guideSlug(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/['’]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 72)
+    .replace(/-+$/, "");
+}
 
 const PROMPT_HIGHLIGHT_PATTERN =
   /(\[[A-Z_]+\]|\b(?:Do we have|Search|Review|Read|Write|Fix|Create|Update|OK|Look|Execute)\b)/g;
@@ -41,7 +77,7 @@ function renderHighlightedPrompt(text: string): ReactNode[] {
   return text.split(PROMPT_HIGHLIGHT_PATTERN).map((part, partIndex) => {
     if (/^\[[A-Z_]+\]$/.test(part)) {
       return (
-        <span key={partIndex} className="text-white/60 font-medium bg-white/10 px-1 rounded">
+        <span key={partIndex} className="rounded bg-white/10 px-1 font-medium text-zinc-100">
           {part}
         </span>
       );
@@ -49,7 +85,7 @@ function renderHighlightedPrompt(text: string): ReactNode[] {
 
     if (PROMPT_HIGHLIGHT_KEYWORDS.has(part)) {
       return (
-        <span key={partIndex} className="text-[#FF5500] font-medium">
+        <span key={partIndex} className="font-medium text-[#FF8A4C]">
           {part}
         </span>
       );
@@ -60,93 +96,47 @@ function renderHighlightedPrompt(text: string): ReactNode[] {
 }
 
 // =============================================================================
-// GUIDE SECTION - Anchored sections with gradient headers + scroll reveal
+// GUIDE SECTION
 // =============================================================================
+// Sub-headings read the enclosing section id so their fragment ids stay
+// unique across the page (two sections may both have a "Why It Works").
+const GuideSectionContext = createContext<string | null>(null);
+
 interface GuideSectionProps {
   id: string;
+  /** Part number ("1"…"12"); an empty string marks an unnumbered interlude. */
   number?: string;
   title: string;
-  icon?: ReactNode;
   children: ReactNode;
 }
 
-export function GuideSection({ id, number, title, icon, children }: GuideSectionProps) {
-  const ref = useRef<HTMLElement>(null);
-  const isInView = useInView(ref, { once: true, margin: "-100px" });
-  const prefersReducedMotion = useReducedMotion();
-  const rm = prefersReducedMotion ?? false;
+export function GuideSection({ id, number, title, children }: GuideSectionProps) {
+  const eyebrow = number ? `Part ${number.padStart(2, "0")}` : "Interlude";
+  const headingId = `${id}-heading`;
 
   return (
-    <motion.section
-      ref={ref}
+    <section
       id={id}
-      initial={rm ? false : { opacity: 0, y: 40 }}
-      animate={rm || isInView ? { opacity: 1, y: 0 } : {}}
-      transition={rm ? { duration: 0 } : { type: "spring", stiffness: 80, damping: 20, mass: 1 }}
-      className="relative scroll-mt-32 pb-24 md:pb-32 w-full"
+      aria-labelledby={headingId}
+      className="relative scroll-mt-[5.5rem] xl:scroll-mt-8"
     >
-      {/* Subtle Side Label for desktop */}
-      {typeof number === "string" && number !== "" && (
-        <div
-          className="absolute -left-32 top-0 hidden xl:flex items-center justify-end w-24 pointer-events-none select-none"
-          aria-hidden="true"
+      <header className="mb-10 sm:mb-14">
+        <div className="flex items-center gap-4 font-mono text-xs font-medium uppercase tracking-[0.22em]">
+          <span className="text-[#FF7A33]">{eyebrow}</span>
+          <span aria-hidden="true" className="h-px flex-1 bg-gradient-to-r from-white/15 to-transparent" />
+        </div>
+        <h2
+          id={headingId}
+          tabIndex={-1}
+          className="mt-5 max-w-[22ch] font-serif text-[2.625rem] font-normal leading-[1.02] tracking-[-0.012em] text-white outline-none sm:text-[3.375rem] lg:text-[3.875rem]"
         >
-          <span className="text-[8rem] font-black text-white/[0.015] leading-none tracking-tighter">
-            {number.padStart(2, "0")}
-          </span>
-        </div>
-      )}
-
-      {/* Section header */}
-      <div className="relative mb-16 group">
-        <div className="flex flex-col sm:flex-row sm:items-start gap-5 sm:gap-6">
-          {typeof number === "string" && number !== "" && (
-            <div className="flex h-12 w-12 sm:h-16 sm:w-16 shrink-0 items-center justify-center rounded-[1rem] bg-gradient-to-b from-[#FF5500]/10 to-transparent border border-[#FF5500]/20 font-mono text-2xl sm:text-3xl font-black text-[#FF5500] shadow-[inset_0_1px_1px_rgba(255,255,255,0.1),0_8px_16px_-4px_rgba(0,0,0,0.5)] transition duration-500 group-hover:bg-[#FF5500]/20 group-hover:border-[#FF5500]/40 group-hover:shadow-[0_0_30px_rgba(255,85,0,0.3)]">
-              <span className="bg-gradient-to-br from-white to-[#FF5500]/80 bg-clip-text text-transparent">
-                {number}
-              </span>
-            </div>
-          )}
-
-          <div className="flex flex-1 min-w-0 items-start gap-4 sm:gap-5">
-            {icon && (
-              <div className="mt-1 sm:mt-2 flex h-10 w-10 sm:h-14 sm:w-14 shrink-0 items-center justify-center rounded-[0.85rem] border border-[#FF5500]/20 bg-[#05070a] text-[#FF5500] shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] transition duration-500 group-hover:border-[#FF5500]/40 group-hover:bg-[#FF5500]/10 group-hover:shadow-[0_0_20px_rgba(255,85,0,0.25)] group-hover:scale-105">
-                {icon}
-              </div>
-            )}
-
-            <div className="flex-1 min-w-0">
-              {title.startsWith("Phase ") ? (
-                <div className="flex flex-col gap-2">
-                  <span className="text-[#FF5500] font-mono text-[0.75rem] uppercase tracking-[0.3em] font-bold flex items-center gap-3">
-                    <span className="w-8 h-px bg-[#FF5500]/40" />
-                    {title.split(":")[0]}
-                  </span>
-                  <h2 className="text-3xl sm:text-5xl md:text-6xl font-black text-white tracking-tighter leading-[1.1] drop-shadow-lg group-hover:text-zinc-100 transition-colors">
-                    {title.split(":").slice(1).join(":").trim()}
-                  </h2>
-                </div>
-              ) : (
-                <h2 className="text-3xl sm:text-5xl md:text-6xl font-black text-white tracking-tighter leading-[1.1] pt-0.5 drop-shadow-lg group-hover:text-zinc-100 transition-colors">
-                  {title}
-                </h2>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Minimalist divider */}
-        <div className="mt-8 sm:mt-12 h-[1px] w-full bg-gradient-to-r from-white/[0.08] via-white/[0.02] to-transparent relative overflow-hidden">
-          <motion.div
-            initial={{ x: "-100%" }}
-            animate={isInView ? { x: "200%" } : {}}
-            transition={{ duration: 2.5, ease: "easeInOut", repeat: Infinity, repeatDelay: 4 }}
-            className="absolute inset-y-0 w-1/4 bg-gradient-to-r from-transparent via-[#FF5500]/40 to-transparent"
-          />
-        </div>
-      </div>
-      <div className="space-y-10 sm:space-y-12 max-w-[85ch]">{children}</div>
-    </motion.section>
+          {title}
+        </h2>
+      </header>
+      <GuideSectionContext.Provider value={id}>
+        <div className="space-y-7 sm:space-y-8">{children}</div>
+      </GuideSectionContext.Provider>
+    </section>
   );
 }
 
@@ -154,14 +144,32 @@ export function GuideSection({ id, number, title, icon, children }: GuideSection
 // SUBSECTION
 // =============================================================================
 export function SubSection({ title, children }: { title: string; children: ReactNode }) {
+  const sectionId = useContext(GuideSectionContext);
+  const slug = guideSlug(title);
+  const id = sectionId ? `${sectionId}-${slug}` : slug;
+
   return (
-    <div className="mt-20 first:mt-12 group/sub relative">
-      <div className="absolute -left-4 sm:-left-8 top-1.5 bottom-0 w-[3px] bg-white/[0.02] group-hover/sub:bg-[#FF5500]/20 transition-colors duration-500 hidden sm:block rounded-full" />
-      <h3 className="text-2xl sm:text-3xl font-bold text-white mb-8 flex items-center gap-4 tracking-tight relative">
-        <div className="absolute -left-4 sm:-left-8 top-1/2 -translate-y-1/2 w-[3px] h-0 bg-[#FF5500] transition-[height] duration-500 group-hover/sub:h-full hidden sm:block shadow-[0_0_10px_rgba(255,85,0,0.6)] rounded-full" />
-        {title}
-      </h3>
-      <div className="space-y-6 sm:space-y-8">{children}</div>
+    <div className="pt-8 first:pt-0 sm:pt-12 sm:first:pt-0">
+      <div className="group/heading relative">
+        <a
+          href={`#${id}`}
+          aria-label={`Link to this part: ${title}`}
+          className="absolute -left-9 top-1 hidden h-8 w-8 items-center justify-center rounded-md text-zinc-500 opacity-0 transition-opacity hover:text-[#FF7A33] focus-visible:opacity-100 group-hover/heading:opacity-100 xl:flex"
+        >
+          <Link2 aria-hidden="true" className="h-4 w-4" />
+        </a>
+        <h3
+          id={id}
+          data-guide-subsection={title}
+          className={cn(
+            MEASURE,
+            "scroll-mt-24 text-[1.375rem] font-semibold leading-[1.25] tracking-[-0.012em] text-white outline-none sm:text-[1.625rem] xl:scroll-mt-10",
+          )}
+        >
+          {title}
+        </h3>
+      </div>
+      <div className="mt-5 space-y-6 sm:mt-6 sm:space-y-7">{children}</div>
     </div>
   );
 }
@@ -170,27 +178,29 @@ export function SubSection({ title, children }: { title: string; children: React
 // PARAGRAPH
 // =============================================================================
 export function P({ children, highlight }: { children: ReactNode; highlight?: boolean }) {
-  return (
-    <p
-      className={`text-[1.1rem] sm:text-[1.2rem] leading-[1.8] tracking-[-0.01em] ${
-        highlight
-          ? "rounded-xl border border-[#FF5500]/20 bg-[#FF5500]/[0.06] px-5 py-5 font-normal text-zinc-100 sm:px-6 sm:py-6"
-          : "text-zinc-300 font-light"
-      }`}
-    >
-      {children}
-    </p>
-  );
+  if (highlight) {
+    return (
+      <p className="max-w-[62ch] border-l-2 border-[#FF5500] pl-5 text-[1.1875rem] leading-[1.6] text-zinc-100 sm:pl-6 sm:text-[1.3125rem]">
+        {children}
+      </p>
+    );
+  }
+  return <p className={cn(MEASURE, BODY_TEXT)}>{children}</p>;
 }
 
 // =============================================================================
-// BLOCKQUOTE - Clean typographic quote
+// BLOCKQUOTE - Serif pull quote
 // =============================================================================
 export function BlockQuote({ children }: { children: ReactNode }) {
   return (
-    <blockquote className="my-10 flex items-start gap-4 border-y border-white/10 py-6 sm:my-12 sm:gap-5 sm:py-8">
-      <Quote aria-hidden="true" className="mt-1 h-6 w-6 shrink-0 -scale-x-100 text-[#FF5500] sm:h-7 sm:w-7" />
-      <div className="min-w-0 text-[1.1rem] font-light italic leading-[1.8] tracking-tight text-zinc-200 sm:text-[1.35rem]">
+    <blockquote className="relative max-w-[56ch] py-2 pl-9 sm:pl-12">
+      <span
+        aria-hidden="true"
+        className="absolute left-0 top-0 select-none font-serif text-[3.25rem] leading-none text-[#FF5500] sm:text-[4rem]"
+      >
+        &ldquo;
+      </span>
+      <div className="font-serif text-[1.5rem] italic leading-[1.32] tracking-[-0.005em] text-zinc-100 sm:text-[1.875rem]">
         {children}
       </div>
     </blockquote>
@@ -198,27 +208,41 @@ export function BlockQuote({ children }: { children: ReactNode }) {
 }
 
 // =============================================================================
-// CODE BLOCK - Terminal-style wrapper
+// CODE BLOCK - Terminal panel, tuned to the guide palette
 // =============================================================================
 export function CodeBlock(props: Omit<SharedCodeBlockProps, "variant" | "copyable">) {
-  return <SharedCodeBlock {...props} variant="terminal" copyable />;
+  return (
+    <SharedCodeBlock
+      {...props}
+      variant="terminal"
+      copyable
+      className={cn(
+        "rounded-xl border-white/[0.09] bg-[#07090D] shadow-none ring-0 hover:border-white/[0.16] hover:shadow-none",
+        props.className,
+      )}
+    />
+  );
 }
 
 export function IllustrativeDisclosure() {
   return (
-    <div className="-mt-7 mb-10 flex items-start gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 text-sm leading-relaxed text-zinc-500">
-      <Info className="mt-0.5 h-4 w-4 shrink-0 text-[#FFBD2E]" />
+    <p className="-mt-3 flex max-w-[72ch] items-start gap-2.5 text-sm leading-relaxed text-zinc-400">
+      <Info aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#FFBD2E]" />
       <span>
         Illustrative simulation: scores, percentages, timings, and agent state in this exhibit
         explain the mechanism; they are not measured benchmarks or performance guarantees.
       </span>
-    </div>
+    </p>
   );
 }
 
 // =============================================================================
-// PROMPT BLOCK - Collapsible prompt display with copy + metadata
+// PROMPT BLOCK - Copy-ready prompt with run notes
 // =============================================================================
+// Prompts longer than this start collapsed; Copy always copies the full text.
+const PROMPT_COLLAPSE_LINES = 14;
+const PROMPT_COLLAPSE_CHARS = 1100;
+
 export function PromptBlock({
   title,
   prompt,
@@ -227,117 +251,137 @@ export function PromptBlock({
 }: {
   title: string;
   prompt: string;
+  /** Where and when to run it (tool, session, timing). */
   where?: string;
   whyItWorks?: string;
 }) {
-  const [copied, setCopied] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { state, copy } = useCopyFeedback();
+  const figureRef = useRef<HTMLElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const bodyId = useId();
+  const collapsible =
+    prompt.split("\n").length > PROMPT_COLLAPSE_LINES || prompt.length > PROMPT_COLLAPSE_CHARS;
+  const [expanded, setExpanded] = useState(false);
+  const collapsed = collapsible && !expanded;
 
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, []);
-
-  const handleCopy = useCallback(async () => {
-    const ok = await copyTextToClipboard(prompt);
-    if (!ok) return;
-    setCopied(true);
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
-      setCopied(false);
-      timerRef.current = null;
-    }, 2000);
-  }, [prompt]);
+  const toggle = () => {
+    if (expanded) {
+      // Collapsing from the bottom of a long prompt would strand the reader
+      // far below the panel; bring its top back into view first.
+      const top = figureRef.current?.getBoundingClientRect().top ?? 0;
+      if (top < 0) window.scrollBy({ top: top - 96 });
+    }
+    setExpanded(!expanded);
+  };
 
   return (
-    <div className="group relative rounded-2xl border border-white/[0.06] bg-[#0A0D14] overflow-hidden transition duration-500 hover:border-[#FF5500]/30 my-12 shadow-xl">
-      <div className="absolute inset-0 noise-overlay opacity-[0.03] mix-blend-overlay pointer-events-none" />
-
-      {/* Top bar — refined metal */}
-      <div className="relative flex items-center justify-between gap-3 px-5 sm:px-6 py-3.5 bg-white/[0.015] border-b border-white/[0.04] z-10 backdrop-blur-md">
-        <div className="flex min-w-0 flex-1 items-center gap-4">
-          <div aria-hidden="true" className="hidden shrink-0 gap-1.5 sm:flex">
-            <div className="w-2.5 h-2.5 rounded-full bg-white/10 group-hover:bg-[#FF5500] transition-colors duration-500 shadow-sm" />
-            <div className="w-2.5 h-2.5 rounded-full bg-white/10 group-hover:bg-[#FFBD2E] transition-colors duration-500 shadow-sm" />
-            <div className="w-2.5 h-2.5 rounded-full bg-white/10 group-hover:bg-[#FF5500] transition-colors duration-500 shadow-sm" />
-          </div>
-          <span className="block min-w-0 break-words text-xs font-bold text-white/50 tracking-wider uppercase sm:ml-2">
-            {title}
-          </span>
-        </div>
-        <motion.button
+    <figure
+      ref={figureRef}
+      className="overflow-hidden rounded-xl border border-white/[0.09] bg-[#07090D]"
+    >
+      {/* Toolbar: the title must stay the first <span> and the copy button
+          its sibling (see e2e "prompt headers keep full titles"). */}
+      <div className="flex items-start justify-between gap-3 border-b border-white/[0.07] bg-white/[0.025] py-1.5 pl-4 pr-1.5 sm:pl-5">
+        <SquareTerminal aria-hidden="true" className="mt-[0.8rem] h-4 w-4 shrink-0 text-[#FF7A33]" />
+        <span className="min-w-0 flex-1 break-words py-[0.6rem] text-[0.9375rem] font-semibold leading-snug text-zinc-100">
+          {title}
+        </span>
+        <button
           type="button"
-          whileTap={{ scale: 0.95 }}
-          onClick={handleCopy}
-          aria-label={copied ? "Copied" : `Copy prompt: ${title}`}
-          className="flex min-h-[44px] min-w-11 shrink-0 items-center justify-center gap-2 rounded-lg bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-white/60 hover:bg-white/10 hover:text-white border border-white/[0.04] transition duration-200 hover:border-[#FF5500]/30 hover:text-[#FF5500]"
+          onClick={() => void copy(prompt, { selectOnFailure: bodyRef.current })}
+          aria-label={`Copy prompt: ${title}`}
+          className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium text-zinc-300 transition-colors hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/70"
         >
-          {copied ? (
-            <Check className="h-3.5 w-3.5 text-[#FF5500]" />
+          {state === "copied" ? (
+            <Check aria-hidden="true" className="h-4 w-4 text-[#FF7A33]" />
           ) : (
-            <Copy className="h-3.5 w-3.5" />
+            <Copy aria-hidden="true" className="h-4 w-4" />
           )}
-          <span className="hidden sm:inline">{copied ? "Copied" : "Copy"}</span>
-        </motion.button>
+          <span className="hidden sm:inline">{state === "copied" ? "Copied" : "Copy"}</span>
+        </button>
       </div>
 
-      {/* Prompt body */}
-      <div className="relative z-10 p-6 sm:p-8">
+      <p
+        role="status"
+        aria-live="polite"
+        className={
+          state === "failed"
+            ? "border-b border-white/[0.07] px-4 py-2 text-sm font-medium text-red-300 sm:px-5"
+            : "sr-only"
+        }
+      >
+        {state === "copied" ? COPY_SUCCESS_MESSAGE : state === "failed" ? COPY_FAILURE_MESSAGE : ""}
+      </p>
+
+      <div className="relative">
         <div
-          className="text-[0.95rem] sm:text-[1.05rem] text-zinc-300 whitespace-pre-wrap font-mono font-normal leading-[1.7] overflow-x-auto scrollbar-hide selection:bg-[#FF5500]/20 selection:text-white outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FF5500]/60"
+          id={bodyId}
+          ref={bodyRef}
           tabIndex={0}
+          aria-label={`Prompt text: ${title}`}
+          role="region"
+          className={cn(
+            "whitespace-pre-wrap break-words px-4 py-4 font-mono text-[0.875rem] leading-[1.75] text-zinc-300 outline-none selection:bg-[#FF5500]/25 selection:text-white focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FF5500]/60 sm:px-5 sm:py-5 sm:text-[0.9rem]",
+            collapsed && "max-h-[19rem] overflow-hidden",
+          )}
         >
           {renderHighlightedPrompt(prompt)}
         </div>
+        {collapsed && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[#07090D] via-[#07090D]/85 to-transparent"
+          />
+        )}
       </div>
 
-      {/* Metadata footer — clean & informative */}
-      <AnimatePresence>
-        {(where || whyItWorks) && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="relative z-10 bg-black/20 border-t border-white/[0.04] p-6 sm:p-8 space-y-6"
-          >
-            {where && (
-              <div className="flex items-start gap-4">
-                <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-white/[0.05] border border-white/[0.05]">
-                  <Terminal className="h-3 w-3 text-zinc-400" />
-                </div>
-                <div>
-                  <span className="text-xs font-bold text-white/30 uppercase tracking-widest block mb-1">
-                    Context
-                  </span>
-                  <p className="text-[0.9rem] text-zinc-400 font-light leading-relaxed">{where}</p>
-                </div>
-              </div>
-            )}
-            {whyItWorks && (
-              <div className="flex items-start gap-4">
-                <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-[#FF5500]/10 border border-[#FF5500]/20">
-                  <Lightbulb className="h-3 w-3 text-[#FF5500]" />
-                </div>
-                <div>
-                  <span className="text-xs font-bold text-[#FF5500] uppercase tracking-widest block mb-1">
-                    Psychology
-                  </span>
-                  <p className="text-[0.9rem] text-zinc-400 font-light leading-relaxed italic">
-                    {whyItWorks}
-                  </p>
-                </div>
-              </div>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+      {collapsible && (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          aria-controls={bodyId}
+          onClick={toggle}
+          className="flex min-h-11 w-full items-center justify-center gap-2 border-t border-white/[0.07] text-sm font-medium text-zinc-300 transition-colors hover:bg-white/[0.03] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FF5500]/60"
+        >
+          {expanded ? "Show less" : "Show full prompt"}
+          <ChevronDown
+            aria-hidden="true"
+            className={cn("h-4 w-4 transition-transform", expanded && "rotate-180")}
+          />
+        </button>
+      )}
+
+      {(where || whyItWorks) && (
+        <dl className="grid gap-x-6 gap-y-4 border-t border-white/[0.07] bg-black/25 px-4 py-4 sm:grid-cols-[7.5rem_minmax(0,1fr)] sm:gap-y-3 sm:px-5 sm:py-5">
+          {where && (
+            <>
+              <dt className="font-mono text-xs font-medium uppercase tracking-[0.16em] text-zinc-400 sm:pt-[0.2rem]">
+                Where &amp; when
+              </dt>
+              <dd className="-mt-3 text-[0.9375rem] leading-relaxed text-zinc-300 sm:mt-0">{where}</dd>
+            </>
+          )}
+          {whyItWorks && (
+            <>
+              <dt className="font-mono text-xs font-medium uppercase tracking-[0.16em] text-[#FF7A33] sm:pt-[0.2rem]">
+                Why it works
+              </dt>
+              <dd className="-mt-3 text-[0.9375rem] leading-relaxed text-zinc-300 sm:mt-0">
+                {whyItWorks}
+              </dd>
+            </>
+          )}
+        </dl>
+      )}
+    </figure>
   );
 }
 
 // =============================================================================
-// DATA TABLE - Premium Minimalist Grid Hybrid
+// DATA TABLE - Real table on wide screens, labelled cards on phones
 // =============================================================================
+// Explicit ARIA roles keep table semantics when the phone layout switches
+// the rows to display:block (Safari drops them otherwise).
 export function DataTable({
   headers,
   rows,
@@ -345,156 +389,69 @@ export function DataTable({
   headers: string[];
   rows: (string | ReactNode)[][];
 }) {
-  const isDefinitionList = headers.length === 2 || headers.length === 3;
-
-  if (isDefinitionList) {
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6 my-12 relative z-10">
-        {rows.map((row, ri) => (
-          <div
-            key={ri}
-            className="flex flex-col p-6 sm:p-8 rounded-[2rem] bg-[#05070A] border border-white/[0.04] shadow-2xl relative group/card hover:border-[#FF5500]/30 transition duration-500 hover:-translate-y-2 overflow-hidden"
-          >
-            <div className="absolute inset-0 noise-overlay opacity-[0.02] mix-blend-overlay pointer-events-none" />
-            <div className="absolute inset-0 bg-gradient-to-br from-[#FF5500]/5 to-transparent opacity-0 group-hover/card:opacity-100 transition-opacity duration-500 pointer-events-none" />
-
-            <div className="relative z-10 flex flex-col h-full">
-              <div className="text-xs font-bold text-[#FF5500] uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-[#FF5500] shadow-[0_0_8px_rgba(255,85,0,0.6)]" />
-                {headers[0]}
-              </div>
-              <div className="text-xl sm:text-2xl font-black text-white tracking-tight mb-5 group-hover/card:text-[#FF5500] transition-colors leading-[1.15]">
-                {row[0]}
-              </div>
-
-              {headers[1] && row[1] && (
-                <div className="mb-6 flex-1">
-                  <div className="text-xs font-bold text-white/30 uppercase tracking-[0.15em] mb-2">
-                    {headers[1]}
-                  </div>
-                  <div className="text-[1.05rem] text-zinc-300 font-light leading-relaxed">
-                    {row[1]}
-                  </div>
-                </div>
-              )}
-
-              {headers[2] && row[2] && (
-                <div className="mt-auto pt-5 border-t border-white/[0.06]">
-                  <div className="text-xs font-bold text-white/30 uppercase tracking-[0.15em] mb-2">
-                    {headers[2]}
-                  </div>
-                  <div className="text-[1rem] text-zinc-400 font-medium italic leading-relaxed">
-                    {row[2]}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  }
+  const wide = headers.length >= 4;
 
   return (
-    <div className="relative group my-16">
-      <div className="absolute -inset-0.5 bg-gradient-to-r from-[#FF5500]/20 via-violet-500/10 to-transparent rounded-[2rem] blur-xl opacity-0 group-hover:opacity-50 transition-opacity duration-700 pointer-events-none" />
-      <div
-        className="relative overflow-x-auto rounded-[2rem] border border-white/[0.05] bg-[#05070a] shadow-2xl transition duration-500 group-hover:border-[#FF5500]/30 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FF5500]/60"
-        tabIndex={0}
-      >
-        <table className="w-full text-sm min-w-[600px] border-collapse">
-          <thead>
-            <tr className="border-b border-white/[0.08] bg-white/[0.02]">
-              {headers.map((h, i) => (
-                <th
-                  key={i}
-                  className="px-8 py-6 text-left text-xs font-black text-[#FF5500] uppercase tracking-[0.2em] whitespace-nowrap"
+    <div
+      role="region"
+      aria-label={`Table: ${headers.join(", ")}`}
+      tabIndex={0}
+      className="overflow-x-auto rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/60 md:border md:border-white/[0.08] md:bg-white/[0.015]"
+    >
+      <table role="table" className={cn("w-full border-collapse text-left", wide && "md:min-w-[40rem]")}>
+        <thead role="rowgroup" className="max-md:sr-only">
+          <tr role="row" className="border-b border-white/[0.09] bg-white/[0.025]">
+            {headers.map((header) => (
+              <th
+                key={header}
+                role="columnheader"
+                scope="col"
+                className="whitespace-nowrap px-5 py-3.5 font-mono text-xs font-medium uppercase tracking-[0.14em] text-zinc-400"
+              >
+                {header}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody role="rowgroup" className="max-md:block max-md:space-y-3">
+          {rows.map((row, rowIndex) => (
+            <tr
+              key={rowIndex}
+              role="row"
+              className="max-md:block max-md:rounded-xl max-md:border max-md:border-white/[0.08] max-md:bg-white/[0.02] max-md:px-4 max-md:py-3.5 md:border-b md:border-white/[0.06] md:last:border-b-0"
+            >
+              {row.map((cell, cellIndex) => (
+                <td
+                  key={cellIndex}
+                  role="cell"
+                  data-label={headers[cellIndex]}
+                  className={cn(
+                    "align-top text-[0.975rem] leading-relaxed max-md:block md:px-5 md:py-4",
+                    cellIndex === 0
+                      ? "font-semibold text-white max-md:text-[1.0625rem]"
+                      : "text-zinc-300 max-md:mt-3 max-md:before:mb-1 max-md:before:block max-md:before:font-mono max-md:before:text-xs max-md:before:font-medium max-md:before:uppercase max-md:before:tracking-[0.14em] max-md:before:text-zinc-400 max-md:before:content-[attr(data-label)]",
+                  )}
                 >
-                  {h}
-                </th>
+                  {cell}
+                </td>
               ))}
             </tr>
-          </thead>
-          <tbody className="divide-y divide-white/[0.03]">
-            {rows.map((row, ri) => (
-              <tr
-                key={ri}
-                className="transition-colors duration-300 hover:bg-white/[0.02] hover:bg-gradient-to-r hover:from-[#FF5500]/[0.03] hover:to-transparent group/row"
-              >
-                {row.map((cell, cellPosition) => (
-                  <td
-                    key={cellPosition}
-                    className="px-8 py-6 text-[1.05rem] font-light text-zinc-300 align-top leading-relaxed"
-                  >
-                    {Object.is(cellPosition, 0) ? (
-                      <span className="text-white font-medium group-hover/row:text-[#FF5500] transition-colors">
-                        {cell}
-                      </span>
-                    ) : (
-                      cell
-                    )}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
 
 // =============================================================================
-// PHASE CARD - With subtle hover glow
+// TIP BOX - Left-rule callout
 // =============================================================================
-export function PhaseCard({
-  phase,
-  title,
-  description,
-  gradient = "from-primary/10 to-violet-500/10",
-  children,
-}: {
-  phase: string;
-  title: string;
-  description: string;
-  gradient?: string;
-  children?: ReactNode;
-}) {
-  return (
-    <div className="group relative rounded-3xl bg-[#05070a] p-8 sm:p-12 overflow-hidden transition duration-700 hover:-translate-y-2 border border-white/[0.04] hover:border-[#FF5500]/30 shadow-2xl">
-      {/* Background layer */}
-      <div
-        className={`absolute inset-0 opacity-0 group-hover:opacity-100 bg-gradient-to-br ${gradient} transition-opacity duration-1000 pointer-events-none mix-blend-screen`}
-      />
+const TIP_VARIANTS = {
+  tip: { label: "Tip", color: "#FFBD2E", Icon: Lightbulb },
+  warning: { label: "Warning", color: "#FF6B61", Icon: AlertTriangle },
+  info: { label: "Note", color: "#7DD3FC", Icon: Info },
+} as const;
 
-      <div className="relative z-10 flex flex-col gap-8">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-white/[0.02] border border-white/5 font-mono text-2xl font-black text-[#FF5500] shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] transition duration-700 group-hover:scale-110 group-hover:bg-[#FF5500]/10 group-hover:border-[#FF5500]/40 group-hover:shadow-[0_0_30px_rgba(255,85,0,0.3)]">
-            {phase}
-          </div>
-          <div className="h-px flex-1 bg-gradient-to-r from-white/[0.08] to-transparent hidden sm:block" />
-          <div className="text-xs font-bold text-white/30 uppercase tracking-widest">
-            Step Verification
-          </div>
-        </div>
-
-        <div className="max-w-3xl">
-          <h3 className="font-bold text-white text-2xl sm:text-3xl tracking-tight mb-4 group-hover:text-[#FF5500] transition-colors duration-500">
-            {title}
-          </h3>
-          <p className="text-[1.05rem] sm:text-[1.15rem] text-zinc-400 leading-relaxed font-light">
-            {description}
-          </p>
-          {children && <div className="mt-8">{children}</div>}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// =============================================================================
-// TIP BOX - Refined & Minimalist
-// =============================================================================
 export function TipBox({
   children,
   variant = "tip",
@@ -502,128 +459,70 @@ export function TipBox({
   children: ReactNode;
   variant?: "tip" | "warning" | "info";
 }) {
-  const config = {
-    tip: {
-      icon: <Lightbulb className="h-5 w-5" />,
-      color: "text-[#FFBD2E]",
-      bg: "bg-[#FFBD2E]/[0.03]",
-      border: "border-[#FFBD2E]/10",
-      title: "Insight",
-      dot: "bg-[#FFBD2E]",
-    },
-    warning: {
-      icon: <AlertTriangle className="h-5 w-5" />,
-      color: "text-[#FF5F56]",
-      bg: "bg-[#FF5F56]/[0.03]",
-      border: "border-[#FF5F56]/10",
-      title: "Critical",
-      dot: "bg-[#FF5F56]",
-    },
-    info: {
-      icon: <Info className="h-5 w-5" />,
-      color: "text-[#FF5500]",
-      bg: "bg-[#FF5500]/[0.03]",
-      border: "border-[#FF5500]/10",
-      title: "Note",
-      dot: "bg-[#FF5500]",
-    },
-  };
-  const c = config[variant];
+  const { label, color, Icon } = TIP_VARIANTS[variant];
 
   return (
     <div
-      className={`relative rounded-2xl border ${c.border} ${c.bg} p-6 sm:p-8 my-10 overflow-hidden group/tip shadow-lg`}
+      role="note"
+      className="max-w-[72ch] rounded-r-xl border-l-2 bg-white/[0.03] px-5 py-4 sm:px-6 sm:py-5"
+      style={{ borderColor: color }}
     >
-      <div className="absolute top-0 right-0 p-6 opacity-[0.03] group-hover/tip:opacity-[0.08] transition-opacity duration-700 pointer-events-none group-hover/tip:scale-110">
-        {c.icon}
-      </div>
-
-      <div className="relative z-10 flex flex-col gap-4">
-        <div
-          className={`text-xs font-bold ${c.color} uppercase tracking-widest flex items-center gap-2.5`}
-        >
-          <div
-            className={`w-1.5 h-1.5 rounded-full ${c.dot} shadow-[0_0_8px_currentColor] animate-pulse`}
-          />
-          {c.title}
-        </div>
-        <div className="text-zinc-300 text-[1rem] sm:text-[1.1rem] leading-[1.7] font-light tracking-[-0.01em] [&>strong]:text-white [&>strong]:font-medium">
-          {children}
-        </div>
+      <p
+        className="flex items-center gap-2 font-mono text-xs font-medium uppercase tracking-[0.18em]"
+        style={{ color }}
+      >
+        <Icon aria-hidden="true" className="h-3.5 w-3.5" />
+        {label}
+      </p>
+      <div className="mt-2 text-[1rem] leading-[1.7] text-zinc-300 sm:text-[1.0625rem]">
+        {children}
       </div>
     </div>
   );
 }
 
 // =============================================================================
-// TOOL PILL - Brutalist
-// =============================================================================
-export function ToolPill({ children }: { children: ReactNode }) {
-  return (
-    <span className="inline-flex items-center px-2.5 py-0.5 rounded border border-white/10 bg-white/[0.04] text-[#FF5500] text-[0.8rem] font-medium tracking-wide shadow-sm hover:border-[#FF5500]/40 hover:bg-[#FF5500]/5 transition cursor-help relative -top-px">
-      {children}
-    </span>
-  );
-}
-
-// =============================================================================
-// INLINE CODE
-// =============================================================================
-export function IC({ children }: { children: ReactNode }) {
-  return (
-    <code className="px-1.5 py-0.5 rounded bg-white/[0.05] border border-white/10 text-[#FF5500] text-[0.9em] font-mono font-medium relative -top-px mx-0.5">
-      {children}
-    </code>
-  );
-}
-
-// =============================================================================
-// HIGHLIGHT - Understated
+// HIGHLIGHT - Emphasized term
 // =============================================================================
 export function Hl({ children }: { children: ReactNode }) {
   return (
-    <span className="font-medium text-white border-b border-[#FF5500]/40 pb-[1px] relative">
-      <span className="absolute inset-x-0 -bottom-px h-px bg-[#FF5500] opacity-0 hover:opacity-100 transition-opacity blur-sm" />
+    <span className="font-medium text-white underline decoration-[#FF5500]/55 decoration-[1.5px] underline-offset-[0.22em]">
       {children}
     </span>
   );
 }
 
 // =============================================================================
-// BULLET LIST
+// LISTS
 // =============================================================================
 export function BulletList({ items }: { items: (string | ReactNode)[] }) {
   return (
-    <ul className="space-y-3 sm:space-y-4 my-6">
+    <ul role="list" className={cn(MEASURE, "space-y-3")}>
       {items.map((item, i) => (
-        <li key={i} className="flex items-start gap-3 sm:gap-4 group">
-          <div className="mt-[0.6rem] relative flex items-center justify-center shrink-0">
-            <div className="absolute inset-0 bg-[#FF5500]/30 blur-[4px] rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-            <div className="h-1.5 w-1.5 rounded-full bg-[#FF5500] group-hover:scale-125 transition-transform duration-300 shadow-[0_0_8px_rgba(255,85,0,0.6)]" />
-          </div>
-          <span className="text-zinc-300 text-[1.05rem] sm:text-[1.1rem] leading-[1.7] font-light group-hover:text-zinc-100 transition-colors duration-300">
-            {item}
-          </span>
+        <li key={i} className={cn(BODY_TEXT, "relative pl-6")}>
+          <span
+            aria-hidden="true"
+            className="absolute left-[0.2rem] top-[0.72em] h-[5px] w-[5px] rotate-45 bg-[#FF5500]"
+          />
+          {item}
         </li>
       ))}
     </ul>
   );
 }
 
-// =============================================================================
-// NUMBERED LIST
-// =============================================================================
 export function NumberedList({ items }: { items: (string | ReactNode)[] }) {
   return (
-    <ol className="space-y-4 sm:space-y-5 my-8">
+    <ol role="list" className={cn(MEASURE, "space-y-4")}>
       {items.map((item, i) => (
-        <li key={i} className="flex items-start gap-4 sm:gap-5 group">
-          <span className="flex h-7 w-7 sm:h-8 sm:w-8 shrink-0 items-center justify-center rounded-lg bg-white/[0.03] border border-white/10 text-xs sm:text-sm font-bold text-[#FF5500] shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] transition duration-300 group-hover:border-[#FF5500]/40 group-hover:bg-[#FF5500]/5 group-hover:shadow-[0_0_15px_rgba(255,85,0,0.2)] group-hover:-translate-y-0.5">
-            {i + 1}
+        <li key={i} className="grid grid-cols-[2.25rem_minmax(0,1fr)] items-baseline">
+          <span
+            aria-hidden="true"
+            className="select-none font-mono text-sm font-medium tabular-nums text-[#FF7A33]"
+          >
+            {String(i + 1).padStart(2, "0")}
           </span>
-          <span className="text-zinc-300 text-[1.05rem] sm:text-[1.1rem] leading-[1.7] font-light pt-0.5 group-hover:text-zinc-100 transition-colors duration-300">
-            {item}
-          </span>
+          <div className={BODY_TEXT}>{item}</div>
         </li>
       ))}
     </ol>
@@ -631,14 +530,17 @@ export function NumberedList({ items }: { items: (string | ReactNode)[] }) {
 }
 
 // =============================================================================
-// DIVIDER
+// DIVIDER - Section break
 // =============================================================================
 export function Divider() {
   return (
-    <div className="relative my-20 sm:my-28 flex items-center justify-center">
-      <div className="absolute inset-x-0 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
-      <div className="absolute inset-x-0 h-px w-1/3 mx-auto bg-gradient-to-r from-transparent via-[#FF5500]/30 to-transparent blur-[1px]" />
-      <div className="relative h-1.5 w-1.5 rounded-full bg-[#FF5500] shadow-[0_0_10px_rgba(255,85,0,0.8)]" />
+    <div aria-hidden="true" className="my-20 flex items-center gap-5 sm:my-28">
+      <span className="h-px flex-1 bg-gradient-to-r from-transparent to-white/[0.12]" />
+      <svg viewBox="0 0 20 20" className="h-4 w-4 text-white/25">
+        <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="1.25" />
+        <circle cx="10" cy="2" r="2" fill={ACCENT} />
+      </svg>
+      <span className="h-px flex-1 bg-gradient-to-l from-transparent to-white/[0.12]" />
     </div>
   );
 }
@@ -656,264 +558,374 @@ export function StatCard({
   sublabel?: string;
 }) {
   return (
-    <div className="group relative rounded-2xl border border-white/[0.06] bg-[#0A0D14] p-6 sm:p-8 text-center overflow-hidden transition duration-500 hover:-translate-y-1 hover:border-[#FF5500]/30 shadow-xl">
-      <div className="absolute inset-0 noise-overlay opacity-[0.03] mix-blend-overlay pointer-events-none" />
-      <div className="absolute inset-0 bg-gradient-to-b from-[#FF5500]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-      <div className="relative z-10 text-3xl sm:text-5xl font-black bg-gradient-to-br from-white via-[#FF5500] to-violet-400 bg-clip-text text-transparent tracking-tighter drop-shadow-md group-hover:scale-105 transition-transform duration-500">
+    <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 sm:p-5">
+      <div className="font-serif text-[2.5rem] leading-none tracking-[-0.01em] text-white sm:text-[3rem]">
         {value}
       </div>
-      <div className="relative z-10 mt-3 text-sm sm:text-base text-zinc-300 font-medium tracking-wide uppercase">
-        {label}
-      </div>
-      {sublabel && (
-        <div className="relative z-10 mt-1.5 text-xs sm:text-sm text-zinc-500 font-light">
-          {sublabel}
-        </div>
-      )}
+      <div className="mt-3 text-sm font-semibold text-zinc-100">{label}</div>
+      {sublabel && <div className="mt-1 text-sm leading-snug text-zinc-400">{sublabel}</div>}
     </div>
   );
 }
 
 // =============================================================================
-// PRINCIPLE CARD - For the 13 key principles
+// GUIDE NAV - "On this page": sticky sidebar (lg+) / sticky section rail
 // =============================================================================
-export function PrincipleCard({
-  number,
-  title,
-  children,
-  gradient,
-}: {
+// One <nav> and one set of section links for every breakpoint: the links are
+// restyled, never duplicated, so assistive tech and tests see a single
+// navigation. Phones add a "Contents" sheet with sub-headings and progress.
+export interface GuideNavItem {
+  id: string;
+  label: string;
   number: string;
+}
+
+interface SubHeading {
+  id: string;
   title: string;
-  children: ReactNode;
-  gradient?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const hasContent = children !== null && children !== undefined && children !== false;
-
-  return (
-    <div className="group relative rounded-2xl border border-white/[0.06] bg-[#0A0D14] overflow-hidden transition duration-500 hover:border-[#FF5500]/30 hover:-translate-y-1 my-6 shadow-xl">
-      <div className="absolute inset-0 noise-overlay opacity-[0.03] mix-blend-overlay pointer-events-none" />
-
-      {/* Background Texture */}
-      <div className="absolute inset-0 noise-overlay opacity-[0.03] mix-blend-overlay pointer-events-none" />
-
-      {/* Hover glow overlay */}
-      <div
-        className={`absolute inset-0 opacity-0 group-hover:opacity-100 bg-gradient-to-br ${gradient || "from-[#FF5500]/[0.05] to-transparent"} transition-opacity duration-500 pointer-events-none`}
-      />
-
-      <button
-        onClick={() => hasContent && setOpen(!open)}
-        className={`w-full relative z-10 flex items-start sm:items-center gap-4 sm:gap-6 p-5 sm:p-7 text-left ${hasContent ? "cursor-pointer" : "cursor-default"}`}
-        aria-expanded={open}
-        disabled={!hasContent}
-      >
-        <div className="mt-0.5 sm:mt-0 flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-white/[0.03] border border-white/10 font-mono text-sm sm:text-base font-bold text-[#FF5500] group-hover:scale-105 group-hover:bg-[#FF5500]/10 group-hover:border-[#FF5500]/40 group-hover:shadow-[0_0_20px_rgba(255,85,0,0.2)] transition duration-500">
-          <span className="bg-gradient-to-br from-white to-[#FF5500]/80 bg-clip-text text-transparent">
-            {number}
-          </span>
-        </div>
-        <div className="flex-1 min-w-0">
-          <h4 className="font-bold text-white text-lg sm:text-xl leading-tight tracking-tight group-hover:text-[#FF5500] transition-colors duration-300 pr-4">
-            {title}
-          </h4>
-        </div>
-        {hasContent && (
-          <div className="flex items-center justify-center h-8 w-8 rounded-full bg-white/[0.03] border border-white/[0.05] group-hover:bg-[#FF5500]/10 group-hover:border-[#FF5500]/20 transition duration-300 shrink-0 self-center">
-            <ChevronDown
-              className={`h-4 w-4 text-zinc-400 group-hover:text-[#FF5500] transition-transform duration-500 ${open ? "rotate-180" : ""}`}
-            />
-          </div>
-        )}
-      </button>
-      <AnimatePresence>
-        {open && hasContent && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-            className="overflow-hidden relative z-10"
-          >
-            <div className="px-5 sm:px-7 pb-6 sm:pb-7 pt-0 text-zinc-300 text-[1rem] sm:text-[1.1rem] leading-[1.7] font-light border-t border-white/[0.04] mt-2 pt-6">
-              {children}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
 }
 
-// =============================================================================
-// OPERATOR CARD - For the 8 operators in Section 21
-// =============================================================================
-export function OperatorCard({
-  number,
-  name,
-  definition,
-  trigger,
-  failureMode,
-  children,
-}: {
-  number: string;
-  name: string;
-  definition: string;
-  trigger?: string;
-  failureMode?: string;
-  children?: ReactNode;
-}) {
-  return (
-    <div className="group relative rounded-2xl border border-white/[0.06] bg-[#0A0D14] p-6 sm:p-8 transition duration-500 hover:border-[#FF5500]/40 hover:-translate-y-1 my-8 overflow-hidden shadow-xl">
-      <div className="absolute inset-0 noise-overlay opacity-[0.03] mix-blend-overlay pointer-events-none" />
-      <div className="absolute inset-0 bg-gradient-to-br from-[#FF5500]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+const WORDS_PER_MINUTE = 230;
 
-      {/* Corner glow */}
-      <div className="absolute -top-24 -right-24 h-48 w-48 rounded-full bg-[#FF5500]/10 blur-[60px] opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
-
-      <div className="relative z-10 flex flex-col sm:flex-row items-start gap-5 sm:gap-6">
-        <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-[#FF5500]/[0.05] border border-[#FF5500]/20 font-mono text-sm sm:text-base font-bold text-[#FF5500] group-hover:scale-105 group-hover:bg-[#FF5500]/10 group-hover:border-[#FF5500]/40 group-hover:shadow-[0_0_20px_rgba(255,85,0,0.2)] transition duration-500">
-          <span>{number}</span>
-        </div>
-        <div className="min-w-0 flex-1">
-          <h4 className="font-bold text-white text-lg sm:text-xl tracking-tight mb-1.5 group-hover:text-[#FF5500] transition-colors duration-300">
-            {name}
-          </h4>
-          <p className="text-[1rem] sm:text-[1.05rem] text-zinc-300 leading-relaxed font-light">
-            {definition}
-          </p>
-        </div>
-      </div>
-
-      <div className="relative z-10 mt-6 pt-6 border-t border-white/[0.04] space-y-4">
-        {trigger && (
-          <div className="flex items-start gap-4 bg-[#FF5500]/[0.03] rounded-xl p-4 sm:p-5 border border-[#FF5500]/10">
-            <span className="flex items-center justify-center h-6 w-6 rounded-md bg-[#FF5500]/10 text-[#FF5500] shrink-0 mt-0.5">
-              <Zap className="h-3 w-3" />
-            </span>
-            <div>
-              <span className="text-[#FF5500] font-bold uppercase tracking-widest text-xs block mb-1">
-                Trigger
-              </span>
-              <span className="text-zinc-300 text-sm sm:text-[0.95rem] leading-relaxed font-light">
-                {trigger}
-              </span>
-            </div>
-          </div>
-        )}
-        {failureMode && (
-          <div className="flex items-start gap-4 bg-[#FF5F56]/[0.03] rounded-xl p-4 sm:p-5 border border-[#FF5F56]/10">
-            <span className="flex items-center justify-center h-6 w-6 rounded-md bg-[#FF5F56]/10 text-[#FF5F56] shrink-0 mt-0.5">
-              <AlertTriangle className="h-3 w-3" />
-            </span>
-            <div>
-              <span className="text-[#FF5F56]/80 font-bold uppercase tracking-widest text-xs block mb-1">
-                Failure Mode
-              </span>
-              <span className="text-zinc-300 text-sm sm:text-[0.95rem] leading-relaxed font-light">
-                {failureMode}
-              </span>
-            </div>
-          </div>
-        )}
-        {children && (
-          <div className="text-zinc-400 text-[0.95rem] sm:text-[1rem] font-light leading-relaxed pt-2 px-1">
-            {children}
-          </div>
-        )}
-      </div>
-    </div>
-  );
+function formatMinutes(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `${hours} h ${rest} min` : `${hours} h`;
 }
 
-// =============================================================================
-// TABLE OF CONTENTS - Desktop sidebar + mobile drawer
-// =============================================================================
-export function TableOfContents({
-  items,
-}: {
-  items: { id: string; label: string; number: string }[];
-}) {
-  const [activeId, setActiveId] = useState<string>("");
-  const prefersReducedMotion = useReducedMotion();
-  const railRef = useRef<HTMLDivElement>(null);
+function isPlainLeftClick(e: ReactMouseEvent<HTMLAnchorElement>) {
+  return !(e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey);
+}
+
+export function GuideNav({ items, title }: { items: GuideNavItem[]; title: string }) {
+  const [activeId, setActiveId] = useState("");
+  const [activeSubId, setActiveSubId] = useState("");
+  const [subheadings, setSubheadings] = useState<Record<string, SubHeading[]>>({});
+  const [minutesLeft, setMinutesLeft] = useState<number | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const reducedMotion = useReducedMotion();
+  const listRef = useRef<HTMLOListElement>(null);
+  const progressRef = useRef(0);
+  const bars = useRef(new Set<HTMLElement>());
+
+  // Progress bars are painted directly (transform only) so scrolling never
+  // re-renders the nav; the callback ref paints a newly mounted bar at once.
+  // Their resting state is an arbitrary `[transform:scaleX(0)]`, not
+  // `scale-x-0`: Tailwind 4 emits that as the separate `scale` property,
+  // which would multiply with the inline transform and pin the bar at 0.
+  const registerBar = useCallback((el: HTMLElement | null) => {
+    if (!el) return;
+    const set = bars.current;
+    set.add(el);
+    el.style.transform = `scaleX(${progressRef.current})`;
+    return () => {
+      set.delete(el);
+    };
+  }, []);
 
   useEffect(() => {
-    // Whichever section crosses the band just below the sticky rail is
-    // "current"; a long section stays current while the reader is inside it.
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) setActiveId(entry.target.id);
-        }
-      },
-      { rootMargin: "-20% 0px -75% 0px" },
-    );
+    const article = document.querySelector<HTMLElement>("[data-guide-article]");
+    const sections = items
+      .map((item) => document.getElementById(item.id))
+      .filter((el): el is HTMLElement => el !== null);
+    if (!article || sections.length === 0) return;
 
-    for (const item of items) {
-      const el = document.getElementById(item.id);
-      if (el) observer.observe(el);
+    const headings = Array.from(article.querySelectorAll<HTMLElement>("[data-guide-subsection]"));
+    const headingSection = new Map<HTMLElement, string>();
+    const bySection: Record<string, SubHeading[]> = {};
+    for (const heading of headings) {
+      const section = heading.closest<HTMLElement>("section[id]");
+      if (!section) continue;
+      headingSection.set(heading, section.id);
+      (bySection[section.id] ??= []).push({
+        id: heading.id,
+        title: heading.dataset.guideSubsection ?? heading.textContent ?? "",
+      });
     }
+    const words = (article.textContent ?? "").split(/\s+/).length;
 
-    return () => observer.disconnect();
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      const viewport = window.innerHeight;
+      const line = Math.min(viewport * 0.3, 220);
+
+      let current = "";
+      for (const section of sections) {
+        if (section.getBoundingClientRect().top <= line) current = section.id;
+        else break;
+      }
+      const atBottom =
+        window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4;
+      if (atBottom) current = sections[sections.length - 1].id;
+
+      let currentSub = "";
+      for (const heading of headings) {
+        if (heading.getBoundingClientRect().top > line) break;
+        currentSub = headingSection.get(heading) === current ? heading.id : "";
+      }
+
+      const rect = article.getBoundingClientRect();
+      const travel = rect.height - viewport;
+      const progress = travel > 0 ? Math.min(1, Math.max(0, -rect.top / travel)) : 0;
+      progressRef.current = progress;
+      for (const bar of bars.current) bar.style.transform = `scaleX(${progress})`;
+
+      setActiveId(current);
+      setActiveSubId(currentSub);
+      setMinutesLeft(Math.max(0, Math.ceil((words * (1 - progress)) / WORDS_PER_MINUTE)));
+    };
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(update);
+    };
+
+    frame = requestAnimationFrame(() => {
+      setSubheadings(bySection);
+      update();
+    });
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule, { passive: true });
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+    };
   }, [items]);
 
-  // Keep the current chip in view inside the horizontally scrolling rail
-  // (scrolls only the rail, never the page).
+  // Keep the current entry visible inside the list itself: sideways on the
+  // phone rail, vertically in the desktop sidebar. Never scrolls the page.
   useEffect(() => {
-    const rail = railRef.current;
-    if (!rail || !activeId) return;
-    const chip = rail.querySelector<HTMLElement>(`[data-toc-id="${activeId}"]`);
-    if (!chip) return;
-    const left = chip.offsetLeft - rail.clientWidth / 2 + chip.offsetWidth / 2;
-    rail.scrollTo({ left: Math.max(0, left), behavior: prefersReducedMotion ? "auto" : "smooth" });
-  }, [activeId, prefersReducedMotion]);
+    const list = listRef.current;
+    if (!list || !activeId) return;
+    const entry = list.querySelector<HTMLElement>(`[data-nav-id="${activeId}"]`);
+    if (!entry) return;
+    const behavior: ScrollBehavior = reducedMotion ? "auto" : "smooth";
+    if (list.scrollWidth > list.clientWidth + 1) {
+      const left = entry.offsetLeft - list.clientWidth / 2 + entry.offsetWidth / 2;
+      list.scrollTo({ left: Math.max(0, left), behavior });
+    } else if (list.scrollHeight > list.clientHeight + 1) {
+      const top = entry.offsetTop;
+      if (top < list.scrollTop + 24 || top + 48 > list.scrollTop + list.clientHeight) {
+        list.scrollTo({ top: Math.max(0, top - 24), behavior });
+      }
+    }
+  }, [activeId, activeSubId, reducedMotion]);
 
-  const handleClick = (e: React.MouseEvent<HTMLAnchorElement>, id: string) => {
-    // Keep native new-tab/window behavior and respect an earlier event handler.
-    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-    const el = document.getElementById(id);
-    if (!el) return; // fall back to the browser's own hash navigation
-    e.preventDefault();
-    el.scrollIntoView({ behavior: prefersReducedMotion ? "auto" : "smooth", block: "start" });
-    window.history.pushState(null, "", `#${id}`);
+  const jumpTo = useCallback(
+    (id: string) => {
+      const target = document.getElementById(id);
+      if (!target) return false;
+      target.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" });
+      window.history.pushState(null, "", `#${id}`);
+      // Move keyboard focus with the reader, without a second scroll.
+      const heading = target.matches("h2, h3") ? target : target.querySelector<HTMLElement>("h2");
+      if (heading) {
+        if (!heading.hasAttribute("tabindex")) heading.setAttribute("tabindex", "-1");
+        heading.focus({ preventScroll: true });
+      }
+      return true;
+    },
+    [reducedMotion],
+  );
+
+  const onNavClick = (e: ReactMouseEvent<HTMLAnchorElement>, id: string) => {
+    // Keep native new-tab/window behavior and respect an earlier handler.
+    if (!isPlainLeftClick(e)) return;
+    if (jumpTo(id)) e.preventDefault();
   };
 
+  const onSheetClick = (e: ReactMouseEvent<HTMLAnchorElement>, id: string) => {
+    if (!isPlainLeftClick(e)) return;
+    e.preventDefault();
+    setSheetOpen(false);
+    // Let the sheet release its scroll lock before scrolling the page.
+    requestAnimationFrame(() => requestAnimationFrame(() => jumpTo(id)));
+  };
+
+  const activeIndex = items.findIndex((item) => item.id === activeId);
+  const activeItem = activeIndex >= 0 ? items[activeIndex] : null;
+  const timeLeft = minutesLeft === null ? null : minutesLeft === 0 ? "Finished" : `≈ ${formatMinutes(minutesLeft)} left`;
+
   return (
-    <nav
-      aria-label="On this page"
-      className="sticky top-0 z-30 -mx-6 mb-10 border-b border-white/[0.06] bg-[#020408]/85 backdrop-blur-md lg:-mx-12"
-    >
-      <div ref={railRef} className="scrollbar-none flex gap-1 overflow-x-auto px-6 py-2 lg:px-12">
-        {items.map((item) => {
-          const isActive = activeId === item.id;
-          return (
-            <a
-              key={item.id}
-              href={`#${item.id}`}
-              data-toc-id={item.id}
-              aria-current={isActive ? "location" : undefined}
-              onClick={(e) => handleClick(e, item.id)}
-              className={`inline-flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-full border px-3 text-xs font-medium transition-colors ${
-                isActive
-                  ? "border-primary/40 bg-primary/10 text-white"
-                  : "border-transparent text-zinc-400 hover:bg-white/[0.04] hover:text-white"
-              }`}
-            >
-              {item.number && (
-                <span
-                  className={`font-mono text-xs ${isActive ? "text-primary" : "text-zinc-500"}`}
+    <>
+      <nav
+        aria-label="On this page"
+        className="sticky top-0 z-30 -mx-5 border-b border-white/[0.07] bg-[#020408]/88 backdrop-blur-md backdrop-saturate-150 sm:-mx-8 xl:mx-0 xl:flex xl:h-dvh xl:flex-col xl:border-b-0 xl:bg-transparent xl:py-10 xl:backdrop-filter-none"
+      >
+        {/* Desktop header: guide title, progress and time left */}
+        <div className="hidden xl:block xl:pb-5 xl:pl-3">
+          <p className="font-mono text-xs font-medium uppercase tracking-[0.2em] text-zinc-400">
+            {title}
+          </p>
+          <div className="relative mt-4 h-[2px] overflow-hidden rounded-full bg-white/10">
+            <span
+              ref={registerBar}
+              className="absolute inset-0 origin-left bg-[#FF5500] [transform:scaleX(0)]"
+            />
+          </div>
+          <p className="mt-2.5 min-h-[1.25rem] font-mono text-xs tabular-nums text-zinc-400">
+            {timeLeft}
+          </p>
+        </div>
+
+        <div className="flex items-center xl:min-h-0 xl:flex-1 xl:items-stretch">
+          <ol
+            ref={listRef}
+            role="list"
+            className="guide-rail-mask scrollbar-none relative flex min-w-0 flex-1 gap-1 overflow-x-auto px-4 py-2 sm:px-7 xl:block xl:h-full xl:space-y-0.5 xl:overflow-y-auto xl:overflow-x-hidden xl:px-0 xl:pb-10 xl:pt-1"
+          >
+            {items.map((item) => {
+              const isActive = item.id === activeId;
+              const subs = subheadings[item.id] ?? [];
+              return (
+                <li key={item.id} data-nav-id={item.id} className="shrink-0 xl:shrink">
+                  <a
+                    href={`#${item.id}`}
+                    aria-current={isActive ? "location" : undefined}
+                    onClick={(e) => onNavClick(e, item.id)}
+                    className={cn(
+                      "group/link relative inline-flex min-h-11 items-center gap-2 whitespace-nowrap rounded-full px-3 text-[0.8125rem] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/70",
+                      "xl:flex xl:min-h-0 xl:items-baseline xl:gap-3 xl:whitespace-normal xl:rounded-md xl:py-[0.45rem] xl:pl-3 xl:pr-2 xl:text-[0.875rem] xl:leading-snug",
+                      isActive
+                        ? "bg-white/[0.08] text-white xl:bg-white/[0.05]"
+                        : "text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-100",
+                    )}
+                  >
+                    {isActive && (
+                      <span
+                        aria-hidden="true"
+                        className="absolute inset-y-1.5 left-0 hidden w-[2px] rounded-full bg-[#FF5500] xl:block"
+                      />
+                    )}
+                    <span
+                      className={cn(
+                        "font-mono text-xs tabular-nums",
+                        isActive ? "text-[#FF7A33]" : "text-zinc-500 group-hover/link:text-zinc-400",
+                      )}
+                    >
+                      {item.number ? item.number.padStart(2, "0") : "··"}
+                    </span>
+                    {item.label}
+                  </a>
+                  {isActive && subs.length > 0 && (
+                    <ul role="list" className="mb-2 ml-[1.15rem] mt-1 hidden border-l border-white/10 xl:block">
+                      {subs.map((sub) => {
+                        const subActive = sub.id === activeSubId;
+                        return (
+                          <li key={sub.id}>
+                            <a
+                              href={`#${sub.id}`}
+                              onClick={(e) => onNavClick(e, sub.id)}
+                              data-active={subActive || undefined}
+                              className={cn(
+                                "-ml-px block border-l py-1.5 pl-4 pr-2 text-[0.8125rem] leading-snug transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/70",
+                                subActive
+                                  ? "border-[#FF5500] text-zinc-100"
+                                  : "border-transparent text-zinc-500 hover:text-zinc-200",
+                              )}
+                            >
+                              {sub.title}
+                            </a>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+
+          <button
+            type="button"
+            onClick={() => setSheetOpen(true)}
+            aria-label="Open contents"
+            aria-haspopup="dialog"
+            className="mr-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-zinc-300 transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/70 sm:mr-5 xl:hidden"
+          >
+            <ListTree aria-hidden="true" className="h-5 w-5" />
+          </button>
+        </div>
+
+        <a
+          href="#main-content"
+          className="mt-4 hidden items-center gap-2 rounded-md py-2 pl-3 text-[0.8125rem] font-medium text-zinc-500 transition-colors hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/70 xl:flex"
+        >
+          <ArrowUp aria-hidden="true" className="h-3.5 w-3.5" />
+          Back to top
+        </a>
+
+        {/* Phone reading progress, along the bottom edge of the bar */}
+        <div aria-hidden="true" className="absolute inset-x-0 -bottom-px h-[2px] xl:hidden">
+          <span ref={registerBar} className="block h-full origin-left bg-[#FF5500] [transform:scaleX(0)]" />
+        </div>
+      </nav>
+
+      <BottomSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        title={`${title}: contents`}
+        className="dark border-white/10 bg-[#090C12]"
+      >
+        <div className="pb-6 pr-12">
+          <p className="font-mono text-xs font-medium uppercase tracking-[0.2em] text-zinc-400">
+            {title}
+          </p>
+          <p className="mt-1 text-2xl font-semibold tracking-[-0.015em] text-white">Contents</p>
+          <div className="relative mt-4 h-[2px] overflow-hidden rounded-full bg-white/10">
+            <span ref={registerBar} className="absolute inset-0 origin-left bg-[#FF5500] [transform:scaleX(0)]" />
+          </div>
+          <p className="mt-2 font-mono text-xs tabular-nums text-zinc-400">
+            {activeItem ? `Now reading: ${activeItem.label}` : "Not started"}
+            {timeLeft ? ` · ${timeLeft}` : ""}
+          </p>
+        </div>
+        <ol role="list" className="space-y-0.5 pb-8">
+          {items.map((item) => {
+            const isActive = item.id === activeId;
+            const subs = subheadings[item.id] ?? [];
+            return (
+              <li key={item.id}>
+                <a
+                  href={`#${item.id}`}
+                  onClick={(e) => onSheetClick(e, item.id)}
+                  className={cn(
+                    "flex min-h-12 items-baseline gap-3 rounded-lg px-3 py-3 text-base font-medium",
+                    isActive ? "bg-white/[0.06] text-white" : "text-zinc-300",
+                  )}
                 >
-                  {item.number.padStart(2, "0")}
-                </span>
-              )}
-              {item.label}
-            </a>
-          );
-        })}
-      </div>
-    </nav>
+                  <span className={cn("font-mono text-xs tabular-nums", isActive ? "text-[#FF7A33]" : "text-zinc-500")}>
+                    {item.number ? item.number.padStart(2, "0") : "··"}
+                  </span>
+                  {item.label}
+                </a>
+                {isActive && subs.length > 0 && (
+                  <ul role="list" className="mb-2 ml-6 border-l border-white/10">
+                    {subs.map((sub) => (
+                      <li key={sub.id}>
+                        <a
+                          href={`#${sub.id}`}
+                          onClick={(e) => onSheetClick(e, sub.id)}
+                          className={cn(
+                            "-ml-px flex min-h-11 items-center border-l py-2 pl-4 pr-2 text-[0.9375rem] leading-snug",
+                            sub.id === activeSubId
+                              ? "border-[#FF5500] text-white"
+                              : "border-transparent text-zinc-400",
+                          )}
+                        >
+                          {sub.title}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            );
+          })}
+        </ol>
+      </BottomSheet>
+    </>
   );
 }
 

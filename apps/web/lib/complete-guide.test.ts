@@ -37,6 +37,14 @@ describe("complete guide derived claims", () => {
     expect(pageSource.match(/<PromptBlock\b/g)?.length ?? 0).toBe(COMPLETE_GUIDE_PROMPT_COUNT);
   });
 
+  test("the core flywheel cover counts its own prompt blocks", async () => {
+    const coreSource = await Bun.file(
+      new URL("../app/core-flywheel/page.tsx", import.meta.url),
+    ).text();
+    const declared = Number(coreSource.match(/const CORE_FLYWHEEL_PROMPT_COUNT = (\d+);/)?.[1]);
+    expect(coreSource.match(/<PromptBlock\b/g)?.length ?? 0).toBe(declared);
+  });
+
   test("validation gates and workflow phase count remain explicit", () => {
     expect(VALIDATION_GATES).toHaveLength(6);
     expect(COMPLETE_GUIDE_PHASE_COUNT).toBe(13);

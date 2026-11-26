@@ -112,14 +112,14 @@ export function ConvergenceViz() {
       <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between p-6 sm:p-8 border-b border-white/[0.04] bg-white/[0.01] backdrop-blur-md">
         <div>
           <div className="text-xs font-bold text-white/30 uppercase tracking-widest mb-2 flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#FFBD2E] animate-pulse shadow-[0_0_8px_rgba(255,189,46,0.8)]" />
+            <span className="w-1.5 h-1.5 rounded-full bg-[#FFBD2E]" />
             Interactive Simulator
           </div>
           <div className="flex items-center gap-3">
             <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#FFBD2E]/10 text-[#FFBD2E] border border-[#FFBD2E]/20 shadow-inner">
               <Radar className="h-4 w-4" />
             </span>
-            <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+            <h3 className="font-serif text-[1.875rem] font-normal leading-[1.08] tracking-[-0.01em] text-white sm:text-[2.375rem]">
               Convergence Detection
             </h3>
           </div>

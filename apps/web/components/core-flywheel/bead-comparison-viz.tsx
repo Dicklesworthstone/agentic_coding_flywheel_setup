@@ -60,6 +60,9 @@ const EXAMPLES: Record<TabId, ExampleData> = {
       "The search index exists, but users still cannot filter by tag",
       "or date or choose relevance vs recency sorting.",
       "",
+      "Depends on:",
+      "- br-201: search index and query path (closed)",
+      "",
       "Task:",
       "Implement filter controls plus sort selection and connect",
       "them to the existing query path.",
@@ -81,7 +84,7 @@ const EXAMPLES: Record<TabId, ExampleData> = {
       { label: "Tests", weak: false, strong: true },
     ],
     insight:
-      "The weak version names a topic. The strong version carries context, task scope, a concrete definition of done, and the testing plan.",
+      "The weak version names a topic. The strong version carries context, its dependencies, task scope, a concrete definition of done, and the testing plan.",
   },
 };
 
@@ -366,14 +369,14 @@ export function BeadComparisonViz() {
       <div className="relative z-10 flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between mb-8 sm:mb-10">
         <div>
           <div className="text-xs font-bold uppercase tracking-widest text-[#FF5500] mb-2 flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#FF5500] animate-pulse shadow-[0_0_8px_rgba(255,85,0,0.8)]" />
+            <span className="w-1.5 h-1.5 rounded-full bg-[#FF5500]" />
             Interactive Comparison
           </div>
           <div className="flex items-center gap-3">
             <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#FF5500]/10 text-[#FF5500] border border-[#FF5500]/20 shadow-inner">
               <GitBranch className="h-4 w-4" />
             </span>
-            <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+            <h3 className="font-serif text-[1.875rem] font-normal leading-[1.08] tracking-[-0.01em] text-white sm:text-[2.375rem]">
               Weak vs. Strong Artifacts
             </h3>
           </div>

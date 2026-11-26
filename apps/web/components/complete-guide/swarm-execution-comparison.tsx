@@ -484,7 +484,7 @@ export function SwarmExecutionViz() {
             <Users className="h-3.5 w-3.5" />
             Interactive Exhibit
           </div>
-          <h4 className="mt-2 text-xl font-black tracking-[-0.03em] text-white sm:text-2xl">
+          <h4 className="mt-2 font-serif text-[1.875rem] font-normal leading-[1.08] tracking-[-0.01em] text-white sm:text-[2.375rem]">
             The same swarm can either stampede or flow
           </h4>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/60">

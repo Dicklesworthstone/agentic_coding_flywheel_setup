@@ -1,4 +1,4 @@
-import { Rocket, Sparkles } from "lucide-react";
+import Link from "next/link";
 import { Fragment } from "react";
 import { AgentMailViz } from "@/components/complete-guide/agent-mail-viz";
 import { ContextHorizonViz } from "@/components/complete-guide/context-horizon-viz";
@@ -12,6 +12,7 @@ import {
   CodeBlock,
   DataTable,
   Divider,
+  GuideNav,
   GuideSection,
   Hl,
   IllustrativeDisclosure,
@@ -20,9 +21,9 @@ import {
   PromptBlock,
   StatCard,
   SubSection,
-  TableOfContents,
   TipBox,
 } from "@/components/complete-guide/guide-components";
+import { GuideFooterCTA, GuideHero } from "@/components/complete-guide/guide-shell";
 import { PlanEvolutionStudio } from "@/components/complete-guide/plan-evolution-studio";
 import { PlanToBeadsViz } from "@/components/complete-guide/plan-to-beads-viz";
 import { RecursiveImprovementViz } from "@/components/complete-guide/recursive-improvement-viz";
@@ -33,6 +34,8 @@ import { buildInstallCommand } from "@/lib/commandBuilder";
 import {
   COMPLETE_GUIDE_MODEL_SOURCES,
   COMPLETE_GUIDE_MODELS,
+  COMPLETE_GUIDE_PHASE_COUNT,
+  COMPLETE_GUIDE_PROMPT_COUNT,
   COMPLETE_GUIDE_REVIEWED_ON,
   VALIDATION_GATES,
 } from "@/lib/complete-guide";
@@ -58,8 +61,9 @@ const STACK_TOOL_ROWS = COMPLETE_GUIDE_STACK_TOOLS.map((tool) => [
   tool.shortDesc,
 ]);
 
-// Mirrors the GuideSection ids/numbers below; the rail is the only way to
-// jump between the eleven sections of a ~30k px page without a sidebar.
+// Mirrors the GuideSection ids/numbers below. Drives the "On this page"
+// navigation (sidebar on desktop, section rail on phones) and the cover's
+// contents list.
 const GUIDE_SECTIONS = [
   { id: "workflow", number: "1", label: "Workflow" },
   { id: "philosophy", number: "2", label: "Why plan first" },
@@ -79,16 +83,53 @@ export default function CompleteGuidePage() {
     <ErrorBoundary>
       {/* overflow-x-clip (not hidden) keeps the page from scrolling sideways
           without turning <main> into a scroll container, which would defeat
-          the sticky section rail. */}
+          the sticky section navigation. */}
       <main
         id="main-content"
         tabIndex={-1}
-        className="text-aa-floor min-h-screen bg-[#020408] selection:bg-[#FF5500]/20 selection:text-white overflow-x-clip pb-32"
+        className="text-aa-floor min-h-screen bg-[#020408] pb-24 outline-none selection:bg-[#FF5500]/25 selection:text-white overflow-x-clip sm:pb-32"
       >
-        <Hero />
+        <GuideHero
+          current="complete"
+          eyebrow="The complete guide"
+          title={
+            <>
+              The Agentic Coding <em className="italic text-[#FF5500]">Flywheel</em>
+            </>
+          }
+          dek={
+            <>
+              How to build extraordinary software by orchestrating swarms of AI coding agents:
+              exhaustive markdown plans, polished beads, and the Agent Flywheel stack. The
+              methodology of Jeffrey Emanuel, end to end.
+            </>
+          }
+          primary={{ href: "#workflow", label: "Start reading" }}
+          secondary={{ href: "/wizard/os-selection", label: "Set up the stack" }}
+          note={
+            <>
+              New to agentic coding?{" "}
+              <Link
+                href="/core-flywheel"
+                className="font-medium text-zinc-200 underline decoration-[#FF5500]/60 underline-offset-4 transition-colors hover:text-white"
+              >
+                Start with the Core Flywheel
+              </Link>
+              , the three-tool version. Last reviewed {COMPLETE_GUIDE_REVIEWED_ON}.
+            </>
+          }
+          stats={[
+            { value: String(GUIDE_SECTIONS.length), label: "Parts" },
+            { value: String(COMPLETE_GUIDE_PROMPT_COUNT), label: "Copy-ready prompts" },
+            { value: String(COMPLETE_GUIDE_PHASE_COUNT), label: "Phases" },
+            { value: String(COMPLETE_GUIDE_STACK_TOOL_COUNT), label: "Stack tools" },
+          ]}
+          contents={GUIDE_SECTIONS}
+        />
 
-        <div className="mx-auto max-w-[1000px] px-6 lg:px-12 relative mt-20">
-          <TableOfContents items={GUIDE_SECTIONS} />
+        <div className="relative mx-auto max-w-[1320px] px-5 sm:px-8 xl:grid xl:grid-cols-[14.5rem_minmax(0,1fr)] xl:gap-14 xl:px-10 2xl:grid-cols-[16rem_minmax(0,1fr)] 2xl:gap-20">
+          <GuideNav items={GUIDE_SECTIONS} title="The complete guide" />
+          <article data-guide-article className="mx-auto min-w-0 max-w-[57rem] pt-14 sm:pt-20 xl:mx-0">
 
           {/* ============================================================= */}
           {/* SECTION 1: THE COMPLETE WORKFLOW                                */}
@@ -3866,81 +3907,26 @@ ntm spawn my-first-project --cc=2 --cod=1 --agy=1`}
           </GuideSection>
 
           <Divider />
-          <FooterCTA />
+          <GuideFooterCTA
+            eyebrow="Next step"
+            title={
+              <>
+                Put the flywheel <em className="italic text-[#FF5500]">to work</em>
+              </>
+            }
+            body={
+              <>
+                One command resolves {COMPLETE_GUIDE_STACK_TOOL_COUNT} default-enabled stack
+                modules, three AI coding agents, and the complete environment. The setup wizard
+                walks you through it, with manifest-backed validation at every step.
+              </>
+            }
+            primary={{ href: "/wizard/os-selection", label: "Launch the setup wizard" }}
+            secondary={{ href: "/core-flywheel", label: "Read the Core Flywheel" }}
+          />
+          </article>
         </div>
       </main>
     </ErrorBoundary>
-  );
-}
-
-// =============================================================================
-// HERO SECTION
-// =============================================================================
-function Hero() {
-  return (
-    <section className="relative overflow-hidden pt-32 pb-20 md:pt-48 md:pb-32 bg-[#020408] border-b border-white/[0.04]">
-      <div className="absolute inset-0 noise-overlay opacity-[0.03] mix-blend-overlay pointer-events-none" />
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-[600px] bg-[radial-gradient(ellipse_at_top,rgba(255,85,0,0.08),transparent_70%)]" />
-
-      <div className="relative mx-auto text-center px-6 z-10 max-w-5xl">
-        <div className="inline-flex items-center gap-3 rounded-full border border-[#FF5500]/20 bg-[#FF5500]/5 px-6 py-2 text-xs font-black uppercase tracking-[0.3em] text-[#FF5500] mb-10 shadow-[0_0_20px_rgba(255,85,0,0.15)] backdrop-blur-xl">
-          <Sparkles className="h-4 w-4" />
-          The Official Methodology
-        </div>
-
-        <h1 className="text-5xl sm:text-6xl md:text-8xl font-black text-white tracking-tighter drop-shadow-2xl leading-[1.05]">
-          The Agentic Coding <br />
-          <span className="text-[#FF5500]">Flywheel</span>
-        </h1>
-
-        <p className="mx-auto mt-10 max-w-3xl text-xl sm:text-2xl text-zinc-400 leading-relaxed font-light">
-          A comprehensive guide to creating extraordinary software by orchestrating swarms of AI
-          agents using <Hl>exhaustive markdown plans</Hl>, <Hl>polished beads</Hl>, and the{" "}
-          <Hl>Agent Flywheel stack</Hl>. Based on the methodology of Jeffrey Emanuel.
-        </p>
-        <p className="mx-auto mt-5 font-mono text-xs uppercase tracking-[0.2em] text-zinc-600">
-          Last reviewed {COMPLETE_GUIDE_REVIEWED_ON}
-        </p>
-      </div>
-    </section>
-  );
-}
-
-// =============================================================================
-// FOOTER CTA
-// =============================================================================
-function FooterCTA() {
-  return (
-    <section className="relative overflow-hidden rounded-[3rem] border border-[#FF5500]/20 bg-[#0A0D14] py-24 md:py-32 my-32 shadow-[0_50px_100px_-20px_rgba(255,85,0,0.15)] group">
-      <div className="absolute inset-0 noise-overlay opacity-[0.03] mix-blend-overlay pointer-events-none" />
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full bg-[radial-gradient(ellipse_at_center,rgba(255,85,0,0.05),transparent_70%)] opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
-
-      <div className="relative mx-auto text-center px-6 z-10">
-        <div className="inline-flex items-center gap-3 rounded-full border border-[#FF5500]/30 bg-[#FF5500]/10 px-6 py-2 text-xs font-black uppercase tracking-[0.3em] text-[#FF5500] mb-10 shadow-inner">
-          <Rocket className="h-4 w-4" />
-          Ready to Start?
-        </div>
-
-        <h2 className="text-4xl sm:text-5xl md:text-6xl font-black text-white tracking-tighter drop-shadow-2xl">
-          Get the Flywheel <span className="text-[#FF5500]">Stack</span>
-        </h2>
-
-        <p className="mx-auto mt-8 max-w-2xl text-lg text-zinc-400 leading-relaxed font-light">
-          One command resolves {COMPLETE_GUIDE_STACK_TOOL_COUNT} default-enabled stack modules,
-          three AI coding agents, and the complete environment.
-          <br />
-          <strong>Guided setup with manifest-backed validation.</strong>
-        </p>
-
-        <div className="mt-12 flex justify-center">
-          <a
-            href="/wizard/os-selection"
-            className="inline-flex items-center justify-center rounded-2xl bg-[#FF5500] px-8 py-4 text-sm font-black text-black uppercase tracking-widest transition hover:bg-[#FFBD2E] hover:shadow-[0_0_40px_rgba(255,189,46,0.4)] hover:-translate-y-1 active:scale-95"
-          >
-            Launch the Setup Wizard
-          </a>
-        </div>
-      </div>
-    </section>
   );
 }

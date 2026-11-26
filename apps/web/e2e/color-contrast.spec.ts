@@ -629,13 +629,19 @@ test.describe("Complete guide reduced motion", () => {
       await planning.focus();
       await planning.press("Enter");
       await expect(page).toHaveURL(`${originalURL}#planning`);
+      // The navigation is a sticky sidebar on wide screens and a sticky bar
+      // above the article on narrow ones: either way the target heading must
+      // land fully in view without sitting under it.
       await expect.poll(async () => {
         const heading = await page.locator("#planning h2").boundingBox();
         const navigation = await rail.boundingBox();
         const viewport = page.viewportSize();
-        return heading !== null && navigation !== null && viewport !== null
-          && heading.y >= navigation.y + navigation.height
-          && heading.y + heading.height <= viewport.height;
+        if (heading === null || navigation === null || viewport === null) return false;
+        const overlaps = heading.x < navigation.x + navigation.width
+          && navigation.x < heading.x + heading.width
+          && heading.y < navigation.y + navigation.height
+          && navigation.y < heading.y + heading.height;
+        return !overlaps && heading.y >= 0 && heading.y + heading.height <= viewport.height;
       }).toBe(true);
       await page.goBack();
       await expect(page).toHaveURL(originalURL);

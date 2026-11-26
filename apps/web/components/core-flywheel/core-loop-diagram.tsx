@@ -52,32 +52,32 @@ const STAGES: Stage[] = [
   {
     id: "encode",
     label: "Encode",
-    description: "Convert plan into beads with dependencies using br",
+    description: "Convert the plan into beads with dependencies using br, then polish them",
     icon: GitBranch,
     color: "#FF5500",
     artifact: "Bead Graph",
     command: "br create --title '...' --type task --priority 1",
-    tip: "Beads are executable memory. Detailed enough that agents never consult the plan.",
+    tip: "Beads are executable memory: detailed enough that agents rarely need to reopen the plan.",
   },
   {
     id: "triage",
     label: "Triage",
-    description: "Let bv route agents to highest-leverage ready bead",
+    description: "bv ranks the ready beads and points each agent at the most useful one",
     icon: Compass,
     color: "#FFBD2E",
     artifact: "Ranked Recommendations",
     command: "bv --robot-triage",
-    tip: "The graph does the routing work for you",
+    tip: "Agents use only --robot-* flags. Bare bv opens an interactive TUI that stalls them.",
   },
   {
     id: "coordinate",
     label: "Coordinate",
-    description: "Claim bead, reserve files, announce via Agent Mail",
+    description: "Claim the bead in br, then reserve files and announce it in Agent Mail",
     icon: Mail,
     color: "#FF5500",
-    artifact: "Thread + Reservation",
-    command: "send_message(..., thread_id='br-123')",
-    tip: "Use the bead ID everywhere: thread, subject, reservation",
+    artifact: "Claim + Thread + Reservation",
+    command: "br update br-123 --claim",
+    tip: "Use the bead ID everywhere: thread_id, [br-123] subject prefix, reservation reason",
   },
   {
     id: "implement",
@@ -92,11 +92,11 @@ const STAGES: Stage[] = [
   {
     id: "close",
     label: "Close",
-    description: "Close bead, update graph, ask bv what\u2019s next",
+    description: "Close the bead, release reservations, ask bv what\u2019s next",
     icon: CheckCircle,
     color: "#FFBD2E",
     artifact: "Updated Graph",
-    command: "br close 123 --reason 'Completed'",
+    command: "br close br-123 --reason 'Completed'",
     tip: "Each close reshapes the graph. bv sees a different map next time.",
   },
 ];
@@ -418,7 +418,7 @@ function DetailCard({ stage }: { stage: Stage }) {
           <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: stage.color }} />
           Stage Detail
         </div>
-        <h4 className="text-3xl sm:text-4xl font-black text-white tracking-tight leading-none drop-shadow-md">
+        <h4 className="font-serif text-[2.25rem] font-normal leading-none tracking-[-0.01em] text-white sm:text-[2.75rem]">
           {stage.label}
         </h4>
         <p className="mt-1 text-[1.05rem] leading-relaxed text-zinc-400 font-light">
@@ -713,15 +713,15 @@ export function CoreLoopDiagram() {
       <div className="relative z-10 border-b border-white/[0.04] pb-10 flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
         <div className="max-w-xl">
           <div className="text-xs font-bold uppercase tracking-widest text-[#FF5500] flex items-center gap-3 mb-4">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#FF5500] animate-pulse shadow-[0_0_8px_rgba(255,85,0,0.8)]" />
+            <span className="w-1.5 h-1.5 rounded-full bg-[#FF5500]" />
             Core Loop
           </div>
-          <h3 className="text-3xl font-black tracking-tight text-white sm:text-4xl leading-[1.15] drop-shadow-lg">
-            Six stages, one loop, compounding leverage
+          <h3 className="font-serif text-[1.875rem] font-normal leading-[1.08] tracking-[-0.01em] text-white sm:text-[2.375rem]">
+            Six stages, one repeating loop
           </h3>
           <p className="mt-4 text-[1.05rem] leading-relaxed text-zinc-400 font-light">
-            Each closed bead reshapes the graph. The next agent gets a better map. Click any stage
-            to see the details.
+            Each closed bead reshapes the graph, so the next agent works from an up-to-date map.
+            Click any stage to see the details.
           </p>
         </div>
 

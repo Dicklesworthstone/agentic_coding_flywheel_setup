@@ -52,8 +52,8 @@ const STAGES: TimelineStage[] = [
     color: HUMAN_COLOR,
     icon: FileText,
     who: "You",
-    what: "Ask multiple frontier models for competing plans, then synthesize into one strong design document",
-    tools: "GPT Pro, Claude, Gemini web apps",
+    what: "Ask several frontier models for competing plans, then have one merge them into a single strong design document",
+    tools: "GPT-6.2 Astra, Claude Fable 5.2, Gemini 4 Carbon",
     insight: "This is where 85% of your thinking goes. No code yet.",
   },
   {
@@ -63,8 +63,8 @@ const STAGES: TimelineStage[] = [
     color: HUMAN_COLOR_LIGHT,
     icon: Layers,
     who: "You (via an agent)",
-    what: "Tell a coding agent to create beads from the plan with dependencies. Then polish them 4\u20136 times.",
-    tools: "Claude Code with br",
+    what: "Tell a coding agent to create beads from the plan, with dependencies. Then have it polish them 4\u20136 times.",
+    tools: "Claude Code (Opus 5.5) with br",
     insight: "You prompt the agent. The agent runs the br commands.",
   },
   {
@@ -74,9 +74,9 @@ const STAGES: TimelineStage[] = [
     color: HUMAN_COLOR,
     icon: BookOpen,
     who: "You",
-    what: "Write the operating manual: agent behavior rules, tool usage, and coordination protocol.",
-    tools: "Your text editor",
-    insight: "Every agent reads this file on startup. It replaces verbal instructions.",
+    what: "Finish the operating manual before launch: agent behavior rules, tool usage, and coordination protocol.",
+    tools: "Your editor, plus br agents --add",
+    insight: "Every agent reads this file on startup and rereads it after compaction. It replaces verbal instructions.",
   },
   {
     id: "launch",
@@ -85,7 +85,7 @@ const STAGES: TimelineStage[] = [
     color: HUMAN_COLOR,
     icon: Rocket,
     who: "You",
-    what: "Start 2\u20134 agent sessions and paste the marching orders prompt into each one.",
+    what: "Start 2\u20134 agent sessions one at a time and give each the marching orders prompt.",
     tools: "Terminal, tmux, or ntm",
     insight: "Same generic prompt every time, for every project.",
   },
@@ -96,8 +96,8 @@ const STAGES: TimelineStage[] = [
     color: AGENT_COLOR,
     icon: Radio,
     who: "Agents (automatically)",
-    what: "Register with Agent Mail, discover peers, claim beads, reserve files, announce what they\u2019re working on.",
-    tools: "Agent Mail MCP, br, bv",
+    what: "Register with Agent Mail, discover peers, claim beads in br, reserve files, and announce what they\u2019re working on.",
+    tools: "Agent Mail (MCP), br, bv",
     insight: "You never type these commands. Agents do it because AGENTS.md tells them to.",
   },
   {
@@ -107,8 +107,8 @@ const STAGES: TimelineStage[] = [
     color: AGENT_COLOR,
     icon: Code,
     who: "Agents (automatically)",
-    what: "Write code, run tests, do fresh-eyes self-review, close the bead, pick the next one via bv.",
-    tools: "br, bv, code editor",
+    what: "Write code, run tests, do a fresh-eyes self-review, close the bead, release reservations, and pick the next one via bv.",
+    tools: "br, bv, the project's tests",
     insight: "The bead carries all the context. The agent doesn\u2019t need to ask you what to do.",
   },
   {
@@ -118,9 +118,9 @@ const STAGES: TimelineStage[] = [
     color: HUMAN_COLOR,
     icon: Eye,
     who: "You (every 10\u201315 min)",
-    what: "Check bv for stuck beads, rescue confused agents by telling them to reread AGENTS.md, add missing beads.",
-    tools: "bv --robot-triage, Agent Mail inbox",
-    insight: "About 5 minutes of checking every 15 minutes.",
+    what: "Look for stuck beads, rescue confused agents by telling them to reread AGENTS.md, and add missing beads.",
+    tools: "bv --robot-triage, br list, Agent Mail threads",
+    insight: "A few minutes of checking, every 10–15 minutes.",
   },
   {
     id: "review",
@@ -268,7 +268,7 @@ function DetailCard({ stage, reducedMotion }: { stage: TimelineStage; reducedMot
             {actorLabel(stage.actor)}
           </span>
         </div>
-        <h4 className="text-2xl sm:text-3xl font-black text-white tracking-tight leading-none drop-shadow-md">
+        <h4 className="font-serif text-[2rem] font-normal leading-none tracking-[-0.01em] text-white sm:text-[2.5rem]">
           {stage.label}
         </h4>
       </div>
@@ -650,10 +650,10 @@ export function HumanAgentTimelineViz() {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="max-w-xl">
             <div className="text-xs font-bold uppercase tracking-widest text-[#a78bfa]/80 flex items-center gap-3 mb-4">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#a78bfa] animate-pulse shadow-[0_0_8px_rgba(167,139,250,0.8)]" />
+              <span className="w-1.5 h-1.5 rounded-full bg-[#a78bfa]" />
               Interactive Exhibit
             </div>
-            <h3 className="text-3xl font-black tracking-tight text-white sm:text-4xl leading-[1.15] drop-shadow-lg">
+            <h3 className="font-serif text-[1.875rem] font-normal leading-[1.08] tracking-[-0.01em] text-white sm:text-[2.375rem]">
               Who Does What in the Core Loop
             </h3>
             <p className="mt-4 text-[1.05rem] leading-relaxed text-zinc-400 font-light">

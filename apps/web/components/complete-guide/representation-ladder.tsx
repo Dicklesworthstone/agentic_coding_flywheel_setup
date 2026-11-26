@@ -50,7 +50,7 @@ export function RepresentationLadder() {
             <div className="w-8 h-px bg-[#FF5500]/30" />
             Cost Architecture
           </div>
-          <h4 className="mt-6 text-3xl font-black tracking-[-0.04em] text-white sm:text-4xl lg:text-5xl leading-[1.1]">
+          <h4 className="mt-6 font-serif text-[1.875rem] font-normal leading-[1.08] tracking-[-0.01em] text-white sm:text-[2.375rem]">
             Where you catch the bug determines the rework bill
           </h4>
           <p className="mt-8 text-[1.1rem] leading-relaxed text-zinc-400 font-extralight opacity-80">

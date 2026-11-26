@@ -48,7 +48,7 @@ export function AgentMailViz() {
           <div className="text-xs font-bold text-white/30 uppercase tracking-widest mb-2 flex items-center gap-2">
             <span
               className={cn(
-                "w-1.5 h-1.5 rounded-full animate-pulse",
+                "w-1.5 h-1.5 rounded-full",
                 mode === "broadcast" ? "bg-[#FF5F56]" : "bg-[#FF5500]",
               )}
             />
@@ -65,7 +65,7 @@ export function AgentMailViz() {
             >
               <Mail className="h-4 w-4" />
             </span>
-            <h4 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+            <h4 className="font-serif text-[1.875rem] font-normal leading-[1.08] tracking-[-0.01em] text-white sm:text-[2.375rem]">
               Broadcast vs. Point-to-Point
             </h4>
           </div>

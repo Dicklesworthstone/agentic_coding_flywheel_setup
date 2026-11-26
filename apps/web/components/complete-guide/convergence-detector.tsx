@@ -86,7 +86,7 @@ export function ConvergenceDetector() {
           <div className="text-xs font-semibold uppercase tracking-[0.28em] text-[#FFBD2E]/70">
             Interactive Simulator
           </div>
-          <h4 className="mt-2 text-xl font-black tracking-[-0.03em] text-white sm:text-2xl">
+          <h4 className="mt-2 font-serif text-[1.875rem] font-normal leading-[1.08] tracking-[-0.01em] text-white sm:text-[2.375rem]">
             Convergence is measurable, not a vibe
           </h4>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/60">

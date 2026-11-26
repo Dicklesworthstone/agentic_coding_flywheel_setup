@@ -141,7 +141,7 @@ const PHASES: PhaseNarrative[] = [
       statusText: "A1 claimed T1 (highest impact, unblocks 2 others)",
     },
     description:
-      "Without the core loop, A1 and A3 both grab Task 2 \u2014 a merge conflict is inevitable. With bv routing, each agent picks the highest-leverage unblocked task and claims it via Agent Mail.",
+      "Without the core loop, A1 and A3 both grab Task 2 and collide. With bv routing, each agent picks the most useful unblocked task, claims it in br, and announces it in Agent Mail.",
   },
   {
     // Phase 2: Waste vs. progress
@@ -255,7 +255,7 @@ const PHASES: PhaseNarrative[] = [
       statusText: "5/6 done, 0 conflicts, 0 wasted tokens. T4 finishing now",
     },
     description:
-      "Same agents, same tasks, same time. Without the core loop: 3 completed, 1 merge conflict, 1 blocked task, thousands of wasted tokens. With it: 5 completed, zero conflicts, zero waste.",
+      "Same agents, same tasks, same time. Without the core loop: 3 tasks done, 1 merge conflict, and thousands of tokens burned on blocked work. With it: 5 done and no conflicts.",
   },
 ];
 
@@ -599,15 +599,15 @@ export function SwarmChaosViz() {
       {/* Header */}
       <div className="relative z-10 border-b border-white/[0.04] pb-10 flex flex-col gap-4">
         <div className="text-xs font-bold uppercase tracking-widest text-[#FF5500] flex items-center gap-3">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#FF5500] animate-pulse shadow-[0_0_8px_rgba(255,85,0,0.8)]" />
+          <span className="w-1.5 h-1.5 rounded-full bg-[#FF5500]" />
           Interactive Comparison
         </div>
-        <h4 className="text-3xl font-black tracking-tight text-white sm:text-4xl leading-[1.15] drop-shadow-lg">
+        <h4 className="font-serif text-[1.875rem] font-normal leading-[1.08] tracking-[-0.01em] text-white sm:text-[2.375rem]">
           Why the tools matter
         </h4>
         <p className="text-[1.05rem] leading-relaxed text-zinc-400 font-light max-w-2xl">
-          Four agents, six tasks, side by side. One side uses the core loop, the other does not.
-          Press Start.
+          A simplified simulation: four agents and six tasks, side by side. One side uses the
+          core loop; the other does not. Press Start.
         </p>
       </div>
 

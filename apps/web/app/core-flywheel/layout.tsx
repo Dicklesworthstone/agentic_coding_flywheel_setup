@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
-import { ogVersion } from "@/lib/og-version";
+import { instrumentSerif } from "@/app/fonts/instrument-serif";
 
-const alt = "The Core Flywheel - Agent Mail, Beads & bv";
-
+// Share images come from opengraph-image.tsx and twitter-image.tsx: Next gives
+// file-based images precedence over `images` here, and versions their URLs by
+// the route file's content hash.
 export const metadata: Metadata = {
   title: "The Core Flywheel - Agent Mail, Beads & bv",
   description:
@@ -15,19 +16,19 @@ export const metadata: Metadata = {
     url: "https://agent-flywheel.com/core-flywheel",
     siteName: "Agent Flywheel",
     locale: "en_US",
-    images: [
-      { url: `/core-flywheel/opengraph-image?v=${ogVersion}`, width: 1200, height: 630, alt },
-    ],
   },
   twitter: {
     card: "summary_large_image",
     creator: "@doodlestein",
-    images: [{ url: `/core-flywheel/twitter-image?v=${ogVersion}`, width: 1200, height: 600, alt }],
   },
 };
 
 export default function CoreFlywheelLayout({ children }: { children: React.ReactNode }) {
   // Dark-only editorial surface (#020408 background, white text): keep the
   // dark tokens even when the wizard's light theme is active.
-  return <div className="dark bg-background text-foreground">{children}</div>;
+  return (
+    <div className={`${instrumentSerif.variable} dark bg-background text-foreground`}>
+      {children}
+    </div>
+  );
 }
