@@ -2129,6 +2129,10 @@ doctor_check_module_id() {
         agent.antigravity|agent.alias.agy|agent.alias.gmi|deep.agent.antigravity_auth)
             module=agents.antigravity ;;
         deep.agent.gemini_auth) module=agents.gemini ;;
+        credential.source.claude|credential.source.codex|credential.source.gemini)
+            module="agents.${id##*.}" ;;
+        credential.source.vercel|credential.source.supabase|credential.source.wrangler)
+            module="cloud.${id##*.}" ;;
         cloud.vault|deep.cloud.vault_*) module=tools.vault ;;
         cloud.postgres|deep.db.postgres_*) module=db.postgres18 ;;
         deep.cloud.wrangler_auth) module=cloud.wrangler ;;
@@ -3782,6 +3786,16 @@ check_dcg_hook_status() {
 check_credential_sources() {
     local services_script="" runtime_home="" jq_bin="" bash_bin="" timeout_bin=""
     local metadata="" raw="" service="" state="" source="" remediation="" status="" guidance=""
+    local -a selected_services=()
+    section "Credential sources (authentication unverified)"
+    for service in claude codex gemini vercel supabase wrangler; do
+        doctor_skip_unselected_check "credential.source.$service" "$service credential source" && continue
+        selected_services+=("$service")
+    done
+    if [[ ${#selected_services[@]} -eq 0 ]]; then
+        blank_line
+        return 0
+    fi
     services_script="$(_acfs_doctor_find_scripts_script "services-setup.sh" 2>/dev/null || true)"
     runtime_home="$(_acfs_doctor_existing_abs_nonroot_dir "${TARGET_HOME:-}" 2>/dev/null || true)"
     jq_bin="$(_acfs_doctor_system_binary_path jq 2>/dev/null || true)"
@@ -3796,16 +3810,17 @@ check_credential_sources() {
                 set +x
                 source "$1" >/dev/null || exit 2
                 TARGET_HOME="$2"
-                services_setup_credential_status_json
-            ' _ "$services_script" "$runtime_home" 2>/dev/null)" || exit 1
-            printf '%s' "$raw" | "$jq_bin" -ers '
+                shift 2
+                services_setup_credential_status_json "$@"
+            ' _ "$services_script" "$runtime_home" "${selected_services[@]}" 2>/dev/null)" || exit 1
+            printf '%s' "$raw" | "$jq_bin" -ers --arg expected "${selected_services[*]}" '
                 def member($allowed): . as $v | $allowed | index($v) != null;
                 if length != 1 then error("invalid report count") else .[0] end
                 | select(.schema_version == 1 and .kind == "acfs.credential_status" and
                     .read_only == true and .status == "pass" and .summary.required_unmet == 0 and
                     .safety.provider_validation_performed == false and
-                    (.services | type) == "array" and (.services | length) == 6)
-                | select(([.services[].service] | sort) == ["claude","codex","gemini","supabase","vercel","wrangler"])
+                    (.services | type) == "array")
+                | select(([.services[].service] | sort) == ($expected | split(" ") | sort))
                 | select(all(.services[];
                     (.state | member(["missing","placeholder","shell_configured","file_configured","expired","refresh_required","vault_backed","unknown"])) and
                     (.source | member(["none","environment","file","vault"])) and
@@ -3820,7 +3835,6 @@ check_credential_sources() {
         return 0
     fi
 
-    section "Credential sources (authentication unverified)"
     while IFS=$'\t' read -r service state source remediation; do
         case "$state" in
             missing) status=skip; guidance="optional; configure this service when needed" ;;

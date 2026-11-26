@@ -12421,7 +12421,8 @@ credential_report_run() {
     local expected="$1" actual=0
     shift
     CREDENTIAL_REPORT_OUTPUT="$PROTOCOL_HOME/report.json"
-    env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u GEMINI_API_KEY -u GOOGLE_API_KEY \
+    env -u CODEX_HOME -u XDG_CONFIG_HOME -u XDG_DATA_HOME \
+        -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u GEMINI_API_KEY -u GOOGLE_API_KEY \
         -u VERCEL_TOKEN -u SUPABASE_ACCESS_TOKEN -u CLOUDFLARE_API_TOKEN \
         TARGET_USER="$(id -un)" TARGET_HOME="$PROTOCOL_HOME" ACFS_HOME="$PROTOCOL_HOME/.acfs" \
         ACFS_PROTOCOL_POISON_MARKER="$PROTOCOL_HOME/tool-called" \
@@ -12699,7 +12700,8 @@ credential_doctor_setup() {
 
 credential_doctor_run() {
     DOCTOR_CREDENTIAL_OUTPUT="$PROTOCOL_HOME/doctor-credentials.json"
-    env -u TARGET_USER -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u GEMINI_API_KEY -u GOOGLE_API_KEY \
+    env -u TARGET_USER -u CODEX_HOME -u XDG_CONFIG_HOME -u XDG_DATA_HOME \
+        -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u GEMINI_API_KEY -u GOOGLE_API_KEY \
         -u VERCEL_TOKEN -u SUPABASE_ACCESS_TOKEN -u CLOUDFLARE_API_TOKEN \
         HOME="$PROTOCOL_HOME" TARGET_HOME="$PROTOCOL_HOME" ACFS_HOME="$PROTOCOL_HOME/.acfs" \
         ACFS_STATE_FILE="$PROTOCOL_HOME/.acfs/state.json" ACFS_SYSTEM_STATE_FILE="$PROTOCOL_HOME/no-system-state.json" \
@@ -12711,6 +12713,10 @@ credential_doctor_run() {
             case "${FIXTURE_CONTROL:-}" in
                 context) TARGET_HOME="$2/missing-home" ;;
                 dependency) _acfs_doctor_system_binary_path() { return 1; } ;;
+                scoped)
+                    source "$ACFS_HOME/scripts/lib/state.sh"
+                    state_load_module_selection "$ACFS_STATE_FILE" || exit 1
+                    ;;
                 trace) set -x ;;
             esac
             check_credential_sources
@@ -12741,6 +12747,37 @@ test_credential_doctor_matches_canonical_source_states() {
         cmp -s "$PROTOCOL_HOME/token.before" "$PROTOCOL_HOME/.supabase/access-token"; then
         harness_pass "doctor reuses canonical storage states/remediation, optional skips and unverified authentication without values or probes"
     else harness_fail "doctor reuses canonical storage states/remediation, optional skips and unverified authentication without values or probes"; fi
+}
+
+test_credential_doctor_limits_probes_to_saved_scope() {
+    local module="" expected_probes=""
+    for module in agents.codex acfs.update; do
+        credential_doctor_setup "credential-doctor-scope-$module"
+        jq -n --arg module "$module" \
+            '{module_selection:{schema_version:1,selected_modules:[$module]}}' \
+            > "$PROTOCOL_HOME/.acfs/state.json"
+        # Observe actual file probes in the child collector. Filtering only
+        # its JSON output would still open the omitted providers' stores.
+        cat >> "$PROTOCOL_HOME/.acfs/scripts/services-setup.sh" <<'EOF'
+services_setup_credential_file_state() {
+    printf '%s\n' "$1" >> "$TARGET_HOME/credential-probes"
+    printf 'unknown\n'
+}
+EOF
+        : > "$PROTOCOL_HOME/credential-probes"
+        expected_probes=""
+        [[ "$module" != agents.codex ]] || expected_probes="$PROTOCOL_HOME/.codex/auth.json"
+        if credential_doctor_run FIXTURE_CONTROL=scoped CODEX_HOME="$PROTOCOL_HOME/.codex" &&
+            [[ "$(cat "$PROTOCOL_HOME/credential-probes")" == "$expected_probes" ]] &&
+            jq -e --arg module "$module" '
+                (.checks | length) == 6 and
+                all(.checks[]; if $module == "agents.codex" and .id == "credential.source.codex"
+                    then .status == "warn" and (.details | contains("state=unknown"))
+                    else .status == "skip" and (.details | contains("not selected")) end)
+            ' "$DOCTOR_CREDENTIAL_OUTPUT" >/dev/null; then
+            harness_pass "doctor limits credential reads and findings to $module"
+        else harness_fail "doctor limits credential reads and findings to $module"; fi
+    done
 }
 
 test_credential_doctor_capture_controls() {
@@ -12809,6 +12846,7 @@ test_credential_doctor_is_in_normal_cli_reports() {
 
 run_credential_doctor_tests() {
     test_credential_doctor_matches_canonical_source_states
+    test_credential_doctor_limits_probes_to_saved_scope
     test_credential_doctor_capture_controls
     test_credential_doctor_is_in_normal_cli_reports
     test_doctor_manifest_preserves_caller_options_and_path

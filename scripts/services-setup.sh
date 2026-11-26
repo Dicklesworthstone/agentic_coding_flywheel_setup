@@ -920,6 +920,11 @@ services_setup_credential_status_json() (
     local jq_bin="" service="" env_name="" value="" state="" source=""
     local requirement="" file_state="" required="" vault_env="" codex_home="" vercel_home="" wrangler_home="" config_home_default="" uname_bin="" i=0 unmet=0
     local -a services=(claude codex gemini vercel supabase wrangler) env_names=() candidates=() records=()
+    # Doctor passes only the services owned by this installation. The standalone
+    # credential-status command keeps its complete inventory.
+    if (( $# )); then
+        services=("$@")
+    fi
     jq_bin="$(services_setup_system_binary_path jq 2>/dev/null || true)"
     if [[ -z "$jq_bin" ]]; then
         printf '%s\n' '{"schema_version":1,"kind":"acfs.credential_status","status":"error","error":"jq_unavailable","read_only":true}'
@@ -948,6 +953,7 @@ services_setup_credential_status_json() (
             vercel) env_names=(VERCEL_TOKEN); candidates=("$vercel_home/auth.json" '' vercel "$TARGET_HOME/.config/vercel/auth.json" '' vercel "$TARGET_HOME/.vercel/auth.json" '' vercel "$TARGET_HOME/.now/auth.json" '' vercel) ;;
             supabase) env_names=(SUPABASE_ACCESS_TOKEN); candidates=("$TARGET_HOME/.supabase/access-token" plaintext none "$TARGET_HOME/.config/supabase/access-token" plaintext none) ;;
             wrangler) env_names=(CLOUDFLARE_API_TOKEN); candidates=("$wrangler_home/config/default.toml" '' wrangler) ;;
+            *) return 2 ;;
         esac
         state=missing; source=none; requirement=optional
         for required in "${SERVICES_SETUP_REQUIRED[@]}"; do
