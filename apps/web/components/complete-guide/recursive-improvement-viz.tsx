@@ -72,13 +72,13 @@ const LAYERS: Layer[] = [
     tagline: "The skill improves before the user ever sees it.",
     description:
       "Each tool you ship includes a skill in its installer, refined through several CASS cycles before release. New users get the benefit of all the earlier refinement from their first session.",
-    input: "Accumulated CASS data from all previous users",
+    input: "A skill refined over several CASS cycles on your own agents' sessions",
     output: "A skill good enough that agents use the tool correctly the first time",
     mechanism:
-      "The installer adds the skill automatically. The agent reads it and avoids the failure modes that early adopters ran into.",
+      "The installer adds the skill automatically. The agent reads it and avoids the failure modes that the earlier CASS cycles found.",
     skillQuality: 96,
     exampleInsight:
-      '"Zero clarifying questions in 50 new-user sessions. Every agent used --format correctly because the skill now has an explicit example."',
+      '"Zero clarifying questions in 50 sessions run from a fresh install. Every agent used --format correctly because the skill now has an explicit example."',
     color: "#8b5cf6",
   },
 ];

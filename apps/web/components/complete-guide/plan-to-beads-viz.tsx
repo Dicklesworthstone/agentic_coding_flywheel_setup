@@ -10,7 +10,8 @@ const EXHIBIT_PANEL_CLASS =
 
 type TranslationMode = "thin" | "rich";
 type ConceptId = "upload" | "index" | "dash" | "auth" | "e2e" | "search" | "admin" | "tests";
-type TranslationBeadId = "br-101" | "br-102" | "br-103" | "br-104" | "br-105";
+// Only the beads rendered below. Every concept's mapsTo must name one of them.
+type TranslationBeadId = "br-101" | "br-102" | "br-103";
 
 type TranslationBead = {
   id: TranslationBeadId;
@@ -39,8 +40,9 @@ const PLAN_TO_BEAD_CONCEPTS: {
     id: "upload",
     label: "File Upload Core",
     planLine: "- Implement multipart file upload for PDFs and markdown.",
-    insight: "Seems simple, but implies S3 bucket provisioning, chunking, and progress states.",
-    mapsTo: ["br-101", "br-102"],
+    insight:
+      "Seems simple, but it implies chunking large files, tracking parse status, and capping retries.",
+    mapsTo: ["br-101"],
     color: "#FF5500",
   },
   {
@@ -55,7 +57,7 @@ const PLAN_TO_BEAD_CONCEPTS: {
     id: "dash",
     label: "Failure Dashboard",
     planLine: "- Admins need a way to see files that failed processing.",
-    insight: "Depends on the error states defined during indexing.",
+    insight: "Depends on the parse status and error states that the upload bead records.",
     mapsTo: ["br-103"],
     color: "#FFBD2E",
   },
@@ -63,41 +65,45 @@ const PLAN_TO_BEAD_CONCEPTS: {
     id: "auth",
     label: "Authentication",
     planLine: "- System is internal only. Use SSO.",
-    insight: "Everything else depends on it. Nothing can be tested until it works.",
-    mapsTo: ["br-104"],
+    insight:
+      "Not a bead of its own, so no bead waits on it. Each bead checks the SSO session on the endpoints it adds.",
+    mapsTo: ["br-101", "br-102", "br-103"],
     color: "#71717A",
   },
   {
     id: "e2e",
     label: "E2E Testing",
     planLine: "- Critical paths must have Playwright coverage.",
-    insight: "Must be modeled as its own bead that depends on the UI being stable.",
-    mapsTo: ["br-105"],
+    insight:
+      "Not a separate bead at the end. Each bead that builds a user path carries the Playwright tests for that path.",
+    mapsTo: ["br-102", "br-103"],
     color: "#FFFFFF",
   },
   {
     id: "search",
-    label: "Semantic Indexing",
+    label: "Semantic Search",
     planLine: "- Implement semantic search using the PGVector embeddings we just generated.",
     insight:
-      "Depends on PGVector being configured and populated. Cannot start in parallel with auth.",
-    mapsTo: ["br-101", "br-102"],
+      "Reads the embeddings that indexing writes, so it shares a bead with indexing. That bead waits for br-101 to produce parsed documents.",
+    mapsTo: ["br-102"],
     color: "#FF5500",
   },
   {
     id: "admin",
-    label: "Admin Dashboard",
-    planLine: "- Build a dashboard to view the indexing status of all documents.",
-    insight: "Needs authentication to be finished and the indexing service to expose a status API.",
-    mapsTo: ["br-103", "br-104"],
+    label: "Recovery Controls",
+    planLine: "- Admins can requeue failed files from the dashboard.",
+    insight:
+      "Requeue has to be safe to run twice and has to leave an audit trail. The thin bead leaves both out.",
+    mapsTo: ["br-103"],
     color: "#FFBD2E",
   },
   {
     id: "tests",
-    label: "E2E Tests",
-    planLine: "- Add E2E tests for the whole flow.",
-    insight: "Must run last, after the UI and the backend are stable.",
-    mapsTo: ["br-105"],
+    label: "Failure-Case Tests",
+    planLine: "- Every part needs tests for bad input and failure paths.",
+    insight:
+      "Each bead lists its own failure cases, so its tests are written with the code instead of at the end.",
+    mapsTo: ["br-101", "br-102", "br-103"],
     color: "#A1A1AA",
   },
 ] as const;
@@ -108,7 +114,7 @@ const TRANSLATED_BEADS: readonly TranslationBead[] = [
     title: "Document Upload API",
     color: "#22d3ee",
     dependsOn: [],
-    coverage: ["upload", "tests"],
+    coverage: ["upload", "auth", "tests"],
     thinSummary: "Build upload flow",
     thinRisk: "Fresh agents still have to guess retry policy, file constraints, and observability.",
     richDetails: [
@@ -120,8 +126,8 @@ const TRANSLATED_BEADS: readonly TranslationBead[] = [
       {
         label: "Acceptance",
         value:
-          "Reject malware, cap retries, persist parse status, and record timing for every stage.",
-        concepts: ["upload", "tests"],
+          "Require an SSO session, reject malware, cap retries, and persist parse status for every file.",
+        concepts: ["upload", "auth"],
       },
       {
         label: "Tests",
@@ -135,28 +141,25 @@ const TRANSLATED_BEADS: readonly TranslationBead[] = [
     title: "Search Index and Query UX",
     color: "#a78bfa",
     dependsOn: ["br-101"],
-    coverage: ["search", "admin", "tests"],
+    coverage: ["index", "search", "auth", "tests", "e2e"],
     thinSummary: "Implement search",
-    thinRisk:
-      "Query semantics, ranking behavior, and operator-facing debug detail are underspecified.",
+    thinRisk: "Query semantics, ranking behavior, and match explanations are underspecified.",
     richDetails: [
       {
-        label: "Outcome",
-        value:
-          "Index parsed documents, support ranked retrieval, and explain match reasons in the UI.",
-        concepts: ["search"],
+        label: "Indexing",
+        value: "Embed parsed documents on a background queue and store the vectors in PGVector.",
+        concepts: ["index"],
       },
       {
-        label: "Admin hooks",
-        value:
-          "Expose index freshness, failed document counts, and reindex controls for operators.",
-        concepts: ["admin"],
+        label: "Query UX",
+        value: "Serve ranked results only to SSO sessions and show in the UI why each one matched.",
+        concepts: ["search", "auth"],
       },
       {
         label: "Tests",
         value:
-          "Coverage for typo tolerance, empty result states, filter combinations, and stale index warnings.",
-        concepts: ["tests"],
+          "Unit tests for typo tolerance, empty results, and stale index warnings, plus a Playwright run from upload to first search result.",
+        concepts: ["tests", "e2e"],
       },
     ],
   },
@@ -165,7 +168,7 @@ const TRANSLATED_BEADS: readonly TranslationBead[] = [
     title: "Ingestion Failure Dashboard",
     color: "#34d399",
     dependsOn: ["br-101"],
-    coverage: ["upload", "admin", "tests"],
+    coverage: ["dash", "admin", "auth", "e2e", "tests"],
     thinSummary: "Add admin dashboard",
     thinRisk:
       "Without context, an agent may build a dashboard that shows failures but gives operators no way to recover from them.",
@@ -174,19 +177,19 @@ const TRANSLATED_BEADS: readonly TranslationBead[] = [
         label: "Outcome",
         value:
           "Show failed ingestions, stalled jobs, and per-file parse diagnostics in one view.",
-        concepts: ["upload", "admin"],
+        concepts: ["dash"],
       },
       {
         label: "Recovery path",
         value:
-          "Allow safe requeue actions with audit trails and blast-radius summaries before retry.",
-        concepts: ["admin"],
+          "Let SSO admins requeue files safely, with audit trails and blast-radius summaries before retry.",
+        concepts: ["admin", "auth"],
       },
       {
         label: "Tests",
         value:
-          "E2E coverage for retry, audit logging, and incorrect operator input during incident handling.",
-        concepts: ["tests"],
+          "Playwright coverage for retry, audit logging, and incorrect operator input during incident handling.",
+        concepts: ["e2e", "tests"],
       },
     ],
   },

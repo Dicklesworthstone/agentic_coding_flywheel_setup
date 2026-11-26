@@ -78,7 +78,10 @@ export function RepresentationLadder() {
         <div className="flex flex-col gap-6">
           {LADDER_LAYERS.map((layer, index) => {
             const isBugSource = bugLevel === index;
-            const isCascade = bugLevel !== null && index > bugLevel;
+            // Catching the mistake at a layer means every earlier layer already
+            // carries it. Later layers have not been built yet, so nothing there
+            // is affected (a plan-layer catch touches only the plan).
+            const isCascade = bugLevel !== null && index < bugLevel;
 
             return (
               <motion.div

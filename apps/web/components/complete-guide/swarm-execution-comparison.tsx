@@ -129,37 +129,37 @@ const SCENARIOS: Record<ScenarioId, ScenarioDefinition> = {
       },
       {
         caption:
-          "Beads start completing. The time lost in the first round is gone for good.",
-        verdict: "Two beads are done, but A3 is still stuck waiting on a lock.",
-        metrics: { conflicts: 2, idleBurn: 31, completed: 2 },
+          "The first bead completes. The time lost in the first round is gone for good.",
+        verdict: "One bead is done, A2 has only now claimed a second, and A3 is still stuck waiting on a lock.",
+        metrics: { conflicts: 3, idleBurn: 44, completed: 1 },
         agents: [
           { status: "Done", progress: 100, tone: "done", target: "br-201" },
-          { status: "Working", progress: 62, tone: "working", target: "br-203" },
+          { status: "Claiming", progress: 38, tone: "claiming", target: "br-203" },
           { status: "Still resynchronizing", progress: 46, tone: "blocked", target: "br-203" },
+          { status: "Working", progress: 70, tone: "working", target: "br-202" },
+        ],
+        beads: [
+          { id: "br-201", tone: "done", owner: "A1", note: "complete" },
+          { id: "br-202", tone: "claimed", owner: "A4", note: "in progress" },
+          { id: "br-203", tone: "claimed", owner: "A2", note: "late claim" },
+          { id: "br-204", tone: "ready", note: "still waiting" },
+        ],
+      },
+      {
+        caption:
+          "Throughput returns, but three agents spent the early phase negotiating for the same lock.",
+        verdict: "Two beads are done, and the last one has barely started, at a cost of 44 units of idle burn.",
+        metrics: { conflicts: 3, idleBurn: 44, completed: 2 },
+        agents: [
+          { status: "Done", progress: 100, tone: "done", target: "br-201" },
+          { status: "Working", progress: 64, tone: "working", target: "br-203" },
+          { status: "Claiming", progress: 30, tone: "claiming", target: "br-204" },
           { status: "Done", progress: 100, tone: "done", target: "br-202" },
         ],
         beads: [
           { id: "br-201", tone: "done", owner: "A1", note: "complete" },
           { id: "br-202", tone: "done", owner: "A4", note: "complete" },
           { id: "br-203", tone: "claimed", owner: "A2", note: "in progress" },
-          { id: "br-204", tone: "ready", note: "still waiting" },
-        ],
-      },
-      {
-        caption:
-          "Throughput returns, but two agents spent most of the early phase negotiating for the same lock.",
-        verdict: "Three beads are done, at a cost of 28 units of idle burn.",
-        metrics: { conflicts: 2, idleBurn: 28, completed: 3 },
-        agents: [
-          { status: "Done", progress: 100, tone: "done", target: "br-201" },
-          { status: "Done", progress: 100, tone: "done", target: "br-203" },
-          { status: "Working", progress: 74, tone: "working", target: "br-204" },
-          { status: "Done", progress: 100, tone: "done", target: "br-202" },
-        ],
-        beads: [
-          { id: "br-201", tone: "done", owner: "A1", note: "complete" },
-          { id: "br-202", tone: "done", owner: "A4", note: "complete" },
-          { id: "br-203", tone: "done", owner: "A2", note: "complete" },
           { id: "br-204", tone: "claimed", owner: "A3", note: "late start" },
         ],
       },
@@ -225,7 +225,7 @@ const SCENARIOS: Record<ScenarioId, ScenarioDefinition> = {
       {
         caption: "By the time A4 boots, br-201 is done and A3 has claimed br-203 without a conflict.",
         verdict: "Spacing out the starts lets each agent go straight to work on its own bead.",
-        metrics: { conflicts: 0, idleBurn: 10, completed: 2 },
+        metrics: { conflicts: 0, idleBurn: 10, completed: 1 },
         agents: [
           { status: "Done", progress: 100, tone: "done", target: "br-201" },
           { status: "Working", progress: 70, tone: "working", target: "br-202" },
@@ -242,7 +242,7 @@ const SCENARIOS: Record<ScenarioId, ScenarioDefinition> = {
       {
         caption: "Each agent's first cycle went to a different bead.",
         verdict: "The staggered swarm had no lock conflicts at any phase.",
-        metrics: { conflicts: 0, idleBurn: 12, completed: 4 },
+        metrics: { conflicts: 0, idleBurn: 12, completed: 2 },
         agents: [
           { status: "Done", progress: 100, tone: "done", target: "br-201" },
           { status: "Done", progress: 100, tone: "done", target: "br-202" },
@@ -587,10 +587,10 @@ export function SwarmExecutionViz() {
             Takeaway
           </div>
           <p className="mt-3 text-sm leading-relaxed text-white/76">
-            At this phase, the herd path has <strong>{herdFrame.metrics.conflicts}</strong> lock
-            conflict{herdFrame.metrics.conflicts === 1 ? "" : "s"} and{" "}
+            By this phase, the herd path has had <strong>{herdFrame.metrics.conflicts}</strong>{" "}
+            lock conflict{herdFrame.metrics.conflicts === 1 ? "" : "s"} and{" "}
             <strong>{herdFrame.metrics.idleBurn}</strong> units of idle burn, while the staggered
-            path has <strong>{staggeredFrame.metrics.conflicts}</strong> conflicts and{" "}
+            path has had <strong>{staggeredFrame.metrics.conflicts}</strong> conflicts and{" "}
             <strong>{staggeredFrame.metrics.idleBurn}</strong> units of idle burn. The agents are
             identical. The staggered ones reach the ready beads at different times, so they do not
             collide.

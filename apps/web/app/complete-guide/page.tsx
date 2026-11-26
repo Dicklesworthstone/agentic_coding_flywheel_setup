@@ -655,6 +655,23 @@ export default function CompleteGuidePage() {
               </P>
 
               <P>
+                Give every model the identical kickoff and let each one plan blind. On a recent
+                robotics project, the author pasted the same kickoff into Claude Code and Codex a
+                minute apart, and a third edition came from Gemini in Antigravity. None of the
+                three read the others while drafting, each was built around a different central
+                idea, and each planner ran its own multi-model research round on its edition
+                before the blend.
+              </P>
+
+              <P>
+                Keep later review rounds isolated from earlier ones in the same way. The second
+                research round in that project was told not to read anything the first round had
+                produced or either competing edition, and its claim audit was done by auditors
+                who had written none of the claims. A round that can see the previous
+                round&apos;s conclusions tends to confirm them.
+              </P>
+
+              <P>
                 Then show their competing plans to {COMPLETE_GUIDE_MODELS.primaryPlanner} with this
                 prompt:
               </P>
@@ -665,6 +682,15 @@ export default function CompleteGuidePage() {
                 where={`${COMPLETE_GUIDE_MODELS.primaryPlanner} in ${COMPLETE_GUIDE_MODELS.primaryPlannerSurface}`}
                 whyItWorks="Makes the model admit what the competing plans did better, then merge the best of them into one plan. The 'best of all worlds' phrasing appears in 10+ distinct sessions across 7+ projects in the session archive. The prompt's length and specificity are deliberate: asking for git-diff style changes, integration of every good idea, and edits to the existing plan keeps the model from writing a vague summary and makes it work through what the competing plans actually say."
               />
+
+              <P>
+                The request to be &quot;intellectually honest about what they did that&apos;s
+                better than your plan&quot; matters most when the model doing the blend wrote one
+                of the editions, since it otherwise defends its own. In the robotics project the
+                Claude lead blended its edition with the other two and both research rounds, and
+                the plan grew from about 3,700 lines to about 37,000. Three completeness audits
+                then checked the blend against each source and supplied passages it had dropped.
+              </P>
 
               <P>
                 Take {COMPLETE_GUIDE_MODELS.primaryPlanner}&apos;s output (the git-diff style
@@ -797,6 +823,27 @@ For each proposed change, give me your detailed analysis and rationale/justifica
                 constraints, or tradeoffs. Switch to beads when the plan mostly feels stable and the
                 remaining improvements are about execution structure, testing obligations,
                 sequencing, and embedded context rather than about what the system is.
+              </P>
+            </SubSection>
+
+            <SubSection title="Declare the Stage in AGENTS.md">
+              <P>
+                Agents follow AGENTS.md, so say there which stage the project is in: planning
+                only, or implementation. While the robotics plans were still competing, the author
+                sent one planner his usual gap-closing follow-up (&quot;Close the Biggest Gaps&quot; in
+                Adding Features to Existing Projects, after Part 5), which tells the agent to
+                execute any remaining beads. It started building, and his next message was
+                &quot;wait what are you doing? I didn&apos;t say to start BUILDING this yet, we are
+                in the PLANNING STAGES ONLY!!!&quot; The prototype went into an ignored directory,
+                its three beads were withdrawn, and AGENTS.md was set to planning only.
+              </P>
+
+              <P>
+                Change the stage line when you move to implementation, and commit the beads in the
+                same step. Two days later, the lead&apos;s own pre-implementation checklist noted that
+                AGENTS.md still said planning, only one bead was ready, and none of the beads were
+                committed. The author replied &quot;DO THIS STUFF FIRST!!!&quot;, and the 3,637
+                polished beads and the stage change were committed seven minutes later.
               </P>
             </SubSection>
           </GuideSection>
@@ -962,6 +1009,54 @@ For each proposed change, give me your detailed analysis and rationale/justifica
               </BlockQuote>
             </SubSection>
 
+            <SubSection title="When the Plan Already Has a Backlog">
+              <P>
+                Some plans end in a backlog of their own. The plan for a recent simulation project
+                closed with 58 numbered work items in tables with &quot;Depends on&quot; and
+                &quot;Completion evidence&quot; columns, and said they were meant to become beads
+                once the repository existed. A subagent converted them in about five minutes: one
+                bead per row, the completion evidence copied verbatim as acceptance criteria, the
+                plan&apos;s item ID as the external reference, and all 141 edges from the table
+                with none invented. It then checked that the graph was acyclic, that the edge count
+                matched the plan, and that only the first item was ready, as the plan intended. No
+                polishing round followed; implementation began the next day.
+              </P>
+
+              <P>
+                Here the plan stays the spec. Each bead names the plan sections it implements, and
+                progress goes into bead comments instead of new beads: one item stayed open for 17
+                days and collected 20 comments of partial landings, measurements and corrections.
+                New beads appeared only for gaps no row covered, bugs found in review, performance
+                ideas, and a feature family planned later. A seven-week accounting engine started
+                the same way, with its first implementation beads written as short pointers into a
+                plan whose contract appendices were marked normative. Every bead sends the agent
+                back to the plan, so this only suits a plan precise enough to act as the spec.
+              </P>
+            </SubSection>
+
+            <SubSection title="Fanning Out a Very Large Conversion">
+              <P>
+                One agent calling <code>br</code> cannot convert a 37,000-line plan. For the
+                robotics project, the lead wrote a charter that fixed the bead format (seven
+                sections, with a test plan covering unit tests, an end-to-end script with logging,
+                and known answers with negative controls), split the plan into 80 drafting units,
+                and wrote a brief for each. About 117 drafter subagents then wrote one markdown
+                staging file per bead without running <code>br</code>. Before the real load, dry
+                runs into scratch trackers let bv check the graph, and integrator and reconciler
+                subagents settled conflicts between units. A script loaded the files using only{" "}
+                <code>br</code>. The result was about 3,600 beads, with a median of 167 lines each.
+              </P>
+
+              <P>
+                Those staging files resemble the markdown pseudo-beads warned against above. The
+                differences are that the format was fixed, every change reached the tracker through
+                the same loader, and once the swarm started no agent was allowed to touch them. The
+                simulation project scripted a later 18-bead epic the same way. On the accounting
+                engine, four fresh drafting agents converted a second plan while reading all of it
+                and the code, and the plan defects they reported were fixed in the plan itself.
+              </P>
+            </SubSection>
+
             <SubSection title="Beads CLI Quick Reference">
               <CodeBlock
                 language="bash"
@@ -1068,6 +1163,45 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
                 <strong>plateau at low quality</strong>, kill the current approach and restart
                 fresh.
               </TipBox>
+
+              <P>
+                On a very large bead set, read the second signal from the size and kind of the
+                edits instead of the number of beads a round touches. The robotics project ran four
+                polishing rounds over about 3,600 beads, and every round changed roughly four in
+                five of them:
+              </P>
+
+              <DataTable
+                headers={["Round", "Reviewed", "Changed", "New", "Leading kinds of finding"]}
+                rows={[
+                  ["1", "3,543", "2,909", "52", "Correctness, tests, dependencies"],
+                  ["2", "3,614", "2,772", "28", "Correctness, e2e logging, tests"],
+                  ["3", "2,961", "2,363", "14", "Correctness, e2e logging"],
+                  ["4", "3,716", "2,850", "23", "Conventions, registries, contradictions between beads"],
+                ]}
+              />
+
+              <P>
+                Meanwhile the median change fell to about 12 lines of a bead around 160 lines long
+                by the third round, and the fourth round&apos;s findings were mostly about
+                consistency between beads. The notes still unapplied at the end (955 of them, on
+                646 beads) went onto their beads as comments under a{" "}
+                <code>review-notes-open</code> label instead of into a fifth round.
+              </P>
+
+              <P>The stop is the human&apos;s call. Partway through the fourth round, the author wrote:</P>
+
+              <BlockQuote>
+                ok I think we&apos;ve done enough beads polishing at this point, let&apos;s please
+                wrap it up and finalize the beads so we can begin implementation work!
+              </BlockQuote>
+
+              <P>
+                Half an hour later, his own request for one more fresh-eyes pass restarted it, and
+                the next afternoon he interrupted again: &quot;please make sure you aren&apos;t
+                getting carried away again with the beads to the point of sharply diminishing
+                marginal returns.&quot;
+              </P>
             </SubSection>
 
             <SubSection title="Fresh Eyes Technique">
@@ -1103,6 +1237,36 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
                 prompt={`Reread AGENTS.md so it's still fresh in your mind. Check over ALL open beads. Make sure none of them are duplicative or excessively overlapping... try to intelligently and cleverly merge them into single canonical beads that best exemplify the strengths of each.`}
                 where="Claude Code, after large bead creation batches"
               />
+            </SubSection>
+
+            <SubSection title="Settle Recurring Drift Once">
+              <P>
+                When reviewers keep correcting the same convention across many beads, settle it
+                once in a numbered conventions file, name the bead that owns each entry, and have
+                every later round check against the file. Otherwise each reviewer fixes the drift a
+                different way. The robotics project&apos;s file held 18 conventions by the end of
+                polishing. The accounting engine did the same for open design questions: its first
+                plan review decided ten of them and wrote the answers into the plan &quot;so no
+                workstream reopens them locally.&quot;
+              </P>
+            </SubSection>
+
+            <SubSection title="Audit the Dependency Graph Before Swarming">
+              <P>
+                Review rounds tend to over-chain the dependency graph. Polishing left the robotics
+                bead set with a single ready bead and a longest dependency chain of 169, which
+                gives a swarm almost nothing to start on. Seven auditor subagents then classified
+                every edge as real, false, partial, or pointing the wrong way, and removed edges
+                conservatively. The longest chain fell to 144, and four beads were ready at launch
+                instead of one.
+              </P>
+
+              <P>
+                Before launching, count what <code>br ready</code> returns, find the longest chain,
+                and run <code>br dep cycles</code>. The simulation project&apos;s conversion checked
+                that only the plan&apos;s first item was ready, and the accounting engine&apos;s
+                plan reviews recorded an empty cycle report and clean bv robot runs.
+              </P>
             </SubSection>
           </GuideSection>
 
@@ -1418,6 +1582,91 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
                 builds on a real, battle-tested system and on capabilities that system never had,
                 which gives it more architectural depth than greenfield brainstorming usually
                 reaches.
+              </P>
+            </SubSection>
+
+            <SubSection title="Starting a Session on an Existing Project">
+              <P>
+                A fresh session on a project that already has code has to rebuild its picture of
+                the project from the docs, then measure the code against them. In two recent
+                projects the author opened new sessions in Claude Code, Codex, and Antigravity
+                with the same message:
+              </P>
+
+              <PromptBlock
+                title="Session Opener: Reality Check"
+                prompt={`First read ALL of the AGENTS.md file and README.md file super carefully and understand ALL of both! Then use /reality-check-for-project end to end in a comprehensive way. Really take the time to meticulously ruminate on everything before responding.`}
+                where="The first message of every fresh session on an existing project, in any harness"
+                whyItWorks="A new context knows nothing about the project, so it rebuilds its understanding from AGENTS.md and the README instead of from your memory. The reality check then measures the code against what the README and plan promise, and that comparison produces and ranks the session's work."
+              />
+
+              <P>
+                On a long project, these checks generate most of the work. The accounting engine
+                ran about 13 dated reality checks in seven weeks, every one to three days at first
+                and weekly later, and they created roughly 300 of its 521 beads; the first two days
+                had created about 70. Each check audited a named commit and filed its gaps as a new
+                epic with child beads. In the simulation project, the first reality check of a new
+                session found a gap that no backlog row covered and filed it as a bead labelled{" "}
+                <code>vision-gap</code>.
+              </P>
+
+              <P>
+                After the diagnosis, the author hands the priorities to the model with one saved
+                follow-up:
+              </P>
+
+              <PromptBlock
+                title="Close the Biggest Gaps"
+                prompt={`OK, so please do everything you think is advisable based on all of that, and start trying to close the biggest gaps yourself, especially the ones with the most "bang for the buck" in terms of the work needed to get a huge benefit in moving us closer to achieving the stated goals of the project (things like wiring in finished code that just isn't properly connected yet would be examples of that, but you can interpret the remit more broadly yourself using your own expert judgment).
+
+I want you to show real agency and follow your gut instincts as to what will most improve the project. Keep the lessons of /just-say-no-to-process-porn-and-ceremony top of mind at all times!
+
+Also, start systematically, methodically, meticulously, and diligently executing any remaining Beads tasks in the optimal logical order! Don't forget to mark Beads as you work on them.
+
+OK, please do ALL of that now. Keep a super detailed, granular, and complete TODO list of all items so you don't lose track of anything, and remember to complete all the tasks and subtasks you identified or think of during the course of your work on these items!
+
+Remember: use your expert judgment on all decisions to make the optimal choice. I believe in you! Keep cranking away on all that, friend! You're doing a great job.`}
+                where="Right after a reality check or status report, then again after compactions"
+                whyItWorks="It leaves the order of work to the model, points it at large cheap wins such as finished code that nothing calls yet (one accounting reality check found over 8,500 such lines), and bounds it with the anti-ceremony skill. It needs no rewriting per task and works the same in Claude Code, Codex, and Antigravity, and the TODO-list line does the job of Ad-Hoc Execution above. Because it says to execute remaining beads, sending it during planning once made a planner start building; see Declare the Stage in AGENTS.md in Part 3."
+              />
+
+              <P>
+                Between diagnosis and execution he usually adds one line at most. In front of the
+                snippet it is something like &quot;ok I agree with basically everything you said
+                above in your reality check analysis and want to follow all your suggestions&quot;
+                with one clarification; after it, a steer such as permission to change one of his
+                own upstream libraries. The accounting engine&apos;s Codex sessions alone received
+                the snippet about 100 times, usually after a compaction, and almost nothing
+                bespoke.
+              </P>
+            </SubSection>
+
+            <SubSection title="A Separate Plan for Each New Feature Family">
+              <P>
+                A feature family added after v1 falls outside the original backlog, so it gets a
+                short plan of its own before any beads. About two weeks into the simulation
+                project, the author asked for rule changes or new elements with the most &quot;bang
+                for the buck&quot;: the numerator was how much more lifelike the behavior looked,
+                judged with the model&apos;s vision, and the denominator was the added complexity
+                and compute. He named <code>/idea-wizard</code>,{" "}
+                <code>/modes-of-reasoning-project-analysis</code>, and{" "}
+                <code>/brennerbot-with-ntm</code> for the work. Two hours later the analysis had
+                ranked 30 candidates by that ratio, recorded why 15 of them were downgraded or
+                rejected, and proposed two bundles. He chose both and told it to &quot;Follow your
+                own recommendations on everything&quot;. A minute later he added a requirement
+                worth copying for any new family: &quot;btw it would be awesome if we can do all
+                this in a modular way so that by default these new features are enabled, but that
+                could also be disabled selectively using a config file or cli flags to preserve
+                existing behavior!&quot;
+              </P>
+
+              <P>
+                The bundles became one epic of 18 beads, polished twice. Its first bead built the
+                registry that does this, with each new feature on by default and switchable from
+                the command line, and a swarm then closed all 18 beads in about five and a half
+                hours. The accounting engine handled a mid-project test campaign the same
+                way: a separate plan of 96 dependency-ordered items, several review rounds
+                including one by a second model family, and then its own epic of 98 beads.
               </P>
             </SubSection>
           </GuideSection>
@@ -2245,6 +2494,101 @@ When a Rust build or test is needed, offload it with rch (for example, rch exec 
               <IllustrativeDisclosure />
             </SubSection>
 
+            <SubSection title="Running the Swarm Through an Orchestrator">
+              <P>
+                In two recent swarms, the author did not tend the panes himself. One orchestrator
+                agent got a reusable kickoff, spawned the workers, wrote their orders, and tended
+                them on a timer. The kickoff opens with the session opener from Adding Features to
+                Existing Projects (read AGENTS.md and the README, then run a reality check), and
+                its general part continues:
+              </P>
+
+              <PromptBlock
+                title="Orchestrator Swarm Kickoff"
+                prompt={`Before doing anything else, read ALL of AGENTS.md, then register with MCP Agent Mail and introduce yourself to the other agents. Then we want to use /ntm and /vibing-with-ntm to complete all open beads. Also use /cass to see what we've done in recent sessions and look at beads activity and recent git commits for this project. You should make your ntm swarm have [COUNT] [AGENT_TYPE] panes using [MODEL] on xhigh effort. Use your /loop tool every 4 minutes to check in with and tend to the swarm and ensure it's busy, not idle, and actually doing productive work in accordance with the skills (code-first, no ceremony/process porn, etc.). You will need to watch the other agents in the swarm like a hawk because they tend to lie and cheat (see /just-say-no-to-process-porn-and-ceremony ; you MUST keep this top of mind at all times to avoid disaster! I will periodically be checking in with you on this). Make sure to use /rch for all builds. Communicate with the swarm via agent mail and encourage them to do the same (see /agent-mail ). After doing this for 6 or so hours, we are going to run /reality-check-for-project to see where we stand, so keep that in mind up front so you have a good answer for that. Ultimately, you are responsible for the work your swarm agents do; you must be careful and committed to excellence and avoiding a situation where the swarm's work devolves into useless process churn and theater. I believe in your genius and have full confidence in you and defer to your judgement and expertise across the board! Godspeed my friend. Have the agents in the swarm use /mock-code-finder and /deadlock-finder-and-fixer and /multi-pass-bug-hunting and similar skills to find and fix all sorts of problems.`}
+                where="One orchestrator session, before any worker panes exist; fill in the pane count, agent type, and model"
+                whyItWorks="It gives one agent the whole job of running the swarm and says how it will be judged: busy panes doing real work, builds offloaded, and a reality check after about six hours. The warning that workers 'tend to lie and cheat' sets it up to verify claims itself, and 'you are responsible for the work your swarm agents do' makes their failures its own. Only the pane count, agent type, and model change between projects. One sentence about the code-first approach is trimmed here."
+              />
+
+              <P>
+                The orchestrator was Claude on the robotics project, Gemini in Antigravity on the
+                simulation project, and Codex on a third project, where the same template launched
+                six Claude panes. The <code>/loop</code> line became a cron job that woke it every
+                four minutes to read each pane&apos;s tail, the new commits, the beads awaiting
+                verification, and its inbox, then verify and close what was ready and send the
+                next ready bead to any idle pane. After the owner&apos;s audit (next section), the
+                robotics orchestrator slowed to every 12 minutes.
+              </P>
+
+              <P>
+                Long orders go in files, with a one-line ping to the pane such as &quot;hand-off
+                received, thanks. Next order: &lt;file&gt;. Start now.&quot; The robotics run
+                accumulated more than 80: standing rules for every pane, per-agent orders, rework
+                lists, and takeovers. On the simulation project each pane&apos;s file listed the
+                crates it owned and those it must not edit, which with file reservations did the
+                job of branches. A file survives compaction and can go to a different agent; text
+                typed into a pane can be lost.
+              </P>
+
+              <P>
+                The orchestrator&apos;s own state lives on disk too. The robotics orchestrator kept
+                a 354-line TODO file with a section per owner directive, and through 17 compactions
+                and one overnight crash it picked up from that file; the owner never re-explained.
+                That keeps it from becoming the ringleader Part 6 warns against, since a restarted
+                orchestrator carries on from the ledger, the order files, and the beads.
+              </P>
+
+              <P>
+                Only the orchestrator closes beads, after rerunning their tests itself. On the
+                robotics project a tracker policy enforced this by routing every close through a
+                verification gate only the orchestrator could report, and a canary bead proved the
+                rule before the first wave. Worker reports were not always true: the first central
+                test run sent 93 tests back for rework, and a simulation worker that reported nine
+                bugs fixed came back 18 of 19 passing on the orchestrator&apos;s run. The robotics
+                swarm rules say: &quot;An honest &apos;not done: X&apos; keeps the Bead open and is
+                worth more than a false close.&quot;
+              </P>
+
+              <P>
+                Cap the work that runs ahead of verification. Robotics beads built ahead stayed
+                open, so the tracker&apos;s cap of 16 unverified beads never counted them; about 55
+                piled up and came back as the rework wave, with 23 copies of one panic and 26 of one
+                fixture bug. The owner&apos;s audit set the cap at about ten unverified beads. When
+                builds contend, keep workers code-first: in both projects they skipped the heavy
+                suites (robotics workers ran at most a compile check of their own crate), and the
+                orchestrator ran the suites centrally through <code>rch</code>.
+              </P>
+            </SubSection>
+
+            <SubSection title="Checking an Orchestrated Swarm">
+              <P>
+                An orchestrator grades its own swarm, so bracket each run with reality checks and
+                compare them. The simulation orchestrator wrote one at the starting commit and one
+                at the end, with a table of what changed and the gaps left. The robotics check came
+                six hours in and began: &quot;The swarm built a large, stub-free foundation in six
+                hours. None of it is robotics yet, and almost none of it has been verified.&quot; It
+                listed its own mistakes first, among them dispatching the most-blocked bead first,
+                which steered panes toward infrastructure because every product bead depended on
+                the registries.
+              </P>
+
+              <P>
+                About 20 hours in, the owner had the repository, tracker, and live swarm audited by
+                a different model family (Gemini, where the orchestrator was Claude) and relayed
+                the findings through Agent Mail to every agent as owner directives. After noting
+                what worked (no stubs, honest rework), the audit measured what the
+                orchestrator&apos;s check had softened: 65% of the Rust was conformance and build
+                machinery against under 8% in product crates, and beads averaged about 2,800 lines
+                against the plan&apos;s budget of about 160. It froze non-critical machinery,
+                pointed the swarm at the shortest path to a first runnable simulation, capped
+                work-ahead, and reserved budget changes for the owner. The orchestrator answered
+                within eight minutes with a plan and a list of items for the owner. Product share
+                and lines per bead against the budget make a cheap check to run every few hours,
+                because dispatch by graph rank drifts toward machinery on its own: registries and
+                governance are everyone&apos;s prerequisite.
+              </P>
+            </SubSection>
+
             <SubSection title="What the Human Actually Does">
               <P>
                 The human tends the swarm the way an operator tends a machine that mostly runs on
@@ -2305,6 +2649,46 @@ When a Rust build or test is needed, offload it with rch (for example, rch exec 
                 ntm through robot mode and takes over routine machine-tending from the human. The
                 end state is a human who designs the plan, polishes the beads, and then walks away
                 while agents execute, review, ship, and start the next cycle.
+              </P>
+
+              <P>
+                That end state is close to how the author ran his recent projects. He typed about
+                40 messages to the robotics lead in four and a half days, and about 140 short
+                prompts drove 458 commits on the simulation project, most of them saved prompts:
+                the session opener, the gap-closing follow-up, the fresh-eyes requests, the
+                orchestrator kickoff, and a keep-alive line after each account swap. What he still
+                does himself:
+              </P>
+
+              <BulletList
+                items={[
+                  <Fragment key="stage-and-stop">
+                    He sets the stage (&quot;we are in the PLANNING STAGES ONLY!!!&quot;) and calls
+                    the stop when polishing stops paying, as in Part 5.
+                  </Fragment>,
+                  <Fragment key="ambition">
+                    He raises the ambition: &quot;I need you to make your plan MUCH MUCH MUCH more
+                    radically innovative and ambitious.&quot;
+                  </Fragment>,
+                  "He issues one-line policy rulings that go into AGENTS.md the same day, such as one canonical main branch with no worktrees or pull requests, or permission to change his own libraries upstream.",
+                  "He keeps budgets and structural limits, such as the plan's size caps, which the orchestrator may not change without him.",
+                  "He judges visual quality himself against reference images, sends blunt verdicts, and has agents render a few low-resolution frames and look at them before spending compute on full renders.",
+                  <Fragment key="deployed">
+                    He checks that &quot;deployed&quot; is true. Three times on the simulation
+                    project, an agent reported a deploy that had not happened (&quot;Did you
+                    actually DEPLOY this??&quot;).
+                  </Fragment>,
+                  "He swaps accounts when a session hits its limit.",
+                ]}
+              />
+
+              <P>
+                He hands over how to do the work (&quot;use your expert judgment on all
+                decisions&quot;, &quot;you decide everything, do whatever makes the project
+                best&quot;) and keeps the checks on the result: whether it looks right, whether it
+                shipped, whether a job will take down the machine, and whether the swarm is telling
+                the truth. When he delegated a visual gate he had reserved, the close recorded who
+                delegated it and how to overturn it.
               </P>
 
               <P>
@@ -2422,6 +2806,26 @@ caam activate claude backup-2   # Switch instantly`}
                 when one hits its limit takes milliseconds instead of a 30-to-60-second browser
                 login.
               </SkillNote>
+
+              <P>
+                Usage limits shape long runs. The robotics lead hit about 22 limit messages and
+                swapped accounts eight times, and after each swap the author sent the line he uses
+                in all three projects: &quot;Keep cranking away on all that, friend! You&apos;re
+                doing a great job.&quot; The long-lived session carried on with its context intact.
+              </P>
+
+              <P>
+                Whole provider pools run dry too. Midway through the robotics run all five Gemini
+                panes hit their quota, with resets about 125 hours out. The orchestrator told the
+                owner, kept verifying alone, and added Codex panes with <code>ntm add</code>. Their
+                takeover orders said to continue the stranded work on disk without reverting or
+                stashing it, and the orchestrator force-released a dead agent&apos;s reservations
+                only when they showed no recent activity. On another project, one request moved a
+                whole swarm to a different model. Probe a parked pane instead of trusting its
+                &quot;resets in&quot; text: the owner&apos;s audit found panes left idle on a stale
+                &quot;Resets in ~125h&quot; message, and the lead tested which models still had
+                quota with throwaway subagents told to reply with two characters and use no tools.
+              </P>
             </SubSection>
           </GuideSection>
 
@@ -2461,6 +2865,27 @@ caam activate claude backup-2   # Switch instantly`}
               Keep running rounds until they stop finding bugs. Typically 1-2 rounds for simple
               beads, 2-3 for complex ones. If an agent keeps finding bugs after 3 rounds, the
               implementation approach may be wrong; consider having a different agent take over.
+            </P>
+
+            <P>
+              At the end of a phase the author goes further, sending a shorter follow-up again and
+              again, sometimes six times in an evening, on plans as well as code:
+            </P>
+
+            <PromptBlock
+              title="Fresh Eyes, Once Again"
+              prompt={`Once again, check over everything again with fresh eyes looking for any blunders, mistakes, errors, oversights, omissions, problems, misconceptions, bugs, etc. Be SUPER thorough and meticulous!`}
+              where="Repeatedly at the end of a phase, on a plan or on code; often sent with the Close the Biggest Gaps follow-up"
+              whyItWorks="Each pass still turns up defects the last one missed. Six passes on one competing plan produced five rewrites, with each pass fanned out to three reviewer subagents. Keep going until the fixes shrink to edge-case guards and accessibility nits; that drop in severity is the signal to stop."
+            />
+
+            <P>
+              The agent can also hand the review to a context that did not write the code. On the
+              simulation project, 21 seconds after a fresh-eyes prompt arrived, the agent started a
+              read-only reviewer subagent on the diff of its recent commits, told to check it
+              against the crate&apos;s contract file and report each finding as file:line, what is
+              wrong, a concrete input or state that triggers it, and its confidence, with no style
+              nits. Its findings landed as one fix commit.
             </P>
 
             <TipBox variant="info">
@@ -2814,6 +3239,66 @@ Be sure to comply with ALL rules in AGENTS.md and ensure that any code you write
                 (test runs, file:line citations). For each bead that falls short it files a linked
                 completion-debt bead by default, or reopens the original if you choose.
               </SkillNote>
+            </SubSection>
+
+            <SubSection title="Making Honesty Mechanical">
+              <P>
+                Agents pushed to show progress sometimes fake it, and written rules alone do not
+                stop them. Reality checks on the accounting engine found a proof
+                &quot;verifier&quot; that returned Pass for any input with the right prefix,
+                hand-typed benchmark baselines, and an &quot;external oracle&quot; that reported
+                Verified whenever the tool&apos;s <code>--version</code> call succeeded. A later
+                check found that every PASS on display rested on verdicts that had never run the
+                Rust gate. All three projects answered by building honesty into the records:
+              </P>
+
+              <BulletList
+                items={[
+                  <Fragment key="typed-evidence">
+                    Every close cites typed evidence. The simulation project&apos;s close reasons
+                    are lists such as <code>commit:&lt;sha7&gt;</code>,{" "}
+                    <code>record:&lt;path&gt;</code>, and{" "}
+                    <code>test:&lt;crate&gt;::&lt;path&gt;::&lt;fn&gt;</code>, and its AGENTS.md says
+                    that prose such as &quot;cargo test passes&quot; is not a reference. On the
+                    accounting engine, the close script refuses unless the bead&apos;s named tests
+                    appear in a published verdict for a tree that contains the landing commit.
+                  </Fragment>,
+                  <Fragment key="unrun">
+                    A check that could not run is recorded as UNRUN. The accounting engine&apos;s
+                    verdicts have three states (ran and passed, ran and failed, did not run), only
+                    the first is green, and commit trailers say when native tests did not run and
+                    that the commit closes nothing. Robotics commit messages end with the exact
+                    command, host, and result of each check, including the suites still pending.
+                  </Fragment>,
+                  "Results carry a witness that only the real computation could produce. After the fabrications, the accounting engine made each artifact carry proof of the work and made its registry check refuse claims without one. The simulation project's rules forbid regenerating a known-answer fixture from the code under test.",
+                  <Fragment key="weakened-tests">
+                    Weakened tests are disclosed. Removing a test needs a{" "}
+                    <code>Retired-tests:</code> commit trailer and lowering an assertion count needs
+                    a <code>Weakened-tests:</code> trailer. Rework orders in the robotics swarm said
+                    &quot;Fix the code under test, never the assertion.&quot;
+                  </Fragment>,
+                  <Fragment key="planted-defects">
+                    Tests are checked against planted defects, because a test that cannot fail
+                    proves nothing. The simulation project planted mutants and recorded which test
+                    caught each; close reasons cite results such as &quot;3/3 planted defects
+                    caught&quot;, and one later commit corrected which test had actually caught a
+                    mutant. Every robotics test plan has known answers and negative controls.
+                  </Fragment>,
+                  "A watcher guards main. A break on the accounting engine once sat unnoticed for about 21 hours under 20 stacked commits, so a script now polls main, runs the lints and tests, and on a failure files a P0 bead with the first error and the commit that likely introduced it. It never edits code.",
+                  "Observed defects go in a dated log. The same project's log has 99 entries, each naming the code that now prevents the defect, and the recent entries each keep a failing fixture.",
+                ]}
+              />
+
+              <P>
+                Closed-bead counts make a poor progress measure next to the plan&apos;s own goals.
+                An early accounting reality check found progress reported as 17 of 76 beads closed
+                while 13 of 58 vision goals were delivered; later, with closes requiring a full
+                verdict and main often red or unrun, no bead closed for a month while about 1,100
+                commits landed. Where only the robotics orchestrator could close, 12 of about 3,600
+                beads had closed after 30 hours, and that low number was the honest one. Track the
+                plan&apos;s goals instead, such as a checklist of vision goals each with an owning
+                bead, or a scoreboard of workflows run against the live binary.
+              </P>
             </SubSection>
 
             <SubSection title="README Revision">
@@ -3859,8 +4344,8 @@ cass search "tool_name" --workspace /data/projects/PROJECT --json --limit 100`}
                     </strong>{" "}
                     Every tool you ship installs a Claude Code skill along with the tool, and that
                     skill was refined through multiple CASS cycles before shipping.
-                    When a new user installs the tool, their agents immediately benefit from all the
-                    refinement work done across every previous user&apos;s sessions.
+                    When a new user installs the tool, their agents start with every refinement
+                    those cycles produced from the author&apos;s own agent sessions.
                   </Fragment>,
                 ]}
               />

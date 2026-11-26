@@ -109,23 +109,23 @@ const PHASES: PhaseNarrative[] = [
     // Phase 1: First moves
     chaos: {
       agents: [
-        { id: "A1", color: AGENT_COLORS[0], targetTask: 2, status: "grabbing T2" },
-        { id: "A2", color: AGENT_COLORS[1], targetTask: 4, status: "grabbing T4" },
-        { id: "A3", color: AGENT_COLORS[2], targetTask: 2, status: "grabbing T2" },
+        { id: "A1", color: AGENT_COLORS[0], targetTask: 3, status: "grabbing T3" },
+        { id: "A2", color: AGENT_COLORS[1], targetTask: 5, status: "grabbing T5" },
+        { id: "A3", color: AGENT_COLORS[2], targetTask: 3, status: "grabbing T3" },
         { id: "A4", color: AGENT_COLORS[3], targetTask: 6, status: "grabbing T6" },
       ],
       tasks: {
         1: "ready",
-        2: "conflicted",
-        3: "ready",
-        4: "in-progress",
-        5: "ready",
+        2: "ready",
+        3: "conflicted",
+        4: "ready",
+        5: "in-progress",
         6: "in-progress",
       },
       conflicts: 1,
       idleBurn: 0,
       completed: 0,
-      statusText: "A1 and A3 both started Task 2, so their edits conflict",
+      statusText: "A1 and A3 both started Task 3, so their edits conflict",
     },
     coordinated: {
       agents: [
@@ -141,21 +141,21 @@ const PHASES: PhaseNarrative[] = [
       statusText: "A1 claimed T1 (highest impact, unblocks 2 others)",
     },
     description:
-      "Without the core loop, A1 and A3 both grab Task 2 and collide. With bv routing, each agent picks the most useful unblocked task, claims it in br, and announces it in Agent Mail.",
+      "Without the core loop, A1 and A3 both grab Task 3 and collide. With bv routing, each agent picks the most useful unblocked task, claims it in br, and announces it in Agent Mail.",
   },
   {
     // Phase 2: Waste vs. progress
     chaos: {
       agents: [
-        { id: "A1", color: AGENT_COLORS[0], targetTask: 2, status: "resolving conflict..." },
+        { id: "A1", color: AGENT_COLORS[0], targetTask: 3, status: "resolving conflict..." },
         { id: "A2", color: AGENT_COLORS[1], targetTask: 5, status: "BLOCKED on T1" },
-        { id: "A3", color: AGENT_COLORS[2], targetTask: 2, status: "resolving conflict..." },
+        { id: "A3", color: AGENT_COLORS[2], targetTask: 3, status: "resolving conflict..." },
         { id: "A4", color: AGENT_COLORS[3], targetTask: 6, status: "working on T6" },
       ],
       tasks: {
         1: "ready",
-        2: "conflicted",
-        3: "ready",
+        2: "ready",
+        3: "conflicted",
         4: "ready",
         5: "blocked",
         6: "in-progress",
@@ -192,15 +192,15 @@ const PHASES: PhaseNarrative[] = [
     // Phase 3: Recovery vs. flow
     chaos: {
       agents: [
-        { id: "A1", color: AGENT_COLORS[0], targetTask: 2, status: "finally finishing T2" },
+        { id: "A1", color: AGENT_COLORS[0], targetTask: 3, status: "finally finishing T3" },
         { id: "A2", color: AGENT_COLORS[1], targetTask: 5, status: "still blocked" },
         { id: "A3", color: AGENT_COLORS[2], targetTask: 1, status: "starting T1 (late)" },
         { id: "A4", color: AGENT_COLORS[3], targetTask: 6, status: "done with T6" },
       ],
       tasks: {
         1: "in-progress",
-        2: "in-progress",
-        3: "ready",
+        2: "ready",
+        3: "in-progress",
         4: "ready",
         5: "blocked",
         6: "done",
@@ -215,27 +215,27 @@ const PHASES: PhaseNarrative[] = [
         { id: "A1", color: AGENT_COLORS[0], targetTask: 2, status: "bv: T1 done, pick T2" },
         { id: "A2", color: AGENT_COLORS[1], targetTask: 5, status: "bv: pick T5 (unblocked)" },
         { id: "A3", color: AGENT_COLORS[2], targetTask: null, status: "T6 done, waiting" },
-        { id: "A4", color: AGENT_COLORS[3], targetTask: 4, status: "bv: pick T4" },
+        { id: "A4", color: AGENT_COLORS[3], targetTask: null, status: "waiting (T4 needs T2)" },
       ],
-      tasks: { 1: "done", 2: "claimed", 3: "done", 4: "claimed", 5: "claimed", 6: "done" },
+      tasks: { 1: "done", 2: "claimed", 3: "done", 4: "ready", 5: "claimed", 6: "done" },
       conflicts: 0,
       idleBurn: 0,
       completed: 3,
       statusText: "A1 finished T1 \u2192 bv routes to T2 (now unblocked)",
     },
     description:
-      "On the left, A4 finished a low-priority task while the top-priority one sat untouched. On the right, closing T1 unblocked T2 and T5, and bv routed agents to them.",
+      "On the left, A4 finished a low-priority task while the top-priority one sat untouched. On the right, closing T1 unblocked T2 and T5, and bv routed agents to them. T4 still waits on T2.",
   },
   {
     // Phase 4: Final tally
     chaos: {
       agents: [
-        { id: "A1", color: AGENT_COLORS[0], targetTask: 2, status: "done (T2)" },
-        { id: "A2", color: AGENT_COLORS[1], targetTask: 3, status: "starting T3 (late)" },
+        { id: "A1", color: AGENT_COLORS[0], targetTask: 3, status: "done (T3)" },
+        { id: "A2", color: AGENT_COLORS[1], targetTask: 5, status: "resuming T5 (late)" },
         { id: "A3", color: AGENT_COLORS[2], targetTask: 1, status: "done (T1)" },
         { id: "A4", color: AGENT_COLORS[3], targetTask: null, status: "idle" },
       ],
-      tasks: { 1: "done", 2: "done", 3: "in-progress", 4: "ready", 5: "ready", 6: "done" },
+      tasks: { 1: "done", 2: "ready", 3: "done", 4: "ready", 5: "in-progress", 6: "done" },
       conflicts: 1,
       idleBurn: 12600,
       completed: 3,
@@ -246,13 +246,13 @@ const PHASES: PhaseNarrative[] = [
         { id: "A1", color: AGENT_COLORS[0], targetTask: 2, status: "done (T2)" },
         { id: "A2", color: AGENT_COLORS[1], targetTask: 5, status: "done (T5)" },
         { id: "A3", color: AGENT_COLORS[2], targetTask: null, status: "idle" },
-        { id: "A4", color: AGENT_COLORS[3], targetTask: 4, status: "finishing T4" },
+        { id: "A4", color: AGENT_COLORS[3], targetTask: 4, status: "bv: pick T4 (unblocked)" },
       ],
-      tasks: { 1: "done", 2: "done", 3: "done", 4: "in-progress", 5: "done", 6: "done" },
+      tasks: { 1: "done", 2: "done", 3: "done", 4: "claimed", 5: "done", 6: "done" },
       conflicts: 0,
       idleBurn: 0,
       completed: 5,
-      statusText: "5/6 done, 0 conflicts, 0 wasted tokens. T4 finishing now",
+      statusText: "5/6 done, 0 conflicts, 0 wasted tokens. T4 starts now that T2 is done",
     },
     description:
       "Both runs get the same four agents, six tasks, and amount of time. Without the core loop, 3 tasks finish, 1 merge conflict happens, and 12.6k tokens go to blocked work. With it, 5 tasks finish with no conflicts.",

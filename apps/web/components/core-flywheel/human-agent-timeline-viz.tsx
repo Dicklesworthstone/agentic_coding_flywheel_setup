@@ -55,7 +55,7 @@ const STAGES: TimelineStage[] = [
     who: "You",
     what: "Ask several frontier models for competing plans, then have one merge them into a single strong design document",
     tools: `${COMPLETE_GUIDE_MODELS.primaryPlanner}, ${COMPLETE_GUIDE_MODELS.claudePlanner}, ${COMPLETE_GUIDE_MODELS.googlePlanner}`,
-    insight: "This is where 85% of your thinking goes. No code yet.",
+    insight: "The plan and the beads are where most of your time and thinking go. No code yet.",
   },
   {
     id: "beads",
@@ -77,7 +77,7 @@ const STAGES: TimelineStage[] = [
     who: "You",
     what: "Finish the operating manual before launch: agent behavior rules, tool usage, and coordination protocol.",
     tools: "Your editor, plus br agents --add",
-    insight: "Every agent reads this file on startup and rereads it after compaction, so you do not have to repeat instructions in chat.",
+    insight: "Every agent reads this file on startup. After compaction, you tell it to reread the file instead of repeating instructions in chat.",
   },
   {
     id: "launch",

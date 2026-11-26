@@ -736,9 +736,42 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
               />
 
               <P>
+                One pass is rarely enough. On one project the Flywheel&apos;s author sent the
+                follow-up below six times to a single plan, which was rewritten five times along
+                the way:
+              </P>
+
+              <PromptBlock
+                title="Fresh Eyes, Once Again"
+                prompt={`Once again, check over everything again with fresh eyes looking for any blunders, mistakes, errors, oversights, omissions, problems, misconceptions, bugs, etc. Be SUPER thorough and meticulous!`}
+                where="In the same session, after the first fresh-eyes pass. It works on a plan or a set of beads as well as on code."
+                whyItWorks="Each round finds defects the previous one missed. Stop when a pass finds nothing new, or when its fixes have shrunk to small edge-case guards."
+              />
+
+              <P>
                 Then the agent closes the bead (<code>br close br-123</code>), releases its file
                 reservations, posts a final message in the thread, and asks bv for the next bead.
                 The cycle repeats until the graph is done.
+              </P>
+
+              <P>
+                A close reason such as &quot;tests pass&quot; gives a later reader nothing to
+                check. Have agents name the test that proves the work and the commit that holds it:
+              </P>
+
+              <CodeBlock
+                language="bash"
+                code={`br close br-123 --reason "commit a1b2c3d; test: ingest::retry::failed_upload_is_kept_for_review"`}
+              />
+
+              <P>
+                With one or two agents, each can close its own beads. Once several share a repo,
+                have them stop short of <code>br close</code>: the agent posts its commit and tests
+                in the bead&apos;s thread, and one agent you choose (or you) reruns those tests and
+                closes the bead. Write that rule into AGENTS.md. An agent&apos;s report that its
+                work is done is sometimes wrong: in one of the author&apos;s swarms, the first
+                central rerun of work the agents had reported finished sent 93 tests back for
+                rework.
               </P>
 
               <P>
@@ -754,6 +787,33 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
                 as test runs and file:line citations. For each bead that falls short it files a
                 linked completion-debt bead, or reopens the original if you prefer.
               </SkillNote>
+            </SubSection>
+
+            <SubSection title="Starting a Session on an Existing Project">
+              <P>
+                Steps 1-5 start a project. When the author opens a new session on a project that
+                already has code, his first prompt asks for a full read and a diagnosis. It begins
+                with the first sentence of the marching orders above (read all of AGENTS.md and the
+                README) and then asks for a reality check. He runs it with{" "}
+                <code>/reality-check-for-project</code>; without the skill, ask the question in Part
+                8.
+              </P>
+              <P>
+                He reads the report, adds a one-line clarification if something needs it, and sends
+                one follow-up that hands the prioritizing to the model. It opens, &quot;OK, so please do
+                everything you think is advisable based on all of that, and start trying to close
+                the biggest gaps yourself, especially the ones with the most &apos;bang for the
+                buck&apos;.&quot; The rest asks the agent to wire in finished code that is not yet
+                connected, work through the remaining beads in a sensible order, keep a detailed
+                TODO list, and use its own judgment. The session&apos;s work comes from that
+                diagnosis, and he writes no task list of his own.
+              </P>
+              <P>
+                After a context compaction or a finished turn, he sends the same follow-up again
+                instead of new instructions, since the plan, the beads, and AGENTS.md already hold
+                the state. Reality checks also find work the plan never covered: on one long
+                project, about 300 of its 521 beads were filed by them.
+              </P>
             </SubSection>
           </GuideSection>
 
@@ -815,6 +875,73 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
                 All of this is set up once in your AGENTS.md. You do not make Agent Mail calls,
                 update bead statuses, or thread bead IDs into messages yourself. The agents do it
                 because the operating manual tells them to.
+              </P>
+            </SubSection>
+
+            <SubSection title="A Few Prompts Do Most of the Work">
+              <P>
+                The author types little. On one recent project he sent his main agent session about
+                40 messages over four and a half days, most of them saved prompts pasted again and
+                again. On another, the same follow-up went out more than a hundred times. These
+                few carry most of the work:
+              </P>
+              <BulletList
+                items={[
+                  "The session kickoff: read all of AGENTS.md and the README (the first sentence of the marching orders in Part 7).",
+                  "The reality check, right after that read (below).",
+                  "The follow-up that hands prioritizing to the model once the diagnosis is in (Part 7).",
+                  "The fresh-eyes review prompt, sent after each chunk of work and repeated until the fixes get small.",
+                  "A one-line nudge to keep going after a usage limit.",
+                ]}
+              />
+              <P>
+                The specifics live in AGENTS.md, the plan, and the beads, so the prompts stay the
+                same from project to project. The nudge is the shortest of them:
+              </P>
+              <PromptBlock
+                title="Keep Going After a Usage Limit"
+                prompt={`Keep cranking away on all that, friend! You're doing a great job.`}
+                where="In the same session, after a usage limit stopped it and you have switched to an account with capacity (in Claude Code, /login)"
+                whyItWorks="The session still has its context, and the plan and beads hold the rest, so it picks up where it stopped without a new briefing."
+              />
+            </SubSection>
+
+            <SubSection title="Decisions That Stay With You">
+              <P>A handful of decisions stay with the human. In the author&apos;s projects:</P>
+              <BulletList
+                items={[
+                  <Fragment key="stage">
+                    He decides when planning ends and building starts, and AGENTS.md says which
+                    stage the project is in. During one planning stage, the follow-up from Part 7,
+                    with its line about working through the beads, led an agent to start writing
+                    code. He stopped it (&quot;we are in the PLANNING STAGES ONLY!!!&quot;) and had
+                    the code moved into a folder git ignores.
+                  </Fragment>,
+                  <Fragment key="polish">
+                    He decides when polishing stops, with a plain message: &quot;ok I think
+                    we&apos;ve done enough beads polishing at this point, let&apos;s please wrap it
+                    up and finalize the beads so we can begin implementation work!&quot; To decide
+                    when, look at how small the edits have become. On one project every round still
+                    edited most of the beads, while the typical edit had shrunk to about 12 of a
+                    bead&apos;s 160 lines.
+                  </Fragment>,
+                  "He rules when agents apply a rule too broadly. When agents treated a ban on third-party code as covering his own libraries too, his one-line ruling that his own projects were allowed went into AGENTS.md the same day.",
+                  "He sets the budgets, such as how much code a bead should take and how much of the machine a job may use. In one swarm the coordinating agent raised a size cap to fit the code already written; after that, changing a cap needed his approval.",
+                  <Fragment key="result">
+                    He decides whether the result is right, and he looks at it himself. On a project
+                    with visual output, he compared the renders against reference images and sent
+                    blunt verdicts, because the agents&apos; own judgments of how it looked were
+                    repeatedly wrong. He also checks that &quot;deployed&quot; is true: three times,
+                    work an agent reported as deployed had not reached the live site (&quot;Did you
+                    actually DEPLOY this??&quot;).
+                  </Fragment>,
+                ]}
+              />
+              <P>
+                He leaves the how to the agents, and the follow-up prompt says so: &quot;use your
+                expert judgment on all decisions to make the optimal choice.&quot; When he handed
+                one of his own calls, a visual review, to an agent, it recorded in the bead that the
+                decision was delegated and how to overturn it.
               </P>
             </SubSection>
 
@@ -926,8 +1053,31 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
                   "The markdown plan was too weak",
                   "Go back up a level and improve the plan before continuing",
                 ],
+                [
+                  "Many beads are closed, but the software still does not do what the plan promised",
+                  "Progress is judged by the closed count, and some closures have no evidence behind them",
+                  "Run the reality check against the plan's goals, file beads for goals nothing covers, and reopen closures that cite no evidence",
+                ],
+                [
+                  "The swarm is busy building reports, gates, and dashboards instead of the product",
+                  "Shared infrastructure sits under every other bead, so graph-ranked routing keeps sending agents to it",
+                  "Compare how much new code is product and how much is machinery, pause the machinery nothing needs yet, and point agents at the shortest path to a working feature",
+                ],
               ]}
             />
+
+            <SubSection title="Measuring Progress Against the Plan">
+              <P>
+                The last two rows come from the author&apos;s own projects. On one, a reality check
+                found 17 of 76 beads closed but only 13 of the plan&apos;s 58 goals met, and a
+                later audit reopened seven closures whose evidence did not hold up. On another, a
+                reality check six hours into a swarm found that nearly two-thirds of the new code
+                was verification and governance machinery. The coordinating agent noted that
+                sending agents first to the beads most others waited on had pushed the swarm that
+                way. An audit the author commissioned the next day paused the machinery and put the
+                swarm on the shortest path to a first working version.
+              </P>
+            </SubSection>
 
             <SubSection title="Agent Disappeared Mid-Bead">
               <P>When an agent vanishes mid-bead, the recovery path should be boring:</P>

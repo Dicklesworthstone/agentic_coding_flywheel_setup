@@ -73,7 +73,7 @@ export const COMPLETE_GUIDE_EXHIBIT_COUNT = 11;
 export const CORE_FLYWHEEL_EXHIBIT_COUNT = 7;
 
 /** PromptBlock count on the core guide (the complete guide's lives in lib/complete-guide.ts). */
-export const CORE_FLYWHEEL_PROMPT_COUNT = 5;
+export const CORE_FLYWHEEL_PROMPT_COUNT = 7;
 
 export const CORE_FLYWHEEL_REVIEWED_ON = "November 25, 2026";
 

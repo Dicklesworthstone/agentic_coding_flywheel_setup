@@ -1,5 +1,5 @@
 export const COMPLETE_GUIDE_REVIEWED_ON = "November 25, 2026";
-export const COMPLETE_GUIDE_PROMPT_COUNT = 42;
+export const COMPLETE_GUIDE_PROMPT_COUNT = 46;
 export const COMPLETE_GUIDE_PHASE_COUNT = 13;
 
 export const COMPLETE_GUIDE_MODELS = {

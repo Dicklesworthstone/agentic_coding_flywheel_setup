@@ -5,28 +5,39 @@ import { useCallback, useRef, useState } from "react";
 import { motion, useInView, useReducedMotion } from "@/components/motion";
 import { cn } from "@/lib/utils";
 
+// Thresholds and signals follow the guide: finalize at 0.75+, diminishing
+// returns above 0.90, keep iterating below 0.50.
+const READY_THRESHOLD = 0.75;
+
 function getConvergencePhase(s: number) {
   if (s < 0.2) return "Major Fixes";
   if (s < 0.5) return "Architecture";
-  if (s < 0.8) return "Refinement";
+  if (s < READY_THRESHOLD) return "Refinement";
   if (s < 0.95) return "Polishing";
   return "Steady State";
 }
 
 function getConvergenceVerdict(s: number) {
-  if (s < 0.4) return "Keep polishing. The structure still changes a lot between rounds.";
-  if (s < 0.7) return "Good progress. Run one or two more rounds.";
+  if (s < 0.5) return "Keep polishing. The structure still changes a lot between rounds.";
+  if (s < READY_THRESHOLD) return "Good progress. Run one or two more rounds.";
   if (s < 0.9) return "Ready to move on to implementation.";
   return "Diminishing returns. Stop polishing and start implementing.";
 }
 
 const CONVERGENCE_SIGNALS = [
   {
-    id: "dependencies",
-    label: "Dependencies Stabilizing",
-    weight: 0.25,
-    weightLabel: "25%",
+    id: "output",
+    label: "Output Size Shrinking",
+    weight: 0.35,
+    weightLabel: "35%",
     color: "#A1A1AA",
+  },
+  {
+    id: "velocity",
+    label: "Change Velocity Slowing",
+    weight: 0.35,
+    weightLabel: "35%",
+    color: "#FF5500",
   },
   {
     id: "similarity",
@@ -35,27 +46,13 @@ const CONVERGENCE_SIGNALS = [
     weightLabel: "30%",
     color: "#FFBD2E",
   },
-  {
-    id: "length",
-    label: "Length Delta Approaching Zero",
-    weight: 0.2,
-    weightLabel: "20%",
-    color: "#FF5500",
-  },
-  {
-    id: "semantics",
-    label: "Semantic Density Plateau",
-    weight: 0.25,
-    weightLabel: "25%",
-    color: "#FFFFFF",
-  },
 ] as const;
 
 const CONVERGENCE_PRESETS = [
-  { label: "Draft", vals: [0.1, 0.1, 0.15, 0.12] },
-  { label: "Mid", vals: [0.5, 0.45, 0.5, 0.52] },
-  { label: "Ready", vals: [0.8, 0.75, 0.85, 0.78] },
-  { label: "Ship", vals: [0.95, 0.95, 0.98, 0.96] },
+  { label: "Draft", vals: [0.1, 0.12, 0.1] },
+  { label: "Mid", vals: [0.55, 0.6, 0.5] },
+  { label: "Ready", vals: [0.8, 0.78, 0.8] },
+  { label: "Ship", vals: [0.95, 0.96, 0.95] },
 ] as const;
 
 export function ConvergenceViz() {
@@ -65,7 +62,7 @@ export function ConvergenceViz() {
   const reducedMotion = prefersReducedMotion ?? false;
 
   // 0.0 to 1.0
-  const [values, setValues] = useState([0.3, 0.2, 0.4, 0.3]);
+  const [values, setValues] = useState([0.3, 0.2, 0.4]);
   const [particles] = useState(() =>
     Array.from({ length: 40 }, (_, i) => ({
       id: i,
@@ -198,7 +195,8 @@ export function ConvergenceViz() {
             <motion.div
               className="absolute w-20 h-20 rounded-full blur-[30px] pointer-events-none mix-blend-screen"
               style={{
-                backgroundColor: score > 0.8 ? "#FFBD2E" : score > 0.5 ? "#FF5500" : "#A1A1AA",
+                backgroundColor:
+                  score >= READY_THRESHOLD ? "#FFBD2E" : score > 0.5 ? "#FF5500" : "#A1A1AA",
               }}
               animate={{
                 scale: 1 + score * 1.5,
@@ -218,7 +216,8 @@ export function ConvergenceViz() {
               >
                 {particles.map((p) => {
                   const signalScore = values[p.signalIdx];
-                  const color = score > 0.8 ? "#FFBD2E" : score > 0.5 ? "#FF5500" : "#A1A1AA";
+                  const color =
+                    score >= READY_THRESHOLD ? "#FFBD2E" : score > 0.5 ? "#FF5500" : "#A1A1AA";
                   const currentRad = p.distance * convergenceRadius + convergenceRadius * 0.2;
                   const x = center + Math.cos(p.angle) * currentRad;
                   const y = center + Math.sin(p.angle) * currentRad;
@@ -275,7 +274,7 @@ export function ConvergenceViz() {
               <span
                 className={cn(
                   "text-lg font-black tracking-tight",
-                  score > 0.8
+                  score >= READY_THRESHOLD
                     ? "text-[#FFBD2E] drop-shadow-[0_0_10px_rgba(255,189,46,0.5)]"
                     : score > 0.5
                       ? "text-[#FF5500] drop-shadow-[0_0_10px_rgba(255,85,0,0.5)]"
@@ -298,7 +297,11 @@ export function ConvergenceViz() {
               <span
                 className={cn(
                   "text-sm font-bold tracking-tight",
-                  score > 0.8 ? "text-[#FFBD2E]" : score > 0.5 ? "text-[#FF5500]" : "text-zinc-400",
+                  score >= READY_THRESHOLD
+                    ? "text-[#FFBD2E]"
+                    : score > 0.5
+                      ? "text-[#FF5500]"
+                      : "text-zinc-400",
                 )}
               >
                 {phase}
