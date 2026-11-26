@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-11-26T00:31:18+00:00
+# checksums.yaml - Auto-generated 2026-11-26T02:01:16+00:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -100,7 +100,7 @@ installers:
 
   mdwb:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/markdown_web_browser/main/install.sh"
-    sha256: "2f808a76294954fb7270d57db3116770f62154579c791f6f2285824c4200bb3c"
+    sha256: "602eaee7ed924a994a2b6f2df86a90b32829d9a439238dbf6d23c4a1bc775420"
 
   ms:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/meta_skill/main/scripts/install.sh"
