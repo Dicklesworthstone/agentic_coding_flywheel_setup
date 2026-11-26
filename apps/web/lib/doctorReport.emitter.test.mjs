@@ -49,10 +49,14 @@ test("maps actual Doctor check IDs to the same modules as the Bash producer", as
   // deep-check calls. No verify/install command from the table is executed.
   const emittedIds = [...new Set([
     ...[...source.matchAll(
-      /"((?:identity|workspace|shell|config|path|tool|bun|agent|cloud|stack|symlink|updates|util|deep)\.[a-z0-9_.]+)"/g,
+      /"((?:identity|workspace|shell|config|path|tool|bun|agent|cloud|stack|symlink|updates|util|deep|services)\.[a-z0-9_.]+)"/g,
     )].map((match) => match[1]),
     // This check uses an unquoted literal in the Bash call site.
     "identity.acfs_sudo_policy",
+    // Service check IDs are assembled dynamically by the producer.
+    "services.binary_drift.agent_mail",
+    "services.binary_drift.cm",
+    "services.binary_drift.cass",
   ])];
   const rows = execFileSync("/bin/bash", ["-p", "-s", "--", ...emittedIds], {
     input: [
@@ -72,6 +76,17 @@ test("maps actual Doctor check IDs to the same modules as the Bash producer", as
   assert.ok(rows.some(([id, module]) =>
     id === "identity.acfs_sudo_policy" && module === "users.ubuntu"),
   "the managed Safe-mode sudo check must belong to user setup");
+  for (const [id, module] of [
+    ["services.binary_drift.agent_mail", "stack.mcp_agent_mail"],
+    ["services.binary_drift.cm", "stack.cm"],
+    ["services.binary_drift.cass", "stack.cass"],
+  ]) {
+    assert.ok(
+      rows.some(([actualId, actualModule]) =>
+        actualId === id && actualModule === module),
+      `${id} must map to ${module}`,
+    );
+  }
   const mismatches = [];
   for (const [id, module] of rows) {
     assert.ok(known.includes(module), `${id} must have an actual manifest owner`);
@@ -170,3 +185,100 @@ for (const deep of [false, true]) {
     assert.ok(!JSON.stringify(value).includes("do-not-run"));
   });
 }
+
+test("accepts actual Agent Mail drift output and maps it to the selected module", async () => {
+  const functionNames = [
+    "doctor_check_module_id",
+    "doctor_skip_unselected_check",
+    "check_skipped",
+    "check",
+    "check_with_timeout_status",
+    "check_service_binary_drift",
+  ];
+  const functions = functionNames.map((name) => {
+    const definition = source.match(
+      new RegExp(`^${name}\\(\\) \\{[\\s\\S]*?^\\}`, "m"),
+    )?.[0];
+    assert.ok(definition, `the production ${name} function must be present`);
+    return definition;
+  });
+  const row = "agent-mail|stale|fixture replacement requires review";
+  const probe = `printf '%s\\n' ${quote(row)}\nexit 1`;
+
+  const script = [
+    "set -euo pipefail",
+    'NODE_BINARY="$1"',
+    // The original direct path also receives an inert script, never a service.
+    `exec 9<<<${quote(probe)}`,
+    `_acfs_doctor_find_lib_script() { printf '%s\\n' /dev/fd/9; }`,
+    `_acfs_doctor_system_binary_path() { command -v "$1"; }`,
+    `doctor_runtime_home() { printf '%s\\n' /home/fixture-user; }`,
+    `_acfs_doctor_validate_bin_dir_for_home() { printf '%s/.local/bin\\n' "$2"; }`,
+    `doctor_runtime_path() { printf '%s\\n' /usr/bin:/bin; }`,
+    `state_module_is_selected() { [[ "$1" == stack.mcp_agent_mail ]]; }`,
+    `_doctor_run_manifest_check() {
+      [[ "$1" == target_user ]] || return 2
+      printf '%s\\n' ${quote(row)}
+      return 1
+    }`,
+    `json_escape() { printf '%s' "$1" | "$NODE_BINARY" -e 'let text="";process.stdin.on("data",chunk=>text+=chunk);process.stdin.on("end",()=>process.stdout.write(JSON.stringify(text).slice(1,-1)));'; }`,
+    `_acfs_doctor_resolve_current_user() { printf '%s\\n' fixture-user; }`,
+    "ACFS_VERSION=0.11.6",
+    "ACFS_MODE=safe",
+    "JSON_MODE=true",
+    "DEEP_MODE=false",
+    "FIX_MODE=false",
+    "ACFS_STATE_SELECTION_MODE=scoped",
+    "DOCTOR_SELECTION_STATE_FILE=/home/fixture-user/.acfs/state.json",
+    "TARGET_HOME=/home/fixture-user",
+    "TARGET_USER=fixture-user",
+    "DEEP_CHECK_TIMEOUT=2",
+    "PASS_COUNT=0",
+    "FAIL_COUNT=0",
+    "SKIP_COUNT=0",
+    "WARN_COUNT=0",
+    "DEEP_PASS_COUNT=0",
+    "DEEP_FAIL_COUNT=0",
+    "DEEP_WARN_COUNT=0",
+    "MANIFEST_CHECKS=()",
+    "JSON_CHECKS=()",
+    ...functions,
+    emitter,
+    "check_service_binary_drift",
+    "print_json",
+  ].join("\n");
+
+  const bytes = execFileSync("/bin/bash", ["-p", "-s", "--", process.execPath], {
+    input: script,
+    env: { PATH: "/usr/bin:/bin", LANG: "C.UTF-8", TZ: "UTC" },
+    timeout: 10000,
+  });
+
+  const raw = JSON.parse(bytes.toString());
+  assert.ok(
+    raw.checks.some((check) =>
+      check.id === "services.binary_drift.agent_mail" &&
+      check.status === "warn" &&
+      check.fix.includes("acfs services restart agent-mail")),
+    "the actual drift producer must emit the canonical ID and real service name",
+  );
+
+  const value = await reader.reviewDoctorReportFile(new Blob([bytes]), {
+    host: "203.0.113.7",
+    username: "fixture-user",
+    mode: "safe",
+    installerCommand: "fixture-installer",
+    manifestSha256: "a".repeat(64),
+    checksumsYamlSha256: "b".repeat(64),
+    selectedModuleIds: ["stack.mcp_agent_mail"],
+    knownModuleIds: ["stack.mcp_agent_mail", "stack.cm", "stack.cass"],
+  });
+
+  const agentMail = value.modules.find(
+    (module) => module.id === "stack.mcp_agent_mail",
+  );
+  assert.equal(agentMail?.counts.warn, 1);
+  assert.equal(agentMail?.status, "warn");
+  assert.equal(value.unmapped.warn, 0);
+  assert.equal(value.needsAttention, true);
+});

@@ -2140,7 +2140,9 @@ doctor_check_module_id() {
         deep.cloud.vercel_auth) module=cloud.vercel ;;
         stack.ubs) module=stack.ultimate_bug_scanner ;;
         stack.bv) module=stack.beads_viewer ;;
-        symlink.am) module=stack.mcp_agent_mail ;;
+        symlink.am|services.binary_drift.agent_mail) module=stack.mcp_agent_mail ;;
+        services.binary_drift.cm) module=stack.cm ;;
+        services.binary_drift.cass) module=stack.cass ;;
         updates.nightly_runs) module=acfs.nightly ;;
         util.tru) module=utils.toon_rust ;;
         util.pt|deep.stack.pt) module=stack.process_triage ;;
@@ -4432,34 +4434,143 @@ report_nightly_timer_status() {
 # comparison to acfs-services.sh, which inspects what each SERVICE runs
 # (/proc/<pid>/exe) rather than what the caller's PATH resolves.
 check_service_binary_drift() {
-    local service_manager=""
-    local drift_output=""
-    local service="" state="" detail=""
-    local timeout_bin=""
-    local -a drift_cmd=()
+    local service_manager="" drift_output="" drift_command=""
+    local service="" service_id="" state="" detail="" entry="" module=""
+    local env_bin="" bash_bin="" timeout_bin=""
+    local target_home="" target_bin="" target_path="" state_file=""
+    local selection_status=0 drift_status=0
+    local valid=true has_stale=false
+    local -a drift_argv=()
+    local -A expected_services=() seen_services=()
 
     service_manager="$(_acfs_doctor_find_lib_script "acfs-services.sh" 2>/dev/null || true)"
-    if [[ -z "$service_manager" || ! -r "$service_manager" ]]; then
+    [[ -n "$service_manager" && -r "$service_manager" ]] || return 0
+
+    # Use the already validated installation intent. A small installation
+    # with no managed services must not inspect another account's daemons.
+    for entry in agent-mail:stack.mcp_agent_mail cm:stack.cm cass:stack.cass; do
+        service="${entry%%:*}"
+        module="${entry#*:}"
+        selection_status=0
+        state_module_is_selected "$module" || selection_status=$?
+        case "$selection_status" in
+            0) expected_services["$service"]=1 ;;
+            1) ;;
+            *)
+                check "services.binary_drift" "Managed service binary inspection" "warn" \
+                    "inspection unavailable: installation selection is not valid" "" false
+                return 0
+                ;;
+        esac
+    done
+    [[ ${#expected_services[@]} -gt 0 ]] || return 0
+
+    env_bin="$(_acfs_doctor_system_binary_path env 2>/dev/null || true)"
+    bash_bin="$(_acfs_doctor_system_binary_path bash 2>/dev/null || true)"
+    timeout_bin="$(_acfs_doctor_system_binary_path timeout 2>/dev/null || true)"
+    state_file="${DOCTOR_SELECTION_STATE_FILE:-}"
+    if [[ -z "$env_bin" || -z "$bash_bin" || -z "$timeout_bin" || "$state_file" != /* ]]; then
+        check "services.binary_drift" "Managed service binary inspection" "warn" \
+            "inspection unavailable: env, bash, timeout and a validated checkpoint are required" "" false
         return 0
     fi
 
-    drift_cmd=(bash "$service_manager" drift --robot)
-    timeout_bin="$(_acfs_doctor_system_binary_path timeout 2>/dev/null || true)"
-    if [[ -n "$timeout_bin" ]]; then
-        drift_cmd=("$timeout_bin" 30 "${drift_cmd[@]}")
+    target_home="$(doctor_runtime_home)"
+    target_bin="$(_acfs_doctor_validate_bin_dir_for_home "${ACFS_BIN_DIR:-}" "$target_home" 2>/dev/null || true)"
+    [[ -n "$target_bin" ]] || target_bin="$target_home/.local/bin"
+    if ! target_path="$(ACFS_HOME="$target_home/.acfs" PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin doctor_runtime_path)"; then
+        check "services.binary_drift" "Managed service binary inspection" "warn" \
+            "inspection unavailable: the target command path could not be resolved" "" false
+        return 0
     fi
 
-    drift_output="$("${drift_cmd[@]}" 2>/dev/null || true)"
-    [[ -n "$drift_output" ]] || return 0
+    # Reuse the target-account runner, but never borrow the invoking shell's
+    # service manager or tmux socket. Rebind the user bus after entering that
+    # account, and pass the exact checkpoint Doctor has already accepted.
+    drift_argv=(
+        "$env_bin"
+        -u BASH_ENV -u ENV -u XDG_RUNTIME_DIR -u DBUS_SESSION_BUS_ADDRESS
+        -u DBUS_SESSION_BUS_PID -u DBUS_SYSTEM_BUS_ADDRESS -u DBUS_STARTER_ADDRESS
+        -u DBUS_STARTER_BUS_TYPE -u SYSTEMD_BUS_ADDRESS -u SYSTEMD_HOST -u SYSTEMD_MACHINE
+        -u TMUX -u TMUX_PANE -u TMUX_TMPDIR
+        "PATH=$target_path" "ACFS_BIN_DIR=$target_bin"
+        "ACFS_HOME=$target_home/.acfs" "ACFS_STATE_FILE=$state_file"
+        "$bash_bin" --noprofile --norc -p -c '
+            runtime_dir="/run/user/$EUID"
+            if [[ -d "$runtime_dir" && ! -L "$runtime_dir" && -O "$runtime_dir" ]]; then
+                export XDG_RUNTIME_DIR="$runtime_dir"
+                if [[ -S "$runtime_dir/bus" && ! -L "$runtime_dir/bus" && -O "$runtime_dir/bus" ]]; then
+                    export DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus"
+                fi
+            fi
+            # Keep capture inside the bounded child. An exited launcher must
+            # not leave an orphaned output writer holding Doctor open.
+            status=0
+            output=$("$@") || status=$?
+            printf "%s\n" "$output"
+            exit "$status"
+        ' acfs-service-context
+        "$bash_bin" --noprofile --norc -p "$service_manager" drift --robot
+    )
+    printf -v drift_command '%q ' "${drift_argv[@]}"
+    drift_output="$(BASH_ENV= ENV= _doctor_run_manifest_check target_user "$drift_command" 2>/dev/null)" \
+        || drift_status=$?
+
+    if [[ "$drift_status" -eq 124 || "$drift_status" -eq 137 || "$drift_status" -eq 143 ]]; then
+        check_with_timeout_status "services.binary_drift" "Managed service binary inspection" "timeout" \
+            "inspection exceeded its ${DEEP_CHECK_TIMEOUT}s deadline or was terminated"
+        return 0
+    elif [[ "$drift_status" -ne 0 && "$drift_status" -ne 1 ]]; then
+        check "services.binary_drift" "Managed service binary inspection" "warn" \
+            "inspection failed (exit $drift_status)" "" false
+        return 0
+    fi
+
+    # Exit 1 is the service command's documented stale-binary verdict, but it
+    # is also used for ordinary errors. Require a complete, consistent report
+    # before presenting any restart suggestion.
+    while IFS='|' read -r service state detail; do
+        case "$service" in
+            agent-mail|cm|cass) ;;
+            *) valid=false; break ;;
+        esac
+        if [[ -z "${expected_services[$service]+present}" || -n "${seen_services[$service]+present}" || -z "$detail" ]]; then
+            valid=false
+            break
+        fi
+        case "$state" in
+            stale) has_stale=true ;;
+            ok|not-running|unknown) ;;
+            *) valid=false; break ;;
+        esac
+        seen_services["$service"]=1
+    done <<< "$drift_output"
+    if [[ "$valid" != true || ${#seen_services[@]} -ne ${#expected_services[@]} ]] \
+        || [[ "$drift_status" -eq 1 && "$has_stale" != true ]] \
+        || [[ "$drift_status" -eq 0 && "$has_stale" == true ]]; then
+        check "services.binary_drift" "Managed service binary inspection" "warn" \
+            "inspection returned an invalid or incomplete service report" "" false
+        return 0
+    fi
 
     while IFS='|' read -r service state detail; do
-        [[ -n "$service" && "$state" == "stale" ]] || continue
-        check "services.binary_drift.$service" \
-            "Managed service '$service' is running a replaced binary" \
-            "warn" "$detail" \
-            "Restart just this service at a quiescent moment: acfs services restart $service"
+        # Doctor report IDs use underscore-separated tokens; service commands
+        # retain their canonical hyphenated names (notably agent-mail).
+        service_id="${service//-/_}"
+        case "$state" in
+            stale)
+                check "services.binary_drift.$service_id" \
+                    "Managed service '$service' is running a replaced binary" \
+                    "warn" "$detail" \
+                    "Restart just this service at a quiescent moment: acfs services restart $service" false
+                ;;
+            unknown)
+                check "services.binary_drift.$service_id" \
+                    "Managed service '$service' binary inspection" \
+                    "warn" "$detail" "" false
+                ;;
+        esac
     done <<< "$drift_output"
-
     return 0
 }
 

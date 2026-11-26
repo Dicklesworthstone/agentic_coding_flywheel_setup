@@ -437,6 +437,263 @@ doctor_selection_json() {
     printf '[%s]\n' "$joined"
 }
 
+# Managed-service diagnostics exercise the real target runner and guardian.
+doctor_service_drift_fixture() {
+    doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["stack.cm","lang.bun"]}}'
+    # Exercise the real same-account transport without writing into its home.
+    # All checkpoints, executable fixtures and output stay in Bats tmp.
+    local passwd_entry=""
+    passwd_entry="$(_acfs_doctor_getent_passwd_entry "$TARGET_USER")"
+    TARGET_HOME="$(_acfs_doctor_passwd_home_from_entry "$passwd_entry")"
+    [[ "$TARGET_HOME" == /* && -d "$TARGET_HOME" ]] || fail "current account home is unavailable"
+    ACFS_HOME="$TARGET_HOME/.acfs"
+    ACFS_BIN_DIR="$DOCTOR_TEST_BIN"
+    DOCTOR_SELECTION_STATE_FILE="$BATS_TEST_TMPDIR/drift selection.json"
+    jq --arg home "$TARGET_HOME" --arg user "$TARGET_USER" \
+        '.target_home = $home | .target_user = $user' \
+        "$DOCTOR_TEST_STATE" > "$DOCTOR_SELECTION_STATE_FILE"
+    state_load_module_selection "$DOCTOR_SELECTION_STATE_FILE" "$TARGET_HOME" "$TARGET_USER"
+    # Only the validated path above may reach the service command.
+    ACFS_STATE_FILE="$BATS_TEST_TMPDIR/unrelated-checkpoint.json"
+
+    export DOCTOR_DRIFT_SCRIPT="$BATS_TEST_TMPDIR/drift manager with spaces.sh"
+    export DOCTOR_DRIFT_CONTEXT="$BATS_TEST_TMPDIR/drift-context"
+    export DOCTOR_DRIFT_ARGS="$BATS_TEST_TMPDIR/drift-args"
+    export DOCTOR_DRIFT_STARTED="$BATS_TEST_TMPDIR/drift-started"
+    export DOCTOR_DRIFT_CHILD="$BATS_TEST_TMPDIR/drift-child"
+    export DOCTOR_DRIFT_ESCAPED="$BATS_TEST_TMPDIR/drift-escaped"
+    export DOCTOR_DRIFT_MODE=stale
+    _acfs_doctor_find_lib_script() {
+        if [[ "$1" == acfs-services.sh ]]; then
+            printf '%s\n' "$DOCTOR_DRIFT_SCRIPT"
+        elif [[ -f "$PROJECT_ROOT/scripts/lib/$1" ]]; then
+            printf '%s/scripts/lib/%s\n' "$PROJECT_ROOT" "$1"
+        else
+            return 1
+        fi
+    }
+    cat > "$DOCTOR_DRIFT_SCRIPT" <<'EOF'
+#!/bin/bash
+printf started > "$DOCTOR_DRIFT_STARTED"
+printf '%s\n' "$@" > "$DOCTOR_DRIFT_ARGS"
+{
+    printf 'UID=%s\n' "$EUID"
+    for name in HOME ACFS_HOME ACFS_STATE_FILE ACFS_BIN_DIR PATH BASH_ENV ENV \
+        XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS DBUS_SESSION_BUS_PID \
+        DBUS_SYSTEM_BUS_ADDRESS DBUS_STARTER_ADDRESS DBUS_STARTER_BUS_TYPE \
+        SYSTEMD_BUS_ADDRESS SYSTEMD_HOST SYSTEMD_MACHINE TMUX TMUX_PANE TMUX_TMPDIR; do
+        printf '%s=%s\n' "$name" "${!name-}"
+    done
+} > "$DOCTOR_DRIFT_CONTEXT"
+case "$DOCTOR_DRIFT_MODE" in
+    healthy) printf 'cm|ok|installed bytes match\n' ;;
+    not-running) printf 'cm|not-running|no live process\n' ;;
+    unknown) printf 'cm|unknown|cannot read the running executable\n' ;;
+    stale) printf 'cm|stale|replaced binary with a | in its path\n'; exit 1 ;;
+    agent-mail) printf 'agent-mail|stale|replaced Agent Mail binary\n'; exit 1 ;;
+    failed) printf 'cm|stale|partial stale observation\n'; exit 42 ;;
+    empty) exit 1 ;;
+    malformed) printf 'unstructured output\n' ;;
+    duplicate) printf 'cm|ok|first\ncm|ok|second\n' ;;
+    unexpected) printf 'agent-mail|ok|outside the selected scope\n' ;;
+    partial) printf 'cm|ok|cass result is missing\n' ;;
+    empty-detail) printf 'cm|unknown|\n' ;;
+    bad-state) printf 'cm|unrecognized|invalid state\n' ;;
+    inconsistent) printf 'cm|stale|stale row without its stale exit status\n' ;;
+    stalled)
+        trap '' TERM
+        sleep 8 &
+        printf '%s\n' "$!" > "$DOCTOR_DRIFT_CHILD"
+        wait
+        printf escaped > "$DOCTOR_DRIFT_ESCAPED"
+        printf 'cm|stale|late observation\n'
+        exit 1
+        ;;
+    orphaned)
+        (
+            trap '' TERM
+            sleep 8
+            printf escaped > "$DOCTOR_DRIFT_ESCAPED"
+            printf 'cm|stale|late orphan observation\n'
+        ) &
+        printf '%s\n' "$!" > "$DOCTOR_DRIFT_CHILD"
+        exit 0
+        ;;
+esac
+EOF
+    FIX_MODE=true
+    DOCTOR_FIX_SCOPED=true
+}
+
+@test "doctor service drift: valid stale reports use the target context and exact checkpoint without automatic repair" {
+    doctor_service_drift_fixture
+    local startup_hook="$BATS_TEST_TMPDIR/ambient-startup"
+    export DOCTOR_DRIFT_POISON="$BATS_TEST_TMPDIR/startup-executed"
+    printf 'printf poisoned > "$DOCTOR_DRIFT_POISON"\n' > "$startup_hook"
+    export XDG_RUNTIME_DIR="$BATS_TEST_TMPDIR/foreign-runtime"
+    export DBUS_SESSION_BUS_ADDRESS=unix:path=/foreign/session-bus
+    export DBUS_SESSION_BUS_PID=1234 DBUS_SYSTEM_BUS_ADDRESS=unix:path=/foreign/system-bus
+    export DBUS_STARTER_ADDRESS=unix:path=/foreign/starter DBUS_STARTER_BUS_TYPE=session
+    export SYSTEMD_BUS_ADDRESS=unix:path=/foreign/systemd SYSTEMD_HOST=foreign SYSTEMD_MACHINE=foreign
+    export TMUX=/foreign/socket,123,0 TMUX_PANE=%99 TMUX_TMPDIR="$BATS_TEST_TMPDIR/foreign-tmux"
+
+    BASH_ENV="$startup_hook" ENV="$startup_hook" \
+        HOME="$BATS_TEST_TMPDIR/foreign-home" ACFS_HOME="$BATS_TEST_TMPDIR/foreign-acfs" \
+        PATH="$BATS_TEST_TMPDIR/foreign-bin:$PATH" check_service_binary_drift
+
+    [ -s "$DOCTOR_DRIFT_STARTED" ]
+    [ ! -e "$DOCTOR_DRIFT_POISON" ]
+    [ "$(cat "$DOCTOR_DRIFT_ARGS")" = $'drift\n--robot' ]
+    grep -Fx "UID=$(id -u)" "$DOCTOR_DRIFT_CONTEXT"
+    grep -Fx "HOME=$TARGET_HOME" "$DOCTOR_DRIFT_CONTEXT"
+    grep -Fx "ACFS_HOME=$TARGET_HOME/.acfs" "$DOCTOR_DRIFT_CONTEXT"
+    grep -Fx "ACFS_STATE_FILE=$DOCTOR_SELECTION_STATE_FILE" "$DOCTOR_DRIFT_CONTEXT"
+    grep -Fx "ACFS_BIN_DIR=$ACFS_BIN_DIR" "$DOCTOR_DRIFT_CONTEXT"
+    if grep -Fq "$BATS_TEST_TMPDIR/foreign-bin" "$DOCTOR_DRIFT_CONTEXT"; then
+        fail "service inspection inherited the caller's PATH"
+    fi
+    if grep -Fq "$BATS_TEST_TMPDIR/foreign-acfs" "$DOCTOR_DRIFT_CONTEXT"; then
+        fail "service inspection inherited the caller's ACFS home"
+    fi
+    local name=""
+    for name in BASH_ENV ENV DBUS_SESSION_BUS_PID DBUS_SYSTEM_BUS_ADDRESS \
+        DBUS_STARTER_ADDRESS DBUS_STARTER_BUS_TYPE SYSTEMD_BUS_ADDRESS \
+        SYSTEMD_HOST SYSTEMD_MACHINE TMUX TMUX_PANE TMUX_TMPDIR; do
+        grep -Fx "$name=" "$DOCTOR_DRIFT_CONTEXT"
+    done
+    local runtime_dir="/run/user/$(id -u)" expected_runtime="" expected_bus=""
+    if [[ -d "$runtime_dir" && ! -L "$runtime_dir" && -O "$runtime_dir" ]]; then
+        expected_runtime="$runtime_dir"
+        if [[ -S "$runtime_dir/bus" && ! -L "$runtime_dir/bus" && -O "$runtime_dir/bus" ]]; then
+            expected_bus="unix:path=$runtime_dir/bus"
+        fi
+    fi
+    grep -Fx "XDG_RUNTIME_DIR=$expected_runtime" "$DOCTOR_DRIFT_CONTEXT"
+    grep -Fx "DBUS_SESSION_BUS_ADDRESS=$expected_bus" "$DOCTOR_DRIFT_CONTEXT"
+    [ "${#DOCTOR_FIX_PENDING_IDS[@]}" -eq 0 ]
+    doctor_selection_json | jq -e '
+        length == 1 and .[0].id == "services.binary_drift.cm" and
+        .[0].status == "warn" and
+        .[0].details == "replaced binary with a | in its path" and
+        (.[0].fix | contains("acfs services restart cm"))' >/dev/null
+}
+
+@test "doctor service drift: Agent Mail uses a valid report ID and retains its actual service name" {
+    doctor_service_drift_fixture
+    jq -n --arg home "$TARGET_HOME" --arg user "$TARGET_USER" \
+        '{target_home:$home,target_user:$user,module_selection:{schema_version:1,selected_modules:["stack.mcp_agent_mail"]}}' \
+        > "$DOCTOR_SELECTION_STATE_FILE"
+    state_load_module_selection "$DOCTOR_SELECTION_STATE_FILE" "$TARGET_HOME" "$TARGET_USER"
+    export DOCTOR_DRIFT_MODE=agent-mail
+
+    check_service_binary_drift
+
+    [ "${#DOCTOR_FIX_PENDING_IDS[@]}" -eq 0 ]
+    [ "$(doctor_check_module_id services.binary_drift.agent_mail)" = stack.mcp_agent_mail ]
+    [ "$(doctor_check_module_id services.binary_drift.cm)" = stack.cm ]
+    [ "$(doctor_check_module_id services.binary_drift.cass)" = stack.cass ]
+    doctor_selection_json | jq -e '
+        length == 1 and .[0].id == "services.binary_drift.agent_mail" and
+        .[0].status == "warn" and
+        (.[0].fix | contains("acfs services restart agent-mail"))' >/dev/null
+}
+
+@test "doctor service drift: current and stopped services stay quiet while unknown observations remain visible" {
+    doctor_service_drift_fixture
+    local mode=""
+    for mode in healthy not-running; do
+        export DOCTOR_DRIFT_MODE="$mode"
+        check_service_binary_drift
+        [ "${#JSON_CHECKS[@]}" -eq 0 ]
+    done
+    export DOCTOR_DRIFT_MODE=unknown
+    check_service_binary_drift
+    [ "${#DOCTOR_FIX_PENDING_IDS[@]}" -eq 0 ]
+    doctor_selection_json | jq -e '
+        length == 1 and .[0].id == "services.binary_drift.cm" and
+        .[0].status == "warn" and .[0].fix == null and
+        .[0].details == "cannot read the running executable"' >/dev/null
+}
+
+@test "doctor service drift: failed malformed partial and inconsistent reports cannot authorize restart suggestions" {
+    doctor_service_drift_fixture
+    local mode=""
+    for mode in failed empty malformed duplicate unexpected partial empty-detail bad-state inconsistent; do
+        export DOCTOR_DRIFT_MODE="$mode"
+        JSON_CHECKS=()
+        WARN_COUNT=0
+        ACFS_STATE_SELECTED_MODULES=(stack.cm lang.bun)
+        if [[ "$mode" == partial ]]; then
+            ACFS_STATE_SELECTED_MODULES+=(stack.cass)
+        fi
+        check_service_binary_drift
+        [ "${#DOCTOR_FIX_PENDING_IDS[@]}" -eq 0 ]
+        doctor_selection_json | jq -e '
+            length == 1 and .[0].id == "services.binary_drift" and
+            .[0].status == "warn" and .[0].fix == null' >/dev/null
+        if [[ "$mode" == failed ]]; then
+            doctor_selection_json | jq -e '.[0].details | contains("exit 42")' >/dev/null
+        else
+            doctor_selection_json | jq -e '.[0].details | contains("invalid or incomplete")' >/dev/null
+        fi
+    done
+}
+
+@test "doctor service drift: TERM-resistant and orphaned output writers are bounded and later diagnostics continue" {
+    doctor_service_drift_fixture
+    DEEP_CHECK_TIMEOUT=1
+    local mode="" child_state="" attempt=0
+    for mode in stalled orphaned; do
+        export DOCTOR_DRIFT_MODE="$mode"
+        export DOCTOR_DRIFT_STARTED="$BATS_TEST_TMPDIR/drift-started-$mode"
+        export DOCTOR_DRIFT_CHILD="$BATS_TEST_TMPDIR/drift-child-$mode"
+        export DOCTOR_DRIFT_ESCAPED="$BATS_TEST_TMPDIR/drift-escaped-$mode"
+        JSON_CHECKS=()
+        WARN_COUNT=0
+        check_service_binary_drift
+        [ -s "$DOCTOR_DRIFT_STARTED" ]
+        [ -s "$DOCTOR_DRIFT_CHILD" ]
+        [ ! -e "$DOCTOR_DRIFT_ESCAPED" ]
+        for attempt in {1..20}; do
+            child_state="$(ps -o stat= -p "$(cat "$DOCTOR_DRIFT_CHILD")" 2>/dev/null || true)"
+            [[ -z "$child_state" || "$child_state" == Z* ]] && break
+            sleep 0.05
+        done
+        [[ -z "$child_state" || "$child_state" == Z* ]] \
+            || fail "$mode service child is still running: $child_state"
+        [ "${#DOCTOR_FIX_PENDING_IDS[@]}" -eq 0 ]
+        doctor_selection_json | jq -e '
+            length == 1 and .[0].id == "services.binary_drift" and
+            .[0].status == "timeout" and (.[0].details | contains("deadline")) and
+            .[0].fix == null' >/dev/null
+    done
+    doctor_selection_binary bun
+    check_command tool.bun Bun bun "install bun"
+    doctor_selection_json | jq -e '.[-1].id == "tool.bun" and .[-1].status == "pass"' >/dev/null
+}
+
+@test "doctor service drift: missing timeout support refuses execution and unselected services stay unprobed" {
+    doctor_service_drift_fixture
+    _acfs_doctor_system_binary_path() {
+        [[ "$1" != timeout ]] || return 1
+        [[ -x "/usr/bin/$1" ]] || return 1
+        printf '/usr/bin/%s\n' "$1"
+    }
+    check_service_binary_drift
+    [ ! -e "$DOCTOR_DRIFT_STARTED" ]
+    [ "${#DOCTOR_FIX_PENDING_IDS[@]}" -eq 0 ]
+    doctor_selection_json | jq -e '
+        length == 1 and .[0].id == "services.binary_drift" and
+        .[0].status == "warn" and .[0].fix == null and
+        (.[0].details | contains("timeout"))' >/dev/null
+
+    JSON_CHECKS=()
+    ACFS_STATE_SELECTED_MODULES=(lang.bun)
+    check_service_binary_drift
+    [ ! -e "$DOCTOR_DRIFT_STARTED" ]
+    [ "${#JSON_CHECKS[@]}" -eq 0 ]
+}
+
 doctor_custom_checkpoint_fixture() {
     doctor_selection_fixture '{"module_selection":{"schema_version":1,"selected_modules":["agents.claude"]}}'
     TARGET_HOME="$BATS_TEST_TMPDIR/custom-target"
