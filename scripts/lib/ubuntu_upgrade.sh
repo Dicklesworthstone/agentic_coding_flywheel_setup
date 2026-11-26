@@ -1969,10 +1969,11 @@ upgrade_setup_infrastructure() {
     if [[ "$append_skip_upgrade" == "true" ]]; then
         continue_args+=("--skip-ubuntu-upgrade")
     fi
-    local rendered_args=""
+    local rendered_args="" requires_tty=true
     local arg=""
     for arg in "${continue_args[@]}"; do
         rendered_args+=" $(printf '%q' "$arg")"
+        case "$arg" in --yes|-y) requires_tty=false ;; esac
     done
     rendered_args="${rendered_args# }"
 
@@ -1984,6 +1985,7 @@ CONTINUE_ACFS_STATE_FILE=${acfs_state_file_q}
 CONTINUE_ACFS_REF=${repo_ref_q}
 CONTINUE_INSTALL_URL=${install_url_q}
 CONTINUE_HOME=${continue_home_q}
+CONTINUE_REQUIRES_TTY=${requires_tty}
 CONTINUE_INSTALL_ARGS=(${rendered_args})
 CONTINUE_CONTEXT
 

@@ -260,6 +260,53 @@ test_profile_reselection_allows_later_explicit_mode_choice() {
     [[ "$MODE" == safe && "$ACFS_SELECTED_PROFILE" == safe ]]
 }
 
+test_reviewed_upgrade_replays_picker_intent() {
+    # Replay the produced argv through install.sh's real argument parser. A
+    # profile and an edited custom selection must reconstruct the reviewed
+    # plan, including which modules were requested versus pulled in as deps.
+    eval "$(sed -n '/^parse_args()/,/^}$/p; /^append_comma_or_space_separated()/,/^}$/p' "$REPO_ROOT/install.sh")"
+    local choice="" input="" before="" cache='dist cache; $literal'
+    local -a args=() original=()
+    for choice in profile custom; do
+        fixture || return 1
+        ACFS_INTERACTIVE=true
+        MODE=safe
+        original=(--interactive --profile=vibe --mode safe --skip-cloud
+            --strict --verified-installer-cache "$cache" --resume --webhook=--skip-cloud)
+        case "$choice" in
+            profile) input=$'1\n2\n5\n1' ;;
+            custom) input=$'7\ntools.one\nlang.runtime\ndone\n1' ;;
+        esac
+        _acfs_interactive_module_selector_on_tty <<< "$input" >/dev/null || return 1
+        before="$(declare -p ACFS_EFFECTIVE_PLAN ACFS_PLAN_REASON)"
+        acfs_build_reviewed_upgrade_args args "${original[@]}" || return 1
+        [[ "${args[0]}" == --strict && "${args[1]}" == --verified-installer-cache
+            && "${args[2]}" == "$cache" && "${args[3]}" == --resume
+            && "${args[4]}" == --webhook=--skip-cloud && "${args[5]}" == --interactive-resume ]] || return 1
+
+        fixture || return 1
+        ACFS_INTERACTIVE_RESUME_ONLY=false
+        ACFS_FORCE_RESUME=false
+        SKIP_CLOUD=false
+        parse_args "${args[@]}" || return 1
+        [[ "$YES_MODE" == false && "$ACFS_INTERACTIVE" == true
+            && "$ACFS_INTERACTIVE_RESUME_ONLY" == true && "$MODE" == safe
+            && "$ACFS_FORCE_RESUME" == true && "$SKIP_CLOUD" == false
+            && "$ACFS_VERIFIED_INSTALLER_CACHE" == "$cache" && "$ACFS_WEBHOOK_URL" == --skip-cloud ]] || return 1
+        case "$choice" in
+            profile)
+                [[ "$ACFS_CLI_PROFILE" == cloud-only ]] || return 1
+                acfs_apply_profile "$ACFS_CLI_PROFILE" || return 1
+                ;;
+            custom)
+                [[ -z "$ACFS_CLI_PROFILE" && "${#ONLY_MODULES[@]}" -gt 0 ]] || return 1
+                ;;
+        esac
+        acfs_resolve_selection || return 1
+        [[ "$(declare -p ACFS_EFFECTIVE_PLAN ACFS_PLAN_REASON)" == "$before" ]] || return 1
+    done
+}
+
 test_interactive_selector_rejects_invalid_entry_mode() {
     fixture || return 1
     MODE=unexpected
@@ -311,6 +358,7 @@ for test in \
     test_profile_reselection_clears_all_filters \
     test_profile_reselection_restores_incoming_safe_mode \
     test_profile_reselection_allows_later_explicit_mode_choice \
+    test_reviewed_upgrade_replays_picker_intent \
     test_interactive_selector_rejects_invalid_entry_mode \
     test_invalid_plan_clears_readiness \
     test_empty_plan_cannot_be_customized \

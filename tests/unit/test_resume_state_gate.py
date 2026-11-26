@@ -224,6 +224,23 @@ mv() {
         self.assertEqual(state["completed_phases"], ["user_setup"])
         self.assertEqual(state["sentinel"], "original evidence")
 
+    def test_reviewed_reboot_arguments_keep_all_checkpoint_choices(self):
+        parser = _main_fixture.definition(_main_fixture.MAIN.read_text(), "parse_args")
+        replay = parser + "\nACFS_INTERACTIVE=false\nparse_args --interactive-resume --mode safe"
+        for choice, expected_status in (("resume", 0), ("fresh", 1), ("abort", 2)):
+            with self.subTest(choice=choice):
+                original = checkpoint_bytes()
+                folder = self.fixture(choice, content=original)
+                status, output = self.run_resume(
+                    folder, "tty-read", choice=choice, extra=replay, version="old-version")
+                self.assertEqual(status, expected_status, output)
+                if choice == "fresh":
+                    self.assertFalse((folder / "state.json").exists())
+                    [backup] = folder.glob("state.json.backup.*")
+                    self.assertEqual(backup.read_bytes(), original)
+                else:
+                    self.assertEqual((folder / "state.json").read_bytes(), original)
+
     def test_same_version_source_change_invalidates_finalize_in_all_resume_paths(self):
         for path in RESUME_PATHS:
             with self.subTest(path=path):
@@ -1430,6 +1447,21 @@ _ACFS_SIGNAL_RECEIVED=TERM
                 self.assertEqual(checkpoint["mode"], expected)
                 if expected == "safe":
                     self.assertNotIn("module_selection", checkpoint)
+
+    def test_reviewed_default_plan_is_not_replaced_by_the_previous_scoped_checkpoint(self):
+        result, events, _ = self.run_scoped(("--print-plan", "--profile", "full"))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        expected = self.scope_event(events, "resolved")
+        self.assertIn("stack.ntm", expected)
+        for additional in ((), ("--yes",)):
+            with self.subTest(additional=additional):
+                result, events, folder = self.run_scoped(
+                    ("--interactive-resume", "--mode", "safe", "--print-plan", *additional),
+                    options={"YES_MODE": "false"})
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(self.scope_event(events, "resolved"), expected)
+                self.assertNotIn("interactive", events)
+                self.assert_unchanged(folder)
 
     def test_saved_and_explicit_modes_match_targeted_previews_without_state_writes(self):
         cases = (

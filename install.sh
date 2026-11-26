@@ -462,6 +462,7 @@ export ACFS_FORCE_REINSTALL=false
 # NOTE: When unset/empty, downstream libs default to interactive behavior when a TTY is available.
 # install.sh forces non-interactive behavior in --yes mode.
 export ACFS_INTERACTIVE="${ACFS_INTERACTIVE:-}"
+ACFS_INTERACTIVE_RESUME_ONLY=false
 RESET_STATE_ONLY=false
 ACFS_INSTALL_LOCK_FD=""
 ACFS_INSTALL_LOCK_FILE=""
@@ -2686,6 +2687,7 @@ Options:
   --yes, -y               Non-interactive mode (accept defaults)
   --mode <vibe|safe>      Install mode (default: vibe)
   --profile <profile>     Module profile (e.g. vibe, safe, minimal, agents-only, cloud-only, stack-only)
+  --interactive-resume    Prompt about an existing checkpoint using the supplied module plan
   --dry-run               Preview changes without applying
   --print                 Show selected modules and their verified installer URLs and SHA-256 pins
   --resume                Resume interrupted installation
@@ -2774,6 +2776,12 @@ EOF
                 ;;
             --interactive)
                 export ACFS_INTERACTIVE=true
+                ACFS_INTERACTIVE_RESUME_ONLY=false
+                shift
+                ;;
+            --interactive-resume)
+                export ACFS_INTERACTIVE=true
+                ACFS_INTERACTIVE_RESUME_ONLY=true
                 shift
                 ;;
             --strict)
@@ -12954,7 +12962,8 @@ acfs_apply_saved_installation_selection() {
     ACFS_SAVED_SELECTION_MODULES=()
     ACFS_SAVED_REQUESTED_MODULES=()
     if [[ "${ACFS_STATE_SELECTION_MODE:-legacy}" == scoped \
-        && -z "${ACFS_CLI_PROFILE:-}" && "${ACFS_INTERACTIVE:-false}" != true ]] \
+        && -z "${ACFS_CLI_PROFILE:-}" \
+        && "${ACFS_INTERACTIVE:-false}" != true && "${ACFS_INTERACTIVE_RESUME_ONLY:-false}" != true ]] \
         && [[ ${#ONLY_MODULES[@]} -eq 0 && ${#ONLY_PHASES[@]} -eq 0 ]]; then
         # Saved intent is an implicit default, not a set of new --only roots.
         # Explicit module, phase, and profile choices can still expand it.
@@ -13010,6 +13019,11 @@ main() {
     # --yes should always behave non-interactively (skip prompts), regardless of flag order.
     if [[ "$YES_MODE" == "true" ]]; then
         export ACFS_INTERACTIVE=false
+    elif [[ "${ACFS_INTERACTIVE_RESUME_ONLY:-false}" == true && "$LIST_MODULES" != true \
+        && "$PRINT_PLAN_MODE" != true && "$PRINT_MODE" != true && "$DRY_RUN" != true \
+        && "$PIN_REF_MODE" != true ]] && ! (exec 3<>/dev/tty) 2>/dev/null; then
+        log_error "The reviewed installation needs an interactive terminal for checkpoint and installation prompts."
+        exit 1
     fi
 
     # Handle --pin-ref early (before any heavy setup) - just resolve SHA and exit
@@ -13183,10 +13197,18 @@ main() {
     # - CLI flags (--profile, --only, --skip, --no-deps, --only-phase)
     # - Legacy flags mapped above
     # - Manifest defaults and dependency graph
-    if [[ "${ACFS_INTERACTIVE:-false}" == "true" ]] && [[ "${YES_MODE:-false}" != "true" ]] && [[ "$LIST_MODULES" != "true" ]] && [[ "$PRINT_PLAN_MODE" != "true" ]] && [[ "$DRY_RUN" != "true" ]]; then
+    local picker_reviewed=false
+    if [[ "${ACFS_INTERACTIVE:-false}" == true && "${ACFS_INTERACTIVE_RESUME_ONLY:-false}" != true \
+        && "${YES_MODE:-false}" != true && "$LIST_MODULES" != true && "$PRINT_PLAN_MODE" != true && "$DRY_RUN" != true ]]; then
         if ! acfs_interactive_module_selector; then
             exit 1
         fi
+        # Legacy flags already seeded SKIP_MODULES. After review, use the
+        # exact plan for legacy installs and verification, including mixed cloud selections.
+        SKIP_POSTGRES=false
+        SKIP_VAULT=false
+        SKIP_CLOUD=false
+        picker_reviewed=true
     else
         if ! acfs_resolve_selection; then
             exit 1
@@ -13249,7 +13271,11 @@ main() {
     if [[ "$DRY_RUN" != true && "$PRINT_MODE" != true ]]; then
         ensure_ubuntu
         if acfs_ubuntu_upgrade_requested; then
-            if ! run_ubuntu_upgrade_phase "$@"; then
+            local -a upgrade_args=("$@")
+            if [[ "$picker_reviewed" == true ]]; then
+                acfs_build_reviewed_upgrade_args upgrade_args "$@" || exit 1
+            fi
+            if ! run_ubuntu_upgrade_phase "${upgrade_args[@]}"; then
                 log_error "Ubuntu preparation failed; normal installation has not started."
                 exit 1
             fi

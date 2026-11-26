@@ -151,7 +151,7 @@ confirm_resume() { trace normal_install_ready; exit 0; }
         script = '\n'.join([prelude, assignments, self.source, extra, invocation])
         (root / 'test-script.sh').write_text(script)
         result = subprocess.run(['/bin/bash', '-p', '-c', script], text=True, capture_output=True,
-                                timeout=10, user=uid, group=uid,
+                                timeout=10, user=uid, group=uid, start_new_session=True,
                                 env={'PATH': '/usr/bin:/bin', 'HOME': str(home)})
         events = [line[6:] for line in result.stdout.splitlines() if line.startswith('EVENT:')]
         return result, events, root
@@ -700,6 +700,96 @@ class PolicyLoadingTests(unittest.TestCase):
 
 class ActualUpgradeArgumentsTests(MainUpgradeOrderTests):
     """Exercise the real CLI parser and main upgrade decision together."""
+
+    def test_reboot_receives_reviewed_selection_instead_of_picker_inputs(self):
+        parser = definition(MAIN.read_text(), 'parse_args')
+        selector = (ROOT / 'scripts/lib/module_selector.sh').read_text()
+        builder = definitions(selector, ['acfs_build_reviewed_upgrade_args', 'acfs_append_selection_args'])
+        picker = r'''
+acfs_interactive_module_selector() {
+    trace interactive
+    MODE=safe
+    ACFS_SELECTED_PROFILE=''
+    ONLY_MODULES=(tools.reviewed)
+    ONLY_PHASES=()
+    SKIP_MODULES=(tools.unchecked)
+    SKIP_TAGS=() SKIP_CATEGORIES=()
+    ACFS_MODULES_IN_ORDER=(tools.reviewed tools.unchecked)
+    ACFS_EFFECTIVE_PLAN=(tools.reviewed)
+}
+'''
+        args = ('--target-ubuntu=26.04', '--interactive', '--profile=vibe', '--skip-cloud',
+                '--verified-installer-cache', 'cache with spaces', '--resume')
+        result, events, _ = self.run_main(
+            arguments=args, extra='\n'.join([parser, builder, picker]),
+            overrides={'YES_MODE': 'false', 'TEST_UPGRADE_EXITS': 'true'})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('interactive', events)
+        self.assertIn('reboot_requested', events)
+        self.assertEqual([e.removeprefix('upgrade_arg:') for e in events if e.startswith('upgrade_arg:')],
+                         ['--target-ubuntu=26.04', '--verified-installer-cache', 'cache with spaces',
+                          '--resume', '--interactive-resume', '--mode', 'safe',
+                          '--only', 'tools.reviewed', '--skip', 'tools.unchecked'])
+
+    def test_reviewed_legacy_installs_and_smoke_checks_observe_each_cloud_choice(self):
+        installer = definitions(MAIN.read_text(), ['parse_args', 'acfs_legacy_module_selected',
+                                                   'install_cloud_db_legacy_cloud', 'smoke_test'])
+        helpers = (ROOT / 'scripts/lib/install_helpers.sh').read_text()
+        edges = r'''
+acfs_interactive_module_selector() {
+    ACFS_GENERATED_SELECTION_READY=true
+    declare -gA ACFS_EFFECTIVE_RUN=([db.postgres18]=1 [tools.vault]=1)
+    ACFS_EFFECTIVE_PLAN=(db.postgres18 tools.vault)
+    if [[ -n "$TEST_CLOUD" ]]; then
+        ACFS_EFFECTIVE_RUN["$TEST_CLOUD"]=1
+        ACFS_EFFECTIVE_PLAN+=("$TEST_CLOUD")
+    fi
+}
+confirm_resume() { return 0; }
+acfs_legacy_module_is_required() { return 1; }
+try_step() { trace "install:$1"; return 1; }
+binary_installed() { trace "verify:$1"; }
+acfs_postgres_ready() { trace verify:postgres; }
+ensure_base_deps() {
+    ACFS_BIN_DIR="$TARGET_HOME/.local/bin"
+    mkdir -p "$TARGET_HOME/.bun/bin"
+    touch "$TARGET_HOME/.bun/bin/bun"
+    chmod +x "$TARGET_HOME/.bun/bin/bun"
+    install_cloud_db_legacy_cloud
+    smoke_test
+    exit $?
+}
+'''
+        for cloud in ('cloud.supabase', ''):
+            with self.subTest(cloud=cloud):
+                result, events, _ = self.run_main(
+                    arguments=('--interactive', '--skip-cloud', '--skip-postgres', '--skip-vault'),
+                    extra='\n'.join([installer, definition(helpers, 'should_run_module'), edges]),
+                    overrides={'YES_MODE': 'false', 'TEST_CLOUD': cloud})
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                expected_installs = ['install:Installing supabase'] if cloud else []
+                self.assertEqual([e for e in events if e.startswith('install:')], expected_installs)
+                expected_probes = ['verify:postgres', 'verify:vault']
+                if cloud:
+                    expected_probes.append('verify:supabase')
+                self.assertEqual([e for e in events if e.startswith('verify:')], expected_probes)
+
+    def test_reviewed_resume_requires_a_terminal_unless_yes_is_explicit(self):
+        parser = definition(MAIN.read_text(), 'parse_args')
+        for args, unattended in (
+                (('--interactive-resume',), False),
+                (('--interactive-resume', '--yes'), True),
+                (('-y', '--interactive-resume'), True)):
+            with self.subTest(args=args):
+                result, events, _ = self.run_main(arguments=args, extra=parser,
+                                                  overrides={'YES_MODE': 'false'})
+                self.assertNotIn('interactive', events)
+                if unattended:
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertIn('normal_install_ready', events)
+                else:
+                    self.assert_no_mutation(result, events)
+                    self.assertIn('needs an interactive terminal', result.stderr)
 
     def test_actual_target_and_skip_argument_orders(self):
         parser = definition(MAIN.read_text(), 'parse_args')

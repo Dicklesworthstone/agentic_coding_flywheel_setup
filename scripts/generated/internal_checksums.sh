@@ -10,7 +10,7 @@
 ACFS_INTERNAL_CHECKSUMS_SCHEMA=1
 
 declare -gA ACFS_INTERNAL_CHECKSUMS=(
-  [install.sh]="2995370be5683c601659752ca4f8dbc59cd59c8a806925c1934a766fa908ae13"
+  [install.sh]="e914544727b44ce2bfbc27156dca6290bd7a244e6a871fc8ce4e4c61a97d4a1b"
   [checksums.yaml]="657193b9cebb3e3b5646d724f45211b7fd6ebd9885882f4bafce317c8bf77db3"
   [scripts/preflight.sh]="76e6768d16238317e67f7c0ba38abf5e7440b9d4f76bfd28b5c07b7f007d247e"
   [scripts/lib/security.sh]="2c3efe1b2dc83355710f0f59f0e182c3acbc022dabcb400e215d80c725c87f70"
@@ -27,7 +27,7 @@ declare -gA ACFS_INTERNAL_CHECKSUMS=(
   [scripts/lib/autofix_existing.sh]="4b158028c6777e0719d0a45c13900a306faced785e93eb930fb00e60a686aba1"
   [scripts/lib/autofix_unattended.sh]="848f5744f75503eebe422a9d2418ed6b1341cfd6452004ee0a4e902d04f5d94a"
   [scripts/lib/autofix_version_managers.sh]="e235b7bfb95115f00bf7a4e3398be504c576d1fbe97a64c64a988294d62d621e"
-  [scripts/lib/ubuntu_upgrade.sh]="4128a637ecfaa032bf118f64822d2a02a7cc6ecf3bd89c4405d2adec3cce2a4f"
+  [scripts/lib/ubuntu_upgrade.sh]="2ad0f8eed916ed0a62f5b0578dd6891b32bd1ac0ee048c4f1d318aa743f1197f"
   [scripts/lib/upgrade_resume.sh]="539e556a3ef2f9e369ff068c33c2ace06bc3aa82f16af74f72335df3541c739c"
   [scripts/lib/install_helpers.sh]="35286e5c3c90fa24dcd8409f91ab50d4708f6a4e5eafcc73c156a0a875391dc1"
   [scripts/lib/logging.sh]="890d8e6e44332bede591e462b277a903ae8d8679adebd8cc4fc76face078f6be"
@@ -75,7 +75,7 @@ declare -gA ACFS_INTERNAL_CHECKSUMS=(
   [scripts/lib/dashboard.sh]="e244d1886d2b2321946526301f15d7cab2a30cbc9ca6f082b055fcb5ecedd9a4"
   [scripts/lib/info.sh]="f23accb99462ea9aea7b1ca0845ef49787bfca6e9765de67c5e6b55ff19624c0"
   [scripts/lib/landing_plane.sh]="7c353f5940dd0f4e49bfd1af395970306ad78d60771351610edd6311e80d1a09"
-  [scripts/lib/module_selector.sh]="02a181bc45a605e64c9c32cbf766530e4d6d7015de7380e2fb7f2d2b3f90b083"
+  [scripts/lib/module_selector.sh]="ed8539024f15d9c406cee99ff77d867321ca5280f14f784c82a4767348af428d"
   [scripts/lib/newproj.sh]="520f01586a39587d5d2b157c1449b9a3a020f1825bfd80e7a1470d60f384b6fb"
   [scripts/lib/newproj_agents.sh]="b16dec3eb311081fe378b1a3340d10ee46015d918d58c9010446352a9486fdbc"
   [scripts/lib/newproj_detect.sh]="83afadac698055f9bf5f96eae0a2d2abed0a600bc13cfe18142ac7a749e5ccba"

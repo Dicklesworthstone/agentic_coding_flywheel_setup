@@ -49,17 +49,17 @@ acfs_is_interactive_terminal() {
     return 1
 }
 
-acfs_format_reproducible_cli_command() {
-    local -a cmd=(bash install.sh)
+acfs_append_selection_args() {
+    local -n selection_argv="$1"
     local value="" module="" tag="" module_tag="" category=""
     if [[ -n "${MODE:-}" && ( "$MODE" != vibe || "${ACFS_INTERACTIVE:-false}" == true \
         || "${ACFS_MODE_EXPLICIT:-false}" == true || -n "${ACFS_STATE_INSTALL_MODE:-}" ) ]]; then
-        cmd+=(--mode "$MODE")
+        selection_argv+=(--mode "$MODE")
     fi
     local profile_has_selectors=false
     if [[ -n "${ACFS_SELECTED_PROFILE:-}" ]]; then
         # Full, safe and vibe also select manifest defaults on a scoped install.
-        cmd+=(--profile "$ACFS_SELECTED_PROFILE")
+        selection_argv+=(--profile "$ACFS_SELECTED_PROFILE")
         if [[ -n "${ACFS_PROFILE_ONLY_MODULES["$ACFS_SELECTED_PROFILE"]:-}" \
             || -n "${ACFS_PROFILE_ONLY_PHASES["$ACFS_SELECTED_PROFILE"]:-}" ]]; then
             profile_has_selectors=true
@@ -67,17 +67,17 @@ acfs_format_reproducible_cli_command() {
     fi
     if [[ "$profile_has_selectors" != true ]]; then
         for value in "${ONLY_MODULES[@]}"; do
-            [[ -n "$value" ]] && cmd+=(--only "$value")
+            [[ -n "$value" ]] && selection_argv+=(--only "$value")
         done
         for value in "${ONLY_PHASES[@]}"; do
-            [[ -n "$value" ]] && cmd+=(--only-phase "$value")
+            [[ -n "$value" ]] && selection_argv+=(--only-phase "$value")
         done
     fi
 
     local -A skipped=()
     for module in "${SKIP_MODULES[@]}"; do
         [[ -n "$module" && -z "${skipped[$module]:-}" ]] || continue
-        cmd+=(--skip "$module")
+        selection_argv+=(--skip "$module")
         skipped["$module"]=1
     done
     # Tags/categories are internal selectors, not public CLI flags. Expand them
@@ -104,13 +104,35 @@ acfs_format_reproducible_cli_command() {
             [[ "$exclude" == "true" ]] && break
         done
         if [[ "$exclude" == "true" ]]; then
-            cmd+=(--skip "$module")
+            selection_argv+=(--skip "$module")
             skipped["$module"]=1
         fi
     done
     if [[ "${NO_DEPS:-false}" == "true" ]]; then
-        cmd+=(--no-deps)
+        selection_argv+=(--no-deps)
     fi
+}
+
+# main calls this only after the user accepted a plan in the picker. Replace
+# the selectors that seeded the menu; retain all other validated argv verbatim.
+acfs_build_reviewed_upgrade_args() {
+    local -n continuation_argv="$1"
+    shift
+    continuation_argv=()
+    while (( $# )); do
+        case "$1" in
+            --profile|--mode|--only|--only-phase|--skip) shift 2 || return 1 ;;
+            --profile=*|--interactive|--interactive-resume|--skip-cloud|--skip-postgres|--skip-vault|--no-deps) shift ;;
+            *) continuation_argv+=("$1"); shift ;;
+        esac
+    done
+    continuation_argv+=(--interactive-resume)
+    acfs_append_selection_args continuation_argv
+}
+
+acfs_format_reproducible_cli_command() {
+    local -a cmd=(bash install.sh)
+    acfs_append_selection_args cmd
     # Bash %q preserves argument boundaries and prevents shell metacharacters in
     # values from becoming commands when a user copies the displayed invocation.
     local rendered=""

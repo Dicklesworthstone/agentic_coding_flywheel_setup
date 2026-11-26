@@ -59,8 +59,10 @@ EOF
     ACFS_REPO_OWNER="Dicklesworthstone" \
     ACFS_REPO_NAME="agentic_coding_flywheel_setup" \
     ACFS_REF="main" \
-    upgrade_setup_infrastructure "$source_dir" "--yes" "--mode" "vibe"
+    upgrade_setup_infrastructure "$source_dir" "--interactive-resume" "--mode" "vibe"
 
+    source "$resume_dir/continue_context.env"
+    [[ "$CONTINUE_REQUIRES_TTY" == true ]]
     local continue_script="$resume_dir/continue_install.sh"
     [[ -f "$continue_script" ]]
     [[ -x "$continue_script" ]]
@@ -118,6 +120,7 @@ EOF
         # its own serialized environment. Both must preserve the same checkpoint.
         source "$resume_dir/continue_context.env"
         [[ "$CONTINUE_ACFS_STATE_FILE" == "$install_state" ]]
+        [[ "$CONTINUE_REQUIRES_TTY" == false ]]
         run bash "$resume_dir/continue_install.sh"
         assert_success
         assert_output --partial "Using local installer"
