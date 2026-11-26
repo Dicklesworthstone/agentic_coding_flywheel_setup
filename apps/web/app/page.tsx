@@ -1378,7 +1378,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* The two long-form guides, as editorial covers */}
+        {/* The two long-form guides */}
         <GuideCovers />
 
         {/* Features Grid */}
