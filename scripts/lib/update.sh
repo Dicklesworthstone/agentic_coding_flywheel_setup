@@ -8824,6 +8824,18 @@ update_nvm_and_node() {
         # Exact, different versions work across nvm releases; asking newer nvm
         # to reinstall packages from its current version fails on a no-op run.
         desired_version=$(nvm version-remote "$selector") || exit $?
+        # Since 2026-10 nodejs.org also indexes Current-line prereleases (v27.0.0-alpha.*), and nvm 0.40.1
+        # resolves node/stable to the newest index entry, prerelease or not. Those selectors mean the newest
+        # final release: take the last exact vX.Y.Z from ls-remote, which nvm lists in ascending order.
+        if [[ "$selector" == node || "$selector" == stable ]] \
+            && [[ ! "$desired_version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            remote_versions=$(nvm ls-remote --no-colors) || exit $?
+            desired_version=""
+            while read -r remote_version remote_rest; do
+                [[ "$remote_version" != "->" ]] || read -r remote_version _ <<< "$remote_rest"
+                [[ ! "$remote_version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || desired_version=$remote_version
+            done <<< "$remote_versions"
+        fi
         if [[ ! "$desired_version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             printf "Cannot resolve the requested Node release: %s\n" "$selector" >&2
             exit 1

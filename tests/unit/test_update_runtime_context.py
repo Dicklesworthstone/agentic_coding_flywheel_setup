@@ -1069,7 +1069,17 @@ nvm() {
             ;;
         version-remote)
             if [[ "$2" == v[0-9]* ]]; then printf '%s\n' "$2"
+            elif [[ -f "$NVM_DIR/remote-prerelease" && ( "$2" == node || "$2" == stable ) ]]; then
+                printf 'v27.0.0-alpha.0.1.1\n'
             else printf 'v22.20.0\n'; fi
+            ;;
+        ls-remote)
+            # Shape of nvm 0.40.1 output: finals indented and annotated, the current one marked "->",
+            # prereleases unindented and last.
+            [[ "$2" == --no-colors ]] || return 64
+            if [[ -f "$NVM_DIR/remote-prerelease-only" ]]; then printf 'v27.0.0-alpha.0.1.1\n'; return 0; fi
+            printf '       v22.19.0\n       v22.19.1   (LTS: Jod)\n->     v22.20.0   (Latest LTS: Jod)\n'
+            printf 'v27.0.0-alpha.0.1.0\nv27.0.0-alpha.0.1.1\n'
             ;;
         which)
             if [[ "$2" == default ]]; then
@@ -1358,6 +1368,30 @@ update_remove_target_installer_tmpdir() { :; }
         self.assertIn("COUNTS=0,0,1", output)
         self.assertTrue(any(event[0] == "node" and event[-1] == "--version" for event in self.events()))
         self.assertFalse((directory / "alias/default").exists())
+
+    def test_nvm_node_channel_installs_newest_final_release_not_a_prerelease(self):
+        # nodejs.org indexes v27.0.0-alpha.* since 2026-10 and nvm 0.40.1 resolves `node` to it (fleet 2026-11-25).
+        directory = self.write_nvm_fixture(default="node", npm=True)
+        self.write_input(directory / "remote-prerelease", "fixture\n")
+        output = self.run_update(command=self.nvm_command())
+        self.assert_nvm_success(output, directory, "node")
+        self.assertIn("ls-remote --no-colors", [event[-1] for event in self.events() if event[0] == "nvm"])
+        self.assertEqual((directory / "alias/default").read_text(), "node\n")
+
+    def test_nvm_node_channel_with_only_prereleases_is_refused(self):
+        directory = self.write_nvm_fixture(default="node", npm=True)
+        for flag in ("remote-prerelease", "remote-prerelease-only"):
+            self.write_input(directory / flag, "fixture\n")
+        output = self.run_update(command=self.nvm_command())
+        self.assertIn("COUNTS=0,0,1", output)
+        self.assertFalse((directory / "installed-selector").exists())
+
+    def test_nvm_lts_channel_never_falls_back_to_ls_remote(self):
+        directory = self.write_nvm_fixture(default="lts/*", npm=True)
+        self.write_input(directory / "remote-prerelease", "fixture\n")
+        output = self.run_update(command=self.nvm_command())
+        self.assert_nvm_success(output, directory, "lts/*")
+        self.assertNotIn("ls-remote --no-colors", [event[-1] for event in self.events() if event[0] == "nvm"])
 
     def test_nvm_probe_failure_requires_explicit_force_repair(self):
         directory = self.write_nvm_fixture()
