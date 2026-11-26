@@ -1814,7 +1814,7 @@ confirm_resume() {
         local choice
         if [[ "${HAS_GUM:-false}" == "true" ]] && command -v gum &>/dev/null; then
             # Use gum for nicer selection (render UI to the controlling TTY; capture selection on stdout).
-            choice=$(gum choose "Resume" "Fresh install" "Abort" < /dev/tty 2> /dev/tty) || choice="Resume"
+            choice=$(gum choose "Resume" "Fresh install" "Abort" < /dev/tty 2> /dev/tty) || return 3
             case "$choice" in
                 "Fresh install")
                     _confirm_resume_log_info "Starting fresh install..."
@@ -1836,11 +1836,7 @@ confirm_resume() {
             esac
         else
             # Fallback to read prompt
-            if [[ -t 0 ]]; then
-                read -r -p "Choice [R/f/a]: " choice < /dev/tty
-            else
-                read -r -p "Choice [R/f/a]: " choice < /dev/tty
-            fi
+            read -r -p "Choice [R/f/a]: " choice < /dev/tty || return 3
             case "${choice,,}" in
                 f|fresh)
                     _confirm_resume_log_info "Starting fresh install..."

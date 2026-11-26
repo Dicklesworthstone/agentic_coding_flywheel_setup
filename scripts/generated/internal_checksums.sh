@@ -10,7 +10,7 @@
 ACFS_INTERNAL_CHECKSUMS_SCHEMA=1
 
 declare -gA ACFS_INTERNAL_CHECKSUMS=(
-  [install.sh]="a89ed12d3d85b05b59efe5caa05d8fa39a728ee110b3f71d8f23e34098b6deec"
+  [install.sh]="2995370be5683c601659752ca4f8dbc59cd59c8a806925c1934a766fa908ae13"
   [checksums.yaml]="657193b9cebb3e3b5646d724f45211b7fd6ebd9885882f4bafce317c8bf77db3"
   [scripts/preflight.sh]="76e6768d16238317e67f7c0ba38abf5e7440b9d4f76bfd28b5c07b7f007d247e"
   [scripts/lib/security.sh]="2c3efe1b2dc83355710f0f59f0e182c3acbc022dabcb400e215d80c725c87f70"
@@ -27,14 +27,14 @@ declare -gA ACFS_INTERNAL_CHECKSUMS=(
   [scripts/lib/autofix_existing.sh]="4b158028c6777e0719d0a45c13900a306faced785e93eb930fb00e60a686aba1"
   [scripts/lib/autofix_unattended.sh]="848f5744f75503eebe422a9d2418ed6b1341cfd6452004ee0a4e902d04f5d94a"
   [scripts/lib/autofix_version_managers.sh]="e235b7bfb95115f00bf7a4e3398be504c576d1fbe97a64c64a988294d62d621e"
-  [scripts/lib/ubuntu_upgrade.sh]="874bb697b4e29aebc662bd3c0fea354e22cd1cf9d51cf314fb5e34b234b9fd15"
+  [scripts/lib/ubuntu_upgrade.sh]="4128a637ecfaa032bf118f64822d2a02a7cc6ecf3bd89c4405d2adec3cce2a4f"
   [scripts/lib/upgrade_resume.sh]="539e556a3ef2f9e369ff068c33c2ace06bc3aa82f16af74f72335df3541c739c"
   [scripts/lib/install_helpers.sh]="35286e5c3c90fa24dcd8409f91ab50d4708f6a4e5eafcc73c156a0a875391dc1"
   [scripts/lib/logging.sh]="890d8e6e44332bede591e462b277a903ae8d8679adebd8cc4fc76face078f6be"
   [scripts/lib/output.sh]="95c83ae9c67fbd9364f1d69a6430ca8df7ebd1bd2cfa0fe9339afdead74e96eb"
   [scripts/lib/gum_ui.sh]="1616f7f6fdd730802da196a661a2e5f576e480e4e96d745ce12ea5b64f9559b5"
   [scripts/lib/progress.sh]="9cc3f8fbbb754ee50801898ad7c193b167fea1dae992396b77bd3817bd705cb7"
-  [scripts/lib/state.sh]="c75f27f372f65488fb7fc3159725698e5b4f73f6cfe453f1d9bda4767970f946"
+  [scripts/lib/state.sh]="f6038ecc94ad3f7d0ee114d030a84cf884749b5943498be3a5d9e19546c13c7d"
   [scripts/lib/report.sh]="aa0e2c4b279a90d4b3b87ed306500f7fd13eb26583dda6f82dc2a71f65f18a8f"
   [scripts/lib/error_tracking.sh]="491758eb4fcacd3c7bec87f43e0d8f997f5a3583da85d7c4ca8f2b854355111e"
   [scripts/lib/session.sh]="fd490e33c30f22489a3786fee40b2a52805056bde97c83425d25a126766447d8"

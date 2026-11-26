@@ -161,6 +161,7 @@ mv() {
                 "resume": "Resume" if gum else "r",
                 "abort": "Abort" if gum else "a",
                 "fresh": "Fresh install" if gum else "f",
+                "eof": "\x04",
             }[choice]
             prompt = b"GUM_CHOICE_READY" if gum else b"Choice [R/f/a]:"
             status, output = self.run_terminal(folder, script, prompt, response, on_prompt)
@@ -247,6 +248,15 @@ mv() {
                     state = json.loads((folder / "state.json").read_text())
                     self.assertEqual(state["completed_phases"], ["user_setup"])
                     self.assertIsNone(state.get("source_ledger_sha256"))
+
+    def test_interrupted_prompt_cannot_authorize_resume(self):
+        for path in ("tty-read", "tty-gum"):
+            with self.subTest(path=path):
+                folder = self.fixture(path)
+                before = (folder / "state.json").read_bytes()
+                status, output = self.run_resume(folder, path, choice="eof")
+                self.assertEqual(status, 3, output)
+                self.assertEqual((folder / "state.json").read_bytes(), before)
 
     def test_matching_source_identity_needs_no_state_write(self):
         for path in RESUME_PATHS:

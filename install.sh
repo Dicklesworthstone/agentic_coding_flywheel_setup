@@ -1915,6 +1915,52 @@ acfs_install_terminal_exit_status() {
     return 1
 }
 
+# A reboot continuation needs positive evidence of the installer's decision:
+# inspection, attaching to another run and scheduling a reboot can all exit 0.
+# Reopen the root-owned attempt directory only at the terminal decision. No
+# writable receipt descriptor is inherited by target-user installation steps.
+acfs_record_continue_outcome() {
+    [[ -n "${ACFS_INSTALL_ATTEMPT:-}" ]] || return 0
+    /usr/bin/python3 -I - "$ACFS_INSTALL_ATTEMPT" "$1" <<'ACFS_CONTINUE_OUTCOME_PY'
+import os
+import re
+import sys
+
+attempt, outcome = sys.argv[1:]
+if (os.geteuid() != 0 or not re.fullmatch(r"install-attempt\.[A-Za-z0-9]{10}", attempt)
+        or outcome not in ("completed", "declined")):
+    sys.exit("Invalid ACFS continuation attempt or outcome")
+
+flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+directory = os.open("/", flags)
+for component in ("var", "lib", "acfs", attempt):
+    child = os.open(component, flags, dir_fd=directory)
+    os.close(directory)
+    directory = child
+    info = os.fstat(directory)
+    if info.st_uid != 0 or info.st_mode & (0o077 if component == attempt else 0o022):
+        sys.exit("Unsafe ACFS continuation directory")
+
+fd = os.open("outcome.pending", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+             0o600, dir_fd=directory)
+with os.fdopen(fd, "wb") as receipt:
+    receipt.write((outcome + "\n").encode("ascii"))
+    receipt.flush()
+    os.fsync(receipt.fileno())
+# The exclusive temporary name serializes writers. Publish only complete,
+# flushed bytes, and never replace a terminal decision.
+try:
+    os.stat("outcome", dir_fd=directory, follow_symlinks=False)
+except FileNotFoundError:
+    os.rename("outcome.pending", "outcome", src_dir_fd=directory, dst_dir_fd=directory)
+else:
+    os.unlink("outcome.pending", dir_fd=directory)
+    sys.exit("ACFS continuation already has a terminal outcome")
+os.fsync(directory)
+os.close(directory)
+ACFS_CONTINUE_OUTCOME_PY
+}
+
 # Emit success-only UI and integrations behind one terminal-status gate.
 # This intentionally returns success when the run failed: main still performs
 # the normal summary/exit path, but no success side effect escapes first.
@@ -6731,21 +6777,31 @@ confirm_or_exit() {
     fi
 
     if [[ "$HAS_GUM" == "true" ]] && [[ -r /dev/tty ]]; then
-        gum confirm "Proceed with ACFS install? (mode=$MODE)" < /dev/tty > /dev/tty || exit 1
+        local confirm_status=0
+        gum confirm "Proceed with ACFS install? (mode=$MODE)" < /dev/tty > /dev/tty || confirm_status=$?
+        if (( confirm_status != 0 )); then
+            if (( confirm_status == 1 )); then
+                acfs_record_continue_outcome declined || exit 1
+            fi
+            exit "$confirm_status"
+        fi
         return 0
     fi
 
     local reply=""
     if [[ -t 0 ]]; then
-        read -r -p "Proceed with ACFS install? (mode=$MODE) [y/N] " reply
+        read -r -p "Proceed with ACFS install? (mode=$MODE) [y/N] " reply || exit 1
     elif [[ -r /dev/tty ]]; then
-        read -r -p "Proceed with ACFS install? (mode=$MODE) [y/N] " reply < /dev/tty
+        read -r -p "Proceed with ACFS install? (mode=$MODE) [y/N] " reply < /dev/tty || exit 1
     else
         log_fatal "--yes is required when no TTY is available"
     fi
     case "$reply" in
         y|Y|yes|YES) return 0 ;;
-        *) exit 1 ;;
+        *)
+            acfs_record_continue_outcome declined || exit 1
+            exit 1
+            ;;
     esac
 }
 
@@ -13007,6 +13063,10 @@ main() {
         exit "$verified_child_status"
     fi
 
+    # The verified installer owns the decision. Child tools must not inherit
+    # the attempt identity and accidentally report on behalf of this run.
+    export -n ACFS_INSTALL_ATTEMPT
+
     # Detect environment and source manifest index (mjt.5.3)
     # This must happen BEFORE any handlers that need module data
     detect_environment
@@ -13325,6 +13385,7 @@ main() {
                 fi
                 ;;
             2) # Abort
+                acfs_record_continue_outcome declined || exit 1
                 log_info "Installation aborted by user."
                 exit 0
                 ;;
@@ -13504,6 +13565,7 @@ main() {
     if [[ "$terminal_exit_status" -ne 0 ]]; then
         exit "$terminal_exit_status"
     fi
+    acfs_record_continue_outcome completed
 }
 
 main "$@"

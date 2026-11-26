@@ -2047,8 +2047,6 @@ else
     # checkout and fails looking for scripts/lib beside the staged file.
     bash -s -- "\${INSTALL_ARGS[@]}" < "\${STAGED_INSTALLER}"
 fi
-
-echo "ACFS installation complete!"
 CONTINUE_SCRIPT
     chmod +x "${ACFS_RESUME_DIR}/continue_install.sh"
 

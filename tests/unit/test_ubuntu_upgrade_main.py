@@ -40,6 +40,7 @@ class MainUpgradeOrderTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.source = definitions(MAIN.read_text(), ['main'], [
+            'acfs_record_continue_outcome',
             'acfs_validate_ubuntu_target', 'acfs_ubuntu_upgrade_requested',
             'acfs_guard_ubuntu_install_checkpoint', 'acfs_load_installation_selection',
             'acfs_apply_saved_installation_selection', 'acfs_preview_installation_selection'])
@@ -168,6 +169,35 @@ confirm_resume() { trace normal_install_ready; exit 0; }
             if event.startswith('mut:'):
                 self.assertLess(events.index('upgrade'), events.index(event), events)
         self.assertIn('normal_install_ready', events)
+
+    def test_only_terminal_decisions_report_continuation_outcomes(self):
+        # Exercise the actual main branches, replacing package work and the
+        # receipt sink. A zero exit on a read-only path cannot complete an attempt.
+        extra = r'''
+ACFS_INSTALL_ATTEMPT=install-attempt.0123456789
+ONLY_MODULES=(base.system)
+ONLY_PHASES=()
+SUDO=""
+confirm_resume() { return "$TEST_RESUME"; }
+acfs_verify_phase() { :; }
+run_phase() { :; }
+acfs_verify_installation() { :; }
+acfs_report_success_if_clean() { :; }
+acfs_install_terminal_exit_status() { return "$TEST_TERMINAL"; }
+acfs_record_continue_outcome() { trace "outcome:$1"; }
+'''
+        for resume, terminal, preview, status, outcomes in (
+                ('0', '0', 'false', 0, ['outcome:completed']),
+                ('0', '2', 'false', 2, []),
+                ('2', '0', 'false', 0, ['outcome:declined']),
+                ('3', '0', 'false', 1, []),
+                ('0', '0', 'true', 0, [])):
+            with self.subTest(resume=resume, terminal=terminal, preview=preview):
+                result, events, _ = self.run_main(overrides={
+                    'TEST_RESUME': resume, 'TEST_TERMINAL': terminal, 'PRINT_PLAN_MODE': preview,
+                    'TEST_MISSING_TOOLS': 'false'}, extra=extra)
+                self.assertEqual(result.returncode, status, result.stderr)
+                self.assertEqual([e for e in events if e.startswith('outcome:')], outcomes)
 
     def test_declined_fresh_install_never_reaches_base_dependencies(self):
         # On Arch, ensure_base_deps' first package install is a full

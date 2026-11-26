@@ -43,6 +43,45 @@ def initializer(name: str) -> str:
     return match[0]
 
 
+class ContinuationReceiptTests(unittest.TestCase):
+    def test_receipt_is_private_single_use_and_bound_to_its_attempt(self):
+        # Exercise the literal production path without touching host recovery
+        # state. The installer already requires Linux for Ubuntu recovery.
+        bwrap = shutil.which("bwrap")
+        if not bwrap:
+            self.skipTest("requires bubblewrap for a disposable root filesystem")
+        args = [bwrap, "--unshare-user", "--uid", "0", "--gid", "0",
+                "--ro-bind", "/", "/", "--tmpfs", "/var/lib", "--dev", "/dev",
+                "--proc", "/proc", "--chdir", "/"]
+        probe = subprocess.run([*args, "/bin/true"], capture_output=True)
+        if probe.returncode:
+            self.skipTest("disposable root namespace unavailable")
+        script = definition("acfs_record_continue_outcome") + r'''
+set -eu
+root=/var/lib/acfs
+mkdir -m 755 "$root"
+ACFS_INSTALL_ATTEMPT=install-attempt.0123456789
+attempt="$root/$ACFS_INSTALL_ATTEMPT"
+mkdir -m 700 "$attempt"
+acfs_record_continue_outcome completed
+cmp "$attempt/outcome" <(printf 'completed\n')
+[[ "$(stat -c %a "$attempt/outcome")" == 600 ]]
+if acfs_record_continue_outcome declined; then exit 12; fi
+cmp "$attempt/outcome" <(printf 'completed\n')
+mkdir -m 700 "$root/install-attempt.abcdefghij"
+ACFS_INSTALL_ATTEMPT=install-attempt.abcdefghij acfs_record_continue_outcome declined
+cmp "$root/install-attempt.abcdefghij/outcome" <(printf 'declined\n')
+mkdir -m 777 "$root/install-attempt.XXXXXXXXXX"
+if ACFS_INSTALL_ATTEMPT=install-attempt.XXXXXXXXXX acfs_record_continue_outcome completed; then exit 13; fi
+ln -s "$attempt" "$root/install-attempt.abcdefghik"
+if ACFS_INSTALL_ATTEMPT=install-attempt.abcdefghik acfs_record_continue_outcome completed; then exit 14; fi
+if ACFS_INSTALL_ATTEMPT=../outside acfs_record_continue_outcome completed; then exit 15; fi
+'''
+        result = subprocess.run([*args, "/bin/bash", "-c", script],
+                                capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+
 class InstallerTerminalTests(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp(prefix="acfs-terminal-test-"))
