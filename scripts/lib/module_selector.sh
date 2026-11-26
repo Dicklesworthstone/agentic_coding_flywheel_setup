@@ -52,18 +52,20 @@ acfs_is_interactive_terminal() {
 acfs_format_reproducible_cli_command() {
     local -a cmd=(bash install.sh)
     local value="" module="" tag="" module_tag="" category=""
-    if [[ -n "${MODE:-}" && "$MODE" != "vibe" ]]; then
+    if [[ -n "${MODE:-}" && ( "$MODE" != vibe || "${ACFS_INTERACTIVE:-false}" == true \
+        || "${ACFS_MODE_EXPLICIT:-false}" == true || -n "${ACFS_STATE_INSTALL_MODE:-}" ) ]]; then
         cmd+=(--mode "$MODE")
     fi
     local profile_has_selectors=false
-    if [[ -n "${ACFS_SELECTED_PROFILE:-}" ]] \
-        && { [[ -n "${ACFS_PROFILE_ONLY_MODULES["$ACFS_SELECTED_PROFILE"]:-}" ]] \
-            || [[ -n "${ACFS_PROFILE_ONLY_PHASES["$ACFS_SELECTED_PROFILE"]:-}" ]]; }; then
-        profile_has_selectors=true
-    fi
-    if [[ "$profile_has_selectors" == "true" ]]; then
+    if [[ -n "${ACFS_SELECTED_PROFILE:-}" ]]; then
+        # Full, safe and vibe also select manifest defaults on a scoped install.
         cmd+=(--profile "$ACFS_SELECTED_PROFILE")
-    else
+        if [[ -n "${ACFS_PROFILE_ONLY_MODULES["$ACFS_SELECTED_PROFILE"]:-}" \
+            || -n "${ACFS_PROFILE_ONLY_PHASES["$ACFS_SELECTED_PROFILE"]:-}" ]]; then
+            profile_has_selectors=true
+        fi
+    fi
+    if [[ "$profile_has_selectors" != true ]]; then
         for value in "${ONLY_MODULES[@]}"; do
             [[ -n "$value" ]] && cmd+=(--only "$value")
         done

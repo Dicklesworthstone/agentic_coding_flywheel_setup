@@ -279,6 +279,31 @@ test_local_replay_preserves_installation_context() {
     assert_replay_capture --resume --mode safe --ref main --checksums-ref main --only agents.codex --no-deps
 }
 
+# Replay through the actual read-only installer. A one-module checkpoint must
+# remain narrow on an implicit resume and expand on an explicit full profile.
+test_local_resume_replays_full_profile_over_saved_subset() (
+    setup_test_env
+    SCRIPT_DIR="$REPO_ROOT"
+    TARGET_USER="$(id -un)" || return 1
+    TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)" || return 1
+    ACFS_STATE_FILE="$(mktemp)" || return 1
+    jq -n --arg user "$TARGET_USER" --arg home "$TARGET_HOME" \
+        '{target_user: $user, target_home: $home, mode: "safe", module_selection:
+            {schema_version: 1, selected_modules: ["base.system"]}}' > "$ACFS_STATE_FILE" || return 1
+    local hint="" plan=""
+    hint="$(generate_resume_hint)" || return 1
+    plan="$(bash --noprofile --norc -c "$hint --print-plan")" || return 1
+    [[ "$plan" == *"Selected modules: 1 of "* && "$plan" == *"Mode: safe"* ]] || return 1
+
+    # shellcheck source=scripts/generated/manifest_index.sh
+    source "$REPO_ROOT/scripts/generated/manifest_index.sh"
+    ACFS_SELECTED_PROFILE=full
+    MODE=vibe
+    hint="$(generate_resume_hint)" || return 1
+    plan="$(bash --noprofile --norc -c "$hint --print-plan")" || return 1
+    [[ "$plan" == *" agents.codex ->"* && "$plan" == *"Mode: vibe"* ]]
+)
+
 test_streamed_replay_preserves_context_policy_and_artifact_sources() {
     setup_test_env
     setup_replay_fixture || return 1
@@ -1045,6 +1070,7 @@ main() {
     run_test test_main_branch_shorthand
     run_test test_empty_ref_shorthand
     run_test test_local_replay_preserves_installation_context
+    run_test test_local_resume_replays_full_profile_over_saved_subset
     run_test test_streamed_replay_preserves_context_policy_and_artifact_sources
     run_test test_smoke_repair_replays_the_same_installation_and_policy
     run_test test_resume_replay_preserves_explicit_ubuntu_upgrade

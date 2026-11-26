@@ -141,7 +141,14 @@ ONLY_PHASES=(7)
 ACFS_SELECTED_PROFILE=safe
 MODE=safe
 ONLY_MODULES=(base.core)
-'''), ["install.sh", "--mode", "safe", "--only", "base.core"])
+'''), ["install.sh", "--mode", "safe", "--profile", "safe", "--only", "base.core"])
+
+    def test_interactive_review_preserves_full_scope_and_mode_over_saved_subset(self):
+        self.assertEqual(self.replay("""
+ACFS_INTERACTIVE=true
+ACFS_STATE_INSTALL_MODE=safe
+ACFS_SELECTED_PROFILE=full
+"""), ["install.sh", "--mode", "vibe", "--profile", "full"])
 
     def test_tag_exclusions_expand_to_supported_skip_arguments(self):
         self.assertEqual(self.replay("SKIP_TAGS=(optional)\n"),

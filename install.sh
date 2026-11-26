@@ -1833,11 +1833,14 @@ generate_resume_hint() {
     # installation plan.
     local selection=""
     local selected_profile_has_selectors=false
-    if [[ -n "${ACFS_SELECTED_PROFILE:-}" ]] \
-        && { [[ -n "${ACFS_PROFILE_ONLY_MODULES["$ACFS_SELECTED_PROFILE"]:-}" ]] \
-            || [[ -n "${ACFS_PROFILE_ONLY_PHASES["$ACFS_SELECTED_PROFILE"]:-}" ]]; }; then
-        selected_profile_has_selectors=true
+    if [[ -n "${ACFS_SELECTED_PROFILE:-}" ]]; then
+        # Even a defaults-only profile overrides the persisted module scope.
+        # Replay it alongside any explicit roots the profile permits.
         resume_args+=(--profile "$ACFS_SELECTED_PROFILE")
+        if [[ -n "${ACFS_PROFILE_ONLY_MODULES["$ACFS_SELECTED_PROFILE"]:-}" \
+            || -n "${ACFS_PROFILE_ONLY_PHASES["$ACFS_SELECTED_PROFILE"]:-}" ]]; then
+            selected_profile_has_selectors=true
+        fi
     fi
     if [[ "$selected_profile_has_selectors" != "true" && "${ONLY_MODULES+x}" == "x" ]]; then
         for selection in "${ONLY_MODULES[@]}"; do
