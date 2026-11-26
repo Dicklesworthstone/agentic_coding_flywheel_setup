@@ -10049,6 +10049,32 @@ update_rust() {
     log_to_file "Installed toolchains: $toolchains"
 }
 
+# cargo install can succeed while an older copy earlier in the target's binary
+# search order keeps serving every caller. On two fleet hosts a 2025
+# ~/.local/bin/ast-grep 0.40.1 preceded the updated ~/.cargo/bin/ast-grep 0.51.3:
+# the update logged success, the reported version never changed, and UBS ran
+# its Rust rules on the stale engine. Report that instead of claiming currency.
+update_check_cargo_binary_shadow() {
+    local name="$1" cargo_bin="$2" installed="" effective="" target_home=""
+    local installed_version="" effective_version=""
+    installed="${cargo_bin%/*}/$name"
+    [[ -x "$installed" && ! -d "$installed" ]] || return 0
+    # Only the default Cargo home is part of update_binary_path's search order;
+    # against a custom CARGO_HOME an unrelated system binary (util-linux sg)
+    # would look like a shadow.
+    target_home="$(update_target_home "$(update_target_user)" 2>/dev/null)" || return 0
+    [[ -n "$target_home" && "${installed%/*}" == "${target_home%/}/.cargo/bin" ]] || return 0
+    effective="$(update_binary_path "$name" 2>/dev/null)" || return 0
+    [[ "$effective" != "$installed" ]] || return 0
+    installed_version="$(update_run_in_target_context "" "$installed" --version 2>/dev/null | awk 'NR == 1 { print; exit }')" \
+        || installed_version=""
+    effective_version="$(update_run_in_target_context "" "$effective" --version 2>/dev/null | awk 'NR == 1 { print; exit }')" \
+        || effective_version=""
+    [[ -n "$installed_version" && "$installed_version" != "$effective_version" ]] || return 0
+    log_item "fail" "$name: an older copy shadows the update" \
+        "$effective (${effective_version:-unknown version}) precedes the updated $installed ($installed_version); remove or update the earlier copy"
+}
+
 update_cargo_tools() {
     if [[ "$UPDATE_RUNTIME" != "true" ]]; then
         return 0
@@ -10105,6 +10131,9 @@ update_cargo_tools() {
         if capture_version_after "$binary_name"; then
              update_say "       ${DIM}%s → %s${NC}\n" "${VERSION_BEFORE[$binary_name]}" "${VERSION_AFTER[$binary_name]}"
         fi
+        update_check_cargo_binary_shadow "$binary_name" "$cargo_bin"
+        # sg only launches the first ast-grep on PATH; UBS calls ast-grep.
+        [[ "$tool" != ast-grep ]] || update_check_cargo_binary_shadow ast-grep "$cargo_bin"
     done
 }
 

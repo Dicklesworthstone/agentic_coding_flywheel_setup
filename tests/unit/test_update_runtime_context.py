@@ -263,6 +263,33 @@ printf 'COUNTS=%s,%s,%s\n' "$SUCCESS_COUNT" "$SKIP_COUNT" "$FAIL_COUNT"
         for event in events:
             self.assertEqual(event[1:4], [str(self.account.pw_uid), str(self.home), str(self.home)], event)
 
+    def write_versioned_tool(self, path, version):
+        self.owned_dir(path.parent)
+        path.write_text(f"#!/bin/sh\nprintf 'ast-grep {version}\\n'\n")
+        path.chmod(0o755)
+        self.own(path)
+
+    def test_older_copy_earlier_than_the_cargo_install_is_reported(self):
+        # A successful cargo install does not make a stale earlier copy current.
+        installed = self.cargo_home / "bin" / "ast-grep"
+        stale = self.home / ".local" / "bin" / "ast-grep"
+        self.write_versioned_tool(installed, "0.51.3")
+        self.write_versioned_tool(stale, "0.40.1")
+        output = self.run_update(
+            command='update_check_cargo_binary_shadow ast-grep "$TEST_HOME/.cargo/bin/cargo"')
+        self.assertIn("COUNTS=0,0,1", output)
+        self.assertIn("ast-grep: an older copy shadows the update", output)
+        self.assertIn(f"{stale} (ast-grep 0.40.1) precedes the updated {installed} (ast-grep 0.51.3)",
+                      (self.base / "update.log").read_text())
+
+    def test_earlier_copy_of_the_installed_version_is_accepted(self):
+        self.write_versioned_tool(self.cargo_home / "bin" / "ast-grep", "0.51.3")
+        self.write_versioned_tool(self.home / ".local" / "bin" / "ast-grep", "0.51.3")
+        output = self.run_update(
+            command='update_check_cargo_binary_shadow ast-grep "$TEST_HOME/.cargo/bin/cargo"')
+        self.assertIn("COUNTS=0,0,0", output)
+        self.assertNotIn("shadows", output)
+
     def test_cross_account_probes_and_mutations_use_target_home(self):
         output = self.run_update(cross=True)
         events = self.events()
