@@ -889,6 +889,7 @@ export function GuideNav({ items, title }: { items: GuideNavItem[]; title: strin
               <li key={item.id}>
                 <a
                   href={`#${item.id}`}
+                  aria-current={isActive ? "location" : undefined}
                   onClick={(e) => onSheetClick(e, item.id)}
                   className={cn(
                     "flex min-h-12 items-baseline gap-3 rounded-lg px-3 py-3 text-base font-medium",

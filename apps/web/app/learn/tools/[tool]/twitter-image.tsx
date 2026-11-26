@@ -4,6 +4,8 @@ import { toolSocialData } from "@/lib/social-image-routes";
 import type { ToolId } from "./tool-data";
 import { TOOLS } from "./tool-data";
 
+// The card shows the tool's example command only when it is one short
+// invocation; pipelines and long examples fall back to tags (toolSocialData).
 export const runtime = "edge";
 export const alt =
   "Agent Flywheel tool deep dive card: the tool's name, what it does, and an example command";

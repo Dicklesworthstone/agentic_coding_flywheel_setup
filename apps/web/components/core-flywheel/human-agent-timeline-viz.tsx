@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
+import { COMPLETE_GUIDE_MODELS } from "@/lib/complete-guide";
 import { isInteractiveKeyboardTarget } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
@@ -53,7 +54,7 @@ const STAGES: TimelineStage[] = [
     icon: FileText,
     who: "You",
     what: "Ask several frontier models for competing plans, then have one merge them into a single strong design document",
-    tools: "GPT-6.2 Astra, Claude Fable 5.2, Gemini 4 Carbon",
+    tools: `${COMPLETE_GUIDE_MODELS.primaryPlanner}, ${COMPLETE_GUIDE_MODELS.claudePlanner}, ${COMPLETE_GUIDE_MODELS.googlePlanner}`,
     insight: "This is where 85% of your thinking goes. No code yet.",
   },
   {
@@ -64,7 +65,7 @@ const STAGES: TimelineStage[] = [
     icon: Layers,
     who: "You (via an agent)",
     what: "Tell a coding agent to create beads from the plan, with dependencies. Then have it polish them 4\u20136 times.",
-    tools: "Claude Code (Opus 5.5) with br",
+    tools: `Claude Code (${COMPLETE_GUIDE_MODELS.claudeExecutor.replace(/^Claude /, "")}) with br`,
     insight: "You prompt the agent. The agent runs the br commands.",
   },
   {

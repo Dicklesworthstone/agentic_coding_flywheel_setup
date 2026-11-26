@@ -77,6 +77,8 @@ const GUIDE_SECTIONS = [
   { id: "toolchain", number: "9", label: "Toolchain" },
   { id: "flywheel", number: "10", label: "Flywheel" },
 ];
+// The interlude is unnumbered, so the cover counts parts, not nav entries.
+const GUIDE_PART_COUNT = GUIDE_SECTIONS.filter((section) => section.number).length;
 
 export default function CompleteGuidePage() {
   return (
@@ -119,7 +121,7 @@ export default function CompleteGuidePage() {
             </>
           }
           stats={[
-            { value: String(GUIDE_SECTIONS.length), label: "Parts" },
+            { value: String(GUIDE_PART_COUNT), label: "Parts" },
             { value: String(COMPLETE_GUIDE_PROMPT_COUNT), label: "Copy-ready prompts" },
             { value: String(COMPLETE_GUIDE_PHASE_COUNT), label: "Phases" },
             { value: String(COMPLETE_GUIDE_STACK_TOOL_COUNT), label: "Stack tools" },

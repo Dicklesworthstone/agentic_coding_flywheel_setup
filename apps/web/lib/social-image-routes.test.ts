@@ -10,6 +10,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { TOOLS } from "../app/learn/tools/[tool]/tool-data";
+import cloudSocialImages from "./cloud-social-images.json";
 import { LESSONS } from "./lessons";
 import { renderSocialImage, type SocialImageData } from "./social-image";
 import {
@@ -115,6 +116,17 @@ describe("share card routes", () => {
         // A blank canvas compresses to a few KB; a real card is far larger.
         expect(bytes.length).toBeGreaterThan(40_000);
       }
+    }
+  });
+
+  test("the pre-rendered /cloud-agents cards match the current template and copy", async () => {
+    // Rendering is deterministic, so a stale bundle shows up as a byte diff.
+    // Fix with `bun run generate:cloud-social-images`.
+    for (const variant of ["opengraph", "twitter"] as const) {
+      const response = await renderSocialImage(getStaticRouteSocialData("/cloud-agents"), variant);
+      const fresh = Buffer.from(await response.arrayBuffer());
+      const bundled = Buffer.from(cloudSocialImages[variant], "base64");
+      expect({ variant, upToDate: fresh.equals(bundled) }).toEqual({ variant, upToDate: true });
     }
   });
 });

@@ -26,6 +26,7 @@ import { HumanAgentTimelineViz } from "@/components/core-flywheel/human-agent-ti
 import { OperatingRhythmViz } from "@/components/core-flywheel/operating-rhythm-viz";
 import { SwarmChaosViz } from "@/components/core-flywheel/swarm-chaos-viz";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
+import { COMPLETE_GUIDE_MODELS } from "@/lib/complete-guide";
 
 // Mirrors the GuideSection ids/numbers below; drives the "On this page"
 // navigation and the cover's contents list.
@@ -595,7 +596,7 @@ Closed br-103 and released my file reservations.`}
                 prompt={`I asked 3 competing LLMs to do the exact same thing and they came up with pretty different plans which you can read below. I want you to REALLY carefully analyze their plans with an open mind and be intellectually honest about what they did that's better than your plan. Then I want you to come up with the best possible revisions to your plan that artfully and skillfully blends the "best of all worlds" to create a true, ultimate, superior hybrid version of the plan:
 
 [Paste all plans here]`}
-                where="The GPT-6.2 Astra conversation in ChatGPT Work that wrote one of the plans (or your strongest available model)"
+                where={`The ${COMPLETE_GUIDE_MODELS.primaryPlanner} conversation in ${COMPLETE_GUIDE_MODELS.primaryPlannerSurface} that wrote one of the plans (or your strongest available model)`}
                 whyItWorks="Different frontier models have different blind spots. Competitive synthesis forces the model to admit where others are better and merge the strongest ideas."
               />
 
@@ -614,7 +615,7 @@ Closed br-103 and released my file reservations.`}
               <PromptBlock
                 title="Plan to Beads Conversion"
                 prompt={`OK so please take ALL of that and elaborate on it and use it to create a comprehensive and granular set of beads for all this with tasks, subtasks, and dependency structure overlaid, with detailed comments so that the whole thing is totally self-contained and self-documenting. The beads should be so detailed that we never need to consult back to the original markdown plan document. Remember to ONLY use the \`br\` tool to create and modify the beads and add the dependencies. Use ultrathink.`}
-                where="Claude Code with Claude Opus 5.5, in the same session where it read the plan"
+                where={`Claude Code with ${COMPLETE_GUIDE_MODELS.claudeExecutor}, in the same session where it read the plan`}
                 whyItWorks="Beads become the source of truth for execution. Once they are strong enough, agents rarely need to open the markdown plan again."
               />
 
@@ -631,7 +632,7 @@ Closed br-103 and released my file reservations.`}
 DO NOT OVERSIMPLIFY THINGS! DO NOT LOSE ANY FEATURES OR FUNCTIONALITY!
 
 Also, make sure that as part of these beads, we include comprehensive unit tests and e2e test scripts with great, detailed logging so we can be sure that everything is working perfectly after implementation. Remember to ONLY use the \`br\` tool to create and modify the beads and to add the dependencies to beads. Use ultrathink.`}
-                where="Claude Code with Claude Opus 5.5, repeated 4-6 times; start a fresh session if improvements flatten out"
+                where={`Claude Code with ${COMPLETE_GUIDE_MODELS.claudeExecutor}, repeated 4-6 times; start a fresh session if improvements flatten out`}
                 whyItWorks="Fixing a bead is far cheaper than fixing the code built from it. The warnings against oversimplifying matter because models otherwise 'improve' beads by deleting complexity they do not fully understand."
               />
 

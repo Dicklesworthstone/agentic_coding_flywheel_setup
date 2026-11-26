@@ -45,6 +45,26 @@ describe("complete guide derived claims", () => {
     expect(coreSource.match(/<PromptBlock\b/g)?.length ?? 0).toBe(declared);
   });
 
+  test("each guide's navigation lists its sections in order, with their part numbers", async () => {
+    const coreSource = await Bun.file(
+      new URL("../app/core-flywheel/page.tsx", import.meta.url),
+    ).text();
+    for (const [source, constant] of [
+      [pageSource, "GUIDE_SECTIONS"],
+      [coreSource, "CORE_SECTIONS"],
+    ] as const) {
+      const list = source.match(new RegExp(`const ${constant} = \\[([\\s\\S]*?)\\n\\];`))?.[1] ?? "";
+      const navigation = [...list.matchAll(/\{ id: "([^"]+)", number: "([^"]*)"/g)].map(
+        ([, id, number]) => `${id}#${number}`,
+      );
+      const sections = [...source.matchAll(/<GuideSection\s+id="([^"]+)"\s+number="([^"]*)"/g)].map(
+        ([, id, number]) => `${id}#${number}`,
+      );
+      expect(navigation.length).toBeGreaterThan(5);
+      expect(navigation).toEqual(sections);
+    }
+  });
+
   test("validation gates and workflow phase count remain explicit", () => {
     expect(VALIDATION_GATES).toHaveLength(6);
     expect(COMPLETE_GUIDE_PHASE_COUNT).toBe(13);
@@ -65,6 +85,22 @@ describe("complete guide derived claims", () => {
     expect(pageSource).not.toContain("Grok Heavy");
     expect(pageSource).not.toContain("Claude Code (Opus)");
     expect(planEvolutionSource).toContain("COMPLETE_GUIDE_MODELS");
+  });
+
+  test("the core flywheel names models through the shared table", async () => {
+    // A literal name here would go stale on the next model refresh while the
+    // complete guide (which reads COMPLETE_GUIDE_MODELS) moved on.
+    const coreSources = await Promise.all(
+      ["../app/core-flywheel/page.tsx", "../components/core-flywheel/human-agent-timeline-viz.tsx"].map(
+        (path) => Bun.file(new URL(path, import.meta.url)).text(),
+      ),
+    );
+    for (const source of coreSources) {
+      expect(source).toContain("COMPLETE_GUIDE_MODELS");
+      for (const model of Object.values(COMPLETE_GUIDE_MODELS)) {
+        expect(source).not.toContain(model.replace(/^Claude /, ""));
+      }
+    }
   });
 
   test("installer examples come from the canonical builder contract", () => {

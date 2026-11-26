@@ -213,9 +213,14 @@ function tickPath(major: boolean): string {
 const MINOR_TICKS = tickPath(false);
 const MAJOR_TICKS = tickPath(true);
 
+/** A full 360° arc has no SVG path (start equals end), and 0° has no end dot. */
+function clampSweep(sweep: number): number {
+  return Math.min(Math.max(sweep, 2), 359.5);
+}
+
 /** Clockwise arc on the bezel (screen angles: 90 is down, 180 left, 270 up). */
 function arcPath(fromDegrees: number, sweep: number): string {
-  const clamped = Math.min(Math.max(sweep, 2), 359.5);
+  const clamped = clampSweep(sweep);
   const start = polar(BEZEL_RADIUS, fromDegrees);
   const end = polar(BEZEL_RADIUS, fromDegrees + clamped);
   const large = clamped > 180 ? 1 : 0;
@@ -241,15 +246,21 @@ function trimText(text: string, maxLength: number): string {
   return `${(lastSpace > maxLength * 0.6 ? cut.slice(0, lastSpace) : cut).replace(/[\s,.;:–—-]+$/, "")}…`;
 }
 
-/** Lines a greedy wrap would use, from Instrument Serif's average advance. */
+/**
+ * Lines a greedy wrap would use, from Instrument Serif's average advance (a
+ * slight overestimate). Satori never breaks inside a word, so one word wider
+ * than the column would overflow into the dial: that counts as too many lines.
+ */
 function wrappedLines(words: string[], size: number): number {
   const charWidth = size * 0.43;
   const space = size * 0.22;
+  const line = TEXT_WIDTH - 12;
   let lines = 1;
   let used = 0;
   for (const word of words) {
     const width = word.length * charWidth;
-    if (used > 0 && used + space + width > TEXT_WIDTH - 12) {
+    if (width > line) return Number.POSITIVE_INFINITY;
+    if (used > 0 && used + space + width > line) {
       lines += 1;
       used = width;
     } else {
@@ -277,7 +288,7 @@ function hubFontSize(hub: string, numeric: boolean): number {
 // -----------------------------------------------------------------------------
 function dialSvg(palette: Palette, top: number, arcFrom: number, arcSweep: number, hasHub: boolean) {
   const arc = arcPath(arcFrom, arcSweep);
-  const end = polar(BEZEL_RADIUS, arcFrom + Math.min(Math.max(arcSweep, 2), 359.5));
+  const end = polar(BEZEL_RADIUS, arcFrom + clampSweep(arcSweep));
   const hubRadius = hasHub ? 92 : 64;
   return (
     <svg

@@ -1,8 +1,9 @@
 import type { SocialImageData } from "@/lib/social-image";
 
-// Share-card copy for every static route. Descriptions are written to fit two
-// lines on the card (about 110 characters); lib/social-image-routes.test.ts
-// holds the budgets and checks the wizard steps against lib/wizardSteps.ts.
+// Share-card copy for every static route, plus the builders for lesson and
+// tool cards. Descriptions are written to fit two lines on the card (at most
+// 100 characters); lib/social-image-routes.test.ts holds the budgets and
+// checks the wizard steps against lib/wizardSteps.ts.
 
 /** Number of steps in the setup wizard (WIZARD_STEPS.length, kept in sync by test). */
 export const WIZARD_SOCIAL_TOTAL = 13;
@@ -318,8 +319,13 @@ export function toolSocialData(tool: {
   tagline: string;
   quickCommand?: string;
 }): SocialImageData {
-  const command = tool.quickCommand?.trim();
-  const binary = command?.split(/\s+/)[0] ?? "";
+  // Only a single short invocation fits the terminal line, and only its first
+  // word names the tool: a pipeline such as `printf … | claude-post-compact-reminder`
+  // would put `printf` on the dial and cut the line mid-argument.
+  const example = tool.quickCommand?.trim().replace(/\s+/g, " ");
+  const command =
+    example && example.length <= 40 && !/[|;]|&&/.test(example) ? example : undefined;
+  const binary = command?.split(" ")[0] ?? "";
   return {
     badge: "Tool deep dive",
     ...splitAccent(tool.title),

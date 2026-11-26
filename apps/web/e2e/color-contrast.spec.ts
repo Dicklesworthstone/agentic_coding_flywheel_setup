@@ -609,7 +609,11 @@ test.describe("Complete guide prompt panels", () => {
       await copy.focus();
       await expect(copy).toBeFocused();
       await expect(copy).toBeInViewport();
-      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+      // No sideways overflow. Compare with clientWidth, not the viewport width:
+      // desktop WebKit draws the site's styled 8px page scrollbar in the layout.
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+        await page.evaluate(() => document.documentElement.clientWidth),
+      );
     });
   }
 });
