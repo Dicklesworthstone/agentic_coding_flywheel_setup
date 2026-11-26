@@ -779,6 +779,157 @@ class DiagnosticCaptureTests(unittest.TestCase):
                 self.assertIn("fixture-user" if check_name != "check_wrangler_auth" else "authenticated",
                               self.cache_marker.read_text())
 
+    def test_postgres_queries_disable_startup_files_and_password_prompts(self):
+        for check_name in ("check_postgres_connection", "check_postgres_role"):
+            with self.subTest(check=check_name):
+                calls = self.root / (check_name + "-arguments")
+                body = "printf '%s\\n' \"$*\" >> " + shlex.quote(str(calls)) + \
+                    "\nprintf '1\\n'"
+                checks, repairs = self.run_doctor_live_check(check_name, body)
+                self.assertEqual(checks[0]["status"], "pass", checks)
+                self.assertEqual(repairs, 0)
+                lines = calls.read_text().splitlines()
+                self.assertEqual(len(lines), 1, lines)
+                arguments = shlex.split(lines[0])
+                self.assertIn("-X", arguments)
+                self.assertIn("-w", arguments)
+                self.assertIn("-v", arguments)
+                self.assertEqual(arguments[arguments.index("-v") + 1], "ON_ERROR_STOP=1")
+
+    def test_postgres_connection_retains_native_failure_fallbacks(self):
+        for destination, count, detail in (("socket", 2, "unix socket"),
+                                           ("current", 3, "current user")):
+            with self.subTest(destination=destination):
+                calls = self.root / ("postgres-connection-" + destination)
+                condition = ('[[ " $* " == *" -h /var/run/postgresql "* ]]'
+                             if destination == "socket" else
+                             '[[ " $* " != *" -h "* ]]')
+                body = "\n".join([
+                    "printf 'called\\n' >> " + shlex.quote(str(calls)),
+                    condition + " || exit 2",
+                    "printf '1\\n'",
+                ])
+                checks, repairs = self.run_doctor_live_check("check_postgres_connection", body)
+                self.assertEqual(checks[0]["status"], "pass", checks)
+                self.assertEqual(checks[0]["details"], detail)
+                self.assertEqual(repairs, 0)
+                self.assertEqual(len(calls.read_text().splitlines()), count)
+
+    def test_postgres_role_retains_connection_fallbacks_without_trusting_failed_output(self):
+        calls = self.root / "postgres-role-fallback"
+        body = "\n".join([
+            "printf '%s\\n' \"$*\" >> " + shlex.quote(str(calls)),
+            "printf '1\\n'",
+            '[[ " $* " == *" -h /var/run/postgresql "* ]] || exit 2',
+        ])
+        checks, repairs = self.run_doctor_live_check("check_postgres_role", body)
+        self.assertEqual(checks[0]["status"], "pass", checks)
+        self.assertEqual(repairs, 0)
+        attempts = calls.read_text().splitlines()
+        self.assertEqual(len(attempts), 3, attempts)
+        self.assertNotIn("-h ", attempts[0])
+        self.assertIn("-h localhost", attempts[1])
+        self.assertIn("-h /var/run/postgresql", attempts[2])
+
+    def test_postgres_interruptions_never_retry_or_queue_repairs(self):
+        for check_name in ("check_postgres_connection", "check_postgres_role"):
+            for status in (124, 137, 143):
+                with self.subTest(check=check_name, status=status):
+                    calls = self.root / f"{check_name}-interrupted-{status}"
+                    body = "\n".join([
+                        "printf 'called\\n' >> " + shlex.quote(str(calls)),
+                        "printf '1\\n'",
+                        f"exit {status}",
+                    ])
+                    checks, repairs = self.run_doctor_live_check(check_name, body)
+                    self.assertEqual(len(checks), 1, checks)
+                    self.assertEqual(checks[0]["status"], "timeout", checks)
+                    self.assertEqual(repairs, 0)
+                    self.assertNotIn("createuser", checks[0]["fix"] or "")
+                    self.assertEqual(calls.read_text(), "called\n")
+
+    def test_postgres_missing_bounds_never_launches_client(self):
+        for check_name in ("check_postgres_connection", "check_postgres_role"):
+            with self.subTest(check=check_name):
+                marker = self.root / (check_name + "-unbounded")
+                body = "printf 'called' > " + shlex.quote(str(marker)) + "\nprintf '1\\n'"
+                checks, repairs = self.run_doctor_live_check(check_name, body, missing_timeout=True)
+                self.assertEqual(checks[0]["status"], "warn", checks)
+                self.assertIn("unavailable", checks[0]["details"])
+                self.assertEqual(repairs, 0)
+                self.assertFalse(marker.exists(), "PostgreSQL ran without a timeout guardian")
+
+    def test_postgres_unavailable_probe_never_retries_or_queues_repairs(self):
+        for check_name in ("check_postgres_connection", "check_postgres_role"):
+            for status in (125, 126, 127):
+                with self.subTest(check=check_name, status=status):
+                    calls = self.root / f"{check_name}-unavailable-{status}"
+                    body = "printf 'called\\n' >> " + shlex.quote(str(calls)) + f"\nexit {status}"
+                    checks, repairs = self.run_doctor_live_check(check_name, body)
+                    self.assertEqual(checks[0]["status"], "warn", checks)
+                    self.assertIn("unavailable", checks[0]["details"])
+                    self.assertEqual(repairs, 0)
+                    self.assertEqual(calls.read_text(), "called\n")
+
+    def test_postgres_role_requires_successful_empty_result_for_creation_hint(self):
+        calls = self.root / "postgres-role-missing"
+        body = "printf 'called\\n' >> " + shlex.quote(str(calls))
+        checks, repairs = self.run_doctor_live_check("check_postgres_role", body)
+        self.assertEqual(checks[0]["status"], "warn", checks)
+        self.assertEqual(checks[0]["details"], "role missing")
+        self.assertEqual(checks[0]["fix"], "sudo -u postgres createuser -s fixture")
+        self.assertEqual(repairs, 1)
+        self.assertEqual(calls.read_text(), "called\n")
+
+    def test_postgres_role_query_failure_or_unexpected_output_cannot_request_creation(self):
+        outcomes = [
+            ("printf '1\\n'; exit 1", 3),
+            ("printf '1\\n'; exit 2", 3),
+            ("printf '1\\n'; exit 3", 3),
+            ("printf '1\\n'; exit 42", 3),
+            ("printf '1\\nunexpected\\n'", 1),
+            ("printf 'unexpected\\n'", 1),
+        ]
+        for index, (outcome, count) in enumerate(outcomes):
+            with self.subTest(outcome=outcome):
+                calls = self.root / f"postgres-role-unverified-{index}"
+                body = "printf 'called\\n' >> " + shlex.quote(str(calls)) + "\n" + outcome
+                checks, repairs = self.run_doctor_live_check("check_postgres_role", body)
+                self.assertEqual(checks[0]["status"], "warn", checks)
+                self.assertNotEqual(checks[0]["details"], "role missing")
+                self.assertNotIn("createuser", checks[0]["fix"] or "")
+                self.assertEqual(repairs, 0)
+                self.assertEqual(len(calls.read_text().splitlines()), count)
+
+    def check_postgres_role_child_cleanup(self, *, parent_waits):
+        fixture, stop, identity = self.wrapper_with_resistant_grandchild(parent_waits=parent_waits)
+        code = self.doctor_live_check_code(
+            "check_postgres_role", "exec /usr/bin/python3 " + shlex.quote(str(fixture)))
+        process = subprocess.Popen(["/bin/bash", "-c", code], stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, text=True)
+        try:
+            try:
+                stdout, stderr = process.communicate(timeout=13)
+            except subprocess.TimeoutExpired:
+                self.fail("PostgreSQL role probe outlived its 5s deadline and 5s kill grace")
+            self.assertEqual(process.returncode, 0, stderr)
+            lines = stdout.splitlines()
+            self.assertEqual(len(lines), 2, stdout)
+            checks = json.loads(lines[0])
+            self.assertEqual(len(checks), 1, checks)
+            self.assertEqual(checks[0]["status"], "timeout", checks)
+            self.assertEqual(int(lines[1]), 0)
+            self.assert_child_stopped(identity)
+        finally:
+            stop.touch()
+            process.communicate(timeout=3)
+
+    def test_postgres_role_stops_resistant_child_after_wrapper_termination(self):
+        self.check_postgres_role_child_cleanup(parent_waits=True)
+
+    def test_postgres_role_stops_orphan_after_wrapper_success(self):
+        self.check_postgres_role_child_cleanup(parent_waits=False)
+
     def test_optional_operational_timeout_cannot_be_hidden_by_a_version_fallback(self):
         marker = self.root / "version-fallback-ran"
         for status in (124, 137, 143):

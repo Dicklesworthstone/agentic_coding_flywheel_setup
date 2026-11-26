@@ -5765,81 +5765,140 @@ deep_check_database() {
 # Related: bead azw
 check_postgres_connection() {
     doctor_skip_unselected_check "deep.db.postgres_connect" "PostgreSQL connection" && return 0
-    local psql_bin=""
+    local psql_bin="" timeout_bin="" attempt="" probe_status=0
+    local -a connection_args=()
 
-    # Skip if not installed
-    if ! psql_bin="$(doctor_binary_path psql 2>/dev/null || true)" || [[ -z "$psql_bin" ]]; then
+    psql_bin="$(doctor_binary_path psql 2>/dev/null || true)"
+    if [[ -z "$psql_bin" ]]; then
         check "deep.db.postgres_connect" "PostgreSQL connection" "warn" "psql not installed" "$(doctor_pkg_install_hint postgresql-client postgresql)"
         return
     fi
-
-    # Try to connect to local postgres (5 second timeout, no password prompt)
-    # Use -w to avoid password prompts (would hang)
-    if timeout 5 "$psql_bin" -w -h localhost -U postgres -c 'SELECT 1' &>/dev/null; then
-        check "deep.db.postgres_connect" "PostgreSQL connection" "pass" "localhost:5432"
-    elif timeout 5 "$psql_bin" -w -h /var/run/postgresql -U postgres -c 'SELECT 1' &>/dev/null; then
-        check "deep.db.postgres_connect" "PostgreSQL connection" "pass" "unix socket"
-    else
-        # Try connecting as current user
-        if timeout 5 "$psql_bin" -w -c 'SELECT 1' &>/dev/null; then
-            check "deep.db.postgres_connect" "PostgreSQL connection" "pass" "current user"
-        else
-            check "deep.db.postgres_connect" "PostgreSQL connection" "warn" "connection failed" "sudo systemctl status postgresql"
-        fi
+    timeout_bin="$(_acfs_doctor_system_binary_path timeout 2>/dev/null || true)"
+    if [[ -z "$timeout_bin" ]]; then
+        check "deep.db.postgres_connect" "PostgreSQL connection" "warn" \
+            "connection verification unavailable (system timeout is required)" "" false
+        return
     fi
+
+    # Keep the established local connection fallbacks. Disable startup files
+    # and password prompts; an inconclusive probe must not become a repair.
+    for attempt in localhost socket current; do
+        case "$attempt" in
+            localhost) connection_args=(-h localhost -U postgres) ;;
+            socket) connection_args=(-h /var/run/postgresql -U postgres) ;;
+            current) connection_args=() ;;
+        esac
+        probe_status=0
+        _acfs_doctor_run_bounded "$timeout_bin" 5 "$psql_bin" \
+            -X -w -v ON_ERROR_STOP=1 "${connection_args[@]}" -c 'SELECT 1' \
+            &>/dev/null || probe_status=$?
+        case "$probe_status" in
+            0)
+                case "$attempt" in
+                    localhost) check "deep.db.postgres_connect" "PostgreSQL connection" "pass" "localhost:5432" ;;
+                    socket) check "deep.db.postgres_connect" "PostgreSQL connection" "pass" "unix socket" ;;
+                    current) check "deep.db.postgres_connect" "PostgreSQL connection" "pass" "current user" ;;
+                esac
+                return
+                ;;
+            124|137|143)
+                check_with_timeout_status "deep.db.postgres_connect" "PostgreSQL connection" "timeout" \
+                    "connection verification exceeded its deadline or was terminated" \
+                    "Check PostgreSQL connectivity, then rerun acfs doctor --deep"
+                return
+                ;;
+            125|126|127)
+                check "deep.db.postgres_connect" "PostgreSQL connection" "warn" \
+                    "bounded connection verification unavailable (exit $probe_status)" "" false
+                return
+                ;;
+        esac
+    done
+    check "deep.db.postgres_connect" "PostgreSQL connection" "warn" \
+        "connection failed" "sudo systemctl status postgresql" false
 }
 
 # check_postgres_role - Verify target user role exists in PostgreSQL
 # Related: bead azw
-# Fixed: Try current user first before postgres user (pg_roles is readable by any authenticated user)
-# Fixed: Provide actionable fix message (createuser, not systemctl status)
-# Fixed: Use bash variable substitution with validated input (:'var' syntax is unreliable across psql versions)
+# pg_roles is readable by any authenticated user. A failed query cannot
+# establish absence, so only a successful empty result offers role creation.
 check_postgres_role() {
     doctor_skip_unselected_check "deep.db.postgres_role" "PostgreSQL role" && return 0
-    local psql_bin=""
+    local psql_bin="" timeout_bin="" bash_bin="" attempt="" probe_status=0 role_check=""
+    local -a connection_args=()
     psql_bin="$(doctor_binary_path psql 2>/dev/null || true)"
-    if [[ -z "$psql_bin" ]]; then
-        return  # Already reported in connection check
-    fi
+    [[ -n "$psql_bin" ]] || return 0
 
-    # Validate target user with the same contract the installer uses. ACFS
-    # target users may contain dots/hyphens; the SQL below compares a string
-    # literal after this validation, not an unquoted PostgreSQL identifier.
+    # Usernames remain string literals, never unquoted SQL identifiers.
     local target_user="${TARGET_USER:-}"
     if [[ -z "$target_user" ]]; then
-        check "deep.db.postgres_role" "PostgreSQL role check" "warn" "TARGET_USER not set"
+        check "deep.db.postgres_role" "PostgreSQL role check" "warn" "TARGET_USER not set" "" false
         return
     fi
     if [[ ! "$target_user" =~ ^[a-z_][a-z0-9._-]*$ ]]; then
-        check "deep.db.postgres_role" "PostgreSQL role check" "fail" "invalid username format"
+        check "deep.db.postgres_role" "PostgreSQL role check" "fail" "invalid username format" "" false
         return
     fi
-
-    # Try to check if target user role exists
-    # pg_roles view is readable by any authenticated user - no superuser required
-    # SECURITY: target_user is validated above with regex, safe for bash substitution
-    local role_check
-    local connect_success=false
+    timeout_bin="$(_acfs_doctor_system_binary_path timeout 2>/dev/null || true)"
+    bash_bin="$(_acfs_doctor_system_binary_path bash 2>/dev/null || true)"
+    if [[ -z "$timeout_bin" || -z "$bash_bin" ]]; then
+        check "deep.db.postgres_role" "PostgreSQL $target_user role" "warn" \
+            "role verification unavailable (system timeout and bash are required)" "" false
+        return
+    fi
     local sql_query="SELECT 1 FROM pg_roles WHERE rolname='$target_user'"
 
-    # Try connecting as current user first (mirrors check_postgres_connection behavior)
-    # This works when pg_hba.conf allows peer auth for local users
-    if role_check=$(timeout 5 "$psql_bin" -w -tAc "$sql_query" 2>/dev/null) && [[ "$role_check" == "1" ]]; then
-        connect_success=true
-    # Try localhost with postgres user as fallback
-    elif role_check=$(timeout 5 "$psql_bin" -w -h localhost -U postgres -tAc "$sql_query" 2>/dev/null) && [[ "$role_check" == "1" ]]; then
-        connect_success=true
-    # Try unix socket with postgres user as last resort
-    elif role_check=$(timeout 5 "$psql_bin" -w -h /var/run/postgresql -U postgres -tAc "$sql_query" 2>/dev/null) && [[ "$role_check" == "1" ]]; then
-        connect_success=true
-    fi
-
-    if [[ "$connect_success" == "true" ]]; then
-        check "deep.db.postgres_role" "PostgreSQL $target_user role" "pass" "role exists"
-    else
-        # Connection failed or role missing - provide actionable fix
-        check "deep.db.postgres_role" "PostgreSQL $target_user role" "warn" "role missing or connection failed" "sudo -u postgres createuser -s $target_user"
-    fi
+    # Only a successful query can establish whether the role exists. -X
+    # prevents psqlrc commands/formatting from changing this read-only probe.
+    for attempt in current localhost socket; do
+        case "$attempt" in
+            current) connection_args=() ;;
+            localhost) connection_args=(-h localhost -U postgres) ;;
+            socket) connection_args=(-h /var/run/postgresql -U postgres) ;;
+        esac
+        probe_status=0
+        # Capture inside the bounded child so an exited wrapper cannot leave
+        # an orphaned stdout writer holding the outer command substitution.
+        role_check="$(_acfs_doctor_run_bounded "$timeout_bin" 5 "$bash_bin" --noprofile --norc -p -c '
+            probe_status=0
+            probe_output=$("$@") || probe_status=$?
+            printf "%s" "$probe_output"
+            exit "$probe_status"
+        ' _ "$psql_bin" -X -w -v ON_ERROR_STOP=1 "${connection_args[@]}" -tAc "$sql_query" \
+            2>/dev/null)" || probe_status=$?
+        case "$probe_status" in
+            0)
+                case "$role_check" in
+                    1)
+                        check "deep.db.postgres_role" "PostgreSQL $target_user role" "pass" "role exists"
+                        ;;
+                    "")
+                        check "deep.db.postgres_role" "PostgreSQL $target_user role" "warn" \
+                            "role missing" "sudo -u postgres createuser -s $target_user"
+                        ;;
+                    *)
+                        check "deep.db.postgres_role" "PostgreSQL $target_user role" "warn" \
+                            "role query returned an unexpected result; existence is unverified" "" false
+                        ;;
+                esac
+                return
+                ;;
+            124|137|143)
+                check_with_timeout_status "deep.db.postgres_role" "PostgreSQL $target_user role" "timeout" \
+                    "role verification exceeded its deadline or was terminated; existence is unverified" \
+                    "Check PostgreSQL connectivity, then rerun acfs doctor --deep"
+                return
+                ;;
+            125|126|127)
+                check "deep.db.postgres_role" "PostgreSQL $target_user role" "warn" \
+                    "bounded role verification unavailable (exit $probe_status); existence is unverified" "" false
+                return
+                ;;
+        esac
+    done
+    check "deep.db.postgres_role" "PostgreSQL $target_user role" "warn" \
+        "role could not be verified (connection or query failed)" \
+        "Check PostgreSQL connectivity and authentication, then rerun acfs doctor --deep" false
 }
 
 # Deep check: Cloud CLI authentication
