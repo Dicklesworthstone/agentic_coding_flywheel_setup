@@ -151,8 +151,9 @@ const PALETTES: Record<SocialImageTheme, Palette> = {
 // -----------------------------------------------------------------------------
 // Fonts: static TTFs in app/fonts/og (Satori cannot read WOFF2). The image
 // routes run on the Node.js runtime, so the fonts are read from disk relative
-// to the project root, as the Next.js docs recommend; each path is a literal so
-// output file tracing ships the files with any route rendered on demand.
+// to the project root, as the Next.js docs recommend. File tracing does not
+// follow these paths through the bundle, so next.config.ts lists the fonts in
+// outputFileTracingIncludes for the cards rendered on request.
 // process.cwd() is apps/web under `next` and under `bun test` from apps/web.
 // -----------------------------------------------------------------------------
 type OgFont = {

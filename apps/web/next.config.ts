@@ -46,6 +46,14 @@ const nextConfig: NextConfig = {
   // `next dev` otherwise writes an untracked apps/web/AGENTS.md whenever an
   // agent runs it; the repo-root AGENTS.md is the one agents should follow.
   agentRules: false,
+  // The share-card template (lib/social-image.tsx) reads its TTFs from disk.
+  // Most cards are prerendered, but the lesson and tool cards render on
+  // request, and file tracing cannot follow a process.cwd() path inside the
+  // bundled template, so ship the fonts with every image route explicitly.
+  outputFileTracingIncludes: {
+    "/**/opengraph-image": ["./app/fonts/og/*.ttf"],
+    "/**/twitter-image": ["./app/fonts/og/*.ttf"],
+  },
   turbopack: {
     // Bun workspaces install deps at the workspace root; Turbopack needs this
     // to resolve `next` and other packages when multiple lockfiles exist.
