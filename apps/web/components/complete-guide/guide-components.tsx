@@ -5,6 +5,7 @@ import {
   ArrowDown,
   ArrowRight,
   ArrowUp,
+  ArrowUpRight,
   Check,
   ChevronDown,
   Copy,
@@ -12,6 +13,7 @@ import {
   Lightbulb,
   Link2,
   ListTree,
+  SquareSlash,
   SquareTerminal,
 } from "lucide-react";
 import {
@@ -36,6 +38,7 @@ import {
   useCopyFeedback,
 } from "@/lib/hooks/useCopyFeedback";
 import { type GuidePart, guideSlug } from "@/lib/guide-outlines";
+import { type GuideSkill, skillUrl } from "@/lib/guide-skills";
 import { useReducedMotion } from "@/lib/hooks/useReducedMotion";
 import { cn } from "@/lib/utils";
 import {
@@ -580,6 +583,59 @@ export function TipBox({
         {label}
       </p>
       <div className="mt-2 text-[1rem] leading-[1.7] text-zinc-300 sm:text-[1.0625rem]">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// SKILL NOTE - The jeffreys-skills.md skill that packages the step at hand
+// =============================================================================
+export function SkillNote({
+  skills,
+  children,
+}: {
+  skills: readonly GuideSkill[];
+  /** Why the skill helps at this step; name each skill when there are several. */
+  children: ReactNode;
+}) {
+  const label = skills.length > 1 ? "Skills for this step" : "Skill for this step";
+
+  return (
+    <div
+      role="note"
+      aria-label={label}
+      className="max-w-[72ch] rounded-xl border border-white/[0.08] bg-white/[0.025] px-5 py-4 sm:px-6 sm:py-5"
+    >
+      {/* Label left, source right; on a narrow column the source drops beneath. */}
+      <p className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 font-mono text-xs font-medium">
+        <span className="flex items-center gap-2 uppercase tracking-[0.18em] text-[#FF7A33]">
+          <SquareSlash aria-hidden="true" className="h-3.5 w-3.5" />
+          {label}
+        </span>
+        <span className="tracking-[0.02em] text-zinc-400">jeffreys-skills.md</span>
+      </p>
+      <ul role="list" className="mt-3 flex flex-wrap gap-2">
+        {skills.map((skill) => (
+          <li key={skill} className="min-w-0 max-w-full">
+            <a
+              href={skillUrl(skill)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group/skill inline-flex min-h-8 max-w-full items-center gap-1.5 rounded-md border border-white/[0.12] bg-black/30 px-2.5 py-1 font-mono text-[0.875rem] leading-snug text-white transition-colors hover:border-[#FF5500]/60 hover:text-[#FFBD2E] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#FF5500]"
+            >
+              <span className="min-w-0 [overflow-wrap:anywhere]">/{skill}</span>
+              <ArrowUpRight
+                aria-hidden="true"
+                className="h-3.5 w-3.5 shrink-0 text-zinc-400 transition-colors group-hover/skill:text-[#FFBD2E]"
+              />
+              <span className="sr-only"> (opens in a new tab)</span>
+            </a>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-3 text-[1rem] leading-[1.7] text-zinc-300 sm:text-[1.0625rem]">
         {children}
       </div>
     </div>

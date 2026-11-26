@@ -18,6 +18,7 @@ import {
   guidePartCount,
   guideSlug,
 } from "./guide-outlines";
+import { GUIDE_SKILLS, skillUrl } from "./guide-skills";
 
 const enabledStackModuleIds = new Set(
   manifestModules
@@ -79,6 +80,17 @@ describe("complete guide derived claims", () => {
     const exhibits = (source: string) => source.match(/<[A-Z]\w*(?:Viz|Diagram|Studio|Ladder)\b/g)?.length ?? 0;
     expect(exhibits(pageSource)).toBe(COMPLETE_GUIDE_EXHIBIT_COUNT);
     expect(exhibits(coreSource)).toBe(CORE_FLYWHEEL_EXHIBIT_COUNT);
+  });
+
+  test("skill notes and the guide skill list stay in step", () => {
+    const sources = [pageSource, coreSource];
+    const notes = sources.flatMap((source) => [...source.matchAll(/<SkillNote\s+skills=\{\[([^\]]*)\]\}/g)]);
+    // Every note is parsed: one the pattern missed would hide its slugs from the check below.
+    expect(notes.length).toBe(sources.flatMap((source) => [...source.matchAll(/<SkillNote\b/g)]).length);
+    const named = notes.flatMap(([, list]) => [...list.matchAll(/"([^"]+)"/g)].map(([, slug]) => slug));
+    // Every listed skill is recommended somewhere, so the list holds no dead entries.
+    expect([...new Set(named)].sort()).toEqual([...GUIDE_SKILLS].sort());
+    expect(skillUrl("beads-workflow")).toBe("https://jeffreys-skills.md/skills/beads-workflow");
   });
 
   test("prompt titles make unique anchor ids on each page", () => {

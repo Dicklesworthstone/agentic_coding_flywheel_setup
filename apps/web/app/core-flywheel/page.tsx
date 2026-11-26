@@ -15,6 +15,7 @@ import {
   NumberedList,
   P,
   PromptBlock,
+  SkillNote,
   SubSection,
   TipBox,
 } from "@/components/complete-guide/guide-components";
@@ -277,6 +278,12 @@ export default function CoreFlywheelPage() {
                 agent can pick up if one disappears. Once your AGENTS.md tells agents to use it,
                 they do this on their own.
               </P>
+
+              <SkillNote skills={["agent-mail"]}>
+                Gives agents working knowledge of the whole coordination API: starting a session,
+                reserving files, threading messages by bead, and the pre-commit guard that stops
+                commits to files another agent has reserved.
+              </SkillNote>
             </SubSection>
 
             <SubSection title="br Solves Task Structure">
@@ -588,6 +595,13 @@ Closed br-103 and released my file reservations.`}
                 At minimum, the plan should cover the user-facing workflows, the important
                 constraints, the major architectural decisions, and the testing expectations.
               </P>
+
+              <SkillNote skills={["planning-workflow"]}>
+                Runs this step for you. It drafts the first plan in your coding agent, then walks
+                you through several review rounds with your strongest model, each in a fresh
+                conversation, with the exact prompts for proposing revisions, merging them, and
+                blending competing plans. It finishes by turning the plan into beads.
+              </SkillNote>
             </SubSection>
 
             <SubSection title="Step 2: Tell an Agent to Convert the Plan into Beads">
@@ -626,6 +640,14 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
                 format optimized for distributed execution. Weak beads force improvisation. Rich
                 beads make execution mechanical.
               </TipBox>
+
+              <SkillNote skills={["beads-workflow", "beads-br", "beads-bv"]}>
+                <code>/beads-workflow</code> carries both prompts above, the polishing loop, and the
+                sync-then-commit routine. <code>/beads-br</code> and <code>/beads-bv</code> teach
+                agents the two tools properly, including the traps: br never commits for you, and
+                bare <code>bv</code> opens an interactive screen an agent cannot drive, so agents
+                use its <code>--robot-*</code> modes.
+              </SkillNote>
             </SubSection>
 
             <SubSection title="Step 3: Launch Agents with Marching Orders">
@@ -688,6 +710,13 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
                 That is usually enough to keep the loop healthy without turning you into a
                 full-time traffic cop.
               </P>
+
+              <SkillNote skills={["ntm", "vibing-with-ntm"]}>
+                When you are ready to hand this rhythm to an agent. With both skills loaded, one
+                Claude Code session can spawn the swarm through ntm, send the marching orders, and
+                then tend it on a schedule. It checks each pane&apos;s real state before nudging
+                it, restarts agents that have degraded, and refuses to count busywork as progress.
+              </SkillNote>
             </SubSection>
 
             <SubSection title="Step 5: Review, Close, Repeat">
@@ -789,6 +818,13 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
                 If the answer is &quot;no,&quot; the fix is usually not more implementation effort.
                 Revise the bead graph, add missing work, or step back into planning.
               </P>
+
+              <SkillNote skills={["reality-check-for-project"]}>
+                Turns this question into a complete course correction: it compares the code with
+                what the README and plan promise, writes a plan to close every gap, turns that into
+                beads, and refines them until a round finds nothing new. Run it every few days on a
+                long project.
+              </SkillNote>
             </SubSection>
 
             <SubSection title="Minimum Viable AGENTS.md">
@@ -1152,6 +1188,13 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
                 At that point, the bigger document stops feeling like overhead and starts feeling
                 like leverage.
               </P>
+
+              <SkillNote skills={["choose-the-best-skills-for-me-to-run-in-this-project"]}>
+                The full guide points to a skill for nearly every step, which is a lot to choose
+                from. This one profiles your project and where it stands, scores every skill in the
+                catalog against that evidence, and recommends at most three to run now, with
+                ready-to-paste prompts.
+              </SkillNote>
             </SubSection>
           </GuideSection>
 
