@@ -1604,7 +1604,7 @@ ubuntu_print_upgrade_warning() {
     echo "║  IMPORTANT:                                                    ║"
     echo "║  • Create a VM snapshot/backup before proceeding              ║"
     echo "║  • SSH connections will drop during reboot                    ║"
-    echo "║  • Reconnect after reboot - installation will auto-resume    ║"
+    echo "║  • Reconnect after reboot to see Ubuntu upgrade progress      ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo ""
     ubuntu_upgrade_status
@@ -2273,61 +2273,31 @@ ubuntu_show_upgrade_warning() {
     hops=$(echo "$path" | wc -l | tr -d ' ')
     local estimated_time=$((hops * 30))
 
-    # Detect server IP for SSH reconnection instructions
-    local server_ip=""
-    if [[ -n "${SSH_CONNECTION:-}" ]]; then
-        # SSH_CONNECTION format: "client_ip client_port server_ip server_port"
-        server_ip=$(echo "$SSH_CONNECTION" | awk '{print $3}')
-    fi
-    if [[ -z "$server_ip" ]]; then
-        # Fallback: get first IP from hostname
-        server_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
-    fi
-    if [[ -z "$server_ip" ]]; then
-        server_ip="<your-server-ip>"
-    fi
-
     cat << EOF
 
-╔══════════════════════════════════════════════════════════════════╗
-║           ACFS Ubuntu Upgrade - READ CAREFULLY                   ║
-╠══════════════════════════════════════════════════════════════════╣
-║                                                                  ║
-║  Current version:  Ubuntu $current
-║  Target version:   Ubuntu $target
-║  Upgrade path:     $current -> $(echo "$path" | tr '\n' ' ' | sed 's/ / -> /g; s/ -> $//')
-║  Estimated time:   ~${estimated_time} minutes total
-║                                                                  ║
-╠══════════════════════════════════════════════════════════════════╣
-║  WHAT WILL HAPPEN:                                               ║
-║                                                                  ║
-║  1. System will upgrade and reboot $hops time(s)
-║  2. Your SSH connection will disconnect at each reboot           ║
-║  3. Wait 2-3 minutes, then reconnect                             ║
-║  4. Press UP ARROW to recall the curl command, then press ENTER  ║
-║                                                                  ║
-╠══════════════════════════════════════════════════════════════════╣
-║  AFTER EACH REBOOT:                                              ║
-║                                                                  ║
-║    1. ssh root@$server_ip
-║       (use the same root password as before)                     ║
-║                                                                  ║
-║    2. Press UP ARROW key to recall the last command              ║
-║       (the curl command you just ran)                            ║
-║                                                                  ║
-║    3. Press ENTER to run it again                                ║
-║                                                                  ║
-║  The installer remembers your progress and continues from        ║
-║  where it left off. Repeat until you reach Ubuntu $target.
-║                                                                  ║
-╠══════════════════════════════════════════════════════════════════╣
-║  IF SOMETHING FAILS:                                             ║
-║  Reinstall the base Ubuntu image from your VPS provider's panel  ║
-║  and start fresh. This is always safe.                           ║
-║                                                                  ║
-╚══════════════════════════════════════════════════════════════════╝
+ACFS will upgrade Ubuntu $current to $target.
+Upgrade path: $current -> $(echo "$path" | tr '\n' ' ' | sed 's/ / -> /g; s/ -> $//')
+Estimated time: about ${estimated_time} minutes for $hops release hop(s).
+
+SSH disconnects during reboots. Reconnect as usual to check progress.
+The boot service resumes each pending upgrade. To follow its log, run:
+  sudo journalctl -u acfs-upgrade-resume -f
 
 EOF
+    if [[ "${YES_MODE:-false}" == true ]]; then
+        cat << 'EOF'
+After the final reboot, ACFS starts the approved installation automatically.
+Follow it with:
+  sudo journalctl -u acfs-continue-install -f
+EOF
+    else
+        cat << 'EOF'
+After the final reboot, your login notice tells you when ACFS is ready.
+Continue the saved installation from your SSH terminal with:
+  sudo /bin/bash -p /var/lib/acfs/upgrade_resume.sh --continue-install
+EOF
+    fi
+    printf '\nIf recovery stops, inspect /var/log/acfs/upgrade_resume.log before retrying.\n'
 }
 
 # Confirm upgrade with user (for interactive mode)

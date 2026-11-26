@@ -27,6 +27,24 @@ teardown() {
     common_teardown
 }
 
+@test "upgrade warning shows the continuation for the actual confirmation mode" {
+    ubuntu_get_version_string() { echo "24.04"; }
+    ubuntu_calculate_upgrade_path() { echo "26.04"; }
+    UBUNTU_TARGET_VERSION=26.04
+
+    YES_MODE=false
+    run ubuntu_show_upgrade_warning
+    assert_success
+    [[ "$output" == *"sudo /bin/bash -p /var/lib/acfs/upgrade_resume.sh --continue-install"* ]]
+    [[ "$output" != *"acfs-continue-install -f"* ]]
+
+    YES_MODE=true
+    run ubuntu_show_upgrade_warning
+    assert_success
+    [[ "$output" == *"journalctl -u acfs-continue-install -f"* ]]
+    [[ "$output" != *"--continue-install"* ]]
+}
+
 @test "continue_install: template does not contain streaming curl pipe" {
     # Code only: a comment may mention the original curl|bash run.
     run grep -nE '^[^#]*curl[^#]*\|\s*bash' "$PROJECT_ROOT/scripts/lib/ubuntu_upgrade.sh"

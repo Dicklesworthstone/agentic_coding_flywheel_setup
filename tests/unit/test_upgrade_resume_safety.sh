@@ -343,6 +343,7 @@ check_handoff() {
     # must remain single argv values, never evaluated or split by the caller.
     cat > "$ACFS_CONTINUE_CONTEXT_FILE" <<'CONTEXT'
 CONTINUE_HOME=/root
+CONTINUE_INSTALL_ARGS=(--yes)
 CONTINUE_TARGET_USER=dev-user
 CONTINUE_TARGET_HOME='/data/dev user'
 CONTINUE_ACFS_HOME='/data/dev user/.acfs'

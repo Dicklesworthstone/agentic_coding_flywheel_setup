@@ -32,6 +32,7 @@ builtin unset BASH_ENV ENV LD_PRELOAD LD_LIBRARY_PATH LD_AUDIT LD_DEBUG LD_PROFI
 builtin unset DYLD_INSERT_LIBRARIES DYLD_LIBRARY_PATH DYLD_FRAMEWORK_PATH
 builtin unset CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR REQUESTS_CA_BUNDLE GIT_SSL_CAINFO
 # Lock possession and sourced-library markers are process-minted authority.
+builtin unset ACFS_INSTALL_ATTEMPT ACFS_REPORT_INSTALL_OUTCOME RESUME_MANUAL_HANDOFF
 builtin unset ACFS_UPGRADE_LOCK_FD _ACFS_UPGRADE_LOCK_FILE ACFS_LOCK_FD
 builtin unset _ACFS_STATE_LOCKED _ACFS_STATE_LOCK_FILE _ACFS_STATE_LOCK_DEPTH _ACFS_STATE_SH_LOADED
 while IFS= builtin read -r _acfs_resume_inherited_function; do
@@ -47,21 +48,24 @@ builtin unalias -a 2>/dev/null || true
 # Parse before filesystem writes so --help and invalid arguments are inert.
 parse_resume_args() {
     RESUME_RETARGET_UBUNTU=false
+    RESUME_CONTINUE_INSTALL=false
     RESUME_HELP=false
     if [[ $# == 0 ]]; then return 0; fi
     if [[ $# == 1 ]]; then
         case "$1" in
             --retarget-ubuntu=26.04) RESUME_RETARGET_UBUNTU=true; return 0 ;;
+            --continue-install) RESUME_CONTINUE_INSTALL=true; return 0 ;;
             --help|-h) RESUME_HELP=true; return 0 ;;
         esac
     fi
-    printf 'Usage: upgrade_resume.sh [--retarget-ubuntu=26.04 | --help]\n' >&2
+    printf 'Usage: upgrade_resume.sh [--continue-install | --retarget-ubuntu=26.04 | --help]\n' >&2
     return 2
 }
 parse_resume_args "$@" || exit "$?"
 if [[ "$RESUME_HELP" == true ]]; then
     printf '%s\n' \
-        'Usage: upgrade_resume.sh [--retarget-ubuntu=26.04]' \
+        'Usage: upgrade_resume.sh [--continue-install | --retarget-ubuntu=26.04]' \
+        '--continue-install: run the saved installation in this terminal after Ubuntu has finished upgrading.' \
         'With no arguments: resume the saved upgrade under systemd.' \
         '--retarget-ubuntu=26.04: preserve and replan an existing checkpoint, then exit.' \
         'Requires current recovery libraries and a matching post-upgrade continuation.' \
@@ -76,6 +80,10 @@ if [[ "$EUID" != 0 || "$UID" != "$EUID" ]]; then
     exit 1
 fi
 umask 077
+if [[ "$RESUME_CONTINUE_INSTALL" == true ]] && ! (exec 3<>/dev/tty) 2>/dev/null; then
+    printf 'ERROR: --continue-install requires a controlling terminal. Reconnect with SSH and try again.\n' >&2
+    exit 1
+fi
 
 # Validate the entire root-owned path before creating logs or sourcing saved
 # executable context. The controlled directory itself may never be group- or
@@ -200,6 +208,18 @@ try:
             or not isinstance(upgrade.get("target_version"), str)
             or not re.fullmatch(r"[0-9]{2}\.(04|10)", upgrade["target_version"])):
         reject()
+    if "install_handoff" in upgrade:
+        handoff = upgrade["install_handoff"]
+        if (not isinstance(handoff, dict) or set(handoff) != {"status", "attempt"}
+                or upgrade["current_stage"] != "completed"
+                or handoff["status"] not in ("awaiting", "running", "completed", "failed", "declined", "interrupted", "unconfirmed")
+                or not isinstance(handoff["attempt"], str)):
+            reject()
+        if handoff["status"] == "awaiting":
+            if handoff["attempt"] != "":
+                reject()
+        elif not re.fullmatch(r"install-attempt\.[A-Za-z0-9]{10}", handoff["attempt"]):
+            reject()
     print(json.dumps(state, sort_keys=True, separators=(",", ":"), allow_nan=False))
 except (OSError, ValueError, TypeError, RecursionError, OverflowError):
     print("ERROR: Saved upgrade checkpoint is unreadable, ambiguous, unsupported, or oversized; it was not changed.", file=sys.stderr)
@@ -269,6 +289,11 @@ if ! resume_validate_inputs || ! command -v jq >/dev/null 2>&1 \
 fi
 if [[ "$RESUME_RETARGET_UBUNTU" != true ]] && ! resume_checkpoint_enabled "$RESUME_CHECKPOINT_SNAPSHOT"; then
     printf 'ERROR: The saved checkpoint does not enable upgrade resumption. No recovery code or installation was started.\n' >&2
+    exit 1
+fi
+if [[ "$RESUME_CONTINUE_INSTALL" == true ]] && ! jq -e '.ubuntu_upgrade.current_stage == "completed"' \
+        >/dev/null <<< "$RESUME_CHECKPOINT_SNAPSHOT"; then
+    printf 'ERROR: Ubuntu has not finished upgrading; --continue-install cannot start an upgrade or reboot.\n' >&2
     exit 1
 fi
 if ! resume_initialize_log; then
@@ -360,6 +385,7 @@ load_continue_context() {
     CONTINUE_ACFS_HOME=""
     CONTINUE_ACFS_STATE_FILE=""
     CONTINUE_ACFS_REF=""
+    CONTINUE_REQUIRES_TTY=""
     CONTINUE_INSTALL_URL=""
     CONTINUE_INSTALL_ARGS=()
     # shellcheck source=/dev/null
@@ -586,6 +612,11 @@ remove_motd() {
 # Update state to mark upgrade as complete
 mark_state_complete() {
     if [[ -f "$ACFS_STATE_FILE" ]] && command -v jq &>/dev/null; then
+        if jq -e '.ubuntu_upgrade | .current_stage == "completed" and .completed_at != null
+                and .needs_reboot == false and .resume_after_reboot == false and .current_upgrade == null' \
+                "$ACFS_STATE_FILE" >/dev/null; then
+            return 0
+        fi
         local tmp_file=""
         local completed_at=""
         tmp_file="$(mktemp "${ACFS_STATE_FILE}.tmp.XXXXXX" 2>/dev/null)" || tmp_file=""
@@ -622,6 +653,184 @@ mark_state_complete() {
     return 0
 }
 
+# The upgrade lock serializes the foreground wrapper as well as boot dispatch.
+# Save the claim before execution and reconcile only that attempt on recovery.
+resume_sync_file_and_parent() {
+    /usr/bin/python3 -I - "$1" <<'PY'
+import os, sys
+for path in (sys.argv[1], os.path.dirname(sys.argv[1])):
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+PY
+}
+
+resume_set_handoff() {
+    local status="$1" attempt="$2"
+    # This ledger belongs to boot recovery, independently of the account or
+    # home retained for the installation that will follow.
+    if ! TARGET_USER=root TARGET_HOME=/root state_update_with_args '
+        if .ubuntu_upgrade.enabled == true and .ubuntu_upgrade.current_stage == "completed"
+            and .ubuntu_upgrade.install_handoff == $previous then
+            .ubuntu_upgrade.install_handoff = {status: $status, attempt: $attempt}
+        else error("upgrade handoff changed") end
+    ' --argjson previous "$handoff" --arg status "$status" --arg attempt "$attempt"; then
+        log_error "Could not record installer handoff ($status); preserving recovery files"
+        return 1
+    fi
+    # The claim must survive power loss before any installer process runs.
+    resume_sync_file_and_parent "$ACFS_STATE_FILE" || return 1
+    handoff=$(jq -cn --arg status "$status" --arg attempt "$attempt" '{status:$status,attempt:$attempt}')
+}
+
+resume_handoff_outcome() {
+    local attempt="$1" directory="$ACFS_RESUME_DIR/$1" outcome="$ACFS_RESUME_DIR/$1/outcome"
+    [[ "$attempt" =~ ^install-attempt\.[[:alnum:]]{10}$ ]] || return 1
+    resume_recovery_directory_safe "$directory" || return 1
+    [[ "$(/usr/bin/stat -c '%a' -- "$directory")" == 700 ]] || return 1
+    if [[ ! -e "$outcome" && ! -L "$outcome" ]]; then
+        printf 'missing\n'
+    elif ! resume_recovery_file_safe "$outcome"; then
+        return 1
+    elif cmp -s "$outcome" <(printf 'completed\n'); then
+        printf 'completed\n'
+    elif cmp -s "$outcome" <(printf 'declined\n'); then
+        printf 'declined\n'
+    else
+        return 1
+    fi
+}
+
+show_install_handoff() {
+    local motd=/etc/update-motd.d/00-acfs-upgrade
+    resume_recovery_directory_safe "${motd%/*}" || return 1
+    local message="${1:-Ubuntu upgrade complete. ACFS installation is waiting for confirmation.}"
+    log "$message"
+    log "Review the saved handoff: sudo /bin/bash -p /var/lib/acfs/upgrade_resume.sh --continue-install"
+    # Publish the instruction atomically; it survives a disconnected login.
+    local candidate
+    candidate=$(mktemp "${motd%/*}/.acfs-handoff.XXXXXXXX") || return 1
+    # Only the two fixed messages from this dispatcher reach the MOTD.
+    {
+        printf '%s\n' '#!/bin/bash'
+        printf 'printf "%%s\\n" %q\n' "$message" 'To review or continue, run: sudo /bin/bash -p /var/lib/acfs/upgrade_resume.sh --continue-install'
+    } > "$candidate" || return 1
+    chmod 0755 "$candidate" && mv -T -- "$candidate" "$motd" && resume_sync_file_and_parent "$motd"
+}
+
+resume_manual_install() {
+    local script="$1" handoff="$2" status attempt outcome active rc=0
+    local unconfirmed_message="ACFS installer outcome is unconfirmed. Review the target installation checkpoint and logs before another install."
+    status=$(jq -r '.status // "new"' <<< "$handoff") || return 1
+    attempt=$(jq -r '.attempt // ""' <<< "$handoff") || return 1
+    case "$status" in
+        new)
+            # The new producer always claims before running the installer. An
+            # absent claim on its completed OS checkpoint can safely be armed
+            # after an interruption between OS completion and handoff creation.
+            if [[ -z "$CONTINUE_REQUIRES_TTY" && "${current_stage:-}" == completed ]]; then
+                show_install_handoff "Legacy Ubuntu checkpoint is complete. ACFS installation outcome is unknown. Review the target checkpoint and installer logs before another install." || return 1
+                log_error "Cannot infer whether the previous installer already ran; preserving the checkpoint."
+                return 1
+            fi
+            resume_set_handoff awaiting "" || return 1
+            ;;
+        completed)
+            log "The saved installer handoff already completed."
+            remove_motd
+            return 0
+            ;;
+        running|unconfirmed|declined|failed|interrupted)
+            # Acquiring the lock proves the previous foreground wrapper no
+            # longer owns it. Check only its receipt before allowing a retry.
+            if ! outcome=$(resume_handoff_outcome "$attempt"); then
+                log_error "Invalid handoff receipt for $attempt; inspect recovery files before retrying."
+                return 1
+            fi
+            if [[ "$outcome" == completed ]]; then
+                resume_set_handoff completed "$attempt" || return 1
+                remove_motd
+                log "Recovered completed installer handoff; no second installation started."
+                return 0
+            fi
+            if [[ "$status" == running || ( "$status" == unconfirmed && "$outcome" == declined ) ]]; then
+                if [[ "$outcome" == missing ]]; then
+                    # A legacy wrapper may have finished normally without
+                    # ever supporting receipts. Its death cannot prove retry
+                    # is safe, even after acquiring the abandoned claim.
+                    if [[ -z "$CONTINUE_REQUIRES_TTY" ]]; then outcome=unconfirmed; else outcome=interrupted; fi
+                fi
+                resume_set_handoff "$outcome" "$attempt" || return 1
+                if [[ "$outcome" == unconfirmed ]]; then
+                    show_install_handoff "$unconfirmed_message" || return 1
+                    return 1
+                fi
+                log "Previous installer handoff was $outcome. Review installation progress before retrying."
+                show_install_handoff || return 1
+                [[ "${RESUME_CONTINUE_INSTALL:-false}" != true ]]
+                return
+            fi
+            if [[ "$status" == unconfirmed ]]; then
+                # Older installers exit zero for both success and an aborted
+                # resume. A completed target checkpoint may predate this run.
+                show_install_handoff "$unconfirmed_message" || return 1
+                return 1
+            fi
+            ;;
+        awaiting) ;;
+        *) log_error "Unknown installer handoff state; preserving recovery files"; return 1 ;;
+    esac
+    if [[ "${RESUME_CONTINUE_INSTALL:-false}" != true ]]; then
+        show_install_handoff
+        return
+    fi
+
+    # A previous unattended continuation could still be running. An error
+    # querying systemd is not evidence the unit is idle.
+    active=$(systemctl show --property=ActiveState --value acfs-continue-install.service) || return 1
+    case "$active" in
+        inactive|failed) ;;
+        *) log_error "A continuation is active or unresolved ($active); retry when idle."; return 1 ;;
+    esac
+    local directory
+    directory=$(mktemp -d "$ACFS_RESUME_DIR/install-attempt.XXXXXXXXXX") || return 1
+    attempt="${directory##*/}"
+    resume_set_handoff running "$attempt" || return 1
+    # Start in a clean root environment, like the transient system service.
+    # The generated wrapper restores its reviewed target/installation settings.
+    /usr/bin/env -i PATH="$PATH" HOME=/root TERM="${TERM:-dumb}" \
+        ACFS_INSTALL_ATTEMPT="$attempt" /bin/bash -p "$script" </dev/tty >/dev/tty 2>&1 || rc=$?
+    if ! outcome=$(resume_handoff_outcome "$attempt"); then
+        log_error "Invalid handoff receipt for $attempt; inspect recovery files before retrying."
+        return 1
+    fi
+    case "$outcome" in
+        completed)
+            resume_set_handoff completed "$attempt" || return 1
+            remove_motd
+            log "Confirmed completion of the saved installer handoff (wrapper exit $rc)."
+            return "$rc"
+            ;;
+        declined) status=declined ;;
+        missing)
+            case "$rc" in
+                0) status=unconfirmed ;;
+                *) if (( rc > 128 )); then status=interrupted; else status=failed; fi ;;
+            esac
+            ;;
+    esac
+    resume_set_handoff "$status" "$attempt" || return 1
+    log "Installer handoff $status (wrapper exit $rc); retained $attempt."
+    if [[ "$status" == unconfirmed ]]; then
+        show_install_handoff "$unconfirmed_message" || return 1
+        return 1
+    fi
+    show_install_handoff || return 1
+    [[ "$status" == declined ]]
+}
+
 # Launch continue script using systemd-run for reliability
 # nohup+background is unreliable when parent service exits
 launch_continue_script() {
@@ -637,7 +846,9 @@ launch_continue_script() {
     # race if another caller starts it after this check.
     if systemctl is-active --quiet "$unit"; then
         log "Installer continuation is already running under $unit; not starting another copy"
-        return 0
+        if [[ "${1:-}" == boot ]]; then remove_motd; fi
+        [[ "${RESUME_CONTINUE_INSTALL:-false}" != true ]]
+        return
     fi
 
     if ! resume_recovery_file_safe "$script" || ! /bin/bash -n "$script"; then
@@ -650,6 +861,58 @@ launch_continue_script() {
         return 1
     fi
 
+    local needs_tty=true arg handoff
+    for arg in "${CONTINUE_INSTALL_ARGS[@]}"; do
+        case "$arg" in --yes|-y) needs_tty=false ;; esac
+    done
+    if [[ -n "$CONTINUE_REQUIRES_TTY" && "$needs_tty" != "$CONTINUE_REQUIRES_TTY" ]]; then
+        log_error "Saved confirmation policy conflicts with continuation arguments; refusing launch"
+        return 1
+    fi
+    if [[ "$needs_tty" == true || -n "$CONTINUE_REQUIRES_TTY" ]]; then
+        # Both generated files embed the same shell-quoted argument list.
+        # Compare those saved bytes: re-rendering %q under a service's locale
+        # can change the spelling of an unchanged non-ASCII path.
+        local context_args="" script_args="" context_count=0 script_count=0
+        while IFS= read -r arg || [[ -n "$arg" ]]; do
+            if [[ "$arg" == CONTINUE_INSTALL_ARGS=* ]]; then
+                context_args="${arg#CONTINUE_}"
+                context_count=$((context_count+1))
+            fi
+        done < "$ACFS_CONTINUE_CONTEXT_FILE"
+        while IFS= read -r arg || [[ -n "$arg" ]]; do
+            if [[ "$arg" == INSTALL_ARGS=* ]]; then
+                script_args="$arg"
+                script_count=$((script_count+1))
+            fi
+        done < "$script"
+        if [[ "$context_count" != 1 || "$script_count" != 1 || "$context_args" != "$script_args" ]]; then
+            log_error "Continuation arguments do not match the saved review; preserving recovery files"
+            return 1
+        fi
+    fi
+    if [[ "$needs_tty" == true ]]; then
+        RESUME_MANUAL_HANDOFF=true
+        if [[ -z "$CONTINUE_REQUIRES_TTY" ]]; then
+            log "Legacy continuation: the saved installer may not report its outcome. An unconfirmed zero exit requires review."
+        fi
+        handoff=$(jq -c '.ubuntu_upgrade.install_handoff' "$ACFS_STATE_FILE") || return 1
+        resume_manual_install "$script" "$handoff"
+        return
+    fi
+    if [[ "${RESUME_CONTINUE_INSTALL:-false}" == true || \
+        "$(jq -r '.ubuntu_upgrade.install_handoff != null' <<< "${locked_checkpoint:-null}")" == true ]]; then
+        log_error "Saved interactive handoff conflicts with unattended launch; refusing to replay"
+        return 1
+    fi
+
+    if [[ "${1:-}" == boot ]]; then
+        # An unattended installation must not be started a second time by
+        # the enabled boot unit following an immediate reboot.
+        cleanup_service
+        boot_cleanup_pending=false
+        remove_motd
+    fi
     log "Launching continue_install.sh to resume ACFS installation"
     local continue_home="${CONTINUE_HOME:-/root}"
     local -a continue_env_args=("--setenv=HOME=${continue_home}")
@@ -852,24 +1115,33 @@ if ubuntu_is_at_or_beyond_target_version "$CURRENT_UBUNTU_VERSION"; then
     log "SUCCESS: Already at or beyond target version (current: $CURRENT_UBUNTU_VERSION, target: $UBUNTU_TARGET_VERSION)!"
     log "Cleaning up upgrade infrastructure..."
 
-    # Disable service FIRST to prevent any possibility of loop
-    cleanup_service
+    if [[ "${RESUME_CONTINUE_INSTALL:-false}" == true ]]; then
+        launch_continue_script
+        exit "$?"
+    fi
 
+    # Leave the boot unit available until the final handoff is recoverable.
+    # An unattended launch disables it immediately before submitting the
+    # transient unit. Interactive dispatch first persists the login notice.
+    boot_cleanup_pending=true
     # Update state to mark as complete (before removing files)
     export ACFS_STATE_FILE="${ACFS_RESUME_DIR}/state.json"
     if ! mark_state_complete; then
+        cleanup_service
         update_motd_failure "Cannot persist completed upgrade state"
         exit 1
     fi
 
-    # Remove MOTD
-    remove_motd
-
-    # Launch continue script BEFORE removing files (it may need them)
-    if ! launch_continue_script; then
-        update_motd_failure "Installer continuation failed - retry manually"
-        log_error "Keeping resume files for recovery; installer continuation did not launch"
+    if ! launch_continue_script boot; then
+        if [[ "${RESUME_MANUAL_HANDOFF:-false}" != true ]]; then
+            [[ "$boot_cleanup_pending" != true ]] || cleanup_service
+            update_motd_failure "Installer continuation failed - retry manually"
+        fi
+        log_error "Keeping recovery files. Review the upgrade log; for terminal installation use sudo /bin/bash -p /var/lib/acfs/upgrade_resume.sh --continue-install"
         exit 1
+    fi
+    if [[ "$boot_cleanup_pending" == true ]]; then
+        cleanup_service
     fi
 
     # The continuation is a detached service and may still source these

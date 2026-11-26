@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
 """Exercise the complete resume entry point with host mutations redirected to fixtures.
 
-Real Python/JSON, Bash, jq, file checks and flock run. Only OS identity, systemd,
-package/reboot commands and the state-library callbacks are fixture services.
-Temporary evidence is retained; this test never changes the real resume state.
+Real Python/JSON, Bash, jq, file checks and flock run. The interactive cases
+also exercise the continuation generator, state library and a controlling PTY.
+OS identity, systemd, the installer payload and package/reboot operations use
+disposable fixtures. No test changes the real resume state.
 """
 import copy
+import fcntl
 import json
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -103,12 +107,26 @@ systemd-run() { printf 'CONTINUE:%s\n' "$*" >> "$TRACE"; return 0; }
         target.write_text(text)
         target.chmod(0o600)
 
-    def run(self, *args):
-        return subprocess.run(["/bin/bash", "-p", str(self.runner), *args],
-                              env={"PATH": "/usr/bin:/bin", "HOME": "/root",
-                                   "TRACE": str(self.trace), "MUTATION": str(self.mutation),
-                                   "FIXTURE_RELEASE": self.os_release.read_text().split('"')[1]},
-                              text=True, capture_output=True, timeout=10)
+    def process(self, *args, tty=False):
+        command = ["/bin/bash", "-p", str(self.runner), *args]
+        if tty:
+            command = ["script", "--quiet", "--return", "--command", shlex.join(command), "/dev/null"]
+        return subprocess.Popen(command, env={
+            "PATH": "/usr/bin:/bin", "HOME": "/root",
+            "TRACE": str(self.trace), "MUTATION": str(self.mutation),
+            "FIXTURE_RELEASE": self.os_release.read_text().split('"')[1],
+        }, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            start_new_session=True, text=True)
+
+    def run(self, *args, tty=False):
+        with self.process(*args, tty=tty) as process:
+            try:
+                output, error = process.communicate(timeout=15)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.communicate()
+                raise
+            return subprocess.CompletedProcess(process.args, process.returncode, output, error)
 
     def events(self):
         return self.trace.read_text() if self.trace.exists() else ""
@@ -291,6 +309,278 @@ class CheckpointAuthorityTests(unittest.TestCase):
         self.assertEqual(fixture.run("--unknown").returncode, 2)
         self.assertEqual(fixture.events(), "")
         self.assertFalse(fixture.log.exists())
+
+
+@unittest.skipUnless(os.geteuid() == 0, "Root-owned recovery fixtures require root")
+class InteractiveHandoffTests(unittest.TestCase):
+    def setUp(self):
+        self.fx = ResumeFixture()
+        # Exercise real state writes and the actual continuation generator.
+        self.fx.write("lib/state.sh", (ROOT / "scripts/lib/state.sh").read_text())
+        self.source = self.fx.root / "source with spaces"
+        libs = self.source / "scripts/lib"
+        libs.mkdir(parents=True)
+        (libs / "upgrade_resume.sh").write_text("#!/bin/bash\nexit 0\n")
+        templates = self.source / "scripts/templates"
+        templates.mkdir()
+        (templates / "acfs-upgrade-resume.service").write_text("[Unit]\n")
+        units = self.fx.root / "units"
+        units.mkdir()
+        self.producer = self.fx.root / "producer.sh"
+        self.producer.write_text((ROOT / "scripts/lib/ubuntu_upgrade.sh").read_text()
+                                 .replace("/etc/systemd/system", str(units))
+                                 .replace("/var/log/acfs", str(self.fx.root / "logs")))
+        # Use the production flock descriptor, lifetime and PID record. Replace
+        # package, distro and reboot callbacks only; lock failure must be real.
+        lock_functions = subprocess.check_output([
+            "/bin/bash", "-p", "-c",
+            'source "$1" && declare -f upgrade_acquire_lock upgrade_release_lock',
+            "locks", str(self.producer),
+        ], text=True)
+        with (self.fx.lib / "ubuntu_upgrade.sh").open("a") as stream:
+            stream.write('\nACFS_UPGRADE_LOCK="$ACFS_RESUME_DIR/upgrade.lock"\n' + lock_functions + "\n")
+        self.payload("completed")
+
+    def generate(self, *args):
+        shell = r'''
+set -eu
+source "$1"
+ACFS_RESUME_DIR="$2"
+ACFS_STATE_FILE="$2/state.json"
+ACFS_UPGRADE_INSTALL_STATE_FILE="$2/installation.json"
+ACFS_HOME="$2/target-acfs"
+ACFS_REF=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+TARGET_USER=root
+systemctl() { :; }
+source_dir="$3"; shift 3
+upgrade_setup_infrastructure "$source_dir" "$@"
+'''
+        subprocess.run(["/bin/bash", "-p", "-c", shell, "generate", str(self.producer),
+                        str(self.fx.resume), str(self.source), *args],
+                       env={"PATH": "/usr/bin:/bin", "HOME": "/root"},
+                       check=True, text=True, capture_output=True, timeout=15)
+
+    def payload(self, receipt, *, status=0, crash=False, hold=False):
+        # This replaces only install.sh. The real generated continuation still
+        # replays its frozen arguments and account/checkpoint environment.
+        lines = ["#!/bin/bash", "set -eu", "root=" + shlex.quote(str(self.fx.resume)),
+                 '[[ -t 0 && -t 1 ]] && : < /dev/tty || exit 81',
+                 'printf "%s\\n" "$ACFS_INSTALL_ATTEMPT" >> "$root/launches"',
+                 'printf "%s\\n" "$@" > "$root/replayed-args"',
+                 'printf "%s\\n" "$ACFS_STATE_FILE" > "$root/replayed-checkpoint"']
+        if receipt is not None:
+            lines.append("printf '%s\\n' " + shlex.quote(receipt) +
+                         ' > "$root/$ACFS_INSTALL_ATTEMPT/outcome"')
+        if crash:
+            # The real dispatcher recorded its own PID in the fixture lock.
+            # Never target a process discovered by name.
+            lines += ["trap '' HUP", 'kill -KILL "$(cat "$root/upgrade.lock")"']
+        if hold:
+            lines += ['touch "$root/entered"', 'for ((i=0; i<150; i++)); do',
+                      '    [[ ! -e "$root/release" ]] || break', '    sleep .1', 'done']
+        (self.source / "install.sh").write_text("\n".join(lines + [f"exit {status}", ""]))
+
+    def launches(self):
+        path = self.fx.resume / "launches"
+        return path.read_text().splitlines() if path.exists() else []
+
+    def handoff(self):
+        return json.loads(self.fx.state.read_text())["ubuntu_upgrade"].get("install_handoff", {})
+
+    def arm(self, *args):
+        self.generate(*(args or ("--mode", "safe", "--only", "agents.codex")))
+        result = self.fx.run()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.handoff().get("status"), "awaiting", result.stdout + result.stderr)
+        self.assertNotIn("CONTINUE:", self.fx.events())
+        self.assertEqual(self.launches(), [])
+
+    def manual(self):
+        return self.fx.run("--continue-install", tty=True)
+
+    def test_manual_command_before_the_final_hop_never_starts_a_release(self):
+        self.generate("--mode", "safe")
+        self.fx.os_release.write_text('ID=ubuntu\nVERSION_ID="24.04"\n')
+        before = self.fx.state.read_bytes()
+        self.assertNotEqual(self.manual().returncode, 0)
+        self.assertEqual(self.fx.state.read_bytes(), before)
+        self.assertEqual(self.launches(), [])
+        for event in ("configure-release", "UPGRADE", "REBOOT", "systemctl:", "CONTINUE:"):
+            self.assertNotIn(event, self.fx.events())
+
+    def test_no_tty_cannot_consume_prompt_or_capture_attempt(self):
+        self.arm()
+        before = self.fx.state.read_bytes()
+        self.assertNotEqual(self.fx.run("--continue-install").returncode, 0)
+        self.assertEqual(self.fx.state.read_bytes(), before)
+        self.assertEqual(self.launches(), [])
+        self.fx.run()
+        self.assertEqual(self.handoff()["status"], "awaiting")
+        self.assertNotIn("CONTINUE:", self.fx.events())
+
+    def test_saved_yes_uses_unit_and_manual_entry_cannot_take_it_over(self):
+        self.generate("--yes", "--mode", "safe")
+        self.assertEqual(self.fx.run().returncode, 0)
+        self.assertEqual(self.fx.events().count("CONTINUE:"), 1)
+        self.manual()
+        self.assertEqual(self.launches(), [])
+        self.assertEqual(self.fx.events().count("CONTINUE:"), 1)
+
+    def test_conflicting_policy_cannot_claim_or_launch(self):
+        self.generate("--yes", "--mode", "safe")
+        context = self.fx.resume / "continue_context.env"
+        with context.open("a") as stream:
+            stream.write("CONTINUE_REQUIRES_TTY=true\n")
+        result = self.fx.run()
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.handoff(), {})
+        self.assertEqual(self.launches(), [])
+        self.assertNotIn("CONTINUE:", self.fx.events())
+
+    def test_completed_upgrade_with_new_review_policy_recovers_missing_claim(self):
+        self.generate("--mode", "safe")
+        context = self.fx.resume / "continue_context.env"
+        lines = [line for line in context.read_text().splitlines()
+                 if not line.startswith("CONTINUE_REQUIRES_TTY=")]
+        context.write_text("\n".join(lines + ["CONTINUE_REQUIRES_TTY=true", ""]))
+        self.fx.state.write_text(json.dumps(checkpoint("completed")))
+        result = self.manual()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.handoff()["status"], "completed")
+        self.assertEqual(len(self.launches()), 1)
+        self.manual()
+        self.assertEqual(len(self.launches()), 1)
+
+    def test_completed_legacy_checkpoint_does_not_replay_an_unknown_install(self):
+        self.generate("--mode", "safe")
+        context = self.fx.resume / "continue_context.env"
+        lines = [line for line in context.read_text().splitlines()
+                 if not line.startswith("CONTINUE_REQUIRES_TTY=")]
+        context.write_text("\n".join(lines + [""]))
+        self.fx.state.write_text(json.dumps(checkpoint("completed")))
+        self.manual()
+        self.fx.run()
+        self.assertEqual(self.launches(), [])
+        self.assertEqual(self.handoff(), {})
+        self.assertNotIn("CONTINUE:", self.fx.events())
+
+    def test_success_replays_exact_options_and_cannot_run_twice(self):
+        self.arm("--mode", "safe", "--only", "agents.codex")
+        result = self.manual()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.handoff()["status"], "completed")
+        self.assertEqual((self.fx.resume / "replayed-args").read_text().splitlines(),
+                         ["--mode", "safe", "--only", "agents.codex", "--skip-ubuntu-upgrade"])
+        self.assertEqual((self.fx.resume / "replayed-checkpoint").read_text().strip(),
+                         str(self.fx.resume / "installation.json"))
+        ids = self.launches()
+        self.assertEqual(len(ids), 1)
+        self.assertRegex(ids[0], r"^install-attempt\.[a-zA-Z0-9]{10}$")
+        self.manual()
+        self.fx.run()
+        self.assertEqual(self.launches(), ids)
+        self.assertNotIn("CONTINUE:", self.fx.events())
+
+    def test_decline_and_failure_retry_with_a_fresh_attempt(self):
+        self.arm()
+        for receipt, code, expected in (("declined", 0, "declined"), (None, 17, "failed"),
+                                        ("completed", 0, "completed")):
+            with self.subTest(expected=expected, code=code):
+                self.payload(receipt, status=code)
+                self.manual()
+                self.assertEqual(self.handoff()["status"], expected)
+                ids = self.launches()
+                self.fx.run()
+                self.assertEqual(self.launches(), ids)
+        self.assertEqual(len(set(self.launches())), 3)
+        self.assertNotIn("CONTINUE:", self.fx.events())
+
+    def test_legacy_success_without_receipt_requires_operator_review(self):
+        self.arm()
+        self.payload(None)
+        self.manual()
+        self.assertEqual(self.handoff()["status"], "unconfirmed")
+        self.manual()
+        self.fx.run()
+        self.assertEqual(self.handoff()["status"], "unconfirmed")
+        self.assertEqual(len(self.launches()), 1)
+        attempt = self.launches()[0]
+        (self.fx.resume / attempt / "outcome").write_text("completed\n")
+        self.manual()
+        self.assertEqual(self.handoff()["status"], "completed")
+        self.assertEqual(len(self.launches()), 1)
+
+    def test_invalid_receipt_blocks_replay_even_if_the_wrapper_exited_zero(self):
+        self.arm()
+        self.payload("completed\nextra")
+        self.assertNotEqual(self.manual().returncode, 0)
+        self.assertNotEqual(self.manual().returncode, 0)
+        self.assertNotEqual(self.handoff()["status"], "completed")
+        self.assertEqual(len(self.launches()), 1)
+
+    def test_durable_receipt_recovers_parent_death_without_reinstall(self):
+        self.arm()
+        self.payload("completed", crash=True)
+        self.manual()
+        self.assertEqual(self.handoff()["status"], "running")
+        self.manual()
+        self.assertEqual(self.handoff()["status"], "completed")
+        self.assertEqual(len(self.launches()), 1)
+
+    def test_legacy_parent_death_without_receipt_cannot_replay(self):
+        self.generate("--mode", "safe")
+        context = self.fx.resume / "continue_context.env"
+        lines = [line for line in context.read_text().splitlines()
+                 if not line.startswith("CONTINUE_REQUIRES_TTY=")]
+        context.write_text("\n".join(lines + [""]))
+        armed = self.fx.run()
+        self.assertEqual(armed.returncode, 0, armed.stdout + armed.stderr)
+        self.assertEqual(self.handoff()["status"], "awaiting")
+        self.payload(None, crash=True)
+        self.manual()
+        self.assertEqual(self.handoff()["status"], "running")
+        self.manual()
+        self.assertEqual(self.handoff()["status"], "unconfirmed")
+        self.manual()
+        self.fx.run()
+        self.assertEqual(len(self.launches()), 1)
+        self.assertNotIn("CONTINUE:", self.fx.events())
+
+    def test_orphan_holds_lock_and_recovery_without_receipt_needs_new_attempt(self):
+        self.arm()
+        self.payload(None, crash=True, hold=True)
+        with self.fx.process("--continue-install", tty=True) as process:
+            try:
+                deadline = time.monotonic() + 10
+                while not (self.fx.resume / "entered").exists():
+                    if time.monotonic() >= deadline:
+                        self.fail("Continuation did not reach its crash barrier")
+                    time.sleep(.05)
+                self.assertNotEqual(self.manual().returncode, 0)
+                self.assertEqual(self.handoff()["status"], "running")
+                self.assertEqual(len(self.launches()), 1)
+            finally:
+                (self.fx.resume / "release").touch()
+                process.communicate(timeout=10)
+        # The PTY owner and orphan may exit in either order. Wait for proof
+        # that the orphan has dropped the shared upgrade lock.
+        with (self.fx.resume / "upgrade.lock").open("r") as lock:
+            deadline = time.monotonic() + 5
+            while True:
+                try:
+                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        self.fail("Orphan retained the upgrade lock")
+                    time.sleep(.05)
+        self.payload("completed")
+        self.manual()
+        self.assertEqual(self.handoff()["status"], "interrupted")
+        self.assertEqual(len(self.launches()), 1)
+        self.assertEqual(self.manual().returncode, 0)
+        self.assertEqual(self.handoff()["status"], "completed")
+        self.assertEqual(len(set(self.launches())), 2)
 
 
 if __name__ == "__main__":

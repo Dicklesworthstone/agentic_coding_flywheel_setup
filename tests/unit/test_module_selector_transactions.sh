@@ -275,7 +275,11 @@ test_reviewed_upgrade_replays_picker_intent() {
             --strict --verified-installer-cache "$cache" --resume --webhook=--skip-cloud)
         case "$choice" in
             profile) input=$'1\n2\n5\n1' ;;
-            custom) input=$'7\ntools.one\nlang.runtime\ndone\n1' ;;
+            custom)
+                NO_DEPS=true
+                original+=(--no-deps)
+                input=$'7\ntools.one\nlang.runtime\ndone\n1'
+                ;;
         esac
         _acfs_interactive_module_selector_on_tty <<< "$input" >/dev/null || return 1
         before="$(declare -p ACFS_EFFECTIVE_PLAN ACFS_PLAN_REASON)"
@@ -295,11 +299,11 @@ test_reviewed_upgrade_replays_picker_intent() {
             && "$ACFS_VERIFIED_INSTALLER_CACHE" == "$cache" && "$ACFS_WEBHOOK_URL" == --skip-cloud ]] || return 1
         case "$choice" in
             profile)
-                [[ "$ACFS_CLI_PROFILE" == cloud-only ]] || return 1
+                [[ "$ACFS_CLI_PROFILE" == cloud-only && "$NO_DEPS" == false ]] || return 1
                 acfs_apply_profile "$ACFS_CLI_PROFILE" || return 1
                 ;;
             custom)
-                [[ -z "$ACFS_CLI_PROFILE" && "${#ONLY_MODULES[@]}" -gt 0 ]] || return 1
+                [[ -z "$ACFS_CLI_PROFILE" && "${#ONLY_MODULES[@]}" -gt 0 && "$NO_DEPS" == true ]] || return 1
                 ;;
         esac
         acfs_resolve_selection || return 1

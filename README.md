@@ -791,7 +791,13 @@ Pass **`--target-ubuntu=26.04`** to explicitly request an upgrade to Ubuntu 26.0
 3. Performs sequential `do-release-upgrade` operations
 4. Reboots after each upgrade (handled automatically)
 5. Resumes via systemd service after reboot
-6. Continues ACFS installation once at target version
+6. At the target version, starts ACFS automatically if you originally supplied `--yes` or `-y`. Otherwise, the next SSH login shows how to continue with the saved module selections.
+
+To finish an interactive install, reconnect over SSH and run the saved recovery script from your terminal.
+
+```bash
+sudo /bin/bash -p /var/lib/acfs/upgrade_resume.sh --continue-install
+```
 
 **Expected timeline:**
 - Each version hop takes 30-60 minutes

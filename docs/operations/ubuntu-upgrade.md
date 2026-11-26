@@ -272,30 +272,25 @@ echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
 do-release-upgrade -f DistUpgradeViewNonInteractive
 ```
 
-### Manual Recovery Steps
+### Finishing ACFS after the final reboot
 
-If the upgrade is stuck and you need to recover:
+Check the live Ubuntu release, package state, and saved upgrade progress.
 
 ```bash
-# 1. Check what state we're in
-cat /var/lib/acfs/state.json | jq '.ubuntu_upgrade'
-
-# 2. If stuck in awaiting_reboot, manually reboot
-sudo reboot
-
-# 3. If stuck in upgrading, check if upgrade completed
-cat /etc/os-release | grep VERSION_ID
-
-# 4. If at target version, manually update state
-jq '.ubuntu_upgrade.current_stage = "completed" | .ubuntu_upgrade.needs_reboot = false' /var/lib/acfs/state.json > /tmp/state.json
-sudo mv /tmp/state.json /var/lib/acfs/state.json
-
-# 5. Disable the resume service
-sudo systemctl disable acfs-upgrade-resume
-
-# 6. Continue ACFS installation
-curl -fsSL .../install.sh | bash -s -- --yes --mode vibe --skip-ubuntu-upgrade
+cat /etc/os-release
+sudo dpkg --audit
+sudo jq '.ubuntu_upgrade | {target_version, current_stage, install_handoff}' /var/lib/acfs/state.json
 ```
+
+Once Ubuntu reaches the requested release and the package audit is clean, the boot service records OS completion. An install originally invoked with `--yes` or `-y` continues under `acfs-continue-install.service`. For a run requiring confirmation, reconnect over SSH and run the command from the login notice.
+
+```bash
+sudo /bin/bash -p /var/lib/acfs/upgrade_resume.sh --continue-install
+```
+
+The command revalidates the host and saved checkpoint before opening the installer on your terminal. The reviewed module choices and checkpoint path survive the reboot. If you decline or an attempt fails, the saved status and upgrade log remain available for review before another explicit attempt. Once the installer records completion, repeating the command shows the completed status.
+
+The `unconfirmed` status means the dispatcher could not establish what the installer decided. An older installer can exit successfully without recording a decision, or its launcher can stop before recording the result. Inspect the target user's installation checkpoint and the logs under `/var/log/acfs/` before deciding whether further installation is needed.
 
 ### Force Clean Restart
 
