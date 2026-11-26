@@ -2485,7 +2485,12 @@ class AgentPackageDeadlineTests(unittest.TestCase):
         }
         # Root's real home is /root even with TARGET_HOME. Redirect only home
         # metadata to the isolated fixture; account identity/transport stay real.
+        # _acfs_discover_repo_root falls back to well-known checkouts such as
+        # /data/projects/agentic_coding_flywheel_setup, which every fleet host
+        # has; its agy_locked.py would turn the snapshot's missing launcher
+        # source into a success. Keep the repo root on the snapshot itself.
         body = COMMON + r'''
+ACFS_REPO_ROOT="${UPDATE_TEST_LIBRARY%/scripts/lib/update.sh}"
 update_target_home() { printf '%s\n' "$TEST_HOME"; }
 ''' + command + r'''
 printf 'COUNTS=%s,%s,%s\n' "$SUCCESS_COUNT" "$SKIP_COUNT" "$FAIL_COUNT"
