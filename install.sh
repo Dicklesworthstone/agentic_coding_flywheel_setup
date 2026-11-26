@@ -7297,6 +7297,9 @@ run_ubuntu_upgrade_phase() {
     if [[ "${ACFS_STATE_FILE+x}" == "x" ]]; then
         had_state_file=true
     fi
+    # The resume generator needs the validated installation checkpoint while
+    # state helpers below operate exclusively on the system upgrade record.
+    local ACFS_UPGRADE_INSTALL_STATE_FILE="$previous_state_file"
     export ACFS_STATE_FILE="$upgrade_state_file"
 
     # Read existing evidence without the lenient "unreadable means not_started"

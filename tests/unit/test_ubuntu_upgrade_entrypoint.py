@@ -173,6 +173,20 @@ sleep() { trace UNEXPECTED_SLEEP; exit 98; }
         upgrade.update(fields)
         return json.dumps(dict(schema_version=3, ubuntu_upgrade=upgrade))
 
+    def test_upgrade_state_binding_retains_the_per_user_continuation_path(self):
+        overrides = r'''
+ACFS_STATE_FILE="$SCRIPT_DIR/scoped installation.json"
+acfs_read_upgrade_checkpoint() {
+    [[ "$1" == "$ACFS_RESUME_DIR/state.json" && "$ACFS_STATE_FILE" == "$1" ]] || return 1
+    [[ "${ACFS_UPGRADE_INSTALL_STATE_FILE:-}" == "$SCRIPT_DIR/scoped installation.json" ]] || return 1
+    trace checkpoint_paths_distinct
+    printf 'not_started\n'
+}
+'''
+        rc, events, errors = self.invoke(version='26.04', overrides=overrides)
+        self.assertEqual(rc, 0, errors)
+        self.assertIn('checkpoint_paths_distinct', events)
+
     def test_default_target_is_supported_lts(self):
         self.assertEqual(self.default, '26.04')
 

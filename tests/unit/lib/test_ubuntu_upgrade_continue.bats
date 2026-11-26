@@ -76,17 +76,20 @@ EOF
     assert_success
 }
 
-@test "continue_install: uses local source dir when present" {
+@test "continue_install: replays the installation checkpoint and arguments from before the upgrade" {
     local source_dir="$BATS_TEST_TMPDIR/source"
     local resume_dir="$BATS_TEST_TMPDIR/resume_dir"
     local marker="$BATS_TEST_TMPDIR/local_installer_executed"
+    local install_state="$BATS_TEST_TMPDIR/custom scoped checkpoint.json"
     mkdir -p "$source_dir/scripts/lib" "$source_dir/scripts/templates" "$resume_dir"
     touch "$source_dir/scripts/lib/upgrade_resume.sh"
     touch "$source_dir/scripts/templates/acfs-upgrade-resume.service"
 
+    printf '%s\n' '{"module_selection":{"selected_modules":["agents.codex"]}}' > "$install_state"
     cat > "$source_dir/install.sh" <<EOF
 #!/usr/bin/env bash
-printf '%s\n' "\$*" > "$marker"
+printf '%s\n' "\$ACFS_STATE_FILE" "\$*" > "$marker"
+jq -r '.module_selection.selected_modules[]' "\$ACFS_STATE_FILE" >> "$marker"
 EOF
     chmod +x "$source_dir/install.sh"
 
@@ -97,20 +100,34 @@ EOF
         command cp "$@"
     }
 
-    ACFS_RESUME_DIR="$resume_dir" \
-    TARGET_USER="root" \
-    ACFS_REPO_OWNER="Dicklesworthstone" \
-    ACFS_REPO_NAME="agentic_coding_flywheel_setup" \
-    ACFS_REF="main" \
-    upgrade_setup_infrastructure "$source_dir" "--yes" "--mode" "vibe"
+    local stage expected_args
+    for stage in upgrading pre_upgrade_reboot; do
+        printf '{"ubuntu_upgrade":{"current_stage":"%s"}}\n' "$stage" > "$resume_dir/state.json"
+        expected_args="--yes --mode vibe"
+        [[ "$stage" == pre_upgrade_reboot ]] || expected_args+=" --skip-ubuntu-upgrade"
+        ACFS_RESUME_DIR="$resume_dir" \
+        ACFS_STATE_FILE="$resume_dir/state.json" \
+        ACFS_UPGRADE_INSTALL_STATE_FILE="$install_state" \
+        TARGET_USER="root" \
+        ACFS_REPO_OWNER="Dicklesworthstone" \
+        ACFS_REPO_NAME="agentic_coding_flywheel_setup" \
+        ACFS_REF="main" \
+        upgrade_setup_infrastructure "$source_dir" "--yes" "--mode" "vibe"
 
-    run bash "$resume_dir/continue_install.sh"
-    assert_success
-    assert_output --partial "Using local installer"
+        # The systemd launcher reads this context while the continuation exports
+        # its own serialized environment. Both must preserve the same checkpoint.
+        source "$resume_dir/continue_context.env"
+        [[ "$CONTINUE_ACFS_STATE_FILE" == "$install_state" ]]
+        run bash "$resume_dir/continue_install.sh"
+        assert_success
+        assert_output --partial "Using local installer"
 
-    [[ -f "$marker" ]]
-    run cat "$marker"
-    assert_output --partial "--yes --mode vibe --skip-ubuntu-upgrade"
+        [[ -f "$marker" ]]
+        mapfile -t observed < "$marker"
+        [[ "${observed[0]}" == "$install_state" ]]
+        [[ "${observed[1]}" == "$expected_args" ]]
+        [[ "${observed[2]}" == "agents.codex" ]]
+    done
 }
 
 @test "continue_install: stages remote installer and executes with bash when local source is missing" {

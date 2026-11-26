@@ -32,6 +32,8 @@ export ACFS_RESUME_DIR="/var/lib/acfs"
 # pre-do-release-upgrade kernel-reboot path without losing the caller's flags,
 # which would otherwise strand a non-interactive (--yes) upgrade after reboot.
 ACFS_UPGRADE_ORIGINAL_ARGS=()
+# Only the installer may bind this while temporarily using the system checkpoint.
+ACFS_UPGRADE_INSTALL_STATE_FILE=""
 
 # Lock file location
 export ACFS_UPGRADE_LOCK="/var/run/acfs-upgrade.lock"
@@ -1869,7 +1871,7 @@ upgrade_setup_infrastructure() {
         return 1
     fi
 
-    resolved_acfs_state_file="${ACFS_STATE_FILE:-${resolved_acfs_home}/state.json}"
+    resolved_acfs_state_file="${ACFS_UPGRADE_INSTALL_STATE_FILE:-${ACFS_STATE_FILE:-${resolved_acfs_home}/state.json}}"
     # run_ubuntu_upgrade_phase temporarily points ACFS_STATE_FILE at the
     # root-owned upgrade state under ACFS_RESUME_DIR while the upgrade runs.
     # That value must never be baked into the post-reboot continuation: the
