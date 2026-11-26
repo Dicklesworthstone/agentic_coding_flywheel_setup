@@ -50,7 +50,7 @@ export function RepresentationLadder() {
             <div className="w-8 h-px bg-[#FF5500]/30" />
             Rework Cost
           </div>
-          <h4 className="mt-6 font-serif text-[1.875rem] font-normal leading-[1.08] tracking-[-0.01em] text-white sm:text-[2.375rem]">
+          <h4 className="mt-6 font-serif text-[1.5rem] font-normal leading-[1.12] tracking-[-0.008em] text-white sm:text-[1.875rem]">
             Where you catch the bug determines the rework bill
           </h4>
           <p className="mt-8 text-[1.1rem] leading-relaxed text-zinc-400 font-extralight opacity-80">
@@ -86,8 +86,11 @@ export function RepresentationLadder() {
             return (
               <motion.div
                 key={layer.id}
-                initial={reducedMotion ? false : { opacity: 0, x: -20 }}
-                animate={isInView ? { opacity: 1, x: 0 } : undefined}
+                // Never flip `initial` to false after hydration: the server
+                // already rendered the hidden state, and framer then leaves
+                // it hidden. Reduced motion reveals at once instead.
+                initial={{ opacity: 0, x: -20 }}
+                animate={isInView || reducedMotion ? { opacity: 1, x: 0 } : undefined}
                 transition={{
                   type: "spring",
                   stiffness: 100,

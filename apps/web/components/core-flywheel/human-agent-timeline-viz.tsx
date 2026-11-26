@@ -654,7 +654,7 @@ export function HumanAgentTimelineViz() {
               <span className="w-1.5 h-1.5 rounded-full bg-[#a78bfa]" />
               Interactive Exhibit
             </div>
-            <h3 className="font-serif text-[1.875rem] font-normal leading-[1.08] tracking-[-0.01em] text-white sm:text-[2.375rem]">
+            <h3 className="font-serif text-[1.5rem] font-normal leading-[1.12] tracking-[-0.008em] text-white sm:text-[1.875rem]">
               Who Does What in the Core Loop
             </h3>
             <p className="mt-4 text-[1.05rem] leading-relaxed text-zinc-400 font-light">

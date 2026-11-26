@@ -1,4 +1,5 @@
 import { errors, expect, test, type Page } from "@playwright/test";
+import { COMPLETE_GUIDE_PROMPT_COUNT } from "../lib/complete-guide";
 import { LESSONS } from "../lib/lessons";
 
 /**
@@ -70,6 +71,9 @@ test.describe("Color contrast (WCAG 1.4.3)", () => {
 
   for (const route of ROUTES) {
     test(`${route} has no color-contrast violations`, async ({ page }) => {
+      // The scan walks every element; the complete guide is the longest page
+      // on the site and takes ~29s alone in WebKit, so it gets triple time.
+      if (route === "/complete-guide") test.slow();
       await page.goto(route);
       await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
       expect(await contrastViolations(page)).toEqual([]);
@@ -589,7 +593,7 @@ test.describe("Complete guide prompt panels", () => {
       await page.setViewportSize({ width, height: 900 });
       await page.goto("/complete-guide");
       const copies = page.getByRole("button", { name: /^Copy prompt:/ });
-      await expect(copies).toHaveCount(42);
+      await expect(copies).toHaveCount(COMPLETE_GUIDE_PROMPT_COUNT);
       await expect(copies.first()).toBeVisible();
       expect(await copies.evaluateAll((buttons) => buttons.flatMap((button) => {
         const toolbar = button.parentElement;

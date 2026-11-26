@@ -244,11 +244,11 @@ export function PlanToBeadsViz() {
 
       <div className="relative z-10 flex flex-col gap-6 border-b border-white/[0.04] bg-white/[0.01] p-6 sm:p-8 backdrop-blur-md lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <div className="text-xs font-bold uppercase tracking-widest text-primary/70 mb-2 flex items-center gap-2">
+          <div className="text-xs font-bold uppercase tracking-widest text-primary mb-2 flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-primary" />
             Interactive Exhibit
           </div>
-          <h3 className="font-serif text-[1.875rem] font-normal leading-[1.08] tracking-[-0.01em] text-white sm:text-[2.375rem]">
+          <h3 className="font-serif text-[1.5rem] font-normal leading-[1.12] tracking-[-0.008em] text-white sm:text-[1.875rem]">
             A plan is only useful once it becomes executable memory
           </h3>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-zinc-400 font-light">

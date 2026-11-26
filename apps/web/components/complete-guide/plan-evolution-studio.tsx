@@ -121,7 +121,7 @@ export function PlanEvolutionStudio() {
             <span className="w-1.5 h-1.5 rounded-full bg-[#FF5500]" />
             Interactive Studio
           </div>
-          <h4 className="font-serif text-[1.875rem] font-normal leading-[1.08] tracking-[-0.01em] text-white sm:text-[2.375rem]">
+          <h4 className="font-serif text-[1.5rem] font-normal leading-[1.12] tracking-[-0.008em] text-white sm:text-[1.875rem]">
             Best-of-all-worlds synthesis
           </h4>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-zinc-400 font-light">

@@ -306,7 +306,9 @@ function ScenarioPanel({ scenarioId, phaseIndex }: { scenarioId: ScenarioId; pha
             : "linear-gradient(180deg,rgba(6,78,59,0.16),rgba(15,23,42,0.7))",
       }}
     >
-      <div className="flex flex-col xl:flex-row gap-4 xl:items-start xl:justify-between">
+      {/* Always stacked: at xl the two lanes sit side by side and are too
+          narrow for the title and the stat tiles to share a row. */}
+      <div className="flex flex-col gap-4">
         <div className="min-w-0">
           <div
             className="text-xs font-semibold uppercase tracking-[0.2em]"
@@ -314,32 +316,31 @@ function ScenarioPanel({ scenarioId, phaseIndex }: { scenarioId: ScenarioId; pha
           >
             {scenario.badge}
           </div>
-          <div className="mt-1 text-lg font-black tracking-[-0.03em] text-white truncate whitespace-normal leading-tight">
+          <div className="mt-1 text-lg font-bold leading-tight tracking-[-0.02em] text-white">
             {scenario.title}
           </div>
           <p className="mt-1.5 text-xs leading-relaxed text-white/62">{scenario.summary}</p>
         </div>
 
-        <div className="flex gap-2 shrink-0">
-          <div className="rounded-xl border border-white/10 bg-slate-950/60 px-2 py-1.5 min-w-[60px] sm:min-w-[70px] flex flex-col items-center justify-center">
-            <div className="text-xs uppercase tracking-[0.15em] text-white/40">conflicts</div>
-            <div className="mt-0.5 text-sm sm:text-base font-black text-white leading-none">
-              {frame.metrics.conflicts}
+        <dl className="grid grid-cols-3 gap-2">
+          {(
+            [
+              ["conflicts", frame.metrics.conflicts],
+              ["idle burn", frame.metrics.idleBurn],
+              ["completed", frame.metrics.completed],
+            ] as const
+          ).map(([label, value]) => (
+            <div
+              key={label}
+              className="flex flex-col items-center justify-center rounded-xl border border-white/10 bg-slate-950/60 px-2 py-2"
+            >
+              <dt className="order-2 mt-1 text-xs uppercase tracking-[0.12em] text-white/50">{label}</dt>
+              <dd className="order-1 font-mono text-base font-semibold tabular-nums leading-none text-white">
+                {value}
+              </dd>
             </div>
-          </div>
-          <div className="rounded-xl border border-white/10 bg-slate-950/60 px-2 py-1.5 min-w-[60px] sm:min-w-[70px] flex flex-col items-center justify-center">
-            <div className="text-xs uppercase tracking-[0.15em] text-white/40">idle burn</div>
-            <div className="mt-0.5 text-sm sm:text-base font-black text-white leading-none">
-              {frame.metrics.idleBurn}
-            </div>
-          </div>
-          <div className="rounded-xl border border-white/10 bg-slate-950/60 px-2 py-1.5 min-w-[60px] sm:min-w-[70px] flex flex-col items-center justify-center">
-            <div className="text-xs uppercase tracking-[0.15em] text-white/40">completed</div>
-            <div className="mt-0.5 text-sm sm:text-base font-black text-white leading-none">
-              {frame.metrics.completed}
-            </div>
-          </div>
-        </div>
+          ))}
+        </dl>
       </div>
 
       <p className="mt-4 rounded-xl border border-white/8 bg-slate-950/50 px-3 py-2 text-xs leading-relaxed text-white/72">
@@ -480,7 +481,7 @@ export function SwarmExecutionViz() {
             <Users className="h-3.5 w-3.5" />
             Interactive Exhibit
           </div>
-          <h4 className="mt-2 font-serif text-[1.875rem] font-normal leading-[1.08] tracking-[-0.01em] text-white sm:text-[2.375rem]">
+          <h4 className="mt-2 font-serif text-[1.5rem] font-normal leading-[1.12] tracking-[-0.008em] text-white sm:text-[1.875rem]">
             The same four agents, launched all at once or staggered
           </h4>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/60">
@@ -489,7 +490,9 @@ export function SwarmExecutionViz() {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] p-1">
+        {/* One row from lg, where it sits beside the title; it may wrap only
+            on the narrowest phones. */}
+        <div className="flex flex-wrap items-center gap-1 self-start rounded-2xl border border-white/10 bg-white/[0.04] p-1 lg:shrink-0 lg:flex-nowrap lg:self-auto lg:rounded-full">
           <button
             type="button"
             aria-label={comparisonPlaying ? "Pause comparison" : "Play comparison"}

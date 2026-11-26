@@ -1269,6 +1269,23 @@
   }
 }
 
+/* Inside the guides the theme's accent is the guides' orange, not the site's
+   cyan: exhibits written with text-/bg-/border-primary and rgba(var(--primary-rgb))
+   pick it up, and so does the default focus outline. */
+[data-guide-article] {
+  --primary: #ff5500;
+  --primary-foreground: #0a0a0a;
+  --primary-rgb: 255, 85, 0;
+  --ring: #ff7a33;
+}
+
+/* An exhibit's "Illustrative simulation" note is its caption: pull the
+   exhibit's own bottom margin in so the note sits under it. Unlayered, so it
+   wins over the exhibit's my-* utility. */
+[data-guide-article] :has(+ [data-guide-disclosure]) {
+  margin-bottom: 1rem;
+}
+
 /* Fade the overflowing edges of the guide section list: sideways on the
    phone rail, at the bottom of the desktop sidebar. */
 .guide-rail-mask {

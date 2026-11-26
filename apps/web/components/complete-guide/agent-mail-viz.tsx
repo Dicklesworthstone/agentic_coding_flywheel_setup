@@ -65,7 +65,7 @@ export function AgentMailViz() {
             >
               <Mail className="h-4 w-4" />
             </span>
-            <h4 className="font-serif text-[1.875rem] font-normal leading-[1.08] tracking-[-0.01em] text-white sm:text-[2.375rem]">
+            <h4 className="font-serif text-[1.5rem] font-normal leading-[1.12] tracking-[-0.008em] text-white sm:text-[1.875rem]">
               Broadcast vs. Point-to-Point
             </h4>
           </div>

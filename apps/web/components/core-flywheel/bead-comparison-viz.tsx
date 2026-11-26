@@ -197,17 +197,15 @@ function TerminalBlock({
         {lines.map((line, i) => (
           <motion.div
             key={`${tabKey}-${i}`}
-            initial={
-              reducedMotion
-                ? false
-                : {
-                    opacity: 0,
-                    x: isWeak ? -8 : 8,
-                    ...(!isWeak ? { backgroundColor: "rgba(16,185,129,0.05)" } : {}),
-                  }
-            }
+            // Reduced motion reveals at once; `initial` stays fixed so the
+            // server-rendered hidden state is always animated away.
+            initial={{
+              opacity: 0,
+              x: isWeak ? -8 : 8,
+              ...(!isWeak ? { backgroundColor: "rgba(16,185,129,0.05)" } : {}),
+            }}
             animate={
-              isInView
+              isInView || reducedMotion
                 ? {
                     opacity: 1,
                     x: 0,
@@ -317,8 +315,10 @@ function QualityMetrics({
           {metrics.map((metric, i) => (
             <motion.div
               key={metric.label}
-              initial={reducedMotion ? false : { opacity: 0, scale: 0.9 }}
-              animate={isInView ? { opacity: 1, scale: 1 } : undefined}
+              // Reduced motion reveals at once; `initial` stays fixed so the
+              // server-rendered hidden state is always animated away.
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={isInView || reducedMotion ? { opacity: 1, scale: 1 } : undefined}
               transition={{
                 delay: reducedMotion ? 0 : 0.2 + i * 0.08,
                 type: "spring",
@@ -376,7 +376,7 @@ export function BeadComparisonViz() {
             <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#FF5500]/10 text-[#FF5500] border border-[#FF5500]/20 shadow-inner">
               <GitBranch className="h-4 w-4" />
             </span>
-            <h3 className="font-serif text-[1.875rem] font-normal leading-[1.08] tracking-[-0.01em] text-white sm:text-[2.375rem]">
+            <h3 className="font-serif text-[1.5rem] font-normal leading-[1.12] tracking-[-0.008em] text-white sm:text-[1.875rem]">
               Weak vs. Strong Artifacts
             </h3>
           </div>
@@ -472,8 +472,8 @@ export function BeadComparisonViz() {
       <AnimatePresence mode="wait">
         <motion.div
           key={`insight-${activeTab}`}
-          initial={reducedMotion ? false : { opacity: 0, y: 16, scale: 0.98 }}
-          animate={isInView ? { opacity: 1, y: 0, scale: 1 } : undefined}
+          initial={{ opacity: 0, y: 16, scale: 0.98 }}
+          animate={isInView || reducedMotion ? { opacity: 1, y: 0, scale: 1 } : undefined}
           exit={reducedMotion ? undefined : { opacity: 0, y: 8, scale: 0.98 }}
           transition={{
             type: "spring",

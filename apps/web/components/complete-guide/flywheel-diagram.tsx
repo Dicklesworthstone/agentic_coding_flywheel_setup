@@ -96,7 +96,7 @@ export function FlywheelDiagram() {
   return (
     <div
       ref={ref}
-      className="my-16 overflow-hidden rounded-[3rem] border border-white/[0.04] bg-[#05070a] p-8 sm:p-12 lg:p-16 shadow-[0_50px_100px_-20px_rgba(0,0,0,0.9),inset_0_1px_1px_rgba(255,255,255,0.05)] relative group/viz"
+      className="my-16 overflow-hidden rounded-2xl border border-white/[0.08] bg-[#05070a] p-5 sm:rounded-[2rem] sm:p-10 lg:p-12 shadow-[0_50px_100px_-20px_rgba(0,0,0,0.9),inset_0_1px_1px_rgba(255,255,255,0.05)] relative group/viz"
     >
       <div className="absolute inset-0 noise-overlay opacity-[0.02] mix-blend-overlay pointer-events-none" />
       <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-[radial-gradient(ellipse_at_top_right,rgba(167,139,250,0.03),transparent_60%)] pointer-events-none" />
@@ -105,11 +105,11 @@ export function FlywheelDiagram() {
           for the title, the controls and the 640px loop diagram side by side. */}
       <div className="relative z-10 flex flex-col gap-8 border-b border-white/[0.04] pb-10">
         <div className="max-w-2xl">
-          <div className="text-xs font-bold uppercase tracking-widest text-primary/80 flex items-center gap-3 mb-4">
+          <div className="text-xs font-bold uppercase tracking-widest text-primary flex items-center gap-3 mb-4">
             <span className="w-1.5 h-1.5 rounded-full bg-primary" />
             Interactive Visualization
           </div>
-          <h3 className="font-serif text-[1.875rem] font-normal leading-[1.08] tracking-[-0.01em] text-white sm:text-[2.375rem]">
+          <h3 className="font-serif text-[1.5rem] font-normal leading-[1.12] tracking-[-0.008em] text-white sm:text-[1.875rem]">
             How each turn of the flywheel speeds up the next
           </h3>
           <p className="mt-6 text-[1.1rem] leading-relaxed text-zinc-400 font-light">
@@ -125,8 +125,9 @@ export function FlywheelDiagram() {
         </div>
 
         <div className="flex flex-wrap items-center gap-4">
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-bold uppercase tracking-[0.3em] text-white/30">
+          {/* Label above the buttons on phones, beside them from sm. */}
+          <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-3">
+            <span className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-400">
               Simulation Depth
             </span>
             <div className="flex gap-2 p-1.5 rounded-2xl bg-[#020408] border border-white/[0.05] shadow-inner">
@@ -138,7 +139,7 @@ export function FlywheelDiagram() {
                     setCycleDepth(index);
                     setAutoTour(false);
                   }}
-                  className={`px-5 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition duration-500 ${
+                  className={`min-h-9 px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] rounded-xl transition duration-500 sm:px-5 sm:tracking-widest ${
                     cycleDepth === index
                       ? "bg-primary text-black shadow-[0_0_20px_rgba(var(--primary-rgb),0.4)]"
                       : "text-white/40 hover:text-white/80 hover:bg-white/[0.03]"

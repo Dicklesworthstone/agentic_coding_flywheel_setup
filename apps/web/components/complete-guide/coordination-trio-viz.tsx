@@ -76,7 +76,7 @@ export function CoordinationTrioViz() {
             <div className="w-8 h-px bg-violet-400/30" />
             Coordination Logic
           </div>
-          <h3 className="mt-6 font-serif text-[1.875rem] font-normal leading-[1.08] tracking-[-0.01em] text-white sm:text-[2.375rem]">
+          <h3 className="mt-6 font-serif text-[1.5rem] font-normal leading-[1.12] tracking-[-0.008em] text-white sm:text-[1.875rem]">
             Beads, Agent Mail, and bv each do a job the other two cannot
           </h3>
           <p className="mt-8 text-[1.1rem] leading-relaxed text-zinc-400 font-extralight opacity-80">
@@ -108,8 +108,10 @@ export function CoordinationTrioViz() {
           <motion.svg
             viewBox="0 0 600 380"
             className="relative z-10 w-full h-auto"
-            initial={reducedMotion ? false : { opacity: 0 }}
-            animate={isInView ? { opacity: 1 } : undefined}
+            // Reduced motion reveals at once; `initial` stays fixed so the
+            // server-rendered hidden state is always animated away.
+            initial={{ opacity: 0 }}
+            animate={isInView || reducedMotion ? { opacity: 1 } : undefined}
             transition={{ duration: 0.8 }}
           >
             {TRIO_EDGES.map((edge) => {
@@ -292,7 +294,7 @@ export function CoordinationTrioViz() {
                 transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
                 className="p-10 rounded-[2.5rem] bg-[#0a0c10] border border-white/[0.05] shadow-inner"
               >
-                <span className="text-xs font-black text-primary/80 uppercase tracking-[0.5em] block mb-6">
+                <span className="text-xs font-black text-primary uppercase tracking-[0.5em] block mb-6">
                   How They Fit Together
                 </span>
                 <p className="text-[1.1rem] leading-relaxed text-zinc-300 font-extralight italic">

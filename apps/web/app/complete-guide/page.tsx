@@ -2706,7 +2706,7 @@ When a Rust build or test is needed, offload it with rch (for example, rch exec 
               <TipBox variant="warning">
                 <strong>Watch for strategic drift.</strong> A swarm can look productive while
                 heading in the wrong direction: agents generating lots of code and commits while the
-                real goal still feels far away. A recent X post about FrankenEngine described these
+                real goal still feels far away. The author&apos;s March 2026 X post about FrankenEngine described these
                 as <strong>&quot;Come to Jesus&quot; moments</strong> with the agents, used to make
                 sure &quot;we are not losing sight of the bigger picture&quot; after days of
                 methodically cranking through beads. If that happens, stop and ask: &quot;Where are

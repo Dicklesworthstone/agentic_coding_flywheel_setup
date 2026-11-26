@@ -133,8 +133,10 @@ function StageNode({
     <motion.button
       type="button"
       onClick={onSelect}
-      initial={reducedMotion ? false : { opacity: 0, y: 24 }}
-      animate={isInView ? { opacity: 1, y: 0 } : undefined}
+      // Reduced motion reveals at once; `initial` stays fixed so the
+      // server-rendered hidden state is always animated away.
+      initial={{ opacity: 0, y: 24 }}
+      animate={isInView || reducedMotion ? { opacity: 1, y: 0 } : undefined}
       transition={{
         type: "spring",
         stiffness: 180,
@@ -573,7 +575,7 @@ export function ArtifactLadderViz() {
             <div className="w-8 h-px bg-[#FF5500]/30" />
             Artifact Progression
           </div>
-          <h3 className="mt-6 font-serif text-[1.875rem] font-normal leading-[1.08] tracking-[-0.01em] text-white sm:text-[2.375rem]">
+          <h3 className="mt-6 font-serif text-[1.5rem] font-normal leading-[1.12] tracking-[-0.008em] text-white sm:text-[1.875rem]">
             What you produce at each stage
           </h3>
           <p className="mt-8 text-[1.1rem] leading-relaxed text-zinc-400 font-extralight">
@@ -699,8 +701,8 @@ export function ArtifactLadderViz() {
       {/* Bottom summary strip */}
       <motion.div
         className="relative z-10 mt-16 grid gap-4 sm:grid-cols-3"
-        initial={reducedMotion ? false : { opacity: 0, y: 16 }}
-        animate={isInView ? { opacity: 1, y: 0 } : undefined}
+        initial={{ opacity: 0, y: 16 }}
+        animate={isInView || reducedMotion ? { opacity: 1, y: 0 } : undefined}
         transition={{
           type: "spring",
           stiffness: 120,

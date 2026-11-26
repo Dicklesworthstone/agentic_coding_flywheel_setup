@@ -2,7 +2,6 @@
 
 import {
   AlertTriangle,
-  ArrowDown,
   ArrowRight,
   ArrowUp,
   ArrowUpRight,
@@ -29,10 +28,6 @@ import {
 } from "react";
 import { BottomSheet } from "@/components/ui/bottom-sheet";
 import {
-  CodeBlock as SharedCodeBlock,
-  type CodeBlockProps as SharedCodeBlockProps,
-} from "@/components/ui/code-block";
-import {
   COPY_FAILURE_MESSAGE,
   COPY_SUCCESS_MESSAGE,
   useCopyFeedback,
@@ -54,7 +49,14 @@ export { FlywheelDiagram } from "./flywheel-diagram";
 // 18px from `sm`, at a measure of ~68 characters; figures, tables and prompt
 // panels use the full article width.
 const BODY_TEXT = "text-[1.0625rem] leading-[1.75] text-zinc-300 sm:text-[1.125rem]";
-const MEASURE = "max-w-[68ch]";
+// One text column for prose, headings, tips and skill notes (about 68
+// characters of body text a line); figures, prompts and tables use the full
+// article width. `ch` is not used: Instrument Sans has wide digits, so 68ch
+// came out near 86 characters of running text.
+const MEASURE = "max-w-[40rem]";
+// Boxed blocks (prompts, tips, tables, code) get more room than the gap
+// between paragraphs, so a run of them does not read as one stack.
+const BLOCK_SPACING = "my-9 first:mt-0 last:mb-0 sm:my-11";
 
 const PROMPT_HIGHLIGHT_PATTERN =
   /(\[[A-Z_]+\]|\b(?:Do we have|Search|Review|Read|Write|Fix|Create|Update|OK|Look|Execute)\b)/g;
@@ -98,7 +100,7 @@ function renderHighlightedPrompt(text: string): ReactNode[] {
 // ARTICLE + OUTLINE
 // =============================================================================
 // The guide's outline (lib/guide-outlines.ts) is the single source for each
-// part's number and title, and for the "Up next" link that closes it.
+// part's number and title, and for whether a part has another after it.
 const GuideOutlineContext = createContext<readonly GuidePart[]>([]);
 
 export function GuideArticle({ outline, children }: { outline: readonly GuidePart[]; children: ReactNode }) {
@@ -150,7 +152,6 @@ const GuideSectionContext = createContext<string | null>(null);
 
 export function GuideSection({ id, children }: { id: string; children: ReactNode }) {
   const outline = useContext(GuideOutlineContext);
-  const reducedMotion = useReducedMotion();
   const index = outline.findIndex((part) => part.id === id);
   if (index < 0) throw new Error(`[guide] "${id}" is not in this guide's outline`);
   const part = outline[index];
@@ -189,39 +190,21 @@ export function GuideSection({ id, children }: { id: string; children: ReactNode
         </h2>
       </header>
       <GuideSectionContext.Provider value={id}>
-        <div className="space-y-7 sm:space-y-8">{children}</div>
+        <div className="space-y-6 sm:space-y-7">{children}</div>
       </GuideSectionContext.Provider>
 
+      {/* End of part. The next part's opener follows directly, so a quiet
+          mark is enough; repeating its title here would say it twice. */}
       {next && (
-        <p className="my-20 sm:my-28">
-          <a
-            href={`#${next.id}`}
-            onClick={(event) => {
-              if (!isPlainLeftClick(event)) return;
-              if (jumpToGuideTarget(next.id, !reducedMotion)) event.preventDefault();
-            }}
-            className="group/next flex items-center gap-5 border-y border-white/[0.08] py-6 transition-colors hover:border-white/[0.16] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/70 sm:gap-8 sm:py-8"
-          >
-            <span className="min-w-0 flex-1">
-              <span className="block font-mono text-xs font-medium uppercase tracking-[0.2em] text-zinc-500">
-                Up next
-                <span className="text-[#FF7A33]">
-                  {" · "}
-                  {next.number ? `Part ${next.number.padStart(2, "0")}` : "Interlude"}
-                </span>
-              </span>
-              <span className="mt-2 block font-serif text-[1.75rem] leading-[1.1] tracking-[-0.01em] text-zinc-200 transition-colors group-hover/next:text-white sm:text-[2.25rem]">
-                {next.title}
-              </span>
-            </span>
-            <span
-              aria-hidden="true"
-              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/15 text-zinc-300 transition-colors group-hover/next:border-[#FF5500] group-hover/next:bg-[#FF5500] group-hover/next:text-black sm:h-14 sm:w-14"
-            >
-              <ArrowDown className="h-5 w-5" />
-            </span>
-          </a>
-        </p>
+        <div aria-hidden="true" className="my-20 flex items-center gap-5 sm:my-28">
+          <span className="h-px flex-1 bg-gradient-to-r from-transparent to-white/[0.12]" />
+          <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5 text-zinc-600">
+            <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.5" />
+            <circle cx="12" cy="12" r="3.5" stroke="currentColor" strokeWidth="1.5" />
+            <circle cx="12" cy="3" r="2.4" fill="#FF5500" />
+          </svg>
+          <span className="h-px flex-1 bg-gradient-to-l from-transparent to-white/[0.12]" />
+        </div>
       )}
     </section>
   );
@@ -236,27 +219,29 @@ export function SubSection({ title, children }: { title: string; children: React
   const id = sectionId ? `${sectionId}-${slug}` : slug;
 
   return (
-    <div className="pt-8 first:pt-0 sm:pt-12 sm:first:pt-0">
+    <div className="pt-10 first:pt-0 sm:pt-14 sm:first:pt-0">
       <div className="group/heading relative">
         <a
           href={`#${id}`}
           aria-label={`Link to this part: ${title}`}
-          className="absolute -left-9 top-1 hidden h-8 w-8 items-center justify-center rounded-md text-zinc-500 opacity-0 transition-opacity hover:text-[#FF7A33] focus-visible:opacity-100 group-hover/heading:opacity-100 xl:flex"
+          className="absolute -left-9 top-1.5 hidden h-8 w-8 items-center justify-center rounded-md text-zinc-500 opacity-0 transition-opacity hover:text-[#FF7A33] focus-visible:opacity-100 group-hover/heading:opacity-100 xl:flex sm:top-2.5"
         >
           <Link2 aria-hidden="true" className="h-4 w-4" />
         </a>
+        {/* Serif, one step below the part title (and above exhibit titles,
+            which are figures inside the subsection). */}
         <h3
           id={id}
           data-guide-subsection={title}
           className={cn(
             MEASURE,
-            "scroll-mt-24 text-[1.375rem] font-semibold leading-[1.25] tracking-[-0.012em] text-white outline-none sm:text-[1.625rem] xl:scroll-mt-10",
+            "scroll-mt-24 text-balance font-serif text-[1.875rem] font-normal leading-[1.08] tracking-[-0.01em] text-white outline-none sm:text-[2.375rem] xl:scroll-mt-10",
           )}
         >
           {title}
         </h3>
       </div>
-      <div className="mt-5 space-y-6 sm:mt-6 sm:space-y-7">{children}</div>
+      <div className="mt-5 space-y-5 sm:mt-6 sm:space-y-6">{children}</div>
     </div>
   );
 }
@@ -266,8 +251,10 @@ export function SubSection({ title, children }: { title: string; children: React
 // =============================================================================
 export function P({ children, highlight }: { children: ReactNode; highlight?: boolean }) {
   if (highlight) {
+    // A lead paragraph: larger and brighter, with no rule, so it never looks
+    // like the left-ruled Tip and Warning callouts.
     return (
-      <p className="max-w-[62ch] border-l-2 border-[#FF5500] pl-5 text-[1.1875rem] leading-[1.6] text-zinc-100 sm:pl-6 sm:text-[1.3125rem]">
+      <p className={cn(MEASURE, "text-[1.1875rem] leading-[1.6] text-zinc-100 sm:text-[1.375rem] sm:leading-[1.55]")}>
         {children}
       </p>
     );
@@ -280,7 +267,7 @@ export function P({ children, highlight }: { children: ReactNode; highlight?: bo
 // =============================================================================
 export function BlockQuote({ children }: { children: ReactNode }) {
   return (
-    <blockquote className="relative max-w-[56ch] py-2 pl-9 sm:pl-12">
+    <blockquote className={cn("relative max-w-[56ch] py-2 pl-9 sm:pl-12", BLOCK_SPACING)}>
       <span
         aria-hidden="true"
         className="absolute left-0 top-0 select-none font-serif text-[3.25rem] leading-none text-[#FF5500] sm:text-[4rem]"
@@ -295,25 +282,108 @@ export function BlockQuote({ children }: { children: ReactNode }) {
 }
 
 // =============================================================================
-// CODE BLOCK - Terminal panel, tuned to the guide palette
+// CODE BLOCK - Commands and code, in the same frame as the prompt panels
 // =============================================================================
-export function CodeBlock(props: Omit<SharedCodeBlockProps, "variant" | "copyable">) {
+// On phones code and prompt panels run to the screen edges: the page gutter
+// is px-5 below sm, and monospace text needs the width more than the frame.
+const PHONE_BLEED = "max-sm:-mx-5 max-sm:rounded-none max-sm:border-x-0";
+
+export function CodeBlock({
+  code,
+  language = "bash",
+  filename,
+  className,
+}: {
+  code: string;
+  language?: string;
+  filename?: string;
+  className?: string;
+}) {
+  const { state, copy } = useCopyFeedback();
+  const preRef = useRef<HTMLPreElement>(null);
+  const text = code.trim();
+  const label = filename ?? language;
+
   return (
-    <SharedCodeBlock
-      {...props}
-      variant="terminal"
-      copyable
+    <figure
+      data-guide-code
       className={cn(
-        "rounded-xl border-white/[0.09] bg-[#07090D] shadow-none ring-0 hover:border-white/[0.16] hover:shadow-none",
-        props.className,
+        "overflow-hidden rounded-xl border border-white/[0.09] bg-[#07090D]",
+        BLOCK_SPACING,
+        PHONE_BLEED,
+        className,
       )}
-    />
+    >
+      <div className="flex items-center justify-between gap-3 border-b border-white/[0.07] py-1 pl-4 pr-1.5 sm:pl-5">
+        <span className="flex min-w-0 items-center gap-2.5 font-mono text-xs font-medium tracking-[0.06em] text-zinc-400">
+          <SquareTerminal aria-hidden="true" className="h-4 w-4 shrink-0 text-[#FF7A33]" />
+          <span className="truncate">{label}</span>
+        </span>
+        <button
+          type="button"
+          onClick={() => void copy(text, { selectOnFailure: preRef.current })}
+          aria-label={state === "copied" ? "Copied!" : "Copy to clipboard"}
+          className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium text-zinc-300 transition-colors hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/70"
+        >
+          {state === "copied" ? (
+            <Check aria-hidden="true" className="h-4 w-4 text-[#FF7A33]" />
+          ) : (
+            <Copy aria-hidden="true" className="h-4 w-4" />
+          )}
+          <span className="hidden sm:inline">{state === "copied" ? "Copied" : "Copy"}</span>
+        </button>
+      </div>
+      <p
+        role="status"
+        aria-live="polite"
+        className={
+          state === "failed"
+            ? "border-b border-white/[0.07] px-4 py-2 text-sm font-medium text-red-300 sm:px-5"
+            : "sr-only"
+        }
+      >
+        {state === "copied" ? COPY_SUCCESS_MESSAGE : state === "failed" ? COPY_FAILURE_MESSAGE : ""}
+      </p>
+      {/* The focusable wrapper is the one scroll region; globals.css would
+          otherwise make the <pre> scroll on its own as well. */}
+      <div
+        tabIndex={0}
+        role="region"
+        aria-label={`Code: ${label}`}
+        className="overflow-x-auto px-4 py-4 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FF5500]/60 sm:px-5"
+      >
+        <pre
+          ref={preRef}
+          className="overflow-visible font-mono text-[0.84rem] leading-[1.75] text-zinc-300 selection:bg-[#FF5500]/25 selection:text-white sm:text-[0.875rem]"
+        >
+          {text.split("\n").map((line, i) => (
+            <code key={i} className="block min-h-[1lh] w-max">
+              {line.startsWith("$") ? (
+                <>
+                  <span className="select-none font-semibold text-[#FF7A33]">$</span>
+                  <span className="text-zinc-100">{line.slice(1)}</span>
+                </>
+              ) : line.startsWith("#") ? (
+                <span className="italic text-zinc-500">{line}</span>
+              ) : (
+                line
+              )}
+            </code>
+          ))}
+        </pre>
+      </div>
+    </figure>
   );
 }
 
 export function IllustrativeDisclosure() {
   return (
-    <p className="-mt-3 flex max-w-[72ch] items-start gap-2.5 text-sm leading-relaxed text-zinc-400">
+    // A caption for the exhibit above it: globals.css pulls that exhibit's
+    // bottom margin in, and the margin here keeps the next paragraph away.
+    <p
+      data-guide-disclosure
+      className={cn(MEASURE, "mb-10 flex items-start gap-2.5 text-sm leading-relaxed text-zinc-400 sm:mb-12")}
+    >
       <Info aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#FFBD2E]" />
       <span>
         Illustrative simulation: scores, percentages, timings, and agent state in this exhibit
@@ -366,11 +436,15 @@ export function PromptBlock({
       ref={figureRef}
       id={`prompt-${guideSlug(title)}`}
       data-guide-prompt={title}
-      className="guide-prompt scroll-mt-24 overflow-hidden rounded-xl border border-white/[0.09] bg-[#07090D] xl:scroll-mt-10"
+      className={cn(
+        "guide-prompt scroll-mt-24 overflow-hidden rounded-xl border border-white/[0.09] bg-[#07090D] xl:scroll-mt-10",
+        BLOCK_SPACING,
+        PHONE_BLEED,
+      )}
     >
       {/* Toolbar: the title must stay the first <span> and the copy button
           its sibling (see e2e "prompt headers keep full titles"). */}
-      <div className="flex items-start justify-between gap-3 border-b border-white/[0.07] bg-white/[0.025] py-1.5 pl-4 pr-1.5 sm:pl-5">
+      <div className="flex items-start justify-between gap-3 border-b border-white/[0.07] py-1.5 pl-4 pr-1.5 sm:pl-5">
         <SquareTerminal aria-hidden="true" className="mt-[0.8rem] h-4 w-4 shrink-0 text-[#FF7A33]" />
         <span className="min-w-0 flex-1 break-words py-[0.6rem] text-[0.9375rem] font-semibold leading-snug text-zinc-100">
           {title}
@@ -442,7 +516,7 @@ export function PromptBlock({
       )}
 
       {(where || whyItWorks) && (
-        <dl className="grid gap-x-6 gap-y-4 border-t border-white/[0.07] bg-black/25 px-4 py-4 sm:grid-cols-[7.5rem_minmax(0,1fr)] sm:gap-y-3 sm:px-5 sm:py-5">
+        <dl className="grid gap-x-6 gap-y-4 border-t border-white/[0.07] bg-white/[0.015] px-4 py-4 sm:grid-cols-[7.5rem_minmax(0,1fr)] sm:gap-y-3 sm:px-5 sm:py-5">
           {where && (
             <>
               <dt className="font-mono text-xs font-medium uppercase tracking-[0.16em] text-zinc-400 sm:pt-[0.2rem]">
@@ -473,6 +547,10 @@ export function PromptBlock({
 // Explicit ARIA roles keep table semantics when the phone layout switches
 // the rows to display:block (Safari drops them otherwise).
 const SHORT_CELL_CHARS = 26;
+// A small grid of short values (counts, flags) stays a real table on phones:
+// as cards it would turn three rows into a screen and a half.
+const COMPACT_TABLE_COLUMNS = 4;
+const COMPACT_CELL_CHARS = 14;
 
 export function DataTable({
   headers,
@@ -481,6 +559,14 @@ export function DataTable({
   headers: string[];
   rows: (string | ReactNode)[][];
 }) {
+  const compact =
+    headers.length <= COMPACT_TABLE_COLUMNS &&
+    headers.every((header) => header.length <= COMPACT_CELL_CHARS + 6) &&
+    rows.every((row) =>
+      row.every((cell) => typeof cell === "string" && cell.length <= COMPACT_CELL_CHARS),
+    );
+  if (compact) return <CompactTable headers={headers} rows={rows as string[][]} />;
+
   const wide = headers.length >= 4;
   // On phones a column of short values (commands, counts) sits on its
   // label's line; a column with any longer text goes underneath, so every
@@ -497,7 +583,10 @@ export function DataTable({
       role="region"
       aria-label={`Table: ${headers.join(", ")}`}
       tabIndex={0}
-      className="overflow-x-auto rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/60 md:border md:border-white/[0.08] md:bg-white/[0.015]"
+      className={cn(
+        "overflow-x-auto rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/60 md:border md:border-white/[0.08] md:bg-white/[0.015]",
+        BLOCK_SPACING,
+      )}
     >
       <table role="table" className={cn("w-full border-collapse text-left", wide && "md:min-w-[40rem]")}>
         <thead role="rowgroup" className="max-md:sr-only">
@@ -551,13 +640,67 @@ export function DataTable({
   );
 }
 
+function CompactTable({ headers, rows }: { headers: string[]; rows: string[][] }) {
+  return (
+    <div
+      role="region"
+      aria-label={`Table: ${headers.join(", ")}`}
+      tabIndex={0}
+      className={cn(
+        "overflow-x-auto rounded-xl border border-white/[0.08] bg-white/[0.015] outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/60",
+        BLOCK_SPACING,
+      )}
+    >
+      <table className="w-full border-collapse text-left">
+        <thead>
+          <tr className="border-b border-white/[0.09] bg-white/[0.025]">
+            {headers.map((header) => (
+              <th
+                key={header}
+                scope="col"
+                className="px-3 py-3 font-mono text-xs font-medium uppercase tracking-[0.12em] text-zinc-400 sm:px-5 sm:py-3.5 sm:tracking-[0.14em]"
+              >
+                {header}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, rowIndex) => (
+            <tr key={rowIndex} className="border-b border-white/[0.06] last:border-b-0">
+              {row.map((cell, cellIndex) =>
+                cellIndex === 0 ? (
+                  <th
+                    key={cellIndex}
+                    scope="row"
+                    className="whitespace-nowrap px-3 py-2.5 text-[0.9375rem] font-semibold text-white sm:px-5 sm:py-3.5"
+                  >
+                    {cell}
+                  </th>
+                ) : (
+                  <td
+                    key={cellIndex}
+                    className="px-3 py-2.5 text-[0.9375rem] tabular-nums text-zinc-300 sm:px-5 sm:py-3.5"
+                  >
+                    {cell}
+                  </td>
+                ),
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // =============================================================================
 // TIP BOX - Left-rule callout
 // =============================================================================
 const TIP_VARIANTS = {
   tip: { label: "Tip", color: "#FFBD2E", Icon: Lightbulb },
   warning: { label: "Warning", color: "#FF6B61", Icon: AlertTriangle },
-  info: { label: "Note", color: "#7DD3FC", Icon: Info },
+  info: { label: "Note", color: "#A1A1AA", Icon: Info },
 } as const;
 
 export function TipBox({
@@ -572,7 +715,7 @@ export function TipBox({
   return (
     <div
       role="note"
-      className="max-w-[72ch] rounded-r-xl border-l-2 bg-white/[0.03] px-5 py-4 sm:px-6 sm:py-5"
+      className={cn(MEASURE, BLOCK_SPACING, "rounded-r-xl border-l-2 bg-white/[0.03] px-5 py-4 sm:px-6 sm:py-5")}
       style={{ borderColor: color }}
     >
       <p
@@ -603,10 +746,12 @@ export function SkillNote({
   const label = skills.length > 1 ? "Skills for this step" : "Skill for this step";
 
   return (
+    // Unboxed: a hairline and a mono label mark it as an aside, so it never
+    // reads as one more panel in a run of prompt blocks.
     <div
       role="note"
       aria-label={label}
-      className="max-w-[72ch] rounded-xl border border-white/[0.08] bg-white/[0.025] px-5 py-4 sm:px-6 sm:py-5"
+      className={cn(MEASURE, "border-t border-white/[0.09] pt-4 sm:pt-5")}
     >
       {/* Label left, source right; on a narrow column the source drops beneath. */}
       <p className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 font-mono text-xs font-medium">
@@ -635,7 +780,7 @@ export function SkillNote({
           </li>
         ))}
       </ul>
-      <div className="mt-3 text-[1rem] leading-[1.7] text-zinc-300 sm:text-[1.0625rem]">
+      <div className="mt-3 text-[0.96875rem] leading-[1.7] text-zinc-400 sm:text-[1rem]">
         {children}
       </div>
     </div>
