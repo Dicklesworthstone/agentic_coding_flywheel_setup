@@ -101,7 +101,9 @@ export default function CoreFlywheelPage() {
             <P>
               The larger system adds planning workflows, memory systems, prompt libraries, launch
               tooling, safety tooling, skills, and a lot of accumulated operational detail. You do
-              not need any of that on day one.
+              not need any of that on day one. Where a ready-made skill packages a step, a
+              &quot;Skill for this step&quot; note points to it on jeffreys-skills.md, a paid
+              library; every step here works without one.
             </P>
 
             <P>
@@ -740,6 +742,13 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
                 one agent run <code>br sync --flush-only</code> and commit the code and the{" "}
                 <code>.beads/</code> files together in logical groups.
               </P>
+
+              <SkillNote skills={["beads-compliance-and-completion-verification"]}>
+                A closed bead is the agent&apos;s claim that the work is done, and on a long project
+                some of those claims will be wrong. Every so often, have this skill audit them: it
+                checks each closed bead against what the bead specified, asks for evidence such as
+                test runs and file:line citations, and reopens the beads that fall short.
+              </SkillNote>
             </SubSection>
           </GuideSection>
 
@@ -1035,7 +1044,7 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
                 fullName="Ultimate Bug Scanner"
                 color="#FFBD2E"
                 description="A static bug scanner for JS/TS, Python, Rust, Go, Bash, and more. It flags likely bugs, such as security risks and shell quoting mistakes, before they reach a commit."
-                usage="Scan staged changes before every commit. Exit 0 means no critical findings; anything else means fix and re-run."
+                usage="Scan staged changes before every commit. Exit 0 means no critical findings; 1 means fix the findings and re-run; 2 means the scan itself failed, so run ubs doctor --fix."
                 command="ubs --staged"
               />
               <HelperCard
@@ -1048,6 +1057,14 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
                 command="cass search 'auth middleware' --robot --limit 5"
               />
             </div>
+
+            <SkillNote skills={["dcg", "ubs", "cass"]}>
+              Each helper has a skill that teaches agents its working habits. <code>/dcg</code>:
+              take the safe alternative a block prints instead of asking for an override.{" "}
+              <code>/ubs</code>: scan what you are about to commit and triage the findings, since
+              false positives happen. <code>/cass</code>: search history before re-solving
+              something, and tell a search that timed out from one that found nothing.
+            </SkillNote>
 
             <SubSection title="What You Can Ignore for Now">
               <P>
@@ -1192,8 +1209,8 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
               <SkillNote skills={["choose-the-best-skills-for-me-to-run-in-this-project"]}>
                 The full guide points to a skill for nearly every step, which is a lot to choose
                 from. This one profiles your project and where it stands, scores every skill in the
-                catalog against that evidence, and recommends at most three to run now, with
-                ready-to-paste prompts.
+                catalog against that evidence, and recommends at most three campaigns to run now,
+                with ready-to-paste prompts.
               </SkillNote>
             </SubSection>
           </GuideSection>

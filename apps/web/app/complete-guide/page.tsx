@@ -308,7 +308,7 @@ export default function CompleteGuidePage() {
                   [
                     "Skill",
                     "A reusable instruction bundle that teaches agents how to use a tool or execute a workflow",
-                    "How methods become repeatable instead of staying as tacit lore",
+                    'How methods become repeatable instead of staying as tacit lore; the "Skill for this step" notes point to ready-made ones',
                   ],
                   [
                     "Compaction",
@@ -693,11 +693,16 @@ export default function CompleteGuidePage() {
               <PlanEvolutionStudio />
               <IllustrativeDisclosure />
 
-              <SkillNote skills={["multi-model-triangulation"]}>
-                For a single hard decision rather than a whole plan. Claude writes a
-                copy-paste-ready prompt for Codex, Gemini, or Grok, you relay the answers back, and
-                Claude synthesizes them into one recommendation. Agreement across models that think
-                differently is stronger evidence than any one model&apos;s confidence.
+              <SkillNote skills={["multi-model-triangulation", "modes-of-reasoning-project-analysis"]}>
+                Two ways to get several perspectives on a single hard decision rather than a whole
+                plan. <code>/multi-model-triangulation</code> has Claude write a copy-paste-ready
+                prompt for Codex, Gemini, or Grok; you relay the answers back, and Claude
+                synthesizes them into one recommendation. Agreement across models that think
+                differently is stronger evidence than any one model&apos;s confidence.{" "}
+                <code>/modes-of-reasoning-project-analysis</code> varies the reasoning instead of
+                the model. It applies genuinely different modes of reasoning to the pivotal
+                questions, then audits every material claim independently before the synthesis, so
+                a clever but false objection doesn&apos;t survive into the decision.
               </SkillNote>
             </SubSection>
 
@@ -996,8 +1001,9 @@ br sync --flush-only                                     # Export to JSONL (no g
               </P>
 
               <SkillNote skills={["fixing-beads-problems"]}>
-                For the day <code>br show</code> or <code>br doctor</code> fails: the database is
-                malformed and the JSONL has drifted, and each store holds changes the other lacks.
+                For the day <code>br show</code> or <code>br doctor</code> fails because the
+                database is malformed and the JSONL has drifted, with each store holding changes the
+                other lacks.
                 The skill snapshots everything, carries the database-only changes into the JSONL,
                 rebuilds into a separate database, and swaps it in only after <code>br show</code>,{" "}
                 <code>br sync --status</code>, and <code>br doctor</code> all pass. Nothing under{" "}
@@ -1249,6 +1255,17 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
                 where="Codex or Claude Code, in a session with existing project context"
                 whyItWorks="By asking the agent to clone and investigate the external project firsthand, you get specific, grounded proposals instead of vague suggestions based on training data alone. The 'reimagine in highly accretive ways' framing prevents a shallow porting exercise and pushes toward genuinely novel combinations."
               />
+
+              <SkillNote skills={["research-software", "codebase-archaeology"]}>
+                Two disciplines for the investigation in step 1. <code>/research-software</code>{" "}
+                checks out the latest stable tag rather than whatever is on main, reads the source
+                over the docs, trusts only recent web sources, and ends with a structured research
+                report. <code>/codebase-archaeology</code> gives the reading an order: the
+                documentation first, then data flow outward from the entry points, then the three
+                to five core data structures everything revolves around. The agent comes away with
+                a working model of a large external project instead of a context window full of
+                boilerplate.
+              </SkillNote>
 
               <P>The first draft is always too conservative. Push for depth and ambition:</P>
 
@@ -1825,6 +1842,18 @@ bv --robot-triage --robot-triage-by-label    # Group by domain`}
                 that you yourself made. Just fool yourself into thinking YOU made the changes and
                 simply don&apos;t recall it for some reason.
               </BlockQuote>
+
+              <SkillNote skills={["git-worktree-branch-rationalization", "git-stash-janitor"]}>
+                For moving an existing repo onto this model, which usually means clearing the debris
+                of the old one. <code>/git-worktree-branch-rationalization</code> reduces a pile of
+                worktrees and local branches to one canonical line (plus any branches you protect):
+                it recovers the strongest
+                version of each file from every variant before anything is removed, and backs up
+                every deletion so it can be reversed byte for byte. <code>/git-stash-janitor</code>{" "}
+                does the same for accumulated stashes (DCG&apos;s safe alternatives above often
+                create them). It sorts them into superseded, garbage, and novel, lands the useful
+                pieces as focused commits, and drops the rest only after backup refs exist.
+              </SkillNote>
             </SubSection>
 
             <SubSection title="Agent Fungibility">
@@ -1934,6 +1963,16 @@ bv --robot-triage --robot-triage-by-label    # Group by domain`}
                 engineering obligation, not a benefit that emerges automatically from a sufficiently
                 detailed plan.
               </P>
+
+              <SkillNote skills={["codebase-audit", "security-audit-for-saas"]}>
+                Two ways to seed those security beads. <code>/codebase-audit</code>, pointed at the
+                security domain, produces a prioritized report with a severity, file:line citations,
+                a root cause, and a recommended fix for each finding; each finding converts
+                naturally into a bead. For a SaaS app, <code>/security-audit-for-saas</code> checks
+                where money and data leak: payment bypass, webhook integrity, auth gaps, row-level
+                security, and secrets. Like UBS, neither replaces the threat model and the human
+                review above.
+              </SkillNote>
             </SubSection>
           </GuideSection>
 
@@ -2078,6 +2117,14 @@ acfs swarm simulate`}
               ]}
             />
 
+            <SkillNote skills={["wezterm"]}>
+              For the WezTerm route. It covers driving WezTerm from the command line (split panes,
+              spawn tabs, send text to a specific pane, list every pane as JSON) and running{" "}
+              <code>wezterm-mux-server</code> under a systemd user unit on each server, so remote
+              agent sessions survive your laptop sleeping or rebooting. It also covers rescuing
+              agents that are still running when a mux stops responding.
+            </SkillNote>
+
             <P>Give each agent these marching orders:</P>
 
             <PromptBlock
@@ -2095,15 +2142,17 @@ When a Rust build or test is needed, offload it with rch (for example, rch exec 
               whyItWorks="This is the closest thing to a canonical swarm kickoff packet. It front-loads the shared operating context, forces the agent to establish social presence through Agent Mail, and then pivots away from passive waiting toward execution. The line about 'communication purgatory' matters because swarm failure often comes from over-coordination rather than under-coordination. Under the hood, the prompt establishes a control loop: load rules, understand the codebase, join the coordination layer, claim work, keep state synchronized, and use bv whenever local judgment is insufficient. The rch requirement is especially important in real swarms because it externalizes expensive builds and tests, preventing local CPU contention from degrading the entire multi-agent system. That one sentence is operational, not cosmetic. The prompts are deliberately generic; their vagueness is a feature, letting you reuse them for every project while the agent gets specifics from AGENTS.md and the beads."
             />
 
-            <SkillNote skills={["ntm", "vibing-with-ntm"]}>
-              Together these let an orchestrator agent run the launch and the tending for you.{" "}
+            <SkillNote skills={["ntm", "vibing-with-ntm", "multi-agent-swarm-workflow"]}>
+              The first two let an orchestrator agent run the launch and the tending for you.{" "}
               <code>/ntm</code> carries the exact CLI syntax and robot APIs;{" "}
               <code>/vibing-with-ntm</code> carries the judgment for a live swarm. With both
               loaded, one request in Claude Code (&quot;use /ntm and /vibing-with-ntm to create a
               swarm of three cod and three cc agents&quot;) spawns the panes and sends the marching
               orders. The orchestrator then keeps tending them: it checks real pane state before
               every nudge, unsticks and restarts panes, works around rate limits, and refuses to
-              count process artifacts as progress.
+              count process artifacts as progress. <code>/multi-agent-swarm-workflow</code> is
+              the reference for the agents inside the swarm: the marching orders, the loop each
+              agent runs, file reservations, committing, and the quality loops.
             </SkillNote>
 
             <SubSection title="The First 10 Minutes After Launch">
@@ -2361,6 +2410,14 @@ When a Rust build or test is needed, offload it with rch (for example, rch exec 
                   ],
                 ]}
               />
+
+              <SkillNote skills={["system-performance-remediation"]}>
+                For when the trouble is the machine rather than the coordination: load average
+                through the roof, competing cargo builds, stuck test processes, agents looping,
+                swap thrashing, or a disk filling up. It restores responsiveness by cleaning up
+                processes selectively, around a list of processes it never kills, and reclaims
+                disk through steps that refuse to act when a check fails.
+              </SkillNote>
             </SubSection>
 
             <SubSection title="Atlas Notes as a Live Swarm">
@@ -2486,7 +2543,9 @@ caam activate claude backup-2   # Switch instantly`}
                 where="After initial implementation pass is complete"
               />
 
-              <SkillNote skills={["mock-code-finder", "testing-real-service-e2e-no-mocks"]}>
+              <SkillNote
+                skills={["mock-code-finder", "testing-real-service-e2e-no-mocks", "e2e-testing-for-webapps"]}
+              >
                 <code>/mock-code-finder</code> answers the first half of that question honestly.
                 Long multi-agent projects pile up stubs, placeholders, and fake code, and a keyword
                 grep misses the structural ones (short functions that quietly do nothing), so the
@@ -2494,7 +2553,9 @@ caam activate claude backup-2   # Switch instantly`}
                 beads. <code>/testing-real-service-e2e-no-mocks</code> handles the replacement:
                 integration and e2e tests that hit real databases, real APIs, and real services,
                 with structured JSON-line logs, transaction-rollback isolation, and test data
-                factories.
+                factories. For a web app on the stack from Part 3 (Next.js and Supabase),{" "}
+                <code>/e2e-testing-for-webapps</code> covers Playwright end to end, including test
+                users that bypass OAuth and an interactive mode for visual QA.
               </SkillNote>
 
               <BlockQuote>
@@ -2503,6 +2564,25 @@ caam activate claude backup-2   # Switch instantly`}
                 cares? Add another couple agents to the swarm and let them deal with updating the
                 tests and running them. It&apos;s free!
               </BlockQuote>
+
+              <SkillNote
+                skills={[
+                  "testing-golden-artifacts",
+                  "testing-fuzzing",
+                  "testing-metamorphic",
+                  "testing-conformance-harnesses",
+                ]}
+              >
+                Free labor also makes the stronger kinds of test affordable, for the places where
+                example-based tests run out. <code>/testing-golden-artifacts</code> freezes known-good outputs
+                (CLI output, compiler output, query plans, UI snapshots) and fails on any
+                difference. <code>/testing-fuzzing</code> builds harnesses that throw generated
+                input at parsers, protocols, file formats, and APIs.{" "}
+                <code>/testing-metamorphic</code> tests systems whose correct output you can&apos;t
+                know in advance by checking relationships between outputs instead.{" "}
+                <code>/testing-conformance-harnesses</code> verifies an implementation against a
+                spec or a reference implementation, which is what a port needs.
+              </SkillNote>
 
               <P>
                 Larger projects produce massive test suites. BrennerBot has nearly 5,000 tests.
@@ -2531,6 +2611,16 @@ bun run type-check
 bun run lint
 bun run build`}
               />
+
+              <SkillNote skills={["ubs", "rch"]}>
+                The two tools behind the checks above. <code>/ubs</code> makes the pre-commit scan
+                routine: exit 0 means proceed, 1 means triage the findings (false positives happen,
+                so triage is part of the loop), and 2 means the scanner itself needs{" "}
+                <code>ubs doctor --fix</code>. <code>/rch</code> covers the offloaded builds in
+                the Rust commands above, including what to do when a build quietly ran locally
+                (<code>[RCH] local</code> in its output), when workers are unhealthy, and when a
+                remote job&apos;s result never came back.
+              </SkillNote>
             </SubSection>
 
             <SubSection title="UI/UX Polish">
@@ -2688,13 +2778,24 @@ Be sure to comply with ALL rules in AGENTS.md and ensure that any code you write
                 subtler issues.
               </P>
 
-              <SkillNote skills={["multi-pass-bug-hunting", "code-review-gemini-swarm-with-ntm"]}>
+              <SkillNote
+                skills={[
+                  "multi-pass-bug-hunting",
+                  "code-review-gemini-swarm-with-ntm",
+                  "deadlock-finder-and-fixer",
+                ]}
+              >
                 <code>/multi-pass-bug-hunting</code> turns this alternation into a fixed cycle of
                 four passes (surface, deep, integration, verify) with a short write-up after each,
                 because fixing one bug often exposes the one it was hiding.{" "}
                 <code>/code-review-gemini-swarm-with-ntm</code> runs multi-round review with a swarm
                 of Gemini agents driven through ntm and the Antigravity CLI, so the reviewers were
-                trained differently from the models that wrote the code.
+                trained differently from the models that wrote the code. For concurrent code,{" "}
+                <code>/deadlock-finder-and-fixer</code> takes on the class of bug that reading
+                rarely catches (deadlocks, races, a lock held across an await, &quot;database is
+                locked&quot;). It classifies the hazard, finds every other site with the same
+                pattern, and turns the fix into a regression test that would have caught the
+                original bug.
               </SkillNote>
             </SubSection>
 
@@ -2707,6 +2808,14 @@ Be sure to comply with ALL rules in AGENTS.md and ensure that any code you write
                 where="Every 1-2 hours during active development"
                 whyItWorks="Designating one agent prevents merge conflicts and produces coherent commit messages. The 'don't edit the code' instruction is critical: without it, agents treat the commit step as an opportunity to 'fix one more thing,' which creates unbounded scope expansion and makes the commit unpredictable. The 'logically connected groupings' instruction produces a meaningful git history instead of one monolithic 'update everything' commit that is impossible to review or bisect later."
               />
+
+              <SkillNote skills={["git-repo-janitor"]}>
+                The prompt keeps new junk out of commits; this skill cleans up junk that already
+                got in. Swarms leave ephemeral artifacts behind: scratch SQLite databases, stray
+                JSON, intermediate skill outputs, plan documents at the project root. The skill
+                sorts them, moves the keepers somewhere sensible, removes the rest with{" "}
+                <code>git rm</code> plus <code>.gitignore</code> entries, and never touches source.
+              </SkillNote>
             </SubSection>
 
             <SubSection title="Swarm Diagnosis: Reality Check">
@@ -2760,12 +2869,21 @@ Be sure to comply with ALL rules in AGENTS.md and ensure that any code you write
                 where="After any significant change, as a quick final pass"
               />
 
-              <SkillNote skills={["simplify-and-refactor-code-isomorphically"]}>
-                A good pass once review comes back clean, because code that many agents wrote in
-                parallel tends to grow near-duplicate helpers and components. The skill shrinks and
-                unifies that code under one rule: no line is removed until behavior is proven
-                identical, with the test suite still green and golden outputs unchanged. Have a
-                fresh agent double-check those proofs afterward.
+              <SkillNote
+                skills={[
+                  "simplify-and-refactor-code-isomorphically",
+                  "de-monolithize-your-codebase-isomorphically",
+                ]}
+              >
+                Good passes once review comes back clean, because code that many agents wrote in
+                parallel tends to grow near-duplicate helpers and giant files.{" "}
+                <code>/simplify-and-refactor-code-isomorphically</code> shrinks and unifies that
+                code under one rule: no line is removed until behavior is proven identical, with
+                the test suite still green and golden outputs unchanged. Have a fresh agent
+                double-check those proofs afterward.{" "}
+                <code>/de-monolithize-your-codebase-isomorphically</code> splits giant files along
+                seams found from evidence rather than taste, keeping every existing import path
+                working. In a swarm that also eases contention, since agents reserve whole files.
               </SkillNote>
             </SubSection>
 
@@ -3125,10 +3243,10 @@ And you can't do this sort of thing using regex or a script, you MUST manually r
               </P>
 
               <P>
-                That is why notes headed &quot;Skill for this step&quot; appear throughout this
-                guide. Each one names the jeffreys-skills.md skill that packages the step it sits
-                beside and says what it adds beyond the prompts shown. Every method in this guide
-                works without them; the skills make each step more thorough and more repeatable.
+                That is why this guide carries &quot;Skill for this step&quot; notes throughout.
+                Each one names the jeffreys-skills.md skills that package the step it sits beside
+                and says what they add beyond the prompts shown. Every method in this guide works
+                without them; the skills make each step more thorough and more repeatable.
               </P>
 
               <SkillNote skills={["choose-the-best-skills-for-me-to-run-in-this-project"]}>
@@ -3426,12 +3544,16 @@ Then rewrite the skill to fix every issue you found. Make the happy path obvious
                 real sessions.
               </P>
 
-              <SkillNote skills={["operationalizing-expertise"]}>
-                Takes ritual detection all the way. Its session-mining track turns behaviors you
-                repeat in cass history into rules of the form &quot;when X, do Y because Z,&quot;
-                and its distillation track turns a whole methodology into a corpus, a quote bank,
-                a triangulated kernel, an operator library, and validators that block a release
-                when they fail.
+              <SkillNote skills={["operationalizing-expertise", "automating-your-automations"]}>
+                <code>/operationalizing-expertise</code> takes ritual detection all the way. Its
+                session-mining track turns behaviors you repeat in cass history into rules of the
+                form &quot;when X, do Y because Z,&quot; and its distillation track turns a whole
+                methodology into a corpus, a quote bank, a triangulated kernel, an operator library,
+                and validators that block a release when they fail.{" "}
+                <code>/automating-your-automations</code> applies the same counting to your shell:
+                it mines atuin and shell history for multi-step command sequences you keep
+                repeating, ranks them by frequency times pain, and builds the winners into a Rust
+                CLI or a bash script.
               </SkillNote>
             </SubSection>
 
@@ -3596,13 +3718,15 @@ Then rewrite the skill to fix every issue you found. Make the happy path obvious
                 skills={[
                   "agent-ergonomics-and-intuitiveness-maximization-for-cli-tools",
                   "world-class-doctor-mode-for-cli-tools",
+                  "mcp-server-design",
                 ]}
               >
                 The first scores a CLI on how easily an agent can drive it (robot and JSON modes,
                 help text, error messages) and then applies the fixes in the tree. The second adds
                 or upgrades a <code>doctor</code> subcommand that agents can run safely: idempotent,
                 reversible, and backup-aware, with every change routed through a single mutation
-                point.
+                point. The third applies the same standard to MCP servers like Agent Mail: tool
+                design, tool documentation, and error handling that agents can use reliably.
               </SkillNote>
             </SubSection>
 
@@ -3787,6 +3911,13 @@ cass search "tool_name" --workspace /data/projects/PROJECT --json --limit 100`}
                 I&apos;m going to start having my tool installers always add a highly optimized
                 skill. It makes a massive difference.
               </BlockQuote>
+
+              <SkillNote skills={["installer-workmanship"]}>
+                For writing the installer that layer 4 depends on: a production-grade{" "}
+                <code>curl | bash</code> one-liner for a CLI tool, including the step that puts the
+                tool&apos;s skill in place (from the release tarball, with an inline fallback when
+                the download fails).
+              </SkillNote>
             </SubSection>
 
             <SubSection title="Why the Acceleration Compounds">
