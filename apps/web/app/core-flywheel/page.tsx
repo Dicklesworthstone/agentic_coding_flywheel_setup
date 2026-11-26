@@ -281,7 +281,7 @@ export default function CoreFlywheelPage() {
               </P>
 
               <SkillNote skills={["agent-mail"]}>
-                Gives agents working knowledge of the whole coordination API: starting a session,
+                Gives agents working knowledge of the core coordination API: starting a session,
                 reserving files, threading messages by bead, and the pre-commit guard that stops
                 commits to files another agent has reserved.
               </SkillNote>
@@ -602,10 +602,11 @@ Closed br-103 and released my file reservations.`}
               </P>
 
               <SkillNote skills={["planning-workflow"]}>
-                Runs this step for you. It drafts the first plan in your coding agent, then walks
-                you through several review rounds with your strongest model, each in a fresh
-                conversation, with the exact prompts for proposing revisions, merging them, and
-                blending competing plans. It finishes by turning the plan into beads.
+                Lays this step out with the exact prompts. You write the first plan with your
+                strongest model in its web app, run several review rounds there, each in a fresh
+                conversation, and paste each round&apos;s proposed revisions into your coding agent
+                to merge. It also covers blending competing plans, and hands the finished plan on
+                to bead conversion.
               </SkillNote>
             </SubSection>
 
@@ -648,7 +649,7 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
               <SkillNote skills={["beads-workflow", "beads-br", "beads-bv"]}>
                 <code>/beads-workflow</code> carries both prompts above, the polishing loop, and the
                 sync-then-commit routine. <code>/beads-br</code> and <code>/beads-bv</code> teach
-                agents the two tools properly, including the traps: br never commits for you, and
+                agents the two tools, including the traps: br never commits for you, and
                 bare <code>bv</code> opens an interactive screen an agent cannot drive, so agents
                 use its <code>--robot-*</code> modes.
               </SkillNote>
@@ -749,8 +750,9 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
               <SkillNote skills={["beads-compliance-and-completion-verification"]}>
                 A closed bead is the agent&apos;s claim that the work is done, and on a long project
                 some of those claims will be wrong. Every so often, have this skill audit them: it
-                checks each closed bead against what the bead specified, asks for evidence such as
-                test runs and file:line citations, and reopens the beads that fall short.
+                checks each closed bead against what the bead specified and asks for evidence such
+                as test runs and file:line citations. For each bead that falls short it files a
+                linked completion-debt bead, or reopens the original if you prefer.
               </SkillNote>
             </SubSection>
           </GuideSection>
@@ -832,10 +834,10 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
               </P>
 
               <SkillNote skills={["reality-check-for-project"]}>
-                Turns this question into a complete course correction: it compares the code with
-                what the README and plan promise, writes a plan to close every gap, turns that into
-                beads, and refines them until a round finds nothing new. Run it every few days on a
-                long project.
+                Turns this question into a course correction: it compares the code with what the
+                README and plan promise, writes a plan to close every gap, turns that into beads,
+                and refines them until a round finds nothing new. On a long project, run it at the
+                start of each working session and again whenever progress feels uncertain.
               </SkillNote>
             </SubSection>
 
@@ -1046,7 +1048,7 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
                 fullName="Ultimate Bug Scanner"
                 color="#FFBD2E"
                 description="A static bug scanner for JS/TS, Python, Rust, Go, Bash, and more. It flags likely bugs, such as security risks and shell quoting mistakes, before they reach a commit."
-                usage="Scan staged changes before every commit. Exit 0 means no critical findings; 1 means fix the findings and re-run; 2 means the scan itself failed, so run ubs doctor --fix."
+                usage="Scan staged changes before every commit. Exit 0 means no critical findings; 1 means review the findings, fix the real ones, and re-run; 2 means the scan failed or was refused (for an environment error, run ubs doctor --fix); 3 means nothing was scanned, which is not a pass."
                 command="ubs --staged"
               />
               <HelperCard
@@ -1062,10 +1064,11 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
 
             <SkillNote skills={["dcg", "ubs", "cass"]}>
               Each helper has a skill that teaches agents its working habits. <code>/dcg</code>:
-              take the safe alternative a block prints instead of asking for an override.{" "}
-              <code>/ubs</code>: scan what you are about to commit and triage the findings, since
-              false positives happen. <code>/cass</code>: search history before re-solving
-              something, and tell a search that timed out from one that found nothing.
+              take the safer alternative instead of asking for an override, and leave the
+              decision to you when there is none. <code>/ubs</code>: scan what you are about to
+              commit and triage the findings, since false positives happen. <code>/cass</code>:
+              mine past sessions for what already worked, and report a search that timed out as
+              unknown rather than as nothing found.
             </SkillNote>
 
             <SubSection title="What You Can Ignore for Now">
@@ -1118,7 +1121,7 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
                 items={[
                   "Pick one real project, not a toy.",
                   <Fragment key="setup">
-                    In the repo, run <code>br init</code>, write a minimal AGENTS.md (Section 8),
+                    In the repo, run <code>br init</code>, write a minimal AGENTS.md (Part 8),
                     and make sure the Agent Mail server is running (ACFS runs it as a service;
                     elsewhere, start it with <code>am</code>).
                   </Fragment>,
@@ -1199,7 +1202,7 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
                   "You want stronger AGENTS.md operating manuals with comprehensive tool documentation",
                   "You want repeatable prompt libraries and skills",
                   "You want better recovery from compaction and session loss",
-                  "You want memory systems (CASS, CM) that improve the workflow over time",
+                  "You want session search (CASS) and procedural memory (CM) that improve the workflow over time",
                 ]}
               />
               <P>

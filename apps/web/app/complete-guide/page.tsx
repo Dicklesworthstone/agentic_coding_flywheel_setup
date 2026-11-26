@@ -727,12 +727,13 @@ For each proposed change, give me your detailed analysis and rationale/justifica
               </P>
 
               <SkillNote skills={["planning-workflow"]}>
-                Packages this whole part as one skill. It drafts the first markdown plan in your
-                harness, then has you take it to {COMPLETE_GUIDE_MODELS.primaryPlanner} for review
-                rounds, each in a fresh conversation, with the exact prompts for proposing
-                git-diff revisions, integrating them, and blending competing plans. It ends by
-                turning the finished plan into self-contained beads, so you can step away during
-                implementation.
+                Packages this whole part as one skill. You write the first markdown plan with a
+                frontier model in its web app, run the review rounds with{" "}
+                {COMPLETE_GUIDE_MODELS.primaryPlanner}, each in a fresh conversation, and paste each
+                round&apos;s proposed revisions into your coding agent to integrate. The skill
+                carries the exact prompt for each of those steps and for blending competing plans,
+                then hands the finished plan on to bead conversion and polishing, whose prompts
+                live in <code>/beads-workflow</code>.
               </SkillNote>
 
               <P>
@@ -984,7 +985,8 @@ br sync --flush-only                                     # Export to JSONL (no g
                 For the day <code>br show</code> or <code>br doctor</code> fails because the
                 database is malformed and the JSONL has drifted, with each store holding changes the
                 other lacks.
-                The skill snapshots everything, carries the database-only changes into the JSONL,
+                The skill snapshots everything, carries the database-only changes worth keeping
+                into the JSONL,
                 rebuilds into a separate database, and swaps it in only after <code>br show</code>,{" "}
                 <code>br sync --status</code>, and <code>br doctor</code> all pass. Nothing under{" "}
                 <code>.beads</code> is deleted.
@@ -1087,8 +1089,8 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
               />
 
               <P>
-                As a final step, have Codex (GPT-6.2 Sol at xhigh reasoning effort, the ACFS{" "}
-                <code>cod</code> default) do one last round using the same polishing prompt.
+                As a final step, have Codex ({COMPLETE_GUIDE_MODELS.codexExecutor} at xhigh
+                reasoning effort, the ACFS <code>cod</code> default) do one last round using the same polishing prompt.
                 Different models catch different things.
               </P>
             </SubSection>
@@ -1160,10 +1162,11 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
 
             <SkillNote skills={["idea-wizard", "dueling-idea-wizards"]}>
               <code>/idea-wizard</code> runs all six phases above end to end, from reading every
-              open and closed bead through creating the new beads and refining them. Its one limit
-              is that the model grading the ideas is the one that wrote them.{" "}
-              <code>/dueling-idea-wizards</code> removes that: through ntm it has two differently
-              trained models generate ideas independently and then score each other&apos;s.
+              open and closed bead through creating the new beads and refining them. In it, the
+              model that grades the ideas is the one that wrote them.{" "}
+              <code>/dueling-idea-wizards</code> separates the two: through ntm it has two
+              differently trained models (three, when all three agent CLIs are installed) generate
+              ideas independently and then score each other&apos;s.
               Ideas both rate highly are usually good; ideas one of them trashes deserve a hard
               look. Use the single wizard routinely and the duel when the choice matters.
             </SkillNote>
@@ -1236,8 +1239,9 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
                 checks out the latest stable tag rather than whatever is on main, reads the source
                 over the docs, trusts only recent web sources, and ends with a structured research
                 report. <code>/codebase-archaeology</code> gives the reading an order: the
-                documentation first, then data flow outward from the entry points, then the three
-                to five core data structures everything revolves around. The agent comes away with
+                documentation first, then the entry points, then the three to five core types
+                everything revolves around, and only then the data flow between them. The agent
+                comes away with
                 a working model of a large external project instead of a context window full of
                 boilerplate.
               </SkillNote>
@@ -1274,7 +1278,7 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
                 title="Step 4: Repeated Blunder Hunt (Run 5x)"
                 prompt={`Look over everything in the proposal for blunders, mistakes, misconceptions, logical flaws, errors of omission, oversights, sloppy thinking, etc.`}
                 where="Run this exact prompt 5 times consecutively after each major proposal expansion"
-                whyItWorks="Models tend to find 15-20 issues on the first pass and stop. Running the exact same prompt again pushes them past what they already found, and by the fifth pass you have caught subtle logical flaws and architectural inconsistencies that a single review would miss. It is the same convergence pattern as bead polishing in Section 5."
+                whyItWorks="Models tend to stop after finding 20-25 issues on the first pass (see the 'Lie to Them' tip in Part 3). Running the exact same prompt again pushes them past what they already found, and by the fifth pass you have caught subtle logical flaws and architectural inconsistencies that a single review would miss. It is the same convergence pattern as bead polishing in Part 5."
               />
 
               <P>
@@ -1337,7 +1341,7 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
               <P>
                 Feed the competing feedback from all models into{" "}
                 {COMPLETE_GUIDE_MODELS.primaryPlanner} using the &quot;best of all worlds&quot;
-                synthesis prompt from Section 3. Apply the resulting diffs back to the proposal
+                synthesis prompt from Part 3. Apply the resulting diffs back to the proposal
                 document in Codex or Claude Code, then de-slopify the final result.
               </P>
 
@@ -1408,8 +1412,8 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
               </P>
 
               <P>
-                From here, the proposal feeds into the standard pipeline: convert to beads (Section
-                4), polish obsessively (Section 5), launch the swarm (Section 7). The
+                From here, the proposal feeds into the standard pipeline: convert to beads (Part 4),
+                polish obsessively (Part 5), launch the swarm (Part 7). The
                 research-driven approach adds a lot of up-front effort. In return, the proposal
                 builds on a real, battle-tested system and on capabilities that system never had,
                 which gives it more architectural depth than greenfield brainstorming usually
@@ -1792,9 +1796,10 @@ bv --robot-triage --robot-triage-by-label    # Group by domain`}
               />
 
               <SkillNote skills={["dcg", "slb"]}>
-                <code>/dcg</code> teaches agents to treat a block as a checkpoint: take the
-                recoverable alternative it prints instead of asking you for an override,
-                and enable only the rule packs the project needs. <code>/slb</code> covers the rare
+                <code>/dcg</code> teaches agents to treat a block as a checkpoint: take the safer
+                alternative instead of asking you for an override, and when there is none, explain
+                the risk and leave the decision to you. It also covers turning on the optional rule
+                packs for the project&apos;s stack. <code>/slb</code> covers the rare
                 command that really must run: a two-person rule where a second agent reviews and
                 approves it first, and it then runs in the shell that requested it.
               </SkillNote>
@@ -1820,9 +1825,10 @@ bv --robot-triage --robot-triage-by-label    # Group by domain`}
                 it recovers the strongest
                 version of each file from every variant before anything is removed, and backs up
                 every deletion so it can be reversed byte for byte. <code>/git-stash-janitor</code>{" "}
-                does the same for accumulated stashes (DCG&apos;s safe alternatives above often
-                create them). It sorts them into superseded, garbage, and novel, lands the useful
-                pieces as focused commits, and drops the rest only after backup refs exist.
+                does the equivalent cleanup for accumulated stashes (DCG&apos;s safe alternatives
+                above often create them). It sorts each one as superseded, garbage, novel, partly
+                novel, or novel but stale, lands the useful pieces as focused commits, and drops
+                the rest only after backup refs exist.
               </SkillNote>
             </SubSection>
 
@@ -1933,8 +1939,8 @@ bv --robot-triage --robot-triage-by-label    # Group by domain`}
               <SkillNote skills={["codebase-audit", "security-audit-for-saas"]}>
                 Two ways to seed those security beads. <code>/codebase-audit</code>, pointed at the
                 security domain, produces a prioritized report with a severity, file:line citations,
-                a root cause, and a recommended fix for each finding; each finding maps onto one
-                bead. For a SaaS app, <code>/security-audit-for-saas</code> checks
+                a root cause, and a recommended fix for each finding, and its critical findings
+                become beads. For a SaaS app, <code>/security-audit-for-saas</code> checks
                 where money and data leak: payment bypass, webhook integrity, auth gaps, row-level
                 security, and secrets. Like UBS, neither replaces the threat model and the human
                 review above.
@@ -2116,7 +2122,10 @@ When a Rust build or test is needed, offload it with rch (for example, rch exec 
               every nudge, unsticks and restarts panes, works around rate limits, and refuses to
               count process artifacts as progress. <code>/multi-agent-swarm-workflow</code> is
               the reference for the agents inside the swarm: the marching orders, the loop each
-              agent runs, file reservations, committing, and the quality loops.
+              agent runs, file reservations, committing, and the quality loops. The references
+              differ on one point, who closes a bead. When an orchestrator tends the swarm, let
+              it close each bead after rerunning that bead&apos;s tests itself, because a
+              worker&apos;s report that the work is done is sometimes wrong.
             </SkillNote>
 
             <SubSection title="The First 10 Minutes After Launch">
@@ -2212,11 +2221,11 @@ When a Rust build or test is needed, offload it with rch (for example, rch exec 
               />
 
               <SkillNote skills={["open-beads-weighted-tmux-agent-sessions"]}>
-                Applies this table for you across all your projects at once. It counts each
-                project&apos;s open beads, staffs it from the matching tier, and lays the agents out
-                in plain tmux with the same pane geometry for every agent type. Use it when you want
-                that control without NTM; it also covers what to do when an agent type hits its
-                usage limit.
+                Applies this table for you across your projects (the 25 with the largest backlogs).
+                It counts each project&apos;s open beads, works out its headcount from the matching
+                tier, sizes the cc, cod, and agy sessions in plain tmux to the total, and gives every
+                session of one agent type identical pane geometry. Use it when you want that control
+                without NTM; it also covers what to do when an agent type hits its usage limit.
               </SkillNote>
             </SubSection>
 
@@ -2325,11 +2334,11 @@ When a Rust build or test is needed, offload it with rch (for example, rch exec 
 
               <SkillNote skills={["just-say-no-to-process-porn-and-ceremony"]}>
                 The other way a swarm looks busy while shipping nothing: certificates, ledgers,
-                dashboards, and meta-reports standing in for working code, which is reward hacking
-                by another name. The skill gives agents a worksheet to fill in before they create any
-                such artifact and an honesty inventory to complete before they report work as done.
-                The best time to apply it is while you create the beads, where these habits first
-                take root, and again during execution.
+                dashboards, and meta-reports standing in for working code. It is a close cousin of
+                reward hacking, which the skill also polices. It gives agents a worksheet to fill in
+                before they create any such artifact, and an honesty inventory to complete for work
+                that closes an item, touches tests or gates, or that others will rely on. Write its
+                rules into the beads when you create them, and apply it again during execution.
               </SkillNote>
             </SubSection>
 
@@ -2505,7 +2514,7 @@ caam activate claude backup-2   # Switch instantly`}
               <SkillNote
                 skills={["mock-code-finder", "testing-real-service-e2e-no-mocks", "e2e-testing-for-webapps"]}
               >
-                <code>/mock-code-finder</code> answers the first half of that question honestly.
+                <code>/mock-code-finder</code> answers the first half of that question.
                 Long multi-agent projects pile up stubs, placeholders, and fake code, and a keyword
                 grep misses the structural ones (short functions that quietly do nothing), so the
                 skill combines several detection methods and turns a long list of suspects into
@@ -2533,9 +2542,10 @@ caam activate claude backup-2   # Switch instantly`}
                 ]}
               >
                 Free labor also makes the stronger kinds of test affordable, for the places where
-                example-based tests run out. <code>/testing-golden-artifacts</code> freezes known-good outputs
-                (CLI output, compiler output, query plans, UI snapshots) and fails on any
-                difference. <code>/testing-fuzzing</code> builds harnesses that throw generated
+                example-based tests run out. <code>/testing-golden-artifacts</code> freezes
+                known-good outputs (CLI output, compiler output, query plans, UI snapshots) and,
+                once volatile fields such as timestamps are scrubbed, fails on any change nobody
+                reviewed. <code>/testing-fuzzing</code> builds harnesses that throw generated
                 input at parsers, protocols, file formats, and APIs.{" "}
                 <code>/testing-metamorphic</code> tests systems whose correct output you can&apos;t
                 know in advance by checking relationships between outputs instead.{" "}
@@ -2573,9 +2583,10 @@ bun run build`}
 
               <SkillNote skills={["ubs", "rch"]}>
                 The two tools behind the checks above. <code>/ubs</code> makes the pre-commit scan
-                routine: exit 0 means proceed, 1 means triage the findings (false positives happen,
-                so triage is part of the loop), and 2 means the scanner itself needs{" "}
-                <code>ubs doctor --fix</code>. <code>/rch</code> covers the offloaded builds in
+                routine. Exit 0 means proceed. Exit 1 means triage the findings; false positives
+                happen, so triage is part of the loop. Exit 2 means the scan failed or was refused,
+                and for an environment error the fix is <code>ubs doctor --fix</code>. Exit 3 means
+                nothing was scanned, which is not a pass. <code>/rch</code> covers the offloaded builds in
                 the Rust commands above, including what to do when a build quietly ran locally
                 (<code>[RCH] local</code> in its output), when workers are unhealthy, and when a
                 remote job&apos;s result never came back.
@@ -2626,11 +2637,11 @@ bun run build`}
                 and let the small gains add up. <code>/ux-audit</code> is a structured version of
                 the scrutiny step: Nielsen&apos;s ten heuristics, keyboard and contrast checks,
                 happy-path and error-path flows, and a prioritized report with file:line fixes. For
-                a web app, <code>/web-frontend-ui-ux-excellence-on-desktop-and-mobile</code> goes
-                furthest. It starts with detectors for failures no screenshot shows, such as a
-                page that silently renders zoomed out on an iPhone, then works through a six-lens
-                audit and a set of release gates. It is deep enough to run several times with
-                different models and keep getting useful changes.
+                a web app, <code>/web-frontend-ui-ux-excellence-on-desktop-and-mobile</code> covers
+                the most ground. It starts with detectors for failures a screenshot can miss, such
+                as a page that silently renders zoomed out on an iPhone, then works through a
+                six-lens audit and a set of release gates. It calls for independent reviews,
+                preferably by different models, until a fresh one finds nothing material.
               </SkillNote>
             </SubSection>
 
@@ -2741,15 +2752,15 @@ Be sure to comply with ALL rules in AGENTS.md and ensure that any code you write
                   "deadlock-finder-and-fixer",
                 ]}
               >
-                <code>/multi-pass-bug-hunting</code> turns this alternation into a fixed cycle of
-                four passes (surface, deep, integration, verify) with a short write-up after each,
-                because fixing one bug often exposes the one it was hiding.{" "}
+                <code>/multi-pass-bug-hunting</code> puts a scan-driven loop around this hunting: a
+                ubs pass whose real findings get fixed, a fresh-eyes reread of the files that
+                changed, a check of how the fixes interact with the tests, and a final scan that must
+                come back clean, with a short write-up after each pass.{" "}
                 <code>/code-review-gemini-swarm-with-ntm</code> runs multi-round review with a swarm
-                of Gemini agents driven through ntm and the Antigravity CLI, so the reviewers were
-                trained differently from the models that wrote the code. For concurrent code,{" "}
-                <code>/deadlock-finder-and-fixer</code> takes on the class of bug that reading
-                rarely catches (deadlocks, races, a lock held across an await, &quot;database is
-                locked&quot;). It classifies the hazard, finds every other site with the same
+                of Gemini agents driven through ntm and the Antigravity CLI, so a different model
+                family audits what Claude and Codex wrote. For concurrent code,{" "}
+                <code>/deadlock-finder-and-fixer</code> hunts deadlocks, races, locks held across an
+                await, and &quot;database is locked&quot; errors. It classifies the hazard, finds every other site with the same
                 pattern, and turns the fix into a regression test that would have caught the
                 original bug.
               </SkillNote>
@@ -2768,9 +2779,11 @@ Be sure to comply with ALL rules in AGENTS.md and ensure that any code you write
               <SkillNote skills={["git-repo-janitor"]}>
                 The prompt keeps new junk out of commits; this skill cleans up junk that already
                 got in. Swarms leave ephemeral artifacts behind: scratch SQLite databases, stray
-                JSON, intermediate skill outputs, plan documents at the project root. The skill
-                sorts them, moves the keepers somewhere sensible, removes the rest with{" "}
-                <code>git rm</code> plus <code>.gitignore</code> entries, and never touches source.
+                JSON, intermediate skill outputs, plan documents at the project root. The skill gives
+                each file a verdict and takes a byte-for-byte recovery bundle. Only after you
+                authorize it does it move the keepers and delete the rest with <code>git rm</code>,
+                adding <code>.gitignore</code> rules where junk recurs, as focused commits on a
+                recovery branch. It leaves source code alone unless you explicitly approve.
               </SkillNote>
             </SubSection>
 
@@ -2790,15 +2803,16 @@ Be sure to comply with ALL rules in AGENTS.md and ensure that any code you write
               <SkillNote
                 skills={["reality-check-for-project", "beads-compliance-and-completion-verification"]}
               >
-                <code>/reality-check-for-project</code>, which the author considers the most
-                important skill on the site, turns this one question into a full course correction.
+                <code>/reality-check-for-project</code>, which the author calls his most important
+                skill, turns this one question into a course correction.
                 It measures the code against the README and plan (the code shows where the project
                 is; the docs show where it promised to be), writes a plan to close every gap, turns
                 that plan into beads, and refines them until a round finds nothing new.{" "}
                 <code>/beads-compliance-and-completion-verification</code> asks the narrower
                 question a swarm cannot answer about itself: was each closed bead actually built as
                 specified? It treats every closed status as a claim to be proven with evidence
-                (test runs, file:line citations), and reopens the beads that fall short.
+                (test runs, file:line citations). For each bead that falls short it files a linked
+                completion-debt bead by default, or reopens the original if you choose.
               </SkillNote>
             </SubSection>
 
@@ -2837,9 +2851,11 @@ Be sure to comply with ALL rules in AGENTS.md and ensure that any code you write
                 code under one rule: no line is removed until behavior is proven identical, with
                 the test suite still green and golden outputs unchanged. Have a fresh agent
                 double-check those proofs afterward.{" "}
-                <code>/de-monolithize-your-codebase-isomorphically</code> splits giant files along
-                seams found from evidence rather than taste, keeping every existing import path
-                working. In a swarm that also eases contention, since agents reserve whole files.
+                <code>/de-monolithize-your-codebase-isomorphically</code> plans how to split giant
+                files along seams that experiments confirm rather than taste, keeping every
+                existing import path working, and hands the splits off as beads; it carries them
+                out itself only if you opt in. Smaller files also ease contention in a swarm, since
+                agents reserve whole files.
               </SkillNote>
             </SubSection>
 
@@ -3443,9 +3459,9 @@ cm mark b-xyz789 --harmful --reason "Caused regression"  # Flag a bad rule`}
 
               <SkillNote skills={["cass", "cass-memory"]}>
                 <code>/cass</code> teaches agents to mine their own history: the prompt that worked
-                last month, the decision and the reasons behind it. It also teaches them to tell a
-                search that timed out from one that found nothing, so they never report a false
-                absence. <code>/cass-memory</code> covers the cm loop above, from the{" "}
+                last month, the decision and the reasons behind it. It also teaches them to report
+                a search that timed out as unknown rather than as nothing found.{" "}
+                <code>/cass-memory</code> covers the cm loop above, from the{" "}
                 <code>cm context</code> call before a task to the helpful and harmful marks that
                 keep the playbook honest.
               </SkillNote>
@@ -3497,7 +3513,7 @@ Then rewrite the skill to fix every issue you found. Make the happy path obvious
               </P>
 
               <SkillNote skills={["operationalizing-expertise", "automating-your-automations"]}>
-                <code>/operationalizing-expertise</code> takes ritual detection all the way. Its
+                <code>/operationalizing-expertise</code> carries ritual detection further. Its
                 session-mining track turns behaviors you repeat in cass history into rules of the
                 form &quot;when X, do Y because Z,&quot; and its distillation track turns a whole
                 methodology into a corpus, a quote bank, a triangulated kernel, an operator library,
@@ -3672,8 +3688,9 @@ Then rewrite the skill to fix every issue you found. Make the happy path obvious
                 help text, error messages) and then applies the fixes in the tree. The second adds
                 or upgrades a <code>doctor</code> subcommand that agents can run safely: idempotent,
                 reversible, and backup-aware, with every change routed through a single mutation
-                point. The third applies the same standard to MCP servers like Agent Mail: tool
-                design, tool documentation, and error handling that agents can use reliably.
+                point. The third is a design guide for MCP servers, with Agent Mail among its worked
+                examples: tool design, tool documentation, and error handling that agents can use
+                reliably.
               </SkillNote>
             </SubSection>
 
@@ -3951,13 +3968,13 @@ cass search "tool_name" --workspace /data/projects/PROJECT --json --limit 100`}
                   "repeatedly-apply-skill",
                 ]}
               >
-                The optimization loop described here, as three skills that work together. Start
-                with <code>/profiling-software-performance</code> to find the hotspots under
-                real-world use, then optimize them with <code>/extreme-software-optimization</code>,
-                which works from profiles rather than guesses and proves each change preserves
-                behavior. Then wrap it in <code>/repeatedly-apply-skill</code> to run it many times
-                in a row, going deeper each round, because one application of a skill this deep
-                rarely exhausts what it can find.
+                <code>/extreme-software-optimization</code> is the skill in the example above. It
+                works from profiles rather than guesses and proves that each change preserves
+                behavior, so pair it with <code>/profiling-software-performance</code>, which finds
+                the hotspots for a scenario you define, against a measured baseline. Then wrap the
+                pair in <code>/repeatedly-apply-skill</code> to run it many times in a row, going
+                deeper each round, since one pass rarely exhausts what an optimization skill can
+                find.
               </SkillNote>
             </SubSection>
 

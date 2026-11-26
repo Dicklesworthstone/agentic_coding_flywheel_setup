@@ -8,6 +8,8 @@ export const COMPLETE_GUIDE_MODELS = {
   claudePlanner: "Claude Fable 5.2",
   claudeExecutor: "Claude Opus 5.5",
   claudeFallback: "Claude Sonnet 5.5",
+  /** The model the ACFS `cod` alias runs (acfs/zsh/acfs.zshrc), at xhigh effort. */
+  codexExecutor: "GPT-6.2 Sol",
   googlePlanner: "Gemini 4 Carbon",
   antigravity: "Gemini 4 Neon (XHigh)",
   xaiPlanner: "Grok 4.7",
