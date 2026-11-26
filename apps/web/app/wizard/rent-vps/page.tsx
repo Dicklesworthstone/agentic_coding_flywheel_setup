@@ -1011,24 +1011,24 @@ export default function RentVPSPage() {
               <div className="rounded-lg border border-border/50 bg-card/50 p-3">
                 <p className="font-medium text-foreground">Claude Max ($200/month)</p>
                 <p className="text-sm text-muted-foreground">
-                  High Claude Code usage limits. For serious multi-agent workflows, consider 2
-                  accounts ($400/month) to maximize parallel capacity.
+                  High Claude Code usage limits, and it includes Claude Fable 5.2, the lead planner
+                  that writes your plan and runs the project, for up to half of each weekly limit.
+                  <strong> This is the key to making this approach work</strong>: everything
+                  depends on an extremely detailed, granular plan, which you then convert into
+                  trackable tasks using <Jargon term="beads">Beads</Jargon>. For serious
+                  multi-agent workflows, consider 2 accounts ($400/month) to maximize parallel
+                  capacity.
                 </p>
               </div>
               <div className="rounded-lg border border-border/50 bg-card/50 p-3">
                 <p className="font-medium text-foreground">
-                  ChatGPT Pro (from $100/month): Critical for Planning
+                  ChatGPT Pro (from $100/month): Codex and Competing Plans
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  Access to GPT-6.2 Astra in ChatGPT Work, OpenAI&apos;s frontier model for deep
-                  reasoning. This is
-                  <strong> the key to making this approach work</strong>: you use it to write,
-                  revise, and iterate on comprehensive plan documents in markdown. Everything
-                  depends on having an extremely detailed, granular plan, which you then convert
-                  into trackable tasks using <Jargon term="beads">Beads</Jargon>. Its deep
-                  reasoning is unmatched for this kind of strategic planning work. Pro comes in
-                  several usage tiers starting at $100/month; the full-setup total below budgets
-                  the $200 tier.
+                  Runs Codex with GPT-6.2 Sol, a strong implementation agent, and GPT-6.2 Astra,
+                  which writes a competing plan to the lead planner&apos;s and audits it. A second
+                  model family catches mistakes one model misses. Pro comes in several usage tiers
+                  starting at $100/month; the full-setup total below budgets the $200 tier.
                 </p>
               </div>
               <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
@@ -1052,9 +1052,10 @@ export default function RentVPSPage() {
                 64GB) + Claude Max ($200/month) + ChatGPT Pro (from $100/month) ={" "}
                 <strong>~${VPS_MONTHLY_USD + 300}/month</strong>. The $20/month Claude Pro tier does{" "}
                 <em>not</em> have enough capacity for agentic workflows; you&apos;ll hit rate limits
-                almost immediately. Claude Max is required for execution, and GPT-6.2 Astra in
-                ChatGPT Pro is essential for creating the detailed plan documents that make this
-                approach work.
+                almost immediately. Claude Max is required: it runs the lead planner (Claude Fable
+                5.2) that creates the detailed plan documents this approach depends on, and the
+                agents that execute them. ChatGPT Pro adds Codex, a second model family for
+                competing plans, plan audits, and implementation.
                 <br />
                 <br />
                 <strong>Perspective:</strong> A junior US developer costs ~$8k+/month. This is

@@ -10,7 +10,7 @@ const EXHIBIT_PANEL_CLASS =
   "my-12 overflow-hidden rounded-3xl border border-white/[0.06] bg-[#05070a] shadow-2xl relative group/viz transition duration-500 hover:border-primary/20";
 
 type PlanDimensionId = "architecture" | "workflow" | "edgeCases" | "novelty" | "execution";
-type PlanModelId = "gpt" | "claude" | "gemini" | "grok";
+type PlanModelId = "lead" | "openai" | "gemini";
 
 const PLAN_DIMENSIONS = [
   { id: "architecture", label: "Architecture" },
@@ -22,40 +22,31 @@ const PLAN_DIMENSIONS = [
 
 const PLAN_MODEL_DATA = [
   {
-    id: "gpt",
-    label: COMPLETE_GUIDE_MODELS.primaryPlanner,
+    id: "lead",
+    label: COMPLETE_GUIDE_MODELS.leadPlanner,
     color: "#FF5500",
-    role: "Global arbiter",
-    strengths: ["System-wide coherence", "Best-of-all-worlds synthesis"],
-    blindSpot: "Can over-smooth contradictions instead of solving them.",
-    contributions: { execution: 60, workflow: 70, architecture: 90, edgeCases: 65, novelty: 65 },
+    role: "Lead planner and arbiter",
+    strengths: ["Whole-system design", "Blends every edition into one plan"],
+    blindSpot: "Without the lead's edition, the blend has no backbone and no one checks the facts it borrows.",
+    contributions: { execution: 85, workflow: 75, architecture: 90, edgeCases: 70, novelty: 70 },
   },
   {
-    id: "claude",
-    label: COMPLETE_GUIDE_MODELS.claudePlanner,
+    id: "openai",
+    label: COMPLETE_GUIDE_MODELS.openaiPlanner,
     color: "#a78bfa",
-    role: "Implementation realist",
-    strengths: ["Execution detail", "Sharp structural edits"],
-    blindSpot: "Sometimes deletes context it considers 'obvious'.",
-    contributions: { execution: 95, workflow: 75, architecture: 80, edgeCases: 70, novelty: 60 },
+    role: "Competing plan, adversarial review",
+    strengths: ["Correctness contracts", "Long adversarial audits"],
+    blindSpot: "Without it, contradictions between subsystems survive into the beads.",
+    contributions: { execution: 75, workflow: 70, architecture: 85, edgeCases: 90, novelty: 65 },
   },
   {
     id: "gemini",
-    label: COMPLETE_GUIDE_MODELS.googlePlanner,
+    label: COMPLETE_GUIDE_MODELS.antigravity,
     color: "#FFBD2E",
-    role: "Coverage expander",
+    role: "Third plan, coverage expander",
     strengths: ["Alternative framings", "Missed edge cases"],
-    blindSpot: "Can drift off-topic unless the goals are stated precisely.",
-    contributions: { execution: 70, workflow: 95, architecture: 65, edgeCases: 80, novelty: 75 },
-  },
-  {
-    id: "grok",
-    label: COMPLETE_GUIDE_MODELS.xaiPlanner,
-    color: "#FFFFFF",
-    role: "Assumption stress-test",
-    strengths: ["Counterintuitive options", "Pressure-testing assumptions"],
-    blindSpot: "Prone to suggesting overly clever, non-standard solutions.",
-    contributions: { execution: 65, workflow: 80, architecture: 75, edgeCases: 95, novelty: 90 },
+    blindSpot: "Without it, the plan has fewer alternative framings to choose from.",
+    contributions: { execution: 65, workflow: 95, architecture: 65, edgeCases: 80, novelty: 80 },
   },
 ] as const;
 
@@ -73,10 +64,9 @@ export function PlanEvolutionStudio() {
   const prefersReducedMotion = useReducedMotion();
   const reducedMotion = prefersReducedMotion ?? false;
   const [enabledModels, setEnabledModels] = useState<Record<PlanModelId, boolean>>({
-    gpt: true,
-    claude: true,
+    lead: true,
+    openai: true,
     gemini: true,
-    grok: true,
   });
   const [refinementRound, setRefinementRound] = useState(2);
 
@@ -178,6 +168,7 @@ export function PlanEvolutionStudio() {
                 }}
                 className={cn(
                   "min-w-0 rounded-2xl border p-5 text-left transition duration-300 relative overflow-hidden group/model",
+                  index === 0 && "sm:col-span-2",
                   enabled
                     ? "border-white/[0.08] bg-white/[0.02] shadow-lg"
                     : "border-white/[0.03] bg-transparent opacity-50 hover:opacity-80",
@@ -374,7 +365,7 @@ export function PlanEvolutionStudio() {
                   ))
                 ) : (
                   <p className="flex items-center gap-2 text-[#27C93F] font-medium">
-                    <CheckCircle2 className="h-4 w-4" /> All four proposals are included.
+                    <CheckCircle2 className="h-4 w-4" /> All three proposals are included.
                   </p>
                 )}
               </div>

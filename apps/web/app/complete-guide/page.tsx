@@ -148,29 +148,30 @@ export default function CompleteGuidePage() {
             <NumberedList
               items={[
                 <Fragment key="explain-build">
-                  <strong>You explain what you want to build</strong> to a frontier planning model
-                  such as {COMPLETE_GUIDE_MODELS.primaryPlanner} in{" "}
-                  {COMPLETE_GUIDE_MODELS.primaryPlannerSurface}. Your concept, your goals, the user
-                  workflows, why it matters. The model produces an initial markdown plan: a design
-                  document for the entire system.
+                  <strong>You explain what you want to build</strong> to one lead planner,{" "}
+                  {COMPLETE_GUIDE_MODELS.leadPlanner} in {COMPLETE_GUIDE_MODELS.leadPlannerSurface}
+                  . Your concept, your goals, the user workflows, why it matters, and which of your
+                  earlier projects it should be modeled on. The lead studies those projects, sends
+                  research subagents out, and writes the first markdown plan: a design document for
+                  the entire system. It stays in charge of the project from then on.
                 </Fragment>,
                 <Fragment key="competing-plans">
-                  <strong>You ask competing models to create their own plans.</strong>{" "}
-                  {COMPLETE_GUIDE_MODELS.claudePlanner}, {COMPLETE_GUIDE_MODELS.googlePlanner}, and{" "}
-                  {COMPLETE_GUIDE_MODELS.xaiPlanner} each independently design the same project.
-                  Their approaches differ more than you would expect, and each has its own
-                  strengths and blind spots.
+                  <strong>You ask other model families for competing plans.</strong>{" "}
+                  {COMPLETE_GUIDE_MODELS.openaiPlanner} in Codex and{" "}
+                  {COMPLETE_GUIDE_MODELS.antigravity} in Antigravity get the same kickoff and plan
+                  without seeing each other&apos;s work. Their approaches differ more than you would
+                  expect, and each has its own strengths and blind spots.
                 </Fragment>,
                 <Fragment key="synthesize-plans">
-                  <strong>You synthesize the best ideas from all plans into one.</strong>{" "}
-                  {COMPLETE_GUIDE_MODELS.primaryPlanner} analyzes the competing plans and produces a
-                  &quot;best of all worlds&quot; hybrid plan.
+                  <strong>The lead blends the best ideas from all plans into one.</strong> It
+                  admits what the competing plans did better, merges them into a &quot;best of all
+                  worlds&quot; hybrid, and checks every fact it takes from another model.
                 </Fragment>,
                 <Fragment key="iterate-relentlessly">
-                  <strong>You iterate relentlessly.</strong> Round after round of refinement, each
-                  time in a fresh conversation, until the suggestions become incremental. Plans
-                  created this way routinely reach 3,000 to 6,000+ lines, and the length comes from
-                  many rounds of feedback from several frontier models.
+                  <strong>You iterate relentlessly.</strong> Round after round of review by models
+                  and subagents that did not write the plan, until reviewers stop finding
+                  substantive problems. Recent plans run to hundreds of kilobytes of markdown, and
+                  the length comes from those rounds.
                 </Fragment>,
                 <Fragment key="convert-to-beads">
                   <strong>You convert the plan into beads.</strong> Beads are self-contained work
@@ -345,8 +346,8 @@ export default function CompleteGuidePage() {
             <IllustrativeDisclosure />
 
             <P>
-              A markdown plan, even a 6,000-line one, is much smaller than the codebase it
-              describes. When models reason about a plan instead of raw implementation, they can
+              A markdown plan, even one of several hundred kilobytes, is much smaller than the
+              codebase it describes. When models reason about a plan instead of raw implementation, they can
               hold the <Hl>whole system in their context window at once</Hl>. Once you start turning
               that plan into code, the system quickly becomes too large to understand as a whole.
               Planning first lets you do global reasoning while it is still possible.
@@ -420,11 +421,11 @@ export default function CompleteGuidePage() {
               </P>
 
               <P>
-                Paste a rough concept into {COMPLETE_GUIDE_MODELS.primaryPlanner}, ask for a
-                detailed plan, and the model surfaces dozens of edge cases, architectural
-                considerations, and workflow details you had not thought of. Show that plan to three
-                competing models and each finds blind spots the others missed. Run five rounds of
-                refinement and each round turns up issues the previous one did not. By the time you
+                Give a rough concept to {COMPLETE_GUIDE_MODELS.leadPlanner}, ask for a detailed
+                plan, and the model surfaces dozens of edge cases, architectural considerations,
+                and workflow details you had not thought of. Have two other model families plan
+                the same project and each finds blind spots the others missed. Run several review
+                rounds and each round turns up issues the previous one did not. By the time you
                 start implementation, you have learned much of what months of coding and
                 refactoring would otherwise have taught you about your own project.
               </P>
@@ -489,78 +490,120 @@ export default function CompleteGuidePage() {
           {/* SECTION 3: CREATING & REFINING THE PLAN                        */}
           {/* ============================================================= */}
           <GuideSection id="planning">
-            <SubSection title="Before You Start: The Foundation Bundle">
+            <SubSection title="Before You Start: Build on Your Earlier Projects">
               <P>
-                Before writing the plan itself, assemble a <Hl>foundation bundle</Hl>: a tech
-                stack decision, an initial architectural direction, a strong AGENTS.md file
-                bootstrapped from a known-good template, up-to-date best-practices guides, and
-                enough product and workflow explanation for the models to understand what
-                &quot;good&quot; looks like.
+                Skip the tech-stack decision and the folder of best-practices guides, and start
+                from projects you have already finished. Name your two or three most similar
+                earlier projects in the kickoff, and have the lead planner read their comprehensive
+                plans, AGENTS.md files, and READMEs and model the new ones on them: the same kinds
+                of sections, the same document controls, and the rules their mistakes taught. The
+                mining plan, for example, keeps its delivery log out of the plan because an
+                earlier plan&apos;s log had grown to 82% of its length.
               </P>
 
               <P>
-                Keep{" "}
-                <a
-                  href="https://github.com/Dicklesworthstone/claude_code_agent_farm/tree/main/best_practices_guides"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors"
-                >
-                  best practices guides
-                </a>{" "}
-                in the project folder and reference them in AGENTS.md. These guides should be kept
-                up to date; you can have Claude Code search the web and update them to the latest
-                versions of your frameworks and libraries.
+                The stack then follows from what those projects already stand on. The author&apos;s
+                recent projects take no third-party dependencies beyond his own libraries, so his
+                kickoffs settle the stack in one sentence (&quot;the same architecture built on
+                asupersync and my existing frankensuite of projects&quot;), and the research goes
+                into those libraries instead of into choosing frameworks. The plan opens with a{" "}
+                <Hl>foundation audit</Hl>: what each library actually provides at a pinned
+                revision, what it lacks and the project must build, and what the project does if
+                a foundation stalls. A lock file records each pin, the parts of the project allowed
+                to use it, and its fallback. If you have no libraries of your own yet, the same rule
+                holds for whatever you build on: the plan should check each component against its
+                source at a pinned version rather than trusting its documentation. Much of the
+                first review of the author&apos;s accounting plan corrected what the plan had assumed
+                its database could do.
               </P>
 
               <P>
-                Start every new project by copying an AGENTS.md from an existing project that
-                already has good general behavioral rules, safety notes, tool blurbs, and
-                coordination guidance. Later, once the plan and beads are clearer, ask agents to
-                replace the project-specific content while keeping the general rules that carry
-                across projects.
+                Give the lead the raw material of the domain, too. For a mining project, the author
+                put eighteen source documents (technical reports, spreadsheets and textbooks; 4,299
+                pages) in a git-ignored folder, and agents converted them to markdown and read
+                them against the original pages and cells. Other subagents surveyed his own
+                repositories and the state of the field, and a web pass checked 72 of the plan&apos;s
+                industry figures, correcting or qualifying 17. When the lead came back with a list
+                of open questions, the author&apos;s whole reply was &quot;YOU can find ALL of this
+                stuff yourself using web search tools, don&apos;t be helpless!!!&quot;
+              </P>
+
+              <P>
+                Make the plan say how it knows each thing. The mining plan labels every
+                load-bearing statement FACT (verified in a cited file, filing or publication),
+                DESIGN (a decision, with its rationale), HYPOTHESIS (with the test that would
+                confirm or kill it), TARGET (a number to hit, not yet measured) or OPEN (undecided,
+                with an owner), and it counts an unlabeled number as a defect in the plan.
+              </P>
+
+              <P>
+                Copy AGENTS.md from your most mature project: keep its general rules, safety notes,
+                tool sections and coordination guidance, and replace its project doctrine with the
+                new plan&apos;s. Write the README in the present tense, as if the finished system
+                already exists, with a short note saying so and an honest status section. It then
+                gets corrected in place as milestones land instead of being rewritten later. The
+                author&apos;s graph database, accounting, and mining projects each began with a
+                first commit holding the plan, the README, and AGENTS.md, and no code.
               </P>
 
               <TipBox variant="warning">
-                If any part of the foundation is missing, the plan silently absorbs the ambiguity,
-                and it shows up later as bad beads, confused agents, and sloppy implementation.
+                A plan that relies on something its foundations do not actually provide hides the
+                gap until implementation, where it surfaces as bad beads and confused agents. Check
+                foundation claims against the source before the review rounds start.
               </TipBox>
             </SubSection>
 
             <SubSection title="Writing the Initial Plan">
               <P>
-                You don&apos;t even need to write the initial markdown plan yourself. As of{" "}
-                {COMPLETE_GUIDE_REVIEWED_ON}, the primary recommendation is{" "}
-                {COMPLETE_GUIDE_MODELS.primaryPlanner} in{" "}
-                {COMPLETE_GUIDE_MODELS.primaryPlannerSurface}. {COMPLETE_GUIDE_MODELS.claudePlanner}{" "}
-                is a strong independent planning perspective, while{" "}
-                {COMPLETE_GUIDE_MODELS.claudeExecutor} is the default Claude execution model and{" "}
-                {COMPLETE_GUIDE_MODELS.claudeFallback} is a reliable fallback. Provider access,
-                quotas, and model names change, so treat this dated recommendation as a starting
-                point rather than an evergreen ranking.
+                You don&apos;t write the initial markdown plan yourself. As of{" "}
+                {COMPLETE_GUIDE_REVIEWED_ON}, the recommendation is one lead planner,{" "}
+                {COMPLETE_GUIDE_MODELS.leadPlanner} in {COMPLETE_GUIDE_MODELS.leadPlannerSurface}{" "}
+                (pick it with <code>/model</code>, then set <code>/effort xhigh</code>), in charge
+                of the whole project. It writes the plan, commissions the research and the reviews,
+                blends in the other models&apos; work, turns the plan into beads, and runs the
+                swarm. {COMPLETE_GUIDE_MODELS.openaiPlanner} in Codex and{" "}
+                {COMPLETE_GUIDE_MODELS.antigravity} in Antigravity write competing plans and review
+                the lead&apos;s. Provider access, quotas, and model names change, so treat this
+                dated recommendation as a starting point rather than an evergreen ranking.
               </P>
 
               <P>
-                You usually also specify the tech stack. For a web app, it&apos;s generally
-                TypeScript, Next.js 16, React 19, Tailwind, Supabase, with anything
-                performance-critical in Rust compiled to WASM. For a CLI tool, usually Go or Rust.
-                If the stack isn&apos;t obvious, do a deep research round with{" "}
-                {COMPLETE_GUIDE_MODELS.primaryPlanner} or {COMPLETE_GUIDE_MODELS.googlePlanner} and
-                have them study the current libraries and make a suggestion grounded in your goals.
+                The kickoff is one long message. This is the one the author sent for the mining
+                project, with the subject matter replaced by placeholders:
+              </P>
+
+              <PromptBlock
+                title="New Project Kickoff"
+                prompt={`I want you to carefully study the comprehensive plan documents (they are .md files with the word "COMPREHENSIVE" in the file name) from some of my recent projects in ~/projects , namely <project_a> , <project_b>, and <project_c>. Then I want you to conceive of a new project called <NewProject> (<new_project>) that does what those projects do for the subject of <your domain>. It would cover every aspect of <your domain> [who uses it, every workflow from start to finish, what they are trying to optimize, and which of your existing projects handles which part]. And we want to mimic for <NewProject> the same architecture built on <your core library> and my existing <suite> of projects (you can see the most developed ones in ~/projects). Use /planning-workflow and /idea-wizard and /modes-of-reasoning-project-analysis and /brennerbot-with-ntm for coming up with the very best plan document. We will also be doing multiple rounds of refinement, expansion, and improvement of whatever you write in your first plan draft using other models, but try to do as good and complete and optimal a job as possible on your first pass on the plan. Really think profoundly and deeply on this.`}
+                where={`The lead planner: ${COMPLETE_GUIDE_MODELS.leadPlanner} in ${COMPLETE_GUIDE_MODELS.leadPlannerSurface}, at xhigh effort`}
+                whyItWorks="The earlier plans give the model a worked example of the structure and depth you expect, so it does not invent a format. Naming the foundations settles the stack in one sentence. Telling the model that other models will revise its draft, while asking for the best possible first pass, keeps it from holding work back for later rounds. The named skills give it a method for research, hypotheses, and ideas instead of a blank page."
+              />
+
+              <P>
+                The lead does the rest itself. On the mining project it started seven research
+                subagents within eight minutes of the kickoff, ran hypothesis passes as further
+                subagents, and had a first plan of about 6,900 lines five hours later. Over the
+                next days the author added a handful of short steering notes, such as pointing it
+                at his numerical libraries and at the source documents.
               </P>
 
               <DataTable
                 headers={["Role", "Current Recommendation", "Operational Note"]}
                 rows={[
                   [
-                    "Primary planning and synthesis",
-                    `${COMPLETE_GUIDE_MODELS.primaryPlanner} in ${COMPLETE_GUIDE_MODELS.primaryPlannerSurface}`,
-                    "Use the strongest available reasoning setting; provider limits change often",
+                    "Lead planner, in charge of the project",
+                    `${COMPLETE_GUIDE_MODELS.leadPlanner} in ${COMPLETE_GUIDE_MODELS.leadPlannerSurface}`,
+                    "Writes and blends the plan, commissions reviews, makes the beads, runs the swarm",
                   ],
                   [
-                    "Independent Claude plan",
-                    COMPLETE_GUIDE_MODELS.claudePlanner,
-                    "Best reserved for ambitious, long-running planning work",
+                    "Competing plan and adversarial review",
+                    `${COMPLETE_GUIDE_MODELS.openaiPlanner} in Codex`,
+                    "Gets the same kickoff as the lead; later audits the plan and revises it in place",
+                  ],
+                  [
+                    "Third plan and review panes",
+                    `${COMPLETE_GUIDE_MODELS.antigravity} in Antigravity`,
+                    "The ACFS-pinned agy profile",
                   ],
                   [
                     "Claude implementation",
@@ -568,19 +611,9 @@ export default function CompleteGuidePage() {
                     `${COMPLETE_GUIDE_MODELS.claudeFallback} is the faster, lower-cost fallback`,
                   ],
                   [
-                    "Google planning perspective",
-                    COMPLETE_GUIDE_MODELS.googlePlanner,
-                    "Gemini app access requires Google AI Ultra; also available via the Gemini API",
-                  ],
-                  [
-                    "Antigravity CLI",
-                    COMPLETE_GUIDE_MODELS.antigravity,
-                    "This is the ACFS-pinned agy profile, distinct from the Gemini web-app workflow",
-                  ],
-                  [
-                    "Independent xAI plan",
-                    COMPLETE_GUIDE_MODELS.xaiPlanner,
-                    "Useful for assumption stress-testing and alternative designs",
+                    "Codex implementation",
+                    COMPLETE_GUIDE_MODELS.codexExecutor,
+                    "What the ACFS cod alias runs, at xhigh effort",
                   ],
                 ]}
               />
@@ -633,12 +666,12 @@ export default function CompleteGuidePage() {
 
             <SubSection title="Multi-Model Plans">
               <P>
-                For the best results, ask multiple frontier models to independently create plans for
-                the same project: {COMPLETE_GUIDE_MODELS.primaryPlanner},{" "}
-                {COMPLETE_GUIDE_MODELS.claudePlanner}, {COMPLETE_GUIDE_MODELS.googlePlanner}, and{" "}
-                {COMPLETE_GUIDE_MODELS.xaiPlanner}. The plans come out quite different, because each
-                model has its own &quot;tastes&quot; and blind spots. Running a plan past several
-                different models is the cheapest way to catch architectural mistakes.
+                For the best results, have other model families plan the same project
+                independently while the lead writes its own: {COMPLETE_GUIDE_MODELS.openaiPlanner}{" "}
+                in Codex and {COMPLETE_GUIDE_MODELS.antigravity} in Antigravity. The plans come out
+                quite different, because each model has its own &quot;tastes&quot; and blind spots.
+                Running a plan past several different models is the cheapest way to catch
+                architectural mistakes.
               </P>
 
               <P>
@@ -672,14 +705,13 @@ export default function CompleteGuidePage() {
               </P>
 
               <P>
-                Then show their competing plans to {COMPLETE_GUIDE_MODELS.primaryPlanner} with this
-                prompt:
+                Then give the competing plans to the lead with this prompt:
               </P>
 
               <PromptBlock
                 title="Best-of-All-Worlds Synthesis"
                 prompt={`I asked 3 competing LLMs to do the exact same thing and they came up with pretty different plans which you can read below. I want you to REALLY carefully analyze their plans with an open mind and be intellectually honest about what they did that's better than your plan. Then I want you to come up with the best possible revisions to your plan (you should simply update your existing document for your original plan with the revisions) that artfully and skillfully blends the "best of all worlds" to create a true, ultimate, superior hybrid version of the plan that best achieves our stated goals and will work the best in real-world practice to solve the problems we are facing and our overarching goals while ensuring the extreme success of the enterprise as best as possible; you should provide me with a complete series of git-diff style changes to your original plan to turn it into the new, enhanced, much longer and detailed plan that integrates the best of all the plans with every good idea included (you don't need to mention which ideas came from which models in the final revised enhanced plan):`}
-                where={`${COMPLETE_GUIDE_MODELS.primaryPlanner} in ${COMPLETE_GUIDE_MODELS.primaryPlannerSurface}`}
+                where={`The lead planner (${COMPLETE_GUIDE_MODELS.leadPlanner} in ${COMPLETE_GUIDE_MODELS.leadPlannerSurface}), which wrote one of the plans`}
                 whyItWorks="Makes the model admit what the competing plans did better, then merge the best of them into one plan. The 'best of all worlds' phrasing appears in 10+ distinct sessions across 7+ projects in the session archive. The prompt's length and specificity are deliberate: asking for git-diff style changes, integration of every good idea, and edits to the existing plan keeps the model from writing a vague summary and makes it work through what the competing plans actually say."
               />
 
@@ -687,15 +719,26 @@ export default function CompleteGuidePage() {
                 The request to be &quot;intellectually honest about what they did that&apos;s
                 better than your plan&quot; matters most when the model doing the blend wrote one
                 of the editions, since it otherwise defends its own. In the robotics project the
-                Claude lead blended its edition with the other two and both research rounds, and
-                the plan grew from about 3,700 lines to about 37,000. Three completeness audits
-                then checked the blend against each source and supplied passages it had dropped.
+                lead, running Fable 5.2 in Claude Code, blended its edition with the other two and
+                both research rounds, and the plan grew from about 3,700 lines to about 37,000.
+                Three completeness audits then checked the blend against each source and supplied
+                passages it had dropped.
               </P>
 
               <P>
-                Take {COMPLETE_GUIDE_MODELS.primaryPlanner}&apos;s output (the git-diff style
-                revisions) and paste it into Claude Code or Codex to integrate the revisions
-                in-place:
+                A competing model can also work on the lead&apos;s plan directly. On the mining
+                project, the author gave Gemini in Antigravity the lead&apos;s kickoff plus &quot;I
+                want you to think through all of this too and propose improvements to the plan to
+                make it smarter and better,&quot; and it edited the plan in place overnight. The
+                lead then checked every new FACT against the source documents, re-ran the new math,
+                and found seven kinds of error, from wrong drill intervals to processing rules that
+                appeared in no source document. Take another model&apos;s ideas freely, but take
+                its facts only after the lead has checked them.
+              </P>
+
+              <P>
+                When a review or synthesis comes from outside the repo, such as a model in a web
+                app, paste its git-diff style output into the lead session to integrate it:
               </P>
 
               <PromptBlock
@@ -703,7 +746,7 @@ export default function CompleteGuidePage() {
                 prompt={`OK, now integrate these revisions to the markdown plan in-place; use ultrathink and be meticulous. At the end, you can tell me which changes you wholeheartedly agree with, which you somewhat agree with, and which you disagree with:
 
 [Pasted synthesis output]`}
-                where="Claude Code or Codex"
+                where={`The lead session (${COMPLETE_GUIDE_MODELS.leadPlanner} in ${COMPLETE_GUIDE_MODELS.leadPlannerSurface})`}
                 whyItWorks="Claude assesses each suggestion critically, which adds a second quality filter. The 'wholeheartedly agree / somewhat agree / disagree' framing makes the agent grade each revision on its own instead of accepting or rejecting the whole batch. You learn which changes are clearly good and which are plausible but debatable, so you can step in on the debatable ones and leave the rest."
               />
 
@@ -725,49 +768,68 @@ export default function CompleteGuidePage() {
 
             <SubSection title="Iterative Refinement">
               <P>
-                Now paste the current plan into a <strong>fresh</strong>{" "}
-                {COMPLETE_GUIDE_MODELS.primaryPlanner} conversation with this prompt. A fresh
-                conversation keeps the model from anchoring on its own prior output. Repeat 4-5
-                rounds:
+                Now run review rounds. Each round goes to reviewers that did not write the plan:
+                fresh-context subagents the lead commissions, or a Codex or Antigravity session
+                started for the purpose. A reviewer that wrote none of the plan has nothing to
+                defend, and one that has not seen the previous round&apos;s conclusions does not
+                simply confirm them. The author&apos;s review prompt has the reviewer learn the
+                project&apos;s rules and finished-state description first, then hunt for mistakes:
               </P>
 
               <PromptBlock
-                title="Plan Refinement Prompt"
-                prompt={`Carefully review this entire plan for me and come up with your best revisions in terms of better architecture, new features, changed features, etc. to make it better, more robust/reliable, more performant, more compelling/useful, etc.
+                title="Plan Audit"
+                prompt={`First read ALL of the AGENTS.md file and README.md file super carefully and understand ALL of both! Then I want you to super carefully, deeply, and profoundly read, analyze, and understand COMPREHENSIVE_PLAN_FOR_THE_DESIGN_OF_<PROJECT>.md and check over everything with fresh eyes looking for any blunders, mistakes, errors, oversights, omissions, problems, misconceptions, bugs, etc. Be SUPER thorough and meticulous!`}
+                where={`A reviewer that did not write the plan: ${COMPLETE_GUIDE_MODELS.openaiPlanner} or ${COMPLETE_GUIDE_MODELS.codexExecutor} in Codex, an Antigravity pane, or a fresh subagent of the lead`}
+                whyItWorks="AGENTS.md and the present-tense README tell the reviewer what the project is supposed to be, so it judges the plan against that rather than against its own taste. The list of failure kinds (blunders, oversights, omissions, misconceptions) widens the search beyond bugs. On the graph database plan, a Codex reviewer ran this for more than five hours, sending its own subagents on adversarial passes, and came back with 15 blocking architectural contradictions."
+              />
 
-For each proposed change, give me your detailed analysis and rationale/justification for why it would make the project better along with the git-diff style changes relative to the original markdown plan shown below:
-
-<PASTE YOUR EXISTING COMPLETE PLAN HERE>`}
-                where={`${COMPLETE_GUIDE_MODELS.primaryPlannerSurface} (fresh conversation each round)`}
-                whyItWorks="Each round finds architectural issues, missing features, and robustness problems that the previous round missed. Asking for 'rationale/justification' keeps the model from making arbitrary changes: it has to argue for each revision, which filters out changes that seem clever but do not improve the plan. The git-diff format makes it say exactly what should change."
+              <PromptBlock
+                title="Revise After the Audit"
+                prompt={`OK, so I want you to revise the COMPREHENSIVE_PLAN_FOR_THE_DESIGN_OF_<PROJECT>.md document to solve absolutely ALL of the problems/issues you identified in the optimal way possible, which I leave to your superior judgment and instinct to determine.`}
+                where="The same reviewer session, right after its audit"
+                whyItWorks="The reviewer that found the problems understands them best, so it fixes them itself and nothing has to be pasted between tools. 'Absolutely ALL' keeps it from fixing the easy problems and listing the rest, and leaving the method to its judgment keeps it from handing the choices back to you. Then have the lead check the changes, as with any other model's edit."
               />
 
               <P>
-                This has never failed to improve a plan significantly. Once Claude Code or Codex
-                finishes integrating the last batch of suggested revisions, start a fresh
-                conversation in ChatGPT and do it all again. After four or five rounds, you tend to
-                reach a steady state where the suggestions become very incremental. To automate these rounds, <code>apr</code> (Automated Plan Reviser
-                Pro) bundles your README and spec, runs each review round in the background, and
-                emits a Claude Code integration prompt (<code>apr run N</code>, then{" "}
-                <code>apr integrate N --copy</code>).
+                Keep each review as a file in the repo, so a different model can weigh it. When a
+                third model reviewed the graph database plan, the lead adjudicated that review with
+                twelve parallel deep-read subagents and seven adversarial verifiers before
+                anything from it reached the plan.
+              </P>
+
+              <P>
+                Vary the kind of review from round to round, not just the reviewer. The mining
+                plan&apos;s rounds were primary-source audits by three reviewers who had not written
+                it, a pass through the source documents, a web check of the industry figures, and a
+                final round combining a modes-of-reasoning analysis, hypothesis testing by a squad
+                of three model families, and an idea duel. On the graph database plan, one review
+                covered correctness, an enhancement pass covered statistics and distribution, and a
+                third covered cost and the product lifecycle.
+              </P>
+
+              <P>
+                Stop when fresh reviewers stop finding substantive problems, not after a set
+                number of rounds. In the mining plan&apos;s last round, eight auditors who had
+                written none of the claims checked 171 of them: 102 were verified, 59 partly
+                supported and 2 rejected, and no conflict survived. After that the plan changed only
+                in small edits.
               </P>
 
               <SkillNote skills={["planning-workflow"]}>
-                Packages this whole part as one skill. You write the first markdown plan with a
-                frontier model in its web app, run the review rounds with{" "}
-                {COMPLETE_GUIDE_MODELS.primaryPlanner}, each in a fresh conversation, and paste each
-                round&apos;s proposed revisions into your coding agent to integrate. The skill
-                carries the exact prompt for each of those steps and for blending competing plans,
-                then hands the finished plan on to bead conversion and polishing, whose prompts
-                live in <code>/beads-workflow</code>.
+                Packages the plan-review loop as one skill: the exact prompts for a review round,
+                for integrating its revisions, and for blending competing plans, plus a check
+                between rounds that grounds every load-bearing claim in a verifiable source. Its
+                rounds are written for a reasoning model in a web app; with a lead in{" "}
+                {COMPLETE_GUIDE_MODELS.leadPlannerSurface}, have the lead send them to fresh-context
+                reviewers instead. It hands the finished plan on to bead conversion and polishing,
+                whose prompts live in <code>/beads-workflow</code>.
               </SkillNote>
 
               <P>
-                You can still get more out of it by blending in good ideas from{" "}
-                {COMPLETE_GUIDE_MODELS.googlePlanner}, {COMPLETE_GUIDE_MODELS.xaiPlanner}, or{" "}
-                {COMPLETE_GUIDE_MODELS.claudePlanner}, while using{" "}
-                {COMPLETE_GUIDE_MODELS.primaryPlanner} as the final synthesis pass. This is a
-                workflow recommendation, not a claim that one model is universally best.
+                Every review, whichever model wrote it, ends with the lead, which either integrates
+                the findings or checks the reviewer&apos;s own edits, so one model keeps the whole
+                plan consistent. This is a workflow recommendation, not a claim that one model is
+                universally best.
               </P>
 
               <TipBox>
@@ -786,10 +848,9 @@ For each proposed change, give me your detailed analysis and rationale/justifica
               />
 
               <P>
-                Plans created this way routinely reach 3,000-6,000+ lines, built up over many
-                iterations of blended ideas and feedback from several models. For the CASS GitHub
-                Pages export feature, the plan went through multiple
-                rounds over about 3 hours, growing to approximately{" "}
+                Plans built this way get long. Earlier ones ran 3,000 to 6,000 lines: for the CASS
+                GitHub Pages export feature, the plan went through multiple rounds over about 3
+                hours, growing to approximately{" "}
                 <a
                   href="https://github.com/Dicklesworthstone/coding_agent_session_search/blob/main/docs/planning/PLAN_TO_CREATE_GH_PAGES_WEB_EXPORT_APP.md"
                   target="_blank"
@@ -806,8 +867,21 @@ For each proposed change, give me your detailed analysis and rationale/justifica
                   className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors"
                 >
                   6,000-line plan
+                </a>
+                . The author&apos;s recent plans are larger, and lines stop being a useful measure
+                once tables and appendices make each line very long. The accounting engine&apos;s
+                first draft was 237 KB; the mining plan is about 9,500 lines (830 KB), backed by
+                about 36,000 lines of research, audit, and hypothesis records in its planning
+                folder; and the{" "}
+                <a
+                  href="https://github.com/Dicklesworthstone/frankengraphdb/blob/main/COMPREHENSIVE_PLAN_FOR_THE_DESIGN_OF_FRANKENGRAPHDB.md"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors"
+                >
+                  graph database plan
                 </a>{" "}
-                to get a feel for the scale.
+                is 1.7 MB of markdown in about 3,300 lines.
               </P>
 
               <P>
@@ -885,7 +959,7 @@ For each proposed change, give me your detailed analysis and rationale/justifica
             <PromptBlock
               title="Plan to Beads Conversion"
               prompt={`OK so please take ALL of that and elaborate on it more and then create a comprehensive and granular set of beads for all this with tasks, subtasks, and dependency structure overlaid, with detailed comments so that the whole thing is totally self-contained and self-documenting (including relevant background, reasoning/justification, considerations, etc.-- anything we'd want our "future self" to know about the goals and intentions and thought process and how it serves the over-arching goals of the project.) Use only the \`br\` tool to create and modify the beads and add the dependencies. Use ultrathink.`}
-              where={`Claude Code with ${COMPLETE_GUIDE_MODELS.claudeExecutor}`}
+              where={`The lead (${COMPLETE_GUIDE_MODELS.leadPlanner} in ${COMPLETE_GUIDE_MODELS.leadPlannerSurface}), in the session that holds the plan`}
               whyItWorks="The prompt makes the agent translate the whole plan into beads instead of extracting a task list. Requiring the beads to be totally self-contained and self-documenting pushes rationale, test expectations, design intent, and sequencing into the bead graph itself. Asking for tasks, subtasks, dependency structure, detailed comments, and future-self context keeps the model from collapsing a rich plan into terse todo items. Restricting it to the br tool keeps the agent from writing pseudo-beads in markdown instead of editing the actual task graph."
             />
 
@@ -1113,7 +1187,7 @@ br sync --flush-only                                     # Export to JSONL (no g
 DO NOT OVERSIMPLIFY THINGS! DO NOT LOSE ANY FEATURES OR FUNCTIONALITY!
 
 Also, make sure that as part of these beads, we include comprehensive unit tests and e2e test scripts with great, detailed logging so we can be sure that everything is working perfectly after implementation. Remember to ONLY use the \`br\` tool to create and modify the beads and to add the dependencies to beads. Use ultrathink.`}
-              where={`Claude Code with ${COMPLETE_GUIDE_MODELS.claudeExecutor} (run 4-6+ times)`}
+              where={`The lead (${COMPLETE_GUIDE_MODELS.leadPlanner} in ${COMPLETE_GUIDE_MODELS.leadPlannerSurface}), run 4-6+ times; on a large graph it hands each round's slices to ${COMPLETE_GUIDE_MODELS.claudeExecutor} subagents`}
               whyItWorks="This prompt keeps beads from being frozen too early: the model stays in plan space while it is still finding real improvements, and plan space is where reasoning is cheapest and most global. The warnings against oversimplifying and losing functionality matter because models otherwise tend to 'improve' artifacts by deleting complexity they do not fully understand. The prompt also writes tests into the bead definitions themselves, so test work cannot be left for later."
             />
 
@@ -1487,10 +1561,10 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
               </P>
 
               <P>
-                Send the self-contained proposal independently to{" "}
-                {COMPLETE_GUIDE_MODELS.primaryPlanner}, {COMPLETE_GUIDE_MODELS.claudePlanner},{" "}
-                {COMPLETE_GUIDE_MODELS.googlePlanner}, and {COMPLETE_GUIDE_MODELS.xaiPlanner}, all
-                with the same prompt asking for improvements in git-diff format:
+                Send the self-contained proposal independently to the other model families,{" "}
+                {COMPLETE_GUIDE_MODELS.openaiPlanner} and {COMPLETE_GUIDE_MODELS.antigravity}, and
+                to a fresh session of {COMPLETE_GUIDE_MODELS.leadPlanner}, all with the same prompt
+                asking for improvements in git-diff format:
               </P>
 
               <PromptBlock
@@ -1498,15 +1572,14 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
                 prompt={`How can we improve this proposal to make it smarter and better-- to make the most radically innovative and accretive and useful and compelling additions and revisions you can possibly imagine. Give me your proposed changes in the form of git-diff style changes against the file below, which is named PROPOSAL_TO_INTEGRATE_IDEAS_FROM_<EXTERNAL>_INTO_<YOUR_PROJECT>.md:
 
 <the complete proposal document>`}
-                where={`${COMPLETE_GUIDE_MODELS.primaryPlanner}, ${COMPLETE_GUIDE_MODELS.claudePlanner}, ${COMPLETE_GUIDE_MODELS.googlePlanner}, and ${COMPLETE_GUIDE_MODELS.xaiPlanner}, each independently`}
+                where={`${COMPLETE_GUIDE_MODELS.openaiPlanner}, ${COMPLETE_GUIDE_MODELS.antigravity}, and a fresh ${COMPLETE_GUIDE_MODELS.leadPlanner} session, each independently`}
                 whyItWorks="Each model has different architectural tastes and blind spots. The git-diff format makes every model show the exact text it would change, which keeps the synthesis step manageable."
               />
 
               <P>
-                Feed the competing feedback from all models into{" "}
-                {COMPLETE_GUIDE_MODELS.primaryPlanner} using the &quot;best of all worlds&quot;
-                synthesis prompt from Part 3. Apply the resulting diffs back to the proposal
-                document in Codex or Claude Code, then de-slopify the final result.
+                Give the competing feedback from all models to the session that wrote the proposal,
+                with the &quot;best of all worlds&quot; synthesis prompt from Part 3. It applies
+                the changes to the proposal document itself; then de-slopify the final result.
               </P>
 
               <DataTable
@@ -1539,8 +1612,8 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
                     "As needed",
                   ],
                   ["Self-contained background", "Prepare for cross-model review", "1"],
-                  ["Multi-model feedback + synthesis", "Triangulate from 4 frontier models", "1"],
-                  ["Apply diffs + de-slopify", "Produce the final integrated proposal", "1"],
+                  ["Multi-model feedback + synthesis", "Triangulate across model families", "1"],
+                  ["Integrate + de-slopify", "Produce the final integrated proposal", "1"],
                 ]}
               />
 
@@ -2412,28 +2485,33 @@ When a Rust build or test is needed, offload it with rch (for example, rch exec 
                 rows={[
                   [
                     "Initial plan creation",
-                    `${COMPLETE_GUIDE_MODELS.primaryPlanner} (${COMPLETE_GUIDE_MODELS.primaryPlannerSurface})`,
-                    "Strong whole-system reasoning with an explicit dated recommendation",
+                    `${COMPLETE_GUIDE_MODELS.leadPlanner} (${COMPLETE_GUIDE_MODELS.leadPlannerSurface})`,
+                    "The lead planner, in charge of the project from kickoff to swarm",
                   ],
                   [
-                    "Plan synthesis",
-                    `${COMPLETE_GUIDE_MODELS.primaryPlanner} (${COMPLETE_GUIDE_MODELS.primaryPlannerSurface})`,
-                    "Dedicated synthesis pass over independently produced plans",
-                  ],
-                  [
-                    "Plan refinement",
-                    `${COMPLETE_GUIDE_MODELS.primaryPlanner} + ${COMPLETE_GUIDE_MODELS.claudePlanner}`,
+                    "Competing plans",
+                    `${COMPLETE_GUIDE_MODELS.openaiPlanner} (Codex) + ${COMPLETE_GUIDE_MODELS.antigravity}`,
                     "Independent model families expose different blind spots",
                   ],
                   [
+                    "Plan synthesis",
+                    `${COMPLETE_GUIDE_MODELS.leadPlanner} (${COMPLETE_GUIDE_MODELS.leadPlannerSurface})`,
+                    "The lead blends every edition and checks the facts it takes from them",
+                  ],
+                  [
+                    "Plan review rounds",
+                    "Reviewers that did not write the plan",
+                    "Codex and Antigravity sessions, or fresh subagents of the lead",
+                  ],
+                  [
                     "Plan → Beads conversion",
-                    `Claude Code (${COMPLETE_GUIDE_MODELS.claudeExecutor})`,
-                    "Current execution model for structured repository work",
+                    `${COMPLETE_GUIDE_MODELS.leadPlanner} (${COMPLETE_GUIDE_MODELS.leadPlannerSurface})`,
+                    "The lead knows the plan best and can split the work across its own subagents",
                   ],
                   [
                     "Bead polishing",
-                    `Claude Code (${COMPLETE_GUIDE_MODELS.claudeExecutor})`,
-                    "Consistent repository-aware iteration",
+                    `${COMPLETE_GUIDE_MODELS.leadPlanner}, with ${COMPLETE_GUIDE_MODELS.claudeExecutor} subagents`,
+                    "The lead owns the bead graph; subagents take slices of it each round",
                   ],
                   ["Implementation", "Claude Code + Codex + Antigravity", "Diverse swarm"],
                   [
@@ -2946,9 +3024,9 @@ caam activate claude backup-2   # Switch instantly`}
                 beads. <code>/testing-real-service-e2e-no-mocks</code> handles the replacement:
                 integration and e2e tests that hit real databases, real APIs, and real services,
                 with structured JSON-line logs, transaction-rollback isolation, and test data
-                factories. For a web app on the stack from Part 3 (Next.js and Supabase),{" "}
-                <code>/e2e-testing-for-webapps</code> covers Playwright end to end, including test
-                users that bypass OAuth and an interactive mode for visual QA.
+                factories. For a web app, <code>/e2e-testing-for-webapps</code> covers Playwright
+                end to end, including test users that bypass OAuth and an interactive mode for
+                visual QA.
               </SkillNote>
 
               <BlockQuote>
@@ -3139,7 +3217,7 @@ bun run build`}
 
 Once you understand the purpose of the code in the larger context of the workflows, I want you to do a super careful, methodical, and critical check with "fresh eyes" to find any obvious bugs, problems, errors, issues, silly mistakes, etc. and then systematically and meticulously and intelligently correct them.
 
-Be sure to comply with ALL rules in AGENTS.md and ensure that any code you write or revise conforms to the best practice guides referenced in the AGENTS.md file. Use ultrathink.`}
+Be sure to comply with ALL rules in AGENTS.md. Use ultrathink.`}
                 where="Alternate with the cross-agent review below"
                 whyItWorks="The prompt has the agent understand purpose and flow before it criticizes anything. A bug hunt without that understanding turns into linting; one done after tracing execution flows catches logic errors, mismatched assumptions, and silent product-level breakage. The 'randomly explore' framing steers the agent away from the files that seem important, which have already had the most attention. Bugs that survive to this phase live in utility modules, error handling paths, configuration parsing, and edge-case branches."
               />
@@ -3594,7 +3672,10 @@ And you can't do this sort of thing using regex or a script, you MUST manually r
                 headers={["Component", "Purpose"]}
                 rows={[
                   ["AGENTS.md", "Per-project configuration teaching agents about tools and rules"],
-                  ["Best practices guides", "Referenced in AGENTS.md, kept current"],
+                  [
+                    "Your earlier projects",
+                    "Their plans, AGENTS.md files, and READMEs are the templates for the next project",
+                  ],
                   ["Markdown plan files", "Source-of-truth planning documents"],
                   [
                     "acfs newproj",
@@ -3773,9 +3854,11 @@ alias gmi='$HOME/.local/bin/agy-locked'  # legacy shortcut: same locked launcher
                 ACFS and the Flywheel tools are open source; model subscriptions, API usage, and
                 server capacity are separate choices. A starter setup can use one provider account
                 plus a modest VPS, then add capacity only after measured limits justify it. As of{" "}
-                {COMPLETE_GUIDE_REVIEWED_ON}, {COMPLETE_GUIDE_MODELS.primaryPlanner} is picked from
-                the {COMPLETE_GUIDE_MODELS.primaryPlannerSurface} model picker (it is also in Codex),
-                and heavy planning use is most practical on{" "}
+                {COMPLETE_GUIDE_REVIEWED_ON}, the lead planner, {COMPLETE_GUIDE_MODELS.leadPlanner},
+                runs in {COMPLETE_GUIDE_MODELS.leadPlannerSurface} on a Claude subscription. The
+                Codex models ({COMPLETE_GUIDE_MODELS.openaiPlanner} for competing plans and audits,{" "}
+                {COMPLETE_GUIDE_MODELS.codexExecutor} for implementation) are most practical for
+                heavy use on{" "}
                 <a
                   href="https://help.openai.com/en/articles/9793128-what-is-chatgpt-pro"
                   target="_blank"

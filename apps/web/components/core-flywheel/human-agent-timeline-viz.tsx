@@ -53,8 +53,8 @@ const STAGES: TimelineStage[] = [
     color: HUMAN_COLOR,
     icon: FileText,
     who: "You",
-    what: "Ask several frontier models for competing plans, then have one merge them into a single strong design document",
-    tools: `${COMPLETE_GUIDE_MODELS.primaryPlanner}, ${COMPLETE_GUIDE_MODELS.claudePlanner}, ${COMPLETE_GUIDE_MODELS.googlePlanner}`,
+    what: "Have a lead planner write the plan and two other model families write competing ones, then have the lead merge them into a single strong design document",
+    tools: `${COMPLETE_GUIDE_MODELS.leadPlanner.replace(/^Claude /, "")} (lead), ${COMPLETE_GUIDE_MODELS.openaiPlanner}, ${COMPLETE_GUIDE_MODELS.antigravity}`,
     insight: "The plan and the beads are where most of your time and thinking go. No code yet.",
   },
   {
@@ -63,9 +63,9 @@ const STAGES: TimelineStage[] = [
     actor: "human",
     color: HUMAN_COLOR_LIGHT,
     icon: Layers,
-    who: "You (via an agent)",
-    what: "Tell a coding agent to create beads from the plan, with dependencies. Then have it polish them 4\u20136 times.",
-    tools: `Claude Code (${COMPLETE_GUIDE_MODELS.claudeExecutor.replace(/^Claude /, "")}) with br`,
+    who: "You (via the lead)",
+    what: "Tell the lead planner to create beads from the plan, with dependencies. Then have it polish them 4\u20136 times.",
+    tools: `${COMPLETE_GUIDE_MODELS.leadPlannerSurface} (${COMPLETE_GUIDE_MODELS.leadPlanner.replace(/^Claude /, "")}) with br`,
     insight: "You prompt the agent. The agent runs the br commands.",
   },
   {

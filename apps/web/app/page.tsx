@@ -961,7 +961,7 @@ const PRICING_ITEMS = [
     name: "Claude Max",
     price: "$200",
     period: "/month",
-    description: "Anthropic's Claude Code CLI",
+    description: "Claude Code, with Fable 5.2 as the lead planner",
     icon: Bot,
     gradient: "from-amber-400 to-orange-500",
     note: "$400 for power users (2 accounts)",
@@ -970,10 +970,10 @@ const PRICING_ITEMS = [
     name: "ChatGPT Pro",
     price: "$100–200",
     period: "/month",
-    description: "GPT-6.2 Astra in ChatGPT Work for deep planning",
+    description: "Codex, with GPT-6.2 Astra and Sol",
     icon: Cpu,
     gradient: "from-emerald-400 to-teal-500",
-    note: "Pro tiers start at $100; essential for plan documents",
+    note: "Pro tiers start at $100; competing plans and audits",
   },
 ];
 

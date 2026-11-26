@@ -950,51 +950,29 @@ export default function WorkflowPage() {
           </p>
 
           <div className="space-y-2">
-            <WorkflowStep number={1} title="Start with Your Primary AI" color="bg-amber-500">
+            <WorkflowStep number={1} title="Start with Your Lead Planner" color="bg-amber-500">
               <p>
-                Open{" "}
-                <a
-                  href="https://chatgpt.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex min-h-6 items-center text-primary hover:underline"
-                >
-                  GPT-6.2 Astra
-                </a>{" "}
-                in ChatGPT Work and describe your project in detail. Be thorough about what you
-                want to build, user experience, and technical requirements. Ask it to create a
-                comprehensive implementation plan.
+                Open Claude Code, pick Claude Fable 5.2 with{" "}
+                <code className="bg-muted px-1 rounded">/model</code>, and set{" "}
+                <code className="bg-muted px-1 rounded">/effort xhigh</code>. Describe your project
+                in detail: what you want to build, the user experience, the technical
+                requirements, and which of your earlier projects it should be modeled on. Ask it
+                for a comprehensive implementation plan. This session leads the project from here
+                on.
               </p>
             </WorkflowStep>
 
             <WorkflowStep number={2} title="Get Competing Plans" color="bg-amber-500">
               <p>
-                Give the same prompt to{" "}
-                <a
-                  href="https://claude.ai"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex min-h-6 items-center text-primary hover:underline"
-                >
-                  Claude Fable 5.2
-                </a>{" "}
-                and{" "}
-                <a
-                  href="https://aistudio.google.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex min-h-6 items-center text-primary hover:underline"
-                >
-                  Gemini 4 Carbon
-                </a>
-                . Each model produces different insights: GPT-6.2 Astra excels at system design,
-                Claude Fable 5.2 at code quality, Gemini 4 Carbon at creative features.
+                Give the same prompt to GPT-6.2 Astra in Codex and to Gemini 4 Neon in
+                Antigravity, without showing either one the other plans. Each model family has
+                its own tastes and blind spots, so the plans come out quite different.
               </p>
             </WorkflowStep>
 
             <WorkflowStep number={3} title="Synthesize the Best of All Worlds" color="bg-amber-500">
               <p className="mb-3">
-                Paste all competing plans back into your primary AI with this magic prompt:
+                Give all the competing plans to the lead with this magic prompt:
               </p>
               <CodeBlock code={PROMPT_BEST_OF_ALL_WORLDS} language="prompt" />
               <p className="mt-3 text-xs">
@@ -1764,7 +1742,7 @@ export default function WorkflowPage() {
               {[
                 {
                   color: "from-amber-500 to-orange-600",
-                  text: "Plan with 3 AI models: GPT-6.2 Astra, Claude Fable 5.2, Gemini 4 Carbon → synthesize best ideas",
+                  text: "Plan with 3 AI models: Claude Fable 5.2 leads, GPT-6.2 Astra and Gemini 4 Neon compete → the lead synthesizes",
                 },
                 {
                   color: "from-amber-500 to-orange-600",

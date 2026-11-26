@@ -1,18 +1,19 @@
-export const COMPLETE_GUIDE_REVIEWED_ON = "November 25, 2026";
-export const COMPLETE_GUIDE_PROMPT_COUNT = 46;
+export const COMPLETE_GUIDE_REVIEWED_ON = "November 26, 2026";
+export const COMPLETE_GUIDE_PROMPT_COUNT = 48;
 export const COMPLETE_GUIDE_PHASE_COUNT = 13;
 
 export const COMPLETE_GUIDE_MODELS = {
-  primaryPlanner: "GPT-6.2 Astra",
-  primaryPlannerSurface: "ChatGPT Work",
-  claudePlanner: "Claude Fable 5.2",
+  /** The lead planner, in charge of the whole project: plan, reviews, beads, swarm. */
+  leadPlanner: "Claude Fable 5.2",
+  leadPlannerSurface: "Claude Code",
   claudeExecutor: "Claude Opus 5.5",
   claudeFallback: "Claude Sonnet 5.5",
+  /** Writes a competing plan and audits the lead's, in Codex. */
+  openaiPlanner: "GPT-6.2 Astra",
   /** The model the ACFS `cod` alias runs (acfs/zsh/acfs.zshrc), at xhigh effort. */
   codexExecutor: "GPT-6.2 Sol",
-  googlePlanner: "Gemini 4 Carbon",
+  /** The model the ACFS `agy` alias is pinned to; also writes a competing plan. */
   antigravity: "Gemini 4 Neon (XHigh)",
-  xaiPlanner: "Grok 4.7",
   restrictedPreview: "Claude Mythos 5.2",
 } as const;
 
@@ -57,22 +58,12 @@ export const COMPLETE_GUIDE_MODEL_SOURCES = [
     href: "https://ai.google.dev/gemini-api/docs/models",
     note: "Gemini 4 Carbon, Neon, Hydrogen, and Argon lineup",
   },
-  {
-    provider: "9to5Google on Gemini 4 Carbon",
-    href: "https://9to5google.com/2026/11/10/gemini-app-4-carbon/",
-    note: "Gemini app availability for Google AI Ultra subscribers",
-  },
-  {
-    provider: "xAI models",
-    href: "https://docs.x.ai/docs/models",
-    note: "Grok 4.7 availability and intended workloads",
-  },
 ] as const;
 
 export const VALIDATION_GATES = [
   [
     "Foundation",
-    "Goals, workflows, stack, architecture direction, AGENTS.md, and best-practices guides exist and are coherent",
+    "The kickoff states the goals and workflows, names the earlier plans to model on and the foundations to build on, and every foundation the plan relies on is checked at a pinned revision",
   ],
   [
     "Plan",

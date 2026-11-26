@@ -42,11 +42,11 @@ const STAGES: Stage[] = [
   {
     id: "plan",
     label: "Plan",
-    description: "Create & refine markdown plan with multiple frontier models",
+    description: "A lead planner writes and refines the markdown plan, blending in other models' plans",
     icon: FileText,
     color: "#a78bfa",
     artifact: "Markdown Plan",
-    command: "Ask 3+ frontier models, synthesize",
+    command: "Lead plans, rivals compete, lead merges",
     tip: "Planning tokens are far cheaper than implementation tokens",
   },
   {

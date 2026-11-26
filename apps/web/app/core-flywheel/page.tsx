@@ -450,8 +450,8 @@ export default function CoreFlywheelPage() {
 
             <NumberedList
               items={[
-                "You ask several frontier models for competing markdown plans, then have one model merge them into a single strong plan.",
-                "You tell an agent to turn that plan into beads (upload pipeline, indexing, admin screen, auth, and end-to-end tests) with explicit dependencies, then have it polish them.",
+                "A lead planner writes the markdown plan, two other model families write competing ones, and the lead merges them into a single strong plan.",
+                "You tell the lead to turn that plan into beads (upload pipeline, indexing, admin screen, auth, and end-to-end tests) with explicit dependencies, then have it polish them.",
                 "You launch 2-4 agents, one at a time, with the same marching orders. They read AGENTS.md, join Agent Mail, and use bv to pick beads.",
                 "You tend the swarm: check progress every 10-15 minutes, rescue confused agents, and add missing beads when needed.",
                 "Agents implement, review their own work with fresh eyes, close beads, and move to the next one. You step in for strategic decisions.",
@@ -581,10 +581,14 @@ Closed br-103 and released my file reservations.`}
 
             <SubSection title="Step 1: Create an Excellent Markdown Plan">
               <P>
-                Before beads, swarms, or file reservations, write a serious markdown plan. Do not
-                settle for one quick draft from one model. Ask several frontier models for
-                independent plans, then paste the others into the conversation that produced your
-                favorite and ask it to merge them:
+                Before beads, swarms, or file reservations, get a serious markdown plan. One lead
+                planner, {COMPLETE_GUIDE_MODELS.leadPlanner} in{" "}
+                {COMPLETE_GUIDE_MODELS.leadPlannerSurface} at xhigh effort, runs the project from
+                here on. Tell it what you want to build and which of your earlier projects to model
+                the plan on; it writes the first edition. Give the same kickoff to{" "}
+                {COMPLETE_GUIDE_MODELS.openaiPlanner} in Codex and{" "}
+                {COMPLETE_GUIDE_MODELS.antigravity} in Antigravity for competing plans, then hand
+                those to the lead and ask it to merge them:
               </P>
 
               <PromptBlock
@@ -592,34 +596,37 @@ Closed br-103 and released my file reservations.`}
                 prompt={`I asked 3 competing LLMs to do the exact same thing and they came up with pretty different plans which you can read below. I want you to REALLY carefully analyze their plans with an open mind and be intellectually honest about what they did that's better than your plan. Then I want you to come up with the best possible revisions to your plan that artfully and skillfully blends the "best of all worlds" to create a true, ultimate, superior hybrid version of the plan:
 
 [Paste all plans here]`}
-                where={`The ${COMPLETE_GUIDE_MODELS.primaryPlanner} conversation in ${COMPLETE_GUIDE_MODELS.primaryPlannerSurface} that wrote one of the plans (or your strongest available model)`}
+                where={`The lead planner (${COMPLETE_GUIDE_MODELS.leadPlanner} in ${COMPLETE_GUIDE_MODELS.leadPlannerSurface}), which wrote one of the plans`}
                 whyItWorks="Different frontier models have different blind spots. Competitive synthesis forces the model to admit where others are better and merge the strongest ideas."
               />
 
               <P>
                 At minimum, the plan should cover the user-facing workflows, the important
-                constraints, the major architectural decisions, and the testing expectations.
+                constraints, the major architectural decisions, and the testing expectations. Then
+                send it through review rounds by models that did not write it (a Codex session or a
+                fresh subagent of the lead), and have the lead integrate each round until reviewers
+                stop finding substantive problems.
               </P>
 
               <SkillNote skills={["planning-workflow"]}>
-                Lays this step out with the exact prompts. You write the first plan with your
-                strongest model in its web app, run several review rounds there, each in a fresh
-                conversation, and paste each round&apos;s proposed revisions into your coding agent
-                to merge. It also covers blending competing plans, and hands the finished plan on
-                to bead conversion.
+                Lays this step out with the exact prompts for a review round, for integrating its
+                revisions, and for blending competing plans. Its rounds are written for a reasoning
+                model in a web app; with a lead in {COMPLETE_GUIDE_MODELS.leadPlannerSurface}, have
+                the lead send them to fresh-context reviewers instead. It hands the finished plan
+                on to bead conversion.
               </SkillNote>
             </SubSection>
 
             <SubSection title="Step 2: Tell an Agent to Convert the Plan into Beads">
               <P>
                 You do not create every bead by hand. Run <code>br init</code> once in the repo,
-                have a coding agent read the final plan, and then give it this prompt:
+                and give the lead, which already knows the final plan, this prompt:
               </P>
 
               <PromptBlock
                 title="Plan to Beads Conversion"
                 prompt={`OK so please take ALL of that and elaborate on it and use it to create a comprehensive and granular set of beads for all this with tasks, subtasks, and dependency structure overlaid, with detailed comments so that the whole thing is totally self-contained and self-documenting. The beads should be so detailed that we never need to consult back to the original markdown plan document. Remember to ONLY use the \`br\` tool to create and modify the beads and add the dependencies. Use ultrathink.`}
-                where={`Claude Code with ${COMPLETE_GUIDE_MODELS.claudeExecutor}, in the same session where it read the plan`}
+                where={`The lead (${COMPLETE_GUIDE_MODELS.leadPlanner} in ${COMPLETE_GUIDE_MODELS.leadPlannerSurface}), in the session that holds the plan`}
                 whyItWorks="Beads become the source of truth for execution. Once they are strong enough, agents rarely need to open the markdown plan again."
               />
 
@@ -636,7 +643,7 @@ Closed br-103 and released my file reservations.`}
 DO NOT OVERSIMPLIFY THINGS! DO NOT LOSE ANY FEATURES OR FUNCTIONALITY!
 
 Also, make sure that as part of these beads, we include comprehensive unit tests and e2e test scripts with great, detailed logging so we can be sure that everything is working perfectly after implementation. Remember to ONLY use the \`br\` tool to create and modify the beads and to add the dependencies to beads. Use ultrathink.`}
-                where={`Claude Code with ${COMPLETE_GUIDE_MODELS.claudeExecutor}, repeated 4-6 times; start a fresh session if improvements flatten out`}
+                where={`The lead (${COMPLETE_GUIDE_MODELS.leadPlanner}), repeated 4-6 times, handing slices of a large graph to ${COMPLETE_GUIDE_MODELS.claudeExecutor} subagents; start a fresh session if improvements flatten out`}
                 whyItWorks="Fixing a bead is far cheaper than fixing the code built from it. The warnings against oversimplifying matter because models otherwise 'improve' beads by deleting complexity they do not fully understand."
               />
 
@@ -1275,9 +1282,9 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
                     and make sure the Agent Mail server is running (ACFS runs it as a service;
                     elsewhere, start it with <code>am</code>).
                   </Fragment>,
-                  "Ask several frontier models for competing markdown plans.",
-                  "Have one model merge them into a single strong plan.",
-                  "Tell an agent to create beads from the plan, with dependencies.",
+                  "Have the lead planner write the plan, and two other model families write competing ones.",
+                  "Have the lead merge them into a single strong plan.",
+                  "Tell the lead to create beads from the plan, with dependencies.",
                   "Polish the beads 4-6 times with fresh review passes.",
                   <Fragment key="triage">
                     Run <code>bv --robot-triage</code> to check that the graph and its top

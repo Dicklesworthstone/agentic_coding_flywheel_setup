@@ -132,9 +132,13 @@ describe("complete guide derived claims", () => {
         (path) => Bun.file(new URL(path, import.meta.url)).text(),
       ),
     );
+    // `*Surface` keys name the tool a model runs in ("Claude Code"), not a model.
+    const modelNames = Object.entries(COMPLETE_GUIDE_MODELS)
+      .filter(([key]) => !key.endsWith("Surface"))
+      .map(([, name]) => name);
     for (const source of coreSources) {
       expect(source).toContain("COMPLETE_GUIDE_MODELS");
-      for (const model of Object.values(COMPLETE_GUIDE_MODELS)) {
+      for (const model of modelNames) {
         expect(source).not.toContain(model.replace(/^Claude /, ""));
       }
     }

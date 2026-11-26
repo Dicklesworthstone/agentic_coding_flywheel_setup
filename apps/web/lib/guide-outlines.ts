@@ -75,7 +75,7 @@ export const CORE_FLYWHEEL_EXHIBIT_COUNT = 7;
 /** PromptBlock count on the core guide (the complete guide's lives in lib/complete-guide.ts). */
 export const CORE_FLYWHEEL_PROMPT_COUNT = 7;
 
-export const CORE_FLYWHEEL_REVIEWED_ON = "November 25, 2026";
+export const CORE_FLYWHEEL_REVIEWED_ON = "November 26, 2026";
 
 export const GUIDE_SOURCE_BASE =
   "https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/blob/main/apps/web/app";

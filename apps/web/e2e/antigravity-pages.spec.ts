@@ -112,11 +112,10 @@ test.describe
         await page.waitForLoadState("networkidle");
 
         await test.step("renders the dated current-model guidance", async () => {
-          await expect(page.getByText("Last reviewed November 25, 2026")).toBeVisible();
-          await expect(page.getByText(/GPT-6\.2 Astra/).first()).toBeVisible();
+          await expect(page.getByText("Last reviewed November 26, 2026")).toBeVisible();
           await expect(page.getByText(/Claude Fable 5\.2/).first()).toBeVisible();
-          await expect(page.getByText(/Gemini 4 Carbon/).first()).toBeVisible();
-          await expect(page.getByText(/Grok 4\.7/).first()).toBeVisible();
+          await expect(page.getByText(/GPT-6\.2 Astra/).first()).toBeVisible();
+          await expect(page.getByText(/Gemini 4 Neon \(XHigh\)/).first()).toBeVisible();
         });
 
         await test.step("--agy= spawn ratio is present", async () => {
