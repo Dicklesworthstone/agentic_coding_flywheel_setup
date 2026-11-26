@@ -1,15 +1,13 @@
 import { createSocialImage } from "@/lib/social-image";
-import { getStaticRouteSocialData } from "@/lib/social-image-routes";
+import { getStaticRouteSocialData, socialImageAlt } from "@/lib/social-image-routes";
+
+const data = getStaticRouteSocialData("/wizard/windows-terminal-setup");
 
 export const runtime = "edge";
-
-export const alt = "Wizard - Windows Terminal Setup";
-export const size = {
-  width: 1200,
-  height: 630,
-};
+export const alt = socialImageAlt(data);
+export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
 export default function Image() {
-  return createSocialImage(getStaticRouteSocialData("/wizard/windows-terminal-setup"), "opengraph");
+  return createSocialImage(data, "opengraph");
 }

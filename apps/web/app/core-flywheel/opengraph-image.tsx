@@ -1,11 +1,13 @@
 import { createSocialImage } from "@/lib/social-image";
-import { getStaticRouteSocialData } from "@/lib/social-image-routes";
+import { getStaticRouteSocialData, socialImageAlt } from "@/lib/social-image-routes";
+
+const data = getStaticRouteSocialData("/core-flywheel");
 
 export const runtime = "edge";
-export const alt = "The Core Flywheel - Agent Mail, Beads & bv";
+export const alt = socialImageAlt(data);
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
-export default async function Image() {
-  return createSocialImage(getStaticRouteSocialData("/core-flywheel"), "opengraph");
+export default function Image() {
+  return createSocialImage(data, "opengraph");
 }

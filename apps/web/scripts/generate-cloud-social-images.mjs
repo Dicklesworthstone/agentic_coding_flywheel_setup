@@ -1,13 +1,16 @@
-// Regenerate the production artwork after editing renderCloudAgentSocialImage.
+// Regenerate the /cloud-agents share artwork after editing its card data in
+// lib/social-image-routes.ts or the shared template in lib/social-image.tsx.
 // PNGs are bundled as data so the existing Edge routes need no filesystem or
 // external fetch. This writes image data only, not application source code.
 import { randomUUID } from "node:crypto";
 import { renameSync, writeFileSync } from "node:fs";
-import { renderCloudAgentSocialImage } from "../lib/social-image.tsx";
+import { renderSocialImage } from "../lib/social-image.tsx";
+import { getStaticRouteSocialData } from "../lib/social-image-routes.ts";
 
+const data = getStaticRouteSocialData("/cloud-agents");
 const images = {};
 for (const [variant, height] of [["opengraph", 630], ["twitter", 600]]) {
-  const response = renderCloudAgentSocialImage(variant);
+  const response = await renderSocialImage(data, variant);
   const bytes = Buffer.from(await response.arrayBuffer());
   if (response.status !== 200 || bytes.length <= 4096 ||
       !bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) ||

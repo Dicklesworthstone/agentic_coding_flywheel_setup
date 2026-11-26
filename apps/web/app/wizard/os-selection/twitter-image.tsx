@@ -1,15 +1,13 @@
 import { createSocialImage } from "@/lib/social-image";
-import { getStaticRouteSocialData } from "@/lib/social-image-routes";
+import { getStaticRouteSocialData, socialImageAlt } from "@/lib/social-image-routes";
+
+const data = getStaticRouteSocialData("/wizard/os-selection");
 
 export const runtime = "edge";
-
-export const alt = "Wizard Step 1 - Choose Your OS";
-export const size = {
-  width: 1200,
-  height: 600,
-};
+export const alt = socialImageAlt(data);
+export const size = { width: 1200, height: 600 };
 export const contentType = "image/png";
 
 export default function Image() {
-  return createSocialImage(getStaticRouteSocialData("/wizard/os-selection"), "twitter");
+  return createSocialImage(data, "twitter");
 }

@@ -1,15 +1,13 @@
 import { createSocialImage } from "@/lib/social-image";
-import { getStaticRouteSocialData } from "@/lib/social-image-routes";
+import { getStaticRouteSocialData, socialImageAlt } from "@/lib/social-image-routes";
 
-// Same runtime as every other social image route in the app.
+const data = getStaticRouteSocialData("/");
+
 export const runtime = "edge";
-export const alt = "Agent Flywheel";
-export const size = {
-  width: 1200,
-  height: 600,
-};
+export const alt = socialImageAlt(data);
+export const size = { width: 1200, height: 600 };
 export const contentType = "image/png";
 
 export default function Image() {
-  return createSocialImage(getStaticRouteSocialData("/"), "twitter");
+  return createSocialImage(data, "twitter");
 }

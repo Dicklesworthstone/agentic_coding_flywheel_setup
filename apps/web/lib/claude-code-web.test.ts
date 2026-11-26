@@ -118,7 +118,7 @@ describe("cloud agent page data", () => {
 
   test("dedicated cloud share images render nonempty PNGs at each platform size", async () => {
     await Promise.all(([["opengraph", 630], ["twitter", 600]] as const).map(async ([variant, height]) => {
-      const response = createSocialImage(getStaticRouteSocialData("/cloud-agents"), variant);
+      const response = await createSocialImage(getStaticRouteSocialData("/cloud-agents"), variant);
       expect(response.status).toBe(200);
       const bytes = Buffer.from(await response.arrayBuffer());
       expect(bytes.length).toBeGreaterThan(4096);
@@ -130,8 +130,8 @@ describe("cloud agent page data", () => {
 
   test("cloud image requests have independent bodies and preserve the image cache contract", async () => {
     for (const variant of ["opengraph", "twitter"] as const) {
-      const first = createSocialImage(getStaticRouteSocialData("/cloud-agents"), variant);
-      const second = createSocialImage(getStaticRouteSocialData("/cloud-agents"), variant);
+      const first = await createSocialImage(getStaticRouteSocialData("/cloud-agents"), variant);
+      const second = await createSocialImage(getStaticRouteSocialData("/cloud-agents"), variant);
       const cacheControl = process.env.NODE_ENV === "development"
         ? "no-cache, no-store"
         : "public, max-age=0, must-revalidate";

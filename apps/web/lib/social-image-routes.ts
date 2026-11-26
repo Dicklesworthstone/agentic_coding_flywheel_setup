@@ -1,249 +1,277 @@
 import type { SocialImageData } from "@/lib/social-image";
 
+// Share-card copy for every static route. Descriptions are written to fit two
+// lines on the card (about 110 characters); lib/social-image-routes.test.ts
+// holds the budgets and checks the wizard steps against lib/wizardSteps.ts.
+
+/** Number of steps in the setup wizard (WIZARD_STEPS.length, kept in sync by test). */
+export const WIZARD_SOCIAL_TOTAL = 13;
+
+function wizardStep(
+  path: string,
+  current: number,
+  title: string,
+  accent: string,
+  description: string,
+): SocialImageData {
+  return {
+    badge: "Setup wizard",
+    title,
+    accent,
+    description,
+    path,
+    theme: "wizard",
+    step: { current, total: WIZARD_SOCIAL_TOTAL },
+    hub: String(current).padStart(2, "0"),
+    hubLabel: `of ${WIZARD_SOCIAL_TOTAL}`,
+  };
+}
+
 const STATIC_ROUTE_SOCIAL_DATA: Record<string, SocialImageData> = {
   "/": {
-    badge: "Agentic Coding",
-    title: "Agent Flywheel",
+    badge: "Agentic coding, set up for you",
+    title: "AI agents coding",
+    accent: "for you",
     description:
-      "Turn a fresh VPS into a complete multi-agent coding environment with Claude, Codex, Antigravity, and modern developer tooling.",
+      "One command turns a fresh Ubuntu VPS into a complete multi-agent coding environment.",
     path: "/",
     theme: "default",
-    tags: ["Claude", "Codex", "Antigravity"],
+    nodes: ["Claude Code", "Codex", "Antigravity"],
+    tags: ["One command", "Free & open source", "Ubuntu VPS"],
   },
   "/core-flywheel": {
-    badge: "The 3-Tool Core Loop",
-    title: "The Core Flywheel",
+    badge: "Start here · The core flywheel",
+    title: "The Core",
+    accent: "Flywheel",
     description:
-      "The beginner-friendly entry point: Agent Mail for coordination, br for task management, and bv for graph-aware triage.",
+      "Three tools, one loop: Agent Mail coordinates, br tracks the work, bv picks what to do next.",
     path: "/core-flywheel",
-    theme: "flywheel",
-    tags: ["Agent Mail", "Beads", "bv"],
+    theme: "guide",
+    nodes: ["Agent Mail", "br", "bv"],
+    tags: ["One machine", "Three tools", "One loop"],
+  },
+  "/complete-guide": {
+    badge: "The complete guide",
+    title: "The Agentic Coding",
+    accent: "Flywheel",
+    description:
+      "Frontier-model planning, beads, and coordinated agent swarms, with every prompt included.",
+    path: "/complete-guide",
+    theme: "guide",
   },
   "/flywheel": {
-    badge: "20+ Interconnected Tools",
-    title: "The Agentic Coding Flywheel",
+    badge: "The flywheel",
+    title: "Unheard-of velocity in",
+    accent: "complex software",
     description:
-      "A self-reinforcing stack where agents coordinate, review, and ship in parallel while safety and quality stay enforced.",
+      "Connected tools that let many agents plan, build, review, and ship in parallel while you're away.",
     path: "/flywheel",
     theme: "flywheel",
-    tags: ["Parallel Agents", "Autonomous Progress", "Safety"],
+    nodes: ["ntm", "br", "bv", "am", "ubs", "cass"],
+    tags: ["Parallel agents", "Review loops", "Safety rails"],
   },
   "/learn": {
-    badge: "Interactive Lessons",
-    title: "ACFS Learning Hub",
+    badge: "Learning hub",
+    title: "Learn the",
+    accent: "flywheel",
     description:
-      "Master Linux, SSH, tmux, git, and multi-agent workflows with structured lessons designed for real-world execution.",
+      "Hands-on lessons on Linux, SSH, tmux, git, and multi-agent workflows, one step at a time.",
     path: "/learn",
     theme: "learn",
-    tags: ["Beginner Friendly", "Hands-On", "Step-by-Step"],
+    tags: ["Beginner friendly", "Hands-on", "Step by step"],
   },
   "/learn/commands": {
-    badge: "Terminal Playbook",
-    title: "Command Reference",
+    badge: "Command reference",
+    title: "The commands you'll",
+    accent: "actually use",
     description:
-      "Quick command patterns for core setup, verification, troubleshooting, and daily operation inside the flywheel workflow.",
+      "Copy-ready command patterns for setup, verification, troubleshooting, and daily flywheel work.",
     path: "/learn/commands",
     theme: "learn",
-    tags: ["CLI", "Reference", "Copy-Paste Ready"],
+    command: "acfs doctor",
   },
   "/learn/glossary": {
-    badge: "Concepts Made Clear",
-    title: "Learning Glossary",
+    badge: "Learning glossary",
+    title: "Plain-English",
+    accent: "definitions",
     description:
-      "Plain-language definitions for infrastructure, tooling, and agentic coding concepts used throughout the learning track.",
+      "The infrastructure, tooling, and agentic coding concepts from the learning track, explained simply.",
     path: "/learn/glossary",
     theme: "learn",
-    tags: ["Definitions", "Beginner Friendly", "ACFS Terms"],
+    tags: ["Definitions", "Beginner friendly", "ACFS terms"],
   },
   "/glossary": {
-    badge: "Jargon Decoder",
-    title: "Agent Flywheel Glossary",
+    badge: "Jargon decoder",
+    title: "Every term,",
+    accent: "decoded",
     description:
-      "Translate technical terms into practical intuition so you can move faster across setup, debugging, and collaboration.",
+      "Plain-English definitions for the words you'll meet in the wizard, the guides, and the learning hub.",
     path: "/glossary",
     theme: "tools",
-    tags: ["Linux", "VPS", "Agent Tools"],
+    tags: ["Linux", "VPS", "Agent tools"],
   },
   "/workflow": {
-    badge: "Execution Blueprint",
-    title: "The Complete Workflow",
+    badge: "The agentic workflow",
+    title: "From plan to",
+    accent: "production",
     description:
-      "A practical end-to-end operating model for planning, task graphs, swarm implementation, review, and deployment.",
+      "Plan with frontier models, turn the plan into beads, then let a coordinated swarm build and ship.",
     path: "/workflow",
     theme: "workflow",
-    tags: ["Planning", "Swarms", "Ship Faster"],
+    tags: ["Planning", "Beads", "Swarms"],
   },
   "/tldr": {
-    badge: "High-Level Overview",
-    title: "The Flywheel TL;DR",
+    badge: "The TL;DR",
+    title: "The whole flywheel",
+    accent: "on one page",
     description:
-      "A compact overview of the full stack and why connected tools outperform isolated, one-off automation.",
+      "Every tool in the stack, what it does, and why connected tools beat one-off automation.",
     path: "/tldr",
     theme: "flywheel",
-    tags: ["Overview", "Tool Synergy", "Architecture"],
+    tags: ["Overview", "Tool synergy", "Architecture"],
   },
   "/omarchy": {
-    badge: "Omarchy · Arch Family",
-    title: "The Flywheel, Native on Omarchy",
+    badge: "Omarchy · Arch family",
+    title: "The flywheel, native on",
+    accent: "Omarchy",
     description:
-      "One command installs the full agentic coding stack on Omarchy and Arch: system packages from pacman, your starship prompt left alone, acfs doctor passing clean.",
+      "One command installs the full agentic coding stack on Omarchy and Arch, using pacman packages.",
     path: "/omarchy",
     theme: "omarchy",
-    tags: ["pacman", "starship", "Hyprland", "Flywheel"],
+    tags: ["pacman", "starship", "Hyprland"],
   },
   "/cloud-agents": {
-    badge: "Cloud Agent Setup",
-    title: "Give Your Cloud Agent a Flywheel",
+    badge: "Cloud agent setup",
+    title: "Give your cloud agent a",
+    accent: "flywheel",
     description:
-      "Real screenshots, exact steps and copy-ready scripts. Prebuilt Flywheel tools for Claude Code, ChatGPT / Codex and more Linux agents.",
+      "Real screenshots, exact steps, and copy-ready scripts for Claude Code, ChatGPT / Codex, and more.",
     path: "/cloud-agents",
     theme: "tools",
-    tags: ["Cloud Sessions", "Beads", "Agent Mail", "Setup Script"],
+    nodes: ["br", "bv", "am", "ubs", "cass", "jsm"],
+    tags: ["Claude Code", "ChatGPT / Codex", "Linux agents"],
   },
   "/troubleshooting": {
-    badge: "Fix Common Failures",
-    title: "Troubleshooting Guide",
+    badge: "Troubleshooting",
+    title: "Fix it",
+    accent: "fast",
     description:
-      "Diagnose SSH, installer, auth, and environment issues quickly with actionable fixes and known-good command patterns.",
+      "Diagnose SSH, installer, auth, and environment problems with known-good fixes you can copy.",
     path: "/troubleshooting",
     theme: "support",
     tags: ["SSH", "Installer", "Recovery"],
   },
   "/docs/security": {
-    badge: "Defense in Depth",
-    title: "Security Documentation",
+    badge: "Security",
+    title: "Defense in",
+    accent: "depth",
     description:
-      "Security architecture, threat model, and practical controls for safer autonomous coding with multiple AI agents.",
+      "Keep a one-login-everywhere setup safe: account security, SSO strategy, and practical guardrails.",
     path: "/docs/security",
     theme: "security",
-    tags: ["Threat Model", "Guardrails", "Best Practices"],
+    tags: ["Accounts", "SSO strategy", "Guardrails"],
   },
 
-  "/wizard/os-selection": {
-    badge: "Setup Wizard • Step 1",
-    title: "Choose Your Operating System",
-    description:
-      "Start the guided installation path for macOS, Windows, or Linux before provisioning your remote coding server.",
-    path: "/wizard/os-selection",
-    theme: "wizard",
-    tags: ["Step 1", "OS Detection", "Quick Start"],
-  },
-  "/wizard/install-terminal": {
-    badge: "Setup Wizard • Step 2",
-    title: "Install a Terminal",
-    description:
-      "Prepare a reliable terminal environment so every subsequent setup and verification command works consistently.",
-    path: "/wizard/install-terminal",
-    theme: "wizard",
-    tags: ["Step 2", "Terminal", "Foundation"],
-  },
-  "/wizard/generate-ssh-key": {
-    badge: "Setup Wizard • Step 3",
-    title: "Generate Your SSH Key",
-    description:
-      "Create and validate key-based authentication to secure remote access and avoid fragile password-only workflows.",
-    path: "/wizard/generate-ssh-key",
-    theme: "wizard",
-    tags: ["Step 3", "SSH", "Security"],
-  },
-  "/wizard/rent-vps": {
-    badge: "Setup Wizard • Step 4",
-    title: "Rent a VPS",
-    description:
-      "Choose a provider and plan that can handle parallel agent sessions, builds, and background automation reliably.",
-    path: "/wizard/rent-vps",
-    theme: "wizard",
-    tags: ["Step 4", "VPS", "Sizing"],
-  },
-  "/wizard/create-vps": {
-    badge: "Setup Wizard • Step 5",
-    title: "Create the VPS Instance",
-    description:
-      "Launch your server correctly with the expected operating system and credentials before initial SSH access.",
-    path: "/wizard/create-vps",
-    theme: "wizard",
-    tags: ["Step 5", "Provisioning", "Launch"],
-  },
-  "/wizard/ssh-connect": {
-    badge: "Setup Wizard • Step 6",
-    title: "Connect via SSH",
-    description:
-      "Establish your first remote session and confirm network, host key, and authentication details are correct.",
-    path: "/wizard/ssh-connect",
-    theme: "wizard",
-    tags: ["Step 6", "SSH", "Connectivity"],
-  },
-  "/wizard/accounts": {
-    badge: "Setup Wizard • Step 7",
-    title: "Set Up Required Accounts",
-    description:
-      "Create the core service accounts needed for multi-agent coding, source control, deployment, and platform access.",
-    path: "/wizard/accounts",
-    theme: "wizard",
-    tags: ["Step 7", "Accounts", "Integrations"],
-  },
-  "/wizard/preflight-check": {
-    badge: "Setup Wizard • Step 8",
-    title: "Run a Pre-Flight Check",
-    description:
-      "Validate prerequisites before installation so you avoid avoidable failures, lock conflicts, and configuration drift.",
-    path: "/wizard/preflight-check",
-    theme: "wizard",
-    tags: ["Step 8", "Validation", "Readiness"],
-  },
-  "/wizard/run-installer": {
-    badge: "Setup Wizard • Step 9",
-    title: "Run the Installer",
-    description:
-      "Execute the one-liner installer and bootstrap your full agentic coding environment with checkpointed setup phases.",
-    path: "/wizard/run-installer",
-    theme: "wizard",
-    tags: ["Step 9", "One-Liner", "Bootstrap"],
-  },
-  "/wizard/reconnect-ubuntu": {
-    badge: "Setup Wizard • Step 10",
-    title: "Reconnect as Ubuntu User",
-    description:
-      "Transition from root to your Ubuntu workflow account and align with the expected day-to-day operating context.",
-    path: "/wizard/reconnect-ubuntu",
-    theme: "wizard",
-    tags: ["Step 10", "User Context", "Hardening"],
-  },
-  "/wizard/verify-key-connection": {
-    badge: "Setup Wizard • Step 11",
-    title: "Verify Key-Based Login",
-    description:
-      "Confirm passwordless SSH works end-to-end so future sessions remain fast, secure, and predictable.",
-    path: "/wizard/verify-key-connection",
-    theme: "wizard",
-    tags: ["Step 11", "SSH Keys", "Verification"],
-  },
-  "/wizard/status-check": {
-    badge: "Setup Wizard • Step 12",
-    title: "Run a Status Check",
-    description:
-      "Audit installed components and ensure the toolchain is healthy before launching full autonomous workflows.",
-    path: "/wizard/status-check",
-    theme: "wizard",
-    tags: ["Step 12", "Health Check", "Audit"],
-  },
-  "/wizard/launch-onboarding": {
-    badge: "Setup Wizard • Step 13",
-    title: "Launch Onboarding",
-    description:
-      "Start the interactive onboarding track to learn operations, collaboration patterns, and high-leverage workflows.",
-    path: "/wizard/launch-onboarding",
-    theme: "wizard",
-    tags: ["Step 13", "Onboarding", "Learn Fast"],
-  },
+  "/wizard/os-selection": wizardStep(
+    "/wizard/os-selection",
+    1,
+    "Choose your",
+    "operating system",
+    "Start the guided setup from macOS, Windows, or Linux before you provision your coding server.",
+  ),
+  "/wizard/install-terminal": wizardStep(
+    "/wizard/install-terminal",
+    2,
+    "Install a",
+    "terminal",
+    "Set up a reliable terminal so every command in the setup behaves the same way on your machine.",
+  ),
+  "/wizard/generate-ssh-key": wizardStep(
+    "/wizard/generate-ssh-key",
+    3,
+    "Generate your",
+    "SSH key",
+    "Create a key pair for secure, passwordless access to the server you are about to rent.",
+  ),
+  "/wizard/rent-vps": wizardStep(
+    "/wizard/rent-vps",
+    4,
+    "Rent a",
+    "VPS",
+    "Pick a provider and plan with enough headroom for parallel agents, builds, and background work.",
+  ),
+  "/wizard/create-vps": wizardStep(
+    "/wizard/create-vps",
+    5,
+    "Create the",
+    "server",
+    "Launch the instance with the right Ubuntu image and your SSH key before you connect.",
+  ),
+  "/wizard/ssh-connect": wizardStep(
+    "/wizard/ssh-connect",
+    6,
+    "Connect over",
+    "SSH",
+    "Open your first remote session and confirm the host key, network, and login all work.",
+  ),
+  "/wizard/accounts": wizardStep(
+    "/wizard/accounts",
+    7,
+    "Set up your",
+    "accounts",
+    "Create the service accounts your agents need for models, source control, and deployment.",
+  ),
+  "/wizard/preflight-check": wizardStep(
+    "/wizard/preflight-check",
+    8,
+    "Run the",
+    "pre-flight check",
+    "Validate the server before installing so you avoid lock conflicts and configuration drift.",
+  ),
+  "/wizard/run-installer": wizardStep(
+    "/wizard/run-installer",
+    9,
+    "Run the",
+    "installer",
+    "One command installs the full agentic coding stack in checkpointed phases.",
+  ),
+  "/wizard/reconnect-ubuntu": wizardStep(
+    "/wizard/reconnect-ubuntu",
+    10,
+    "Reconnect as",
+    "ubuntu",
+    "Switch from root to the ubuntu account you will use for day-to-day work.",
+  ),
+  "/wizard/verify-key-connection": wizardStep(
+    "/wizard/verify-key-connection",
+    11,
+    "Verify your",
+    "key login",
+    "Confirm passwordless SSH works end to end so every future session is fast and secure.",
+  ),
+  "/wizard/status-check": wizardStep(
+    "/wizard/status-check",
+    12,
+    "Run a",
+    "status check",
+    "Check that every installed tool is healthy before you start running agents.",
+  ),
+  "/wizard/launch-onboarding": wizardStep(
+    "/wizard/launch-onboarding",
+    13,
+    "Launch",
+    "onboarding",
+    "Start the interactive onboarding and learn the workflows that make the flywheel spin.",
+  ),
   "/wizard/windows-terminal-setup": {
-    badge: "Wizard Companion Step",
-    title: "Windows Terminal Setup",
+    badge: "Setup wizard · Windows",
+    title: "Set up",
+    accent: "Windows Terminal",
     description:
-      "Configure a stable Windows Terminal profile for smooth command execution, copy/paste reliability, and SSH sessions.",
+      "Configure a Windows Terminal profile for reliable copy, paste, and SSH sessions.",
     path: "/wizard/windows-terminal-setup",
     theme: "wizard",
-    tags: ["Windows", "Terminal", "Configuration"],
+    tags: ["Windows", "Terminal", "SSH"],
   },
 };
 
@@ -253,4 +281,60 @@ export function getStaticRouteSocialData(routePath: string): SocialImageData {
     throw new Error(`[social-image] Missing static route data for: ${routePath}`);
   }
   return data;
+}
+
+/** Every route with static share-card copy (used by the drift test). */
+export const STATIC_SOCIAL_ROUTES = Object.keys(STATIC_ROUTE_SOCIAL_DATA);
+
+/** Set the end of a name in the accent italic: "Case Study: *SLB*", "tmux *Basics*". */
+function splitAccent(name: string): { title: string; accent: string } {
+  const colon = name.indexOf(": ");
+  if (colon > 0) return { title: name.slice(0, colon + 1), accent: name.slice(colon + 2) };
+  const words = name.trim().split(/\s+/);
+  if (words.length === 1) return { title: "", accent: words[0] };
+  return { title: words.slice(0, -1).join(" "), accent: words[words.length - 1] };
+}
+
+export function lessonSocialData(
+  lesson: { id: number; slug: string; title: string; description: string; duration: string },
+  lessonCount: number,
+): SocialImageData {
+  const number = lesson.id + 1;
+  return {
+    badge: `Learning hub · Lesson ${number}`,
+    ...splitAccent(lesson.title),
+    description: lesson.description,
+    path: `/learn/${lesson.slug}`,
+    theme: "learn",
+    hub: String(number).padStart(2, "0"),
+    hubLabel: `of ${lessonCount}`,
+    tags: [lesson.duration, "Hands-on", "Learning hub"],
+  };
+}
+
+export function toolSocialData(tool: {
+  id: string;
+  title: string;
+  tagline: string;
+  quickCommand?: string;
+}): SocialImageData {
+  const command = tool.quickCommand?.trim();
+  const binary = command?.split(/\s+/)[0] ?? "";
+  return {
+    badge: "Tool deep dive",
+    ...splitAccent(tool.title),
+    // Taglines use " - " as a separator; a colon reads better on the card.
+    description: tool.tagline.replace(" - ", ": "),
+    path: `/learn/tools/${tool.id}`,
+    theme: "tools",
+    hub: /^[a-z][\w-]{0,6}$/.test(binary) ? binary : undefined,
+    command,
+    tags: command ? undefined : ["Learning hub", "ACFS"],
+  };
+}
+
+/** Alt text that says what the card says, so it stays in step with the copy. */
+export function socialImageAlt(data: SocialImageData): string {
+  const title = [data.title, data.accent].filter(Boolean).join(" ").replace(/[,:]$/, "");
+  return `Agent Flywheel: ${title}. ${data.description}`;
 }

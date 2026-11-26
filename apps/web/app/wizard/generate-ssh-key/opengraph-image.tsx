@@ -1,15 +1,13 @@
 import { createSocialImage } from "@/lib/social-image";
-import { getStaticRouteSocialData } from "@/lib/social-image-routes";
+import { getStaticRouteSocialData, socialImageAlt } from "@/lib/social-image-routes";
+
+const data = getStaticRouteSocialData("/wizard/generate-ssh-key");
 
 export const runtime = "edge";
-
-export const alt = "Wizard Step 3 - Generate SSH Key";
-export const size = {
-  width: 1200,
-  height: 630,
-};
+export const alt = socialImageAlt(data);
+export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
 export default function Image() {
-  return createSocialImage(getStaticRouteSocialData("/wizard/generate-ssh-key"), "opengraph");
+  return createSocialImage(data, "opengraph");
 }

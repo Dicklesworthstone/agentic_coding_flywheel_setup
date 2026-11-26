@@ -1,8 +1,19 @@
 import { ImageResponse } from "next/og";
 
+// One share-card system for every route: a near-black editorial canvas, the
+// flywheel dial from the guide covers bleeding off the right edge, and the
+// guides' type (Instrument Serif titles, Instrument Sans body, JetBrains Mono
+// labels). Each section changes only its accent and what sits on the dial.
+//
+// Satori rules this file follows (a violation renders an empty 200 response):
+// every element is display:flex (or block for clamped text), no .map() or
+// conditional children inside <svg>, no <text>/<polygon>/strokeDasharray, and
+// colors are hex or rgba strings.
+
 export type SocialImageVariant = "opengraph" | "twitter";
 export type SocialImageTheme =
   | "default"
+  | "guide"
   | "flywheel"
   | "learn"
   | "wizard"
@@ -12,295 +23,758 @@ export type SocialImageTheme =
   | "support"
   | "omarchy";
 
+export type SocialImageStat = { value: string; label: string };
+
 export type SocialImageData = {
+  /** Mono eyebrow above the title. */
   badge: string;
   title: string;
+  /** Words set after the title in the accent italic. */
+  accent?: string;
   description: string;
   path: string;
-  tags?: string[];
   theme?: SocialImageTheme;
+  /** Up to three figures under the description (takes precedence over tags). */
+  stats?: SocialImageStat[];
+  /** A wizard position: draws a progress rail and fills the dial's arc. */
+  step?: { current: number; total: number };
+  /** One shell command, shown as a terminal line (takes precedence over tags). */
+  command?: string;
+  tags?: string[];
+  /** A short mark at the dial's hub: a step or lesson number, or a command. */
+  hub?: string;
+  hubLabel?: string;
+  /** Labels placed around the visible half of the dial (up to six). */
+  nodes?: string[];
 };
 
 type Palette = {
-  bgStart: string;
-  bgMid: string;
-  bgEnd: string;
-  grid: string;
-  orbA: string;
-  orbB: string;
+  /** Strokes, dots and rules. */
   accent: string;
-  accentSoft: string;
-  titleStart: string;
-  titleEnd: string;
-  body: string;
-  badgeBg: string;
-  badgeBorder: string;
-  badgeText: string;
-  tagBg: string;
-  tagBorder: string;
-  tagText: string;
+  /** Accent text on the dark canvas (lighter, for contrast). */
+  ink: string;
+  /** Three stops for the dial's live arc. */
+  arc: [string, string, string];
+  /** Soft light behind the copy (the dial's glow is drawn from `accent`). */
+  haze: string;
+  background: string;
 };
 
 const PALETTES: Record<SocialImageTheme, Palette> = {
+  // The landing page: cyan primary with the "cosmic" gradient.
   default: {
-    bgStart: "#070b14",
-    bgMid: "#0d1628",
-    bgEnd: "#0a0f1b",
-    grid: "#22d3ee",
-    orbA: "rgba(34,211,238,0.16)",
-    orbB: "rgba(168,85,247,0.14)",
-    accent: "#22d3ee",
-    accentSoft: "#60a5fa",
-    titleStart: "#f8fafc",
-    titleEnd: "#a5f3fc",
-    body: "#94a3b8",
-    badgeBg: "rgba(34,211,238,0.12)",
-    badgeBorder: "rgba(34,211,238,0.28)",
-    badgeText: "#67e8f9",
-    tagBg: "rgba(15,23,42,0.62)",
-    tagBorder: "rgba(56,189,248,0.34)",
-    tagText: "#bae6fd",
+    accent: "#22D3EE",
+    ink: "#67E8F9",
+    arc: ["#22D3EE", "#C084FC", "#FBBF24"],
+    haze: "rgba(192,132,252,0.07)",
+    background: "#04070B",
+  },
+  // The two long-form guides.
+  guide: {
+    accent: "#FF5500",
+    ink: "#FF7A3D",
+    arc: ["#FF8A4C", "#FF5500", "#FF5500"],
+    haze: "rgba(255,85,0,0.06)",
+    background: "#05070B",
   },
   flywheel: {
-    bgStart: "#080714",
-    bgMid: "#13132a",
-    bgEnd: "#0b1022",
-    grid: "#a855f7",
-    orbA: "rgba(168,85,247,0.18)",
-    orbB: "rgba(244,114,182,0.14)",
-    accent: "#a855f7",
-    accentSoft: "#22d3ee",
-    titleStart: "#ffffff",
-    titleEnd: "#ddd6fe",
-    body: "#a1a1aa",
-    badgeBg: "rgba(168,85,247,0.13)",
-    badgeBorder: "rgba(168,85,247,0.32)",
-    badgeText: "#c4b5fd",
-    tagBg: "rgba(24,24,37,0.68)",
-    tagBorder: "rgba(196,181,253,0.36)",
-    tagText: "#ddd6fe",
+    accent: "#A78BFA",
+    ink: "#C4B5FD",
+    arc: ["#22D3EE", "#A78BFA", "#F472B6"],
+    haze: "rgba(34,211,238,0.06)",
+    background: "#06060C",
   },
   learn: {
-    bgStart: "#061114",
-    bgMid: "#0b1d27",
-    bgEnd: "#08141d",
-    grid: "#14b8a6",
-    orbA: "rgba(20,184,166,0.17)",
-    orbB: "rgba(59,130,246,0.12)",
-    accent: "#14b8a6",
-    accentSoft: "#22d3ee",
-    titleStart: "#f0fdfa",
-    titleEnd: "#99f6e4",
-    body: "#9ca3af",
-    badgeBg: "rgba(20,184,166,0.13)",
-    badgeBorder: "rgba(20,184,166,0.31)",
-    badgeText: "#5eead4",
-    tagBg: "rgba(13,23,31,0.67)",
-    tagBorder: "rgba(45,212,191,0.34)",
-    tagText: "#99f6e4",
+    accent: "#2DD4BF",
+    ink: "#5EEAD4",
+    arc: ["#5EEAD4", "#2DD4BF", "#14B8A6"],
+    haze: "rgba(45,212,191,0.06)",
+    background: "#03080A",
   },
   wizard: {
-    bgStart: "#0f0b07",
-    bgMid: "#1f170d",
-    bgEnd: "#120d08",
-    grid: "#f59e0b",
-    orbA: "rgba(245,158,11,0.17)",
-    orbB: "rgba(249,115,22,0.13)",
-    accent: "#f59e0b",
-    accentSoft: "#fb7185",
-    titleStart: "#fff7ed",
-    titleEnd: "#fdba74",
-    body: "#a8b0be",
-    badgeBg: "rgba(245,158,11,0.13)",
-    badgeBorder: "rgba(245,158,11,0.32)",
-    badgeText: "#fdba74",
-    tagBg: "rgba(28,25,23,0.66)",
-    tagBorder: "rgba(251,146,60,0.34)",
-    tagText: "#fed7aa",
+    accent: "#F59E0B",
+    ink: "#FBBF24",
+    arc: ["#FCD34D", "#F59E0B", "#F97316"],
+    haze: "rgba(249,115,22,0.06)",
+    background: "#070605",
   },
   tools: {
-    bgStart: "#061014",
-    bgMid: "#0c1f29",
-    bgEnd: "#07141d",
-    grid: "#38bdf8",
-    orbA: "rgba(56,189,248,0.18)",
-    orbB: "rgba(34,197,94,0.11)",
-    accent: "#38bdf8",
-    accentSoft: "#22c55e",
-    titleStart: "#f8fafc",
-    titleEnd: "#bae6fd",
-    body: "#97a6b8",
-    badgeBg: "rgba(56,189,248,0.13)",
-    badgeBorder: "rgba(56,189,248,0.32)",
-    badgeText: "#7dd3fc",
-    tagBg: "rgba(12,23,35,0.66)",
-    tagBorder: "rgba(125,211,252,0.33)",
-    tagText: "#bae6fd",
+    accent: "#38BDF8",
+    ink: "#7DD3FC",
+    arc: ["#7DD3FC", "#38BDF8", "#818CF8"],
+    haze: "rgba(56,189,248,0.06)",
+    background: "#04070B",
   },
   workflow: {
-    bgStart: "#08100f",
-    bgMid: "#0f211f",
-    bgEnd: "#091716",
-    grid: "#22c55e",
-    orbA: "rgba(34,197,94,0.17)",
-    orbB: "rgba(20,184,166,0.12)",
-    accent: "#22c55e",
-    accentSoft: "#14b8a6",
-    titleStart: "#f0fdf4",
-    titleEnd: "#86efac",
-    body: "#9da8b8",
-    badgeBg: "rgba(34,197,94,0.13)",
-    badgeBorder: "rgba(34,197,94,0.32)",
-    badgeText: "#86efac",
-    tagBg: "rgba(10,24,20,0.67)",
-    tagBorder: "rgba(74,222,128,0.34)",
-    tagText: "#bbf7d0",
+    accent: "#34D399",
+    ink: "#6EE7B7",
+    arc: ["#6EE7B7", "#34D399", "#2DD4BF"],
+    haze: "rgba(52,211,153,0.06)",
+    background: "#040806",
   },
   security: {
-    bgStart: "#12080c",
-    bgMid: "#24111a",
-    bgEnd: "#150a10",
-    grid: "#f43f5e",
-    orbA: "rgba(244,63,94,0.17)",
-    orbB: "rgba(236,72,153,0.12)",
-    accent: "#f43f5e",
-    accentSoft: "#fb7185",
-    titleStart: "#fff1f2",
-    titleEnd: "#fda4af",
-    body: "#abb3c1",
-    badgeBg: "rgba(244,63,94,0.13)",
-    badgeBorder: "rgba(244,63,94,0.34)",
-    badgeText: "#fda4af",
-    tagBg: "rgba(38,10,18,0.66)",
-    tagBorder: "rgba(251,113,133,0.34)",
-    tagText: "#fecdd3",
+    accent: "#F43F5E",
+    ink: "#FB7185",
+    arc: ["#FDA4AF", "#F43F5E", "#E11D48"],
+    haze: "rgba(244,63,94,0.06)",
+    background: "#090507",
   },
   support: {
-    bgStart: "#0b0a15",
-    bgMid: "#151330",
-    bgEnd: "#0c1020",
-    grid: "#6366f1",
-    orbA: "rgba(99,102,241,0.17)",
-    orbB: "rgba(168,85,247,0.12)",
-    accent: "#6366f1",
-    accentSoft: "#a855f7",
-    titleStart: "#eef2ff",
-    titleEnd: "#c7d2fe",
-    body: "#a3adc2",
-    badgeBg: "rgba(99,102,241,0.13)",
-    badgeBorder: "rgba(99,102,241,0.32)",
-    badgeText: "#a5b4fc",
-    tagBg: "rgba(19,19,46,0.67)",
-    tagBorder: "rgba(129,140,248,0.35)",
-    tagText: "#c7d2fe",
+    accent: "#818CF8",
+    ink: "#A5B4FC",
+    arc: ["#A5B4FC", "#818CF8", "#C084FC"],
+    haze: "rgba(192,132,252,0.06)",
+    background: "#05060C",
   },
   // Tokyo Night, matching the /omarchy hero (Omarchy's default theme).
   omarchy: {
-    bgStart: "#0a0e1a",
-    bgMid: "#16182a",
-    bgEnd: "#1a1b26",
-    grid: "#9ece6a",
-    orbA: "rgba(158,206,106,0.18)",
-    orbB: "rgba(187,154,247,0.16)",
-    accent: "#9ece6a",
-    accentSoft: "#7dcfff",
-    titleStart: "#ffffff",
-    titleEnd: "#9ece6a",
-    body: "#a9b1d6",
-    badgeBg: "rgba(158,206,106,0.12)",
-    badgeBorder: "rgba(158,206,106,0.32)",
-    badgeText: "#9ece6a",
-    tagBg: "rgba(26,27,38,0.7)",
-    tagBorder: "rgba(125,207,255,0.35)",
-    tagText: "#7dcfff",
+    accent: "#9ECE6A",
+    ink: "#9ECE6A",
+    arc: ["#7DCFFF", "#9ECE6A", "#BB9AF7"],
+    haze: "rgba(122,162,247,0.09)",
+    background: "#0B0D16",
   },
 };
 
+// -----------------------------------------------------------------------------
+// Fonts: static TTFs bundled with the route (Satori cannot read WOFF2).
+// -----------------------------------------------------------------------------
+type OgFont = {
+  name: string;
+  data: ArrayBuffer;
+  weight: 400 | 500 | 600;
+  style: "normal" | "italic";
+};
+
+async function readFont(url: URL): Promise<ArrayBuffer> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`[social-image] font ${url.pathname}: HTTP ${response.status}`);
+  return response.arrayBuffer();
+}
+
+let fontCache: Promise<OgFont[]> | undefined;
+
+function loadFonts(): Promise<OgFont[]> {
+  fontCache ??= Promise.all([
+    readFont(new URL("../app/fonts/og/InstrumentSerif-Regular.ttf", import.meta.url)),
+    readFont(new URL("../app/fonts/og/InstrumentSerif-Italic.ttf", import.meta.url)),
+    readFont(new URL("../app/fonts/og/InstrumentSans-Regular.ttf", import.meta.url)),
+    readFont(new URL("../app/fonts/og/InstrumentSans-SemiBold.ttf", import.meta.url)),
+    readFont(new URL("../app/fonts/og/JetBrainsMono-Medium.ttf", import.meta.url)),
+  ]).then(
+    ([serif, serifItalic, sans, sansSemiBold, mono]): OgFont[] => [
+      { name: "Instrument Serif", data: serif, weight: 400, style: "normal" },
+      { name: "Instrument Serif", data: serifItalic, weight: 400, style: "italic" },
+      { name: "Instrument Sans", data: sans, weight: 400, style: "normal" },
+      { name: "Instrument Sans", data: sansSemiBold, weight: 600, style: "normal" },
+      { name: "JetBrains Mono", data: mono, weight: 500, style: "normal" },
+    ],
+    (error: unknown) => {
+      // Let the next request retry instead of caching the failure.
+      fontCache = undefined;
+      throw error;
+    },
+  );
+  return fontCache;
+}
+
+// -----------------------------------------------------------------------------
+// Geometry
+// -----------------------------------------------------------------------------
+const WIDTH = 1200;
+const DIAL_SIZE = 600;
+const DIAL_HALF = DIAL_SIZE / 2;
+/** Dial centre on the canvas: bleeds off the right edge like the guide covers. */
+const DIAL_X = 1010;
+const BEZEL_RADIUS = 276;
+const NODE_RADIUS = 214;
+const TEXT_LEFT = 72;
+const TEXT_WIDTH = 620;
+
+function polar(radius: number, degrees: number, cx = DIAL_HALF, cy = DIAL_HALF) {
+  const radians = (degrees * Math.PI) / 180;
+  return { x: cx + Math.cos(radians) * radius, y: cy + Math.sin(radians) * radius };
+}
+
+function tickPath(major: boolean): string {
+  const parts: string[] = [];
+  for (let index = 0; index < 120; index++) {
+    if ((index % 10 === 0) !== major) continue;
+    const degrees = (index / 120) * 360;
+    const inner = polar(major ? 248 : 262, degrees);
+    const outer = polar(BEZEL_RADIUS, degrees);
+    parts.push(
+      `M${inner.x.toFixed(1)} ${inner.y.toFixed(1)}L${outer.x.toFixed(1)} ${outer.y.toFixed(1)}`,
+    );
+  }
+  return parts.join("");
+}
+
+const MINOR_TICKS = tickPath(false);
+const MAJOR_TICKS = tickPath(true);
+
+/** Clockwise arc on the bezel (screen angles: 90 is down, 180 left, 270 up). */
+function arcPath(fromDegrees: number, sweep: number): string {
+  const clamped = Math.min(Math.max(sweep, 2), 359.5);
+  const start = polar(BEZEL_RADIUS, fromDegrees);
+  const end = polar(BEZEL_RADIUS, fromDegrees + clamped);
+  const large = clamped > 180 ? 1 : 0;
+  return `M${start.x.toFixed(1)} ${start.y.toFixed(1)}A${BEZEL_RADIUS} ${BEZEL_RADIUS} 0 ${large} 1 ${end.x.toFixed(1)} ${end.y.toFixed(1)}`;
+}
+
+/** Spread labels over the visible (left) half of the dial, top to bottom. */
+function nodeAngles(count: number): number[] {
+  if (count <= 1) return [180];
+  const first = 256;
+  const last = 104;
+  return Array.from({ length: count }, (_, index) => first - (index * (first - last)) / (count - 1));
+}
+
+// -----------------------------------------------------------------------------
+// Text helpers
+// -----------------------------------------------------------------------------
 function trimText(text: string, maxLength: number): string {
-  const normalized = text.trim();
-  if (normalized.length <= maxLength) {
-    return normalized;
+  const normalized = text.trim().replace(/\s+/g, " ");
+  if (normalized.length <= maxLength) return normalized;
+  const cut = normalized.slice(0, maxLength - 1);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${(lastSpace > maxLength * 0.6 ? cut.slice(0, lastSpace) : cut).replace(/[\s,.;:–—-]+$/, "")}…`;
+}
+
+/** Lines a greedy wrap would use, from Instrument Serif's average advance. */
+function wrappedLines(words: string[], size: number): number {
+  const charWidth = size * 0.43;
+  const space = size * 0.22;
+  let lines = 1;
+  let used = 0;
+  for (const word of words) {
+    const width = word.length * charWidth;
+    if (used > 0 && used + space + width > TEXT_WIDTH - 12) {
+      lines += 1;
+      used = width;
+    } else {
+      used += (used > 0 ? space : 0) + width;
+    }
   }
-  return `${normalized.slice(0, maxLength - 1).trimEnd()}…`;
+  return lines;
 }
 
-function titleFontSize(title: string, variant: SocialImageVariant): number {
-  const length = title.length;
-  if (variant === "twitter") {
-    if (length > 58) return 54;
-    if (length > 46) return 60;
-    if (length > 34) return 66;
-    return 74;
-  }
-  if (length > 58) return 60;
-  if (length > 46) return 66;
-  if (length > 34) return 72;
-  return 80;
+/** The largest display size (short titles get bigger) that keeps two lines. */
+function titleSize(words: string[], variant: SocialImageVariant): number {
+  const characters = words.join(" ").length;
+  let size = characters <= 12 ? 118 : characters <= 18 ? 106 : characters <= 26 ? 94 : 84;
+  while (size > 56 && wrappedLines(words, size) > 2) size -= 4;
+  return variant === "twitter" ? Math.round(size * 0.95) : size;
 }
 
-function CloudToolBadge({ label, top, left, color }: { label: string; top: number; left: number; color: string }) {
-  return <div style={{ display: "flex", position: "absolute", top, left, width: 100, height: 48, alignItems: "center", justifyContent: "center", borderRadius: 12, background: "#0b1923", border: `1px solid ${color}`, color, fontSize: 28, fontWeight: 700, fontFamily: "monospace" }}>{label}</div>;
+function hubFontSize(hub: string, numeric: boolean): number {
+  if (numeric) return hub.length <= 2 ? 96 : 76;
+  return Math.max(24, Math.min(52, Math.floor(118 / (0.6 * hub.length))));
 }
 
-/** Editable source for `bun run generate:cloud-social-images`, rendered offline. */
-export function renderCloudAgentSocialImage(variant: SocialImageVariant): ImageResponse {
+// -----------------------------------------------------------------------------
+// Pieces
+// -----------------------------------------------------------------------------
+function dialSvg(palette: Palette, top: number, arcFrom: number, arcSweep: number, hasHub: boolean) {
+  const arc = arcPath(arcFrom, arcSweep);
+  const end = polar(BEZEL_RADIUS, arcFrom + Math.min(Math.max(arcSweep, 2), 359.5));
+  const hubRadius = hasHub ? 92 : 64;
+  return (
+    <svg
+      width={DIAL_SIZE}
+      height={DIAL_SIZE}
+      viewBox={`0 0 ${DIAL_SIZE} ${DIAL_SIZE}`}
+      fill="none"
+      style={{ display: "flex", position: "absolute", left: DIAL_X - DIAL_HALF, top }}
+    >
+      <defs>
+        <linearGradient id="af-arc" x1="0" y1="600" x2="600" y2="0" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor={palette.arc[0]} />
+          <stop offset="0.5" stopColor={palette.arc[1]} />
+          <stop offset="1" stopColor={palette.arc[2]} />
+        </linearGradient>
+        <radialGradient id="af-glow" cx="300" cy="300" r="300" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor={palette.accent} stopOpacity="0.2" />
+          <stop offset="0.55" stopColor={palette.accent} stopOpacity="0.07" />
+          <stop offset="1" stopColor={palette.accent} stopOpacity="0" />
+        </radialGradient>
+      </defs>
+      <circle cx="300" cy="300" r="300" fill="url(#af-glow)" />
+      <circle cx="300" cy="300" r="297" stroke="#FFFFFF" strokeOpacity="0.07" strokeWidth="1" />
+      <path d={MINOR_TICKS} stroke="#FFFFFF" strokeOpacity="0.13" strokeWidth="1.5" />
+      <path d={MAJOR_TICKS} stroke="#FFFFFF" strokeOpacity="0.32" strokeWidth="2" />
+      <circle cx="300" cy="300" r={NODE_RADIUS} stroke="#FFFFFF" strokeOpacity="0.09" strokeWidth="1" />
+      <circle cx="300" cy="300" r="146" stroke="#FFFFFF" strokeOpacity="0.06" strokeWidth="1" />
+      <circle
+        cx="300"
+        cy="300"
+        r={hubRadius}
+        fill={hasHub ? "#080A10" : "none"}
+        stroke="#FFFFFF"
+        strokeOpacity="0.14"
+        strokeWidth="1"
+      />
+      {/* An empty hub keeps a single pivot dot (r=0 draws nothing). */}
+      <circle cx="300" cy="300" r={hasHub ? 0 : 5} fill={palette.accent} />
+      <path d={arc} stroke={palette.accent} strokeOpacity="0.16" strokeWidth="18" strokeLinecap="round" />
+      <path d={arc} stroke="url(#af-arc)" strokeWidth="4" strokeLinecap="round" />
+      <circle cx={end.x.toFixed(1)} cy={end.y.toFixed(1)} r="17" fill={palette.accent} fillOpacity="0.2" />
+      <circle cx={end.x.toFixed(1)} cy={end.y.toFixed(1)} r="7.5" fill={palette.accent} />
+    </svg>
+  );
+}
+
+function brandLockup(palette: Palette) {
+  return (
+    <div style={{ display: "flex", alignItems: "center" }}>
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" style={{ display: "flex" }}>
+        <circle cx="12" cy="12" r="9" stroke="#E4E4E7" strokeWidth="1.75" />
+        <circle cx="12" cy="12" r="3.5" stroke="#E4E4E7" strokeWidth="1.75" />
+        <circle cx="12" cy="3" r="2.7" fill={palette.accent} />
+      </svg>
+      <div
+        style={{
+          display: "flex",
+          marginLeft: 14,
+          fontFamily: "Instrument Sans",
+          fontWeight: 600,
+          fontSize: 25,
+          letterSpacing: "-0.01em",
+          color: "#F4F4F5",
+        }}
+      >
+        Agent Flywheel
+      </div>
+    </div>
+  );
+}
+
+function titleBlock(data: SocialImageData, palette: Palette, variant: SocialImageVariant) {
+  const plain = data.title.split(/\s+/).filter(Boolean);
+  const accented = (data.accent ?? "").split(/\s+/).filter(Boolean);
+  const size = titleSize([...plain, ...accented], variant);
+  const space = Math.round(size * 0.22);
+  const words = [
+    ...plain.map((text) => ({ text, accent: false })),
+    ...accented.map((text) => ({ text, accent: true })),
+  ];
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        width: TEXT_WIDTH,
+        marginTop: 22,
+        fontFamily: "Instrument Serif",
+        fontSize: size,
+        lineHeight: 1,
+        letterSpacing: "-0.012em",
+        color: "#FAFAFA",
+      }}
+    >
+      {words.map((word, index) => (
+        <span
+          key={`${word.text}-${index}`}
+          style={{
+            display: "flex",
+            marginRight: index === words.length - 1 ? 0 : space,
+            paddingRight: word.accent ? Math.round(size * 0.05) : 0,
+            fontStyle: word.accent ? "italic" : "normal",
+            color: word.accent ? palette.ink : "#FAFAFA",
+          }}
+        >
+          {word.text}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function statsRow(stats: SocialImageStat[]) {
+  const shown = stats.slice(0, 3);
+  return (
+    <div style={{ display: "flex", alignItems: "stretch" }}>
+      {shown.map((stat, index) => (
+        <div
+          key={stat.label}
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            paddingLeft: index === 0 ? 0 : 30,
+            paddingRight: 30,
+            borderLeft: index === 0 ? "none" : "1px solid rgba(255,255,255,0.12)",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              fontFamily: "Instrument Serif",
+              fontSize: 54,
+              lineHeight: 1,
+              color: "#FAFAFA",
+            }}
+          >
+            {stat.value}
+          </div>
+          <div
+            style={{
+              display: "flex",
+              marginTop: 10,
+              fontFamily: "JetBrains Mono",
+              fontSize: 14,
+              letterSpacing: "0.16em",
+              color: "#8A8A93",
+            }}
+          >
+            {stat.label.toUpperCase()}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function stepRail(step: { current: number; total: number }, palette: Palette) {
+  const total = Math.max(1, step.total);
+  const gap = 6;
+  const segment = Math.floor((520 - (total - 1) * gap) / total);
+  const slots = Array.from({ length: total }, (_, index) => index + 1);
+  return (
+    <div style={{ display: "flex", alignItems: "center" }}>
+      {slots.map((slot) => (
+        <div
+          key={slot}
+          style={{
+            display: "flex",
+            width: segment,
+            height: slot === step.current ? 8 : 6,
+            marginRight: slot === total ? 0 : gap,
+            borderRadius: 4,
+            background: slot <= step.current ? palette.accent : "rgba(255,255,255,0.1)",
+            opacity: slot < step.current ? 0.45 : 1,
+          }}
+        />
+      ))}
+      <div
+        style={{
+          display: "flex",
+          marginLeft: 18,
+          fontFamily: "JetBrains Mono",
+          fontSize: 15,
+          letterSpacing: "0.12em",
+          color: "#A1A1AA",
+        }}
+      >
+        {`${String(step.current).padStart(2, "0")} / ${String(total).padStart(2, "0")}`}
+      </div>
+    </div>
+  );
+}
+
+function commandLine(command: string, palette: Palette) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        alignSelf: "flex-start",
+        maxWidth: TEXT_WIDTH,
+        padding: "12px 20px",
+        borderRadius: 12,
+        border: "1px solid rgba(255,255,255,0.12)",
+        background: "rgba(255,255,255,0.035)",
+        fontFamily: "JetBrains Mono",
+        fontSize: 21,
+        color: "#E4E4E7",
+      }}
+    >
+      <span style={{ display: "flex", color: palette.ink, marginRight: 14 }}>$</span>
+      <span style={{ display: "flex" }}>{trimText(command, 40)}</span>
+    </div>
+  );
+}
+
+function tagRow(tags: string[]) {
+  const shown = tags.slice(0, 4);
+  return (
+    <div style={{ display: "flex", alignItems: "center" }}>
+      {shown.map((tag, index) => (
+        <div
+          key={tag}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            marginRight: index === shown.length - 1 ? 0 : 10,
+            padding: "8px 16px",
+            borderRadius: 999,
+            border: "1px solid rgba(255,255,255,0.14)",
+            background: "rgba(255,255,255,0.03)",
+            fontFamily: "JetBrains Mono",
+            fontSize: 16,
+            color: "#D4D4D8",
+          }}
+        >
+          {trimText(tag, 22)}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function extrasBlock(data: SocialImageData, palette: Palette) {
+  if (data.stats && data.stats.length > 0) return statsRow(data.stats);
+  if (data.step) return stepRail(data.step, palette);
+  if (data.command) return commandLine(data.command, palette);
+  if (data.tags && data.tags.length > 0) return tagRow(data.tags);
+  return null;
+}
+
+// -----------------------------------------------------------------------------
+// Renderer
+// -----------------------------------------------------------------------------
+export async function renderSocialImage(
+  data: SocialImageData,
+  variant: SocialImageVariant,
+): Promise<ImageResponse> {
+  const fonts = await loadFonts();
   const height = variant === "twitter" ? 600 : 630;
+  const centerY = height / 2;
+  const palette = PALETTES[data.theme ?? "default"];
+  const twitter = variant === "twitter";
+
+  const step = data.step;
+  const arcFrom = step ? 90 : 198;
+  const arcSweep = step ? (360 * Math.min(step.current, step.total)) / Math.max(1, step.total) : 68;
+
+  const hub = data.hub ? data.hub.trim() : "";
+  const numericHub = /^\d+$/.test(hub);
+  const nodes = (data.nodes ?? []).slice(0, 6);
+  const nodeSpots = nodeAngles(nodes.length).map((degrees) => polar(NODE_RADIUS, degrees, DIAL_X, centerY));
+  const quietDots = nodes.length === 0 ? [150, 214, 266].map((degrees) => polar(NODE_RADIUS, degrees, DIAL_X, centerY)) : [];
+
+  const extras = extrasBlock(data, palette);
+  // The copy is budgeted to two lines (see social-image-routes.test.ts); the
+  // trim and the line clamp only guard dynamic lesson and tool text.
+  const description = trimText(data.description, 104);
+  const domainPath = data.path === "/" ? "" : trimText(data.path, 44);
+
   return new ImageResponse(
-    <div style={{ display: "flex", position: "relative", width: "100%", height: "100%", overflow: "hidden", background: "linear-gradient(135deg, #071018 0%, #0b1723 52%, #101329 100%)", color: "#f4f8ff", fontFamily: "sans-serif" }}>
-      <div style={{ display: "flex", position: "absolute", right: -100, top: -80, width: 650, height: 700, background: "radial-gradient(circle, rgba(75,199,213,0.16) 0%, rgba(128,98,232,0.08) 45%, transparent 70%)" }} />
-      <div style={{ display: "flex", position: "absolute", left: 58, top: 43, alignItems: "center", gap: 12 }}>
-        <svg width="34" height="34" viewBox="0 0 34 34" fill="none"><circle cx="17" cy="17" r="14" stroke="#50ddcf" strokeWidth="2" /><path d="M12 11 L19 17 L12 23 M21 23 H26" stroke="#50ddcf" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-        <div style={{ display: "flex", fontSize: 23, fontWeight: 700, letterSpacing: "-0.02em" }}>Agent Flywheel</div>
+    <div
+      style={{
+        display: "flex",
+        position: "relative",
+        width: "100%",
+        height: "100%",
+        overflow: "hidden",
+        background: palette.background,
+        color: "#FAFAFA",
+        fontFamily: "Instrument Sans",
+      }}
+    >
+      {/* Atmosphere: a faint dot field, a haze behind the copy and a glow at the dial. */}
+      <div
+        style={{
+          display: "flex",
+          position: "absolute",
+          inset: 0,
+          backgroundImage:
+            "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28'%3E%3Ccircle cx='1.5' cy='1.5' r='1' fill='white' fill-opacity='0.07'/%3E%3C/svg%3E\")",
+        }}
+      />
+      {/* Satori clips gradients on boxes that overhang the canvas, so the haze
+          box stays inside it and the dial glow lives in the dial's SVG. */}
+      <div
+        style={{
+          display: "flex",
+          position: "absolute",
+          left: 0,
+          top: 0,
+          width: WIDTH,
+          height,
+          background: `radial-gradient(circle at 8% 0%, ${palette.haze} 0%, rgba(0,0,0,0) 48%)`,
+        }}
+      />
+
+      {dialSvg(palette, centerY - DIAL_HALF, arcFrom, arcSweep, hub.length > 0)}
+
+      {quietDots.map((spot, index) => (
+        <div
+          key={`dot-${index}`}
+          style={{
+            display: "flex",
+            position: "absolute",
+            left: spot.x - 5,
+            top: spot.y - 5,
+            width: 10,
+            height: 10,
+            borderRadius: 999,
+            background: "#3F3F46",
+          }}
+        />
+      ))}
+
+      {nodes.map((label, index) => (
+        <div
+          key={`${label}-${index}`}
+          style={{
+            display: "flex",
+            position: "absolute",
+            left: nodeSpots[index].x - 110,
+            top: nodeSpots[index].y - 19,
+            width: 220,
+            height: 38,
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              padding: "0 14px",
+              height: 36,
+              borderRadius: 999,
+              border: `1px solid ${palette.accent}`,
+              background: "#0A0D14",
+              fontFamily: "JetBrains Mono",
+              fontSize: 17,
+              color: palette.ink,
+            }}
+          >
+            {trimText(label, 16)}
+          </div>
+        </div>
+      ))}
+
+      {hub ? (
+        <div
+          style={{
+            display: "flex",
+            position: "absolute",
+            left: DIAL_X - 92,
+            top: centerY - 92,
+            width: 184,
+            height: 184,
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              fontFamily: numericHub ? "Instrument Serif" : "JetBrains Mono",
+              fontSize: hubFontSize(hub, numericHub),
+              lineHeight: 1,
+              color: numericHub ? "#FAFAFA" : palette.ink,
+            }}
+          >
+            {hub}
+          </div>
+          {data.hubLabel ? (
+            <div
+              style={{
+                display: "flex",
+                marginTop: numericHub ? 6 : 12,
+                fontFamily: "JetBrains Mono",
+                fontSize: 13,
+                letterSpacing: "0.22em",
+                color: "#8A8A93",
+              }}
+            >
+              {data.hubLabel.toUpperCase()}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* Copy column */}
+      <div
+        style={{
+          display: "flex",
+          position: "absolute",
+          left: TEXT_LEFT,
+          top: twitter ? 46 : 54,
+          bottom: twitter ? 42 : 50,
+          width: TEXT_WIDTH,
+          flexDirection: "column",
+          justifyContent: "space-between",
+        }}
+      >
+        {brandLockup(palette)}
+
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", alignItems: "center" }}>
+            <div style={{ display: "flex", width: 28, height: 2, background: palette.accent }} />
+            <div
+              style={{
+                display: "flex",
+                marginLeft: 14,
+                fontFamily: "JetBrains Mono",
+                fontSize: 17,
+                letterSpacing: "0.2em",
+                color: palette.ink,
+              }}
+            >
+              {trimText(data.badge, 40).toUpperCase()}
+            </div>
+          </div>
+
+          {titleBlock(data, palette, variant)}
+
+          <div
+            style={{
+              display: "block",
+              lineClamp: 2,
+              width: TEXT_WIDTH,
+              marginTop: twitter ? 20 : 24,
+              fontSize: 24,
+              lineHeight: 1.42,
+              color: "#A1A1AA",
+            }}
+          >
+            {description}
+          </div>
+
+          {extras ? (
+            <div style={{ display: "flex", marginTop: twitter ? 26 : 32 }}>{extras}</div>
+          ) : null}
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            fontFamily: "JetBrains Mono",
+            fontSize: 16,
+            letterSpacing: "0.04em",
+          }}
+        >
+          <span style={{ display: "flex", color: "#71717A" }}>agent-flywheel.com</span>
+          {domainPath ? <span style={{ display: "flex", color: "#D4D4D8" }}>{domainPath}</span> : null}
+        </div>
       </div>
-      <div style={{ display: "flex", position: "absolute", right: 54, top: 49, fontSize: 16, letterSpacing: "0.14em", color: "#9cb5c9" }}>CLOUD AGENT SETUP</div>
-      <div style={{ display: "flex", position: "absolute", left: 58, top: 131, flexDirection: "column", width: 650 }}>
-        <div style={{ display: "flex", fontSize: 76, fontWeight: 700, letterSpacing: "-0.045em", lineHeight: 1.06 }}>Give your</div>
-        <div style={{ display: "flex", fontSize: 76, fontWeight: 700, letterSpacing: "-0.045em", lineHeight: 1.06 }}>cloud agent</div>
-        <div style={{ display: "flex", fontSize: 76, fontWeight: 700, letterSpacing: "-0.045em", lineHeight: 1.06, color: "#50ddcf" }}>a flywheel.</div>
-        <div style={{ display: "flex", marginTop: 25, fontSize: 24, lineHeight: 1.35, color: "#a9bdcf" }}>Real screenshots. Exact steps. Copy-ready scripts.</div>
-      </div>
-      <div style={{ display: "flex", position: "absolute", left: 58, top: 477, gap: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", padding: "10px 15px", borderRadius: 9, border: "1px solid #34555b", background: "#11272d", color: "#ddf9f4", fontSize: 18 }}>Claude Code</div>
-        <div style={{ display: "flex", alignItems: "center", padding: "10px 15px", borderRadius: 9, border: "1px solid #354564", background: "#172337", color: "#e1eaff", fontSize: 18 }}>ChatGPT / Codex</div>
-        <div style={{ display: "flex", alignItems: "center", padding: "10px 15px", borderRadius: 9, border: "1px solid #343953", color: "#b4c2d3", fontSize: 18 }}>More Linux agents</div>
-      </div>
-      <div style={{ display: "flex", position: "absolute", left: 720, top: 109, width: 420, height: 420 }}>
-        <svg width="420" height="420" viewBox="0 0 420 420" fill="none" style={{ display: "flex", position: "absolute", left: 0, top: 0 }}>
-          <defs><linearGradient id="cloud-wheel" x1="0" y1="0" x2="420" y2="420" gradientUnits="userSpaceOnUse"><stop stopColor="#50ddcf" /><stop offset="1" stopColor="#9b87ff" /></linearGradient></defs>
-          <circle cx="210" cy="210" r="172" stroke="url(#cloud-wheel)" strokeWidth="2" opacity="0.6" />
-          <circle cx="210" cy="210" r="130" stroke="url(#cloud-wheel)" strokeWidth="1" opacity="0.22" />
-          <line x1="210" y1="210" x2="210" y2="38" stroke="#50ddcf" opacity="0.25" />
-          <line x1="210" y1="210" x2="360" y2="124" stroke="#9b87ff" opacity="0.25" />
-          <line x1="210" y1="210" x2="360" y2="296" stroke="#9b87ff" opacity="0.25" />
-          <line x1="210" y1="210" x2="210" y2="382" stroke="#50ddcf" opacity="0.25" />
-          <line x1="210" y1="210" x2="60" y2="296" stroke="#50ddcf" opacity="0.25" />
-          <line x1="210" y1="210" x2="60" y2="124" stroke="#50ddcf" opacity="0.25" />
-          <circle cx="210" cy="210" r="91" fill="#0b1e29" stroke="#335563" strokeWidth="1" />
-          <path d="M166 228 H260 C282 228 296 211 291 191 C288 178 277 169 264 168 C257 146 238 132 216 132 C188 132 166 151 161 175 C142 177 130 189 131 204 C132 218 145 228 166 228 Z" stroke="#6ce6db" strokeWidth="4" fill="#122e37" strokeLinejoin="round" />
-          <path d="M205 157 L222 170 L205 183 M228 183 H244" stroke="#a5f7ef" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-          <path d="M338 68 L350 84 L330 84 Z" fill="#8e90ff" />
-          <path d="M76 345 L63 330 L83 330 Z" fill="#50ddcf" />
-        </svg>
-        <div style={{ display: "flex", position: "absolute", top: 240, left: 141, width: 138, justifyContent: "center", fontSize: 23, fontWeight: 700 }}>Flywheel</div>
-        <CloudToolBadge label="br" top={14} left={160} color="#50ddcf" />
-        <CloudToolBadge label="bv" top={100} left={310} color="#a697ff" />
-        <CloudToolBadge label="am" top={272} left={310} color="#a697ff" />
-        <CloudToolBadge label="ubs" top={358} left={160} color="#50ddcf" />
-        <CloudToolBadge label="cass" top={272} left={10} color="#50ddcf" />
-        <CloudToolBadge label="jsm" top={100} left={10} color="#50ddcf" />
-      </div>
-      <div style={{ display: "flex", position: "absolute", left: 58, bottom: 30, color: "#82a5b4", fontSize: 18 }}>agent-flywheel.com/cloud-agents</div>
-      <div style={{ display: "flex", position: "absolute", right: 58, bottom: 30, color: "#a9bdcf", fontSize: 18 }}>11 executables · 10 prebuilt bundles</div>
-      <div style={{ display: "flex", position: "absolute", left: 0, right: 0, bottom: 0, height: 4, background: "linear-gradient(90deg, #50ddcf, #7cbafa, #9b87ff)" }} />
+
+      <div
+        style={{
+          display: "flex",
+          position: "absolute",
+          left: 0,
+          bottom: 0,
+          width: WIDTH,
+          height: 3,
+          background: `linear-gradient(90deg, ${palette.arc[0]} 0%, ${palette.arc[1]} 22%, rgba(0,0,0,0) 62%)`,
+        }}
+      />
     </div>,
-    { width: 1200, height },
+    { width: WIDTH, height, fonts },
   );
 }
 
 function createCloudAgentSocialImage(variant: SocialImageVariant): Response {
-  // This illustration is fixed, so serve the real rendered PNG instead of
-  // repeating font layout, WASM initialization and SVG rasterization on each
-  // cold request. Lazy loading keeps the art out of other routes' hot paths.
+  // /cloud-agents serves pre-rendered PNGs (regenerate them with
+  // `bun run generate:cloud-social-images` after changing its card data or
+  // this template). Lazy loading keeps the art out of other routes' hot paths.
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
@@ -322,297 +796,10 @@ function createCloudAgentSocialImage(variant: SocialImageVariant): Response {
   });
 }
 
-export function createSocialImage(
+export async function createSocialImage(
   data: SocialImageData,
   variant: SocialImageVariant,
-): Response {
+): Promise<Response> {
   if (data.path === "/cloud-agents") return createCloudAgentSocialImage(variant);
-  const width = 1200;
-  const height = variant === "twitter" ? 600 : 630;
-  const palette = PALETTES[data.theme ?? "default"];
-  const safeDescription = trimText(data.description, variant === "twitter" ? 128 : 150);
-  const safeTags = (data.tags ?? []).slice(0, 3);
-  const safePath = trimText(data.path, 66);
-
-  return new ImageResponse(
-    <div
-      style={{
-        height: "100%",
-        width: "100%",
-        display: "flex",
-        position: "relative",
-        overflow: "hidden",
-        alignItems: "stretch",
-        justifyContent: "flex-start",
-        background: `linear-gradient(140deg, ${palette.bgStart} 0%, ${palette.bgMid} 56%, ${palette.bgEnd} 100%)`,
-        fontFamily: "Inter, system-ui, -apple-system, Segoe UI, sans-serif",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          position: "absolute",
-          inset: 0,
-          opacity: 0.05,
-          backgroundImage: `url("data:image/svg+xml,%3Csvg width='44' height='44' viewBox='0 0 44 44' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' stroke='${encodeURIComponent(
-            palette.grid,
-          )}' stroke-width='0.55'%3E%3Cpath d='M0 22h44M22 0v44'/%3E%3C/g%3E%3C/svg%3E")`,
-        }}
-      />
-
-      <div
-        style={{
-          display: "flex",
-          position: "absolute",
-          top: -140,
-          left: -120,
-          width: 430,
-          height: 430,
-          borderRadius: "50%",
-          background: `radial-gradient(circle, ${palette.orbA} 0%, transparent 66%)`,
-        }}
-      />
-
-      <div
-        style={{
-          display: "flex",
-          position: "absolute",
-          right: -140,
-          bottom: -170,
-          width: 520,
-          height: 520,
-          borderRadius: "50%",
-          background: `radial-gradient(circle, ${palette.orbB} 0%, transparent 70%)`,
-        }}
-      />
-
-      <div
-        style={{
-          display: "flex",
-          position: "absolute",
-          right: 36,
-          top: 32,
-          color: "#64748b",
-          fontSize: 22,
-          letterSpacing: "0.02em",
-          opacity: 0.9,
-        }}
-      >
-        {`agent-flywheel.com${safePath}`}
-      </div>
-
-      <div
-        style={{
-          display: "flex",
-          width: "100%",
-          height: "100%",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: variant === "twitter" ? 44 : 52,
-          padding: variant === "twitter" ? "56px 58px 60px 58px" : "58px 64px 62px 64px",
-          zIndex: 2,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            width: variant === "twitter" ? 268 : 286,
-            height: variant === "twitter" ? 268 : 286,
-            alignItems: "center",
-            justifyContent: "center",
-            position: "relative",
-            flexShrink: 0,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              position: "absolute",
-              width: "100%",
-              height: "100%",
-              borderRadius: "50%",
-              background: `radial-gradient(circle, ${palette.orbA} 0%, transparent 72%)`,
-            }}
-          />
-
-          <div
-            style={{
-              display: "flex",
-              position: "absolute",
-              width: variant === "twitter" ? 190 : 204,
-              height: variant === "twitter" ? 190 : 204,
-              borderRadius: "50%",
-              border: `3px solid ${palette.accent}`,
-              boxShadow: `0 0 0 1px ${palette.accentSoft}`,
-              opacity: 0.86,
-            }}
-          />
-
-          <div
-            style={{
-              display: "flex",
-              position: "absolute",
-              width: variant === "twitter" ? 138 : 150,
-              height: variant === "twitter" ? 138 : 150,
-              borderRadius: "50%",
-              border: `1.5px solid ${palette.accentSoft}`,
-              opacity: 0.48,
-            }}
-          />
-
-          <div
-            style={{
-              display: "flex",
-              position: "absolute",
-              width: variant === "twitter" ? 10 : 12,
-              height: variant === "twitter" ? 10 : 12,
-              borderRadius: "50%",
-              background: palette.accent,
-              boxShadow: `0 0 18px ${palette.accent}`,
-            }}
-          />
-
-          <div
-            style={{
-              display: "flex",
-              position: "absolute",
-              width: 2,
-              height: variant === "twitter" ? 154 : 168,
-              background: palette.accentSoft,
-              opacity: 0.4,
-            }}
-          />
-
-          <div
-            style={{
-              display: "flex",
-              position: "absolute",
-              width: variant === "twitter" ? 154 : 168,
-              height: 2,
-              background: palette.accentSoft,
-              opacity: 0.4,
-            }}
-          />
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "flex-start",
-            justifyContent: "center",
-            flex: 1,
-            minWidth: 0,
-            maxWidth: 760,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              borderRadius: 999,
-              padding: "8px 18px",
-              background: palette.badgeBg,
-              border: `1px solid ${palette.badgeBorder}`,
-              marginBottom: 18,
-            }}
-          >
-            <span
-              style={{
-                display: "flex",
-                color: palette.badgeText,
-                fontSize: 22,
-                letterSpacing: "0.1em",
-                fontWeight: 600,
-                textTransform: "uppercase",
-              }}
-            >
-              {data.badge}
-            </span>
-          </div>
-
-          <h1
-            style={{
-              display: "flex",
-              margin: 0,
-              marginBottom: 16,
-              fontSize: titleFontSize(data.title, variant),
-              lineHeight: 1.14,
-              letterSpacing: "-0.03em",
-              fontWeight: 700,
-              color: "transparent",
-              background: `linear-gradient(118deg, ${palette.titleStart} 0%, ${palette.titleEnd} 100%)`,
-              backgroundClip: "text",
-              maxWidth: "100%",
-            }}
-          >
-            {data.title}
-          </h1>
-
-          <p
-            style={{
-              display: "flex",
-              margin: 0,
-              marginBottom: safeTags.length > 0 ? 26 : 0,
-              fontSize: variant === "twitter" ? 38 : 40,
-              lineHeight: 1.45,
-              color: palette.body,
-              maxWidth: "100%",
-            }}
-          >
-            {safeDescription}
-          </p>
-
-          {safeTags.length > 0 ? (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 14,
-              }}
-            >
-              {safeTags.map((tag) => (
-                <div
-                  key={tag}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    borderRadius: 14,
-                    padding: "8px 14px",
-                    background: palette.tagBg,
-                    border: `1px solid ${palette.tagBorder}`,
-                  }}
-                >
-                  <span
-                    style={{
-                      display: "flex",
-                      color: palette.tagText,
-                      fontSize: 24,
-                      fontWeight: 500,
-                      lineHeight: 1.2,
-                    }}
-                  >
-                    {tag}
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      </div>
-
-      <div
-        style={{
-          display: "flex",
-          position: "absolute",
-          left: 0,
-          right: 0,
-          bottom: 0,
-          height: 4,
-          background: `linear-gradient(90deg, transparent 0%, ${palette.accent} 25%, ${palette.accentSoft} 50%, ${palette.accent} 75%, transparent 100%)`,
-        }}
-      />
-    </div>,
-    { width, height },
-  );
+  return renderSocialImage(data, variant);
 }

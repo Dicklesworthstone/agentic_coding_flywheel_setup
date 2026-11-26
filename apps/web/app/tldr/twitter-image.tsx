@@ -1,15 +1,13 @@
 import { createSocialImage } from "@/lib/social-image";
-import { getStaticRouteSocialData } from "@/lib/social-image-routes";
+import { getStaticRouteSocialData, socialImageAlt } from "@/lib/social-image-routes";
+
+const data = getStaticRouteSocialData("/tldr");
 
 export const runtime = "edge";
-
-export const alt = "The Flywheel TL;DR";
-export const size = {
-  width: 1200,
-  height: 600,
-};
+export const alt = socialImageAlt(data);
+export const size = { width: 1200, height: 600 };
 export const contentType = "image/png";
 
 export default function Image() {
-  return createSocialImage(getStaticRouteSocialData("/tldr"), "twitter");
+  return createSocialImage(data, "twitter");
 }

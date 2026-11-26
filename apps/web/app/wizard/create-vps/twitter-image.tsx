@@ -1,15 +1,13 @@
 import { createSocialImage } from "@/lib/social-image";
-import { getStaticRouteSocialData } from "@/lib/social-image-routes";
+import { getStaticRouteSocialData, socialImageAlt } from "@/lib/social-image-routes";
+
+const data = getStaticRouteSocialData("/wizard/create-vps");
 
 export const runtime = "edge";
-
-export const alt = "Wizard Step 5 - Create VPS";
-export const size = {
-  width: 1200,
-  height: 600,
-};
+export const alt = socialImageAlt(data);
+export const size = { width: 1200, height: 600 };
 export const contentType = "image/png";
 
 export default function Image() {
-  return createSocialImage(getStaticRouteSocialData("/wizard/create-vps"), "twitter");
+  return createSocialImage(data, "twitter");
 }

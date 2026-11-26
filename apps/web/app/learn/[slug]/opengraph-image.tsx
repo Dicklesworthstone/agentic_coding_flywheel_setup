@@ -1,33 +1,17 @@
 import { notFound } from "next/navigation";
-import { getLessonBySlug } from "@/lib/lessons";
+import { getLessonBySlug, LESSONS } from "@/lib/lessons";
 import { createSocialImage } from "@/lib/social-image";
+import { lessonSocialData } from "@/lib/social-image-routes";
 
 export const runtime = "edge";
-
-export const alt = "ACFS Lesson";
-export const size = {
-  width: 1200,
-  height: 630,
-};
+export const alt =
+  "Agent Flywheel learning hub lesson card: the lesson title, what it covers, and how long it takes";
+export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
 export default async function Image({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const lesson = getLessonBySlug(slug);
-
-  if (!lesson) {
-    notFound();
-  }
-
-  return createSocialImage(
-    {
-      badge: `Lesson ${lesson.id + 1}`,
-      title: lesson.title,
-      description: lesson.description,
-      path: `/learn/${lesson.slug}`,
-      theme: "learn",
-      tags: [lesson.duration, "Learning Hub", "ACFS"],
-    },
-    "opengraph",
-  );
+  if (!lesson) notFound();
+  return createSocialImage(lessonSocialData(lesson, LESSONS.length), "opengraph");
 }

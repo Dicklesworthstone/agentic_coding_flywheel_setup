@@ -1,15 +1,13 @@
 import { createSocialImage } from "@/lib/social-image";
-import { getStaticRouteSocialData } from "@/lib/social-image-routes";
+import { getStaticRouteSocialData, socialImageAlt } from "@/lib/social-image-routes";
+
+const data = getStaticRouteSocialData("/wizard/run-installer");
 
 export const runtime = "edge";
-
-export const alt = "Wizard Step 9 - Run Installer";
-export const size = {
-  width: 1200,
-  height: 600,
-};
+export const alt = socialImageAlt(data);
+export const size = { width: 1200, height: 600 };
 export const contentType = "image/png";
 
 export default function Image() {
-  return createSocialImage(getStaticRouteSocialData("/wizard/run-installer"), "twitter");
+  return createSocialImage(data, "twitter");
 }
