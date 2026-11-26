@@ -13019,23 +13019,26 @@ main() {
     # or autofix can mutate the host. Explicit state reset remains a recovery
     # operation, and inspection modes remain usable with damaged checkpoints.
     if [[ "$LIST_MODULES" != true && "$PRINT_PLAN_MODE" != true \
-        && "$DRY_RUN" != true && "$PRINT_MODE" != true && "$RESET_STATE_ONLY" != true ]]; then
-        ensure_root
-        validate_target_user
+        && "$DRY_RUN" != true && "$PRINT_MODE" != true ]]; then
+        # Resolving a stale TARGET_HOME can rebase derived paths. An explicit
+        # checkpoint (including one selected via ACFS_HOME) identifies the
+        # installation to operate on; never silently substitute another one.
+        local requested_state_file="${ACFS_STATE_FILE:-${ACFS_HOME:+$ACFS_HOME/state.json}}"
+        if [[ "$RESET_STATE_ONLY" != true ]]; then
+            ensure_root
+            validate_target_user
+        fi
         init_target_paths
-        if ! acfs_load_installation_selection; then
-            log_error "The saved module selection cannot be used safely. Resolve the checkpoint before reinstalling."
+        if [[ -n "$requested_state_file" && "$requested_state_file" != "$ACFS_STATE_FILE" ]]; then
+            log_error "The checkpoint $requested_state_file conflicts with the resolved target home. Check TARGET_USER and TARGET_HOME."
             exit 1
         fi
-        acfs_apply_saved_installation_selection
-    elif [[ "$RESET_STATE_ONLY" == true && "$LIST_MODULES" != true && "$PRINT_PLAN_MODE" != true ]]; then
-        # Reset uses the same target resolution and install lock as a run.
-        # Never redirect an explicit recovery request to another checkpoint.
-        local reset_requested_file="${ACFS_STATE_FILE:-${ACFS_HOME:+$ACFS_HOME/state.json}}"
-        init_target_paths
-        if [[ -n "$reset_requested_file" && "$reset_requested_file" != "$ACFS_STATE_FILE" ]]; then
-            log_error "The checkpoint $reset_requested_file conflicts with the resolved target home. Check TARGET_USER and TARGET_HOME."
-            exit 1
+        if [[ "$RESET_STATE_ONLY" != true ]]; then
+            if ! acfs_load_installation_selection; then
+                log_error "The saved module selection cannot be used safely. Resolve the checkpoint before reinstalling."
+                exit 1
+            fi
+            acfs_apply_saved_installation_selection
         fi
     elif [[ "$PRINT_PLAN_MODE" == true || "$DRY_RUN" == true || "$PRINT_MODE" == true ]]; then
         acfs_preview_installation_selection

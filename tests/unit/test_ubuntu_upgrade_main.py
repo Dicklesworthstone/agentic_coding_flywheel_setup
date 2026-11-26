@@ -244,6 +244,35 @@ confirm_resume() { trace normal_install_ready; exit 0; }
             result, events, _ = self.run_main(overrides=changes)
             self.assert_no_mutation(result, events)
 
+    def test_stale_home_cannot_redirect_install_or_reset_to_another_checkpoint(self):
+        paths = definition(MAIN.read_text(), 'init_target_paths') + r'''
+acfs_home_for_user() { printf '%s\n' "$HOME"; }
+TARGET_HOME="$TEST_ROOT/stale"
+ACFS_HOME="$TARGET_HOME/.acfs"
+mkdir -p "$ACFS_HOME" "$HOME/.acfs"
+printf 'original target evidence\n' > "$HOME/.acfs/state.json"
+'''
+        for state_override in ('', 'ACFS_STATE_FILE="$TARGET_HOME/custom.json"'):
+            for reset in ('true', 'false'):
+                with self.subTest(state_override=state_override, reset=reset):
+                    result, events, root = self.run_main(
+                        overrides={'RESET_STATE_ONLY': reset}, extra=paths + state_override)
+                    self.assert_no_mutation(result, events)
+                    self.assertIn('conflicts with the resolved target home', result.stderr)
+                    self.assertNotIn('install_lock', events)
+                    self.assertEqual((root / 'home/.acfs/state.json').read_text(),
+                                     'original target evidence\n')
+
+    def test_stale_home_without_a_checkpoint_override_uses_resolved_target(self):
+        paths = definition(MAIN.read_text(), 'init_target_paths') + r'''
+acfs_home_for_user() { printf '%s\n' "$HOME"; }
+TARGET_HOME="$TEST_ROOT/stale"
+unset ACFS_HOME ACFS_STATE_FILE
+'''
+        result, events, _ = self.run_main(extra=paths)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('normal_install_ready', events)
+
     def test_pre_upgrade_checkpoint_requires_the_actual_resume_path(self):
         for mode in ({}, {'SKIP_UBUNTU_UPGRADE': 'true'}, {'ACFS_EXPLICIT_TARGETED_SELECTION': 'true'},
                      {'RESET_STATE_ONLY': 'true'}):
