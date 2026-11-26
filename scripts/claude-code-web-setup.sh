@@ -594,7 +594,7 @@ cloud_install_tool_job() {
         return 0
     fi
     python3 - "$tool" "$ACFS_CLOUD_WORK" "$ACFS_CLOUD_ROOT/.local" >>"$log" 2>&1 <<'PY'
-import fcntl, hashlib, io, json, os, pathlib, re, shutil, stat, subprocess, sys, tarfile, zipfile
+import fcntl, hashlib, json, os, pathlib, re, shutil, stat, subprocess, sys, tarfile, zipfile
 tool, work, prefix = sys.argv[1], pathlib.Path(sys.argv[2]), pathlib.Path(sys.argv[3])
 blocked_hosts = []
 try:
@@ -663,71 +663,74 @@ try:
         if not download(source['url'], archive):
             raise ValueError('mirror and public release blocked/unavailable; select Full network access')
         expected_sha, fallback = source['sha256'], True
-    if hashlib.sha256(archive.read_bytes()).hexdigest() != expected_sha:
+    digest = hashlib.sha256()
+    with archive.open('rb') as downloaded:
+        for chunk in iter(lambda: downloaded.read(1024 * 1024), b''):
+            digest.update(chunk)
+    if digest.hexdigest() != expected_sha:
         raise ValueError('bundle checksum mismatch; not extracted')
+    stage = work / (tool + '-stage')
+    stage.mkdir()
     if fallback and source.get('format', 'upstream') == 'upstream':
-        # Normalize only the expected executables from a verified upstream asset.
-        # Never extract upstream links, absolute paths or other archive payloads.
-        data = archive.read_bytes()
+        # Stream the verified release directly to private staging. Large tools
+        # may be installing in parallel on a memory-constrained worker.
         name = source['asset']
-        contents = []
-        def upstream_binary(path, size, read):
+        (stage / 'bin').mkdir()
+        sizes = {}
+        def stage_binary(path, size, open_source):
+            binary = pathlib.PurePosixPath(path).name
+            if binary in sizes:
+                raise ValueError('upstream archive missing/duplicating ' + binary)
             if size < 0 or size > 512 * 1024 * 1024:
                 raise ValueError('upstream binary expands beyond 512 MiB: ' + path)
-            # Bound the selected bodies before allocating or normalizing them.
-            if sum(len(value) for _, value in contents) + size > 1024 * 1024 * 1024:
+            if sum(sizes.values()) + size > 1024 * 1024 * 1024:
                 raise ValueError('upstream binary payloads expand beyond 1 GiB')
-            payload = read()
-            if len(payload) != size:
-                raise ValueError('upstream binary size mismatch: ' + path)
-            contents.append((path, payload))
+            dest = stage / 'bin' / binary
+            with open_source() as inp, dest.open('xb') as out:
+                shutil.copyfileobj(inp, out, length=1024 * 1024)
+                if out.tell() != size:
+                    raise ValueError('upstream binary size mismatch: ' + path)
+            dest.chmod(0o755)
+            sizes[binary] = size
         if name.endswith('.zip'):
-            with zipfile.ZipFile(io.BytesIO(data)) as z:
+            with zipfile.ZipFile(archive) as z:
                 for m in z.infolist():
                     if not m.is_dir() and pathlib.PurePosixPath(m.filename).name in expected_bins:
                         if stat.S_IFMT(m.external_attr >> 16) not in (0, stat.S_IFREG):
                             raise ValueError('upstream binary is not a regular file: ' + m.filename)
-                        upstream_binary(m.filename, m.file_size, lambda m=m: z.read(m))
+                        stage_binary(m.filename, m.file_size, lambda m=m: z.open(m))
         elif name.endswith(('.tar.gz', '.tar.xz')):
-            with tarfile.open(fileobj=io.BytesIO(data), mode='r:*') as t:
+            with tarfile.open(archive, 'r:*') as t:
                 for m in t:
                     if m.isfile() and pathlib.PurePosixPath(m.name).name in expected_bins:
-                        upstream_binary(m.name, m.size, lambda m=m: t.extractfile(m).read())
+                        stage_binary(m.name, m.size, lambda m=m: t.extractfile(m))
         elif len(expected_bins) == 1:
-            upstream_binary(expected_bins[0], len(data), lambda: data)
-        normalized = work / (tool + '-normalized.tar.gz')
-        with tarfile.open(normalized, 'w:gz') as t:
-            for binary in expected_bins:
-                matches = [value for path, value in contents if pathlib.PurePosixPath(path).name == binary]
-                if len(matches) != 1:
-                    raise ValueError('upstream archive missing/duplicating ' + binary)
-                member = tarfile.TarInfo('bin/' + binary)
-                member.size = len(matches[0])
-                t.addfile(member, io.BytesIO(matches[0]))
-        archive = normalized
-    stage = work / (tool + '-stage')
-    stage.mkdir()
-    with tarfile.open(archive, 'r:gz') as tar:
-        members = tar.getmembers()
-        seen = set()
-        total = 0
-        for member in members:
-            path = pathlib.PurePosixPath(member.name)
-            allowed = member.name in ['bin/' + b for b in expected_bins] or (tool == 'ubs' and member.name.startswith('share/ubs/modules/'))
-            if not allowed or path.is_absolute() or '..' in path.parts or not member.isfile() or member.name in seen:
-                raise ValueError('unsafe archive member: ' + member.name)
-            seen.add(member.name)
-            total += member.size
-            if total > 1024 * 1024 * 1024:
-                raise ValueError('bundle expands beyond 1 GiB')
-        if not all('bin/' + b in seen for b in expected_bins):
-            raise ValueError('bundle missing expected binaries')
-        for member in members:
-            dest = stage / member.name
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            with dest.open('xb') as out:
-                shutil.copyfileobj(tar.extractfile(member), out)
-            dest.chmod(0o755 if member.name.startswith('bin/') or member.name.endswith('.sh') else 0o644)
+            stage_binary(expected_bins[0], archive.stat().st_size, lambda: archive.open('rb'))
+        for binary in expected_bins:
+            if binary not in sizes:
+                raise ValueError('upstream archive missing/duplicating ' + binary)
+    else:
+        with tarfile.open(archive, 'r:gz') as tar:
+            members = tar.getmembers()
+            seen = set()
+            total = 0
+            for member in members:
+                path = pathlib.PurePosixPath(member.name)
+                allowed = member.name in ['bin/' + b for b in expected_bins] or (tool == 'ubs' and member.name.startswith('share/ubs/modules/'))
+                if not allowed or path.is_absolute() or '..' in path.parts or not member.isfile() or member.name in seen:
+                    raise ValueError('unsafe archive member: ' + member.name)
+                seen.add(member.name)
+                total += member.size
+                if total > 1024 * 1024 * 1024:
+                    raise ValueError('bundle expands beyond 1 GiB')
+            if not all('bin/' + b in seen for b in expected_bins):
+                raise ValueError('bundle missing expected binaries')
+            for member in members:
+                dest = stage / member.name
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                with dest.open('xb') as out:
+                    shutil.copyfileobj(tar.extractfile(member), out)
+                dest.chmod(0o755 if member.name.startswith('bin/') or member.name.endswith('.sh') else 0o644)
     for binary in expected_bins:
         result = subprocess.run([str(stage / 'bin' / binary), '--version'], capture_output=True, text=True, timeout=5, check=True)
         version = (result.stdout + result.stderr).strip()

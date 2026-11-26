@@ -1081,6 +1081,37 @@ else:
         self.run_setup()
         self.assertFalse((self.home / '.local/bin/br').exists())
 
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux address-space budget')
+    def test_multi_binary_fallback_fits_small_cloud_worker_memory(self):
+        # The worker must verify and install both binaries under this budget.
+        # Their combined expanded size exceeds the budget on its own.
+        source_url = 'https://upstream.invalid/agent-mail.zip'
+        release = self.root / 'agent-mail.zip'
+        payload = b'x' * (1024 * 1024)
+        with zipfile.ZipFile(release, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+            for binary in ('am', 'mcp-agent-mail'):
+                with archive.open('release/' + binary, 'w') as member:
+                    member.write(f'#!/bin/sh\necho "{binary} streamed"\nexit 0\n#'.encode())
+                    for _ in range(25):
+                        member.write(payload)
+        self.urls[source_url] = str(release)
+        self.manifest['tools']['am'] = {
+            'file': 'am/missing.tar.gz', 'sha256': '0' * 64, 'bins': ['am', 'mcp-agent-mail'],
+            'source': {'url': source_url, 'asset': 'am.zip',
+                       'sha256': hashlib.sha256(release.read_bytes()).hexdigest()},
+        }
+        self.python_fault("""
+import resource, sys
+if sys.argv[1:2] == ['am']:
+    resource.setrlimit(resource.RLIMIT_AS, (48 * 1024 * 1024, 48 * 1024 * 1024))
+""")
+        output = self.run_setup('am', ACFS_CLOUD_AGENT='generic')
+        self.assertIn('am streamed (verified prebuilt)', output)
+        for binary in ('am', 'mcp-agent-mail'):
+            path = self.home / '.local/bin' / binary
+            self.assertGreater(path.stat().st_size, 25 * 1024 * 1024)
+            self.assertEqual(subprocess.check_output([path, '--version'], text=True).strip(), binary + ' streamed')
+
     def test_complete_public_ubs_fallback_installs_helpers_without_lazy_downloads(self):
         helper = tarfile.TarInfo('share/ubs/modules/helpers/offline.py')
         helper.size = len(b'print("offline helper")\n')
