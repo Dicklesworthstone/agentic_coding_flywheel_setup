@@ -232,7 +232,7 @@ export function CrashRecoveryViz() {
         const agents = prev.agents.map((a) =>
           a.id === agentId ? { ...a, alive: false, currentBead: null, progress: 0 } : { ...a },
         );
-        const log = [`${agent.name} crashed! Bead remains in_progress...`, ...prev.log].slice(0, 8);
+        const log = [`${agent.name} crashed. Its bead is still marked in_progress.`, ...prev.log].slice(0, 8);
 
         return { ...prev, agents, log, killed: prev.killed + 1 };
       });
@@ -272,7 +272,7 @@ export function CrashRecoveryViz() {
             </h4>
             <p className="mt-1 text-sm text-zinc-400">
               <span className="hidden sm:inline">
-                Click any agent to kill it. Watch the swarm self-heal.
+                Click any agent to kill it, then watch another agent pick up its bead.
               </span>
               <span className="sm:hidden">Tap an agent, then tap again to kill it.</span>
             </p>
@@ -472,14 +472,14 @@ export function CrashRecoveryViz() {
       <div className="relative z-10 border-t border-white/[0.04] px-5 py-4 sm:px-8 bg-black/20">
         <p className="text-xs text-zinc-400 leading-relaxed">
           {killed === 0
-            ? "Every agent is fungible. Kill any of them to see the swarm self-heal without downtime or data loss."
+            ? "Every agent is fungible: any agent can take any bead. Kill one and another agent picks up the bead it left behind."
             : aliveCount === 0
-              ? `All ${killed} agents killed. In a real swarm, you would spin up replacements with ntm add PROJECT --cc=1 and they would immediately pick up the orphaned beads. Hit Reset to try again.`
+              ? `All ${killed} agents killed. In a real swarm you would start replacements with ntm add PROJECT --cc=1, and they would pick up the orphaned beads. Press Reset Swarm to try again.`
               : recovered > 0
-                ? `${killed} agent${killed > 1 ? "s" : ""} killed, ${recovered} bead${recovered > 1 ? "s" : ""} recovered. The swarm continues. No bottlenecks, no single points of failure. Like RaptorQ fountain codes: any agent catches any bead in any order.`
+                ? `${killed} agent${killed > 1 ? "s" : ""} killed, ${recovered} bead${recovered > 1 ? "s" : ""} recovered. The remaining agents keep working, and no single agent is a point of failure. As with RaptorQ fountain codes, any agent can pick up any bead, in any order.`
                 : orphanedCount > 0
                   ? `${killed} agent${killed > 1 ? "s" : ""} killed. ${orphanedCount} orphaned bead${orphanedCount > 1 ? "s" : ""} waiting for recovery. Watch the next idle agent pick ${orphanedCount > 1 ? "them" : "it"} up.`
-                  : `${killed} agent${killed > 1 ? "s" : ""} killed. The orphaned bead will be picked up by the next idle agent. No ringleader needed.`}
+                  : `${killed} agent${killed > 1 ? "s" : ""} killed. The next idle agent will pick up the orphaned bead; no coordinator has to reassign it.`}
         </p>
       </div>
     </div>

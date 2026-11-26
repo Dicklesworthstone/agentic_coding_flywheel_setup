@@ -97,7 +97,7 @@ const STAGES: Stage[] = [
     color: "#FFBD2E",
     artifact: "Updated Graph",
     command: "br close br-123 --reason 'Completed'",
-    tip: "Each close reshapes the graph. bv sees a different map next time.",
+    tip: "Closing a bead can unblock others, so bv may recommend something different next time.",
   },
 ];
 
@@ -717,11 +717,11 @@ export function CoreLoopDiagram() {
             Core Loop
           </div>
           <h3 className="font-serif text-[1.875rem] font-normal leading-[1.08] tracking-[-0.01em] text-white sm:text-[2.375rem]">
-            Six stages, one repeating loop
+            The six stages of the loop
           </h3>
           <p className="mt-4 text-[1.05rem] leading-relaxed text-zinc-400 font-light">
-            Each closed bead reshapes the graph, so the next agent works from an up-to-date map.
-            Click any stage to see the details.
+            Each closed bead updates the graph, so bv&apos;s next recommendation reflects the
+            current state of the project. Click any stage to see the details.
           </p>
         </div>
 

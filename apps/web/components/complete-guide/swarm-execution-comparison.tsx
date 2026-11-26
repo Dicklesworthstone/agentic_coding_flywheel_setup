@@ -78,7 +78,7 @@ const SCENARIOS: Record<ScenarioId, ScenarioDefinition> = {
     frames: [
       {
         caption: "The swarm is synchronized before any useful work has started.",
-        verdict: "Nothing is broken yet, but the timing guarantees a crowded first claim.",
+        verdict: "Nothing is broken yet, but all four agents will reach the first claim at once.",
         metrics: { conflicts: 0, idleBurn: 6, completed: 0 },
         agents: [
           { status: "Booting from the same starting gun", progress: 18, tone: "boot" },
@@ -94,8 +94,8 @@ const SCENARIOS: Record<ScenarioId, ScenarioDefinition> = {
         ],
       },
       {
-        caption: "Everyone reaches the ready queue together and dogpiles the same bead.",
-        verdict: "The first lock is now a traffic jam instead of a clean assignment.",
+        caption: "All four agents reach the ready queue together and try to claim the same bead.",
+        verdict: "Four agents are now competing for one lock on br-201.",
         metrics: { conflicts: 3, idleBurn: 22, completed: 0 },
         agents: [
           { status: "Claiming", progress: 34, tone: "claiming", target: "br-201" },
@@ -112,7 +112,7 @@ const SCENARIOS: Record<ScenarioId, ScenarioDefinition> = {
       },
       {
         caption: "One agent wins. The rest spend their first real cycle retrying or waiting.",
-        verdict: "Parallelism already degraded because the swarm fought over the same frontier.",
+        verdict: "Only A1 is working. The other three lost the cycle to lock retries and a late claim.",
         metrics: { conflicts: 3, idleBurn: 38, completed: 0 },
         agents: [
           { status: "Working", progress: 58, tone: "working", target: "br-201" },
@@ -129,9 +129,8 @@ const SCENARIOS: Record<ScenarioId, ScenarioDefinition> = {
       },
       {
         caption:
-          "The queue recovers slowly, but the first round of wasted motion cannot be reclaimed.",
-        verdict:
-          "Some progress appears, but the cycle has already paid unnecessary coordination tax.",
+          "Beads start completing. The time lost in the first round is gone for good.",
+        verdict: "Two beads are done, but A3 is still stuck waiting on a lock.",
         metrics: { conflicts: 2, idleBurn: 31, completed: 2 },
         agents: [
           { status: "Done", progress: 100, tone: "done", target: "br-201" },
@@ -149,8 +148,7 @@ const SCENARIOS: Record<ScenarioId, ScenarioDefinition> = {
       {
         caption:
           "Throughput returns, but two agents spent most of the early phase negotiating for the same lock.",
-        verdict:
-          "The herd eventually moves, but not before burning the exact cycles parallelism was supposed to save.",
+        verdict: "Three beads are done, at a cost of 28 units of idle burn.",
         metrics: { conflicts: 2, idleBurn: 28, completed: 3 },
         agents: [
           { status: "Done", progress: 100, tone: "done", target: "br-201" },
@@ -171,12 +169,11 @@ const SCENARIOS: Record<ScenarioId, ScenarioDefinition> = {
     title: "Staggered Start",
     accent: "#FFBD2E",
     badge: "Frontier-friendly",
-    summary: "Agents enter a few beats apart, so each arrival sees a different clean frontier.",
+    summary: "Agents start a few moments apart, so each new agent claims a bead no one else is reaching for.",
     frames: [
       {
-        caption: "Only the first agent is awake. The rest are still off the critical path.",
-        verdict:
-          "The swarm keeps optionality because it has not synchronized itself into contention.",
+        caption: "Only A1 is booting. The other three are still queued.",
+        verdict: "With one agent awake, there is nothing to contend over yet.",
         metrics: { conflicts: 0, idleBurn: 2, completed: 0 },
         agents: [
           { status: "Booting", progress: 20, tone: "boot" },
@@ -193,7 +190,7 @@ const SCENARIOS: Record<ScenarioId, ScenarioDefinition> = {
       },
       {
         caption: "A1 reaches the first bead before anyone else is even ready to fight for it.",
-        verdict: "The lock becomes a handoff surface instead of a collision surface.",
+        verdict: "A1 gets the lock on its first try.",
         metrics: { conflicts: 0, idleBurn: 4, completed: 0 },
         agents: [
           { status: "Claiming", progress: 36, tone: "claiming", target: "br-201" },
@@ -209,8 +206,8 @@ const SCENARIOS: Record<ScenarioId, ScenarioDefinition> = {
         ],
       },
       {
-        caption: "As A1 works, A2 and A3 arrive onto still-open territory instead of retry loops.",
-        verdict: "The swarm expands like a wave rather than collapsing into a knot.",
+        caption: "As A1 works, A2 claims an open bead and A3 boots, with no lock retries.",
+        verdict: "Each new agent takes a different bead, so no one waits on a lock.",
         metrics: { conflicts: 0, idleBurn: 8, completed: 0 },
         agents: [
           { status: "Working", progress: 68, tone: "working", target: "br-201" },
@@ -226,8 +223,8 @@ const SCENARIOS: Record<ScenarioId, ScenarioDefinition> = {
         ],
       },
       {
-        caption: "By the time A4 wakes, the first beads are already turning over cleanly.",
-        verdict: "The stagger converts startup timing into sustained throughput.",
+        caption: "By the time A4 boots, br-201 is done and A3 has claimed br-203 without a conflict.",
+        verdict: "Spacing out the starts lets each agent go straight to work on its own bead.",
         metrics: { conflicts: 0, idleBurn: 10, completed: 2 },
         agents: [
           { status: "Done", progress: 100, tone: "done", target: "br-201" },
@@ -243,9 +240,8 @@ const SCENARIOS: Record<ScenarioId, ScenarioDefinition> = {
         ],
       },
       {
-        caption:
-          "Each agent spends its first serious cycle on a different bead instead of on lock arbitration.",
-        verdict: "More of the swarm's attention ends up in shipping, not queue negotiation.",
+        caption: "Each agent's first cycle went to a different bead.",
+        verdict: "The staggered swarm had no lock conflicts at any phase.",
         metrics: { conflicts: 0, idleBurn: 12, completed: 4 },
         agents: [
           { status: "Done", progress: 100, tone: "done", target: "br-201" },
@@ -485,11 +481,11 @@ export function SwarmExecutionViz() {
             Interactive Exhibit
           </div>
           <h4 className="mt-2 font-serif text-[1.875rem] font-normal leading-[1.08] tracking-[-0.01em] text-white sm:text-[2.375rem]">
-            The same swarm can either stampede or flow
+            The same four agents, launched all at once or staggered
           </h4>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/60">
-            Advance phase by phase and compare the exact same four agents under two launch
-            strategies. The lesson is timing, not talent.
+            Advance phase by phase to compare the same four agents under two launch strategies.
+            Only the start times differ.
           </p>
         </div>
 
@@ -588,16 +584,16 @@ export function SwarmExecutionViz() {
           className="mt-6 rounded-[28px] border border-white/10 bg-white/[0.02] p-5 shadow-inner"
         >
           <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[#FFBD2E]">
-            Comparative takeaway
+            Takeaway
           </div>
           <p className="mt-3 text-sm leading-relaxed text-white/76">
             At this phase, the herd path has <strong>{herdFrame.metrics.conflicts}</strong> lock
             conflict{herdFrame.metrics.conflicts === 1 ? "" : "s"} and{" "}
             <strong>{herdFrame.metrics.idleBurn}</strong> units of idle burn, while the staggered
             path has <strong>{staggeredFrame.metrics.conflicts}</strong> conflicts and{" "}
-            <strong>{staggeredFrame.metrics.idleBurn}</strong> idle burn. The difference is not
-            smarter agents. It is whether the system lets them reach distinct frontier at distinct
-            times.
+            <strong>{staggeredFrame.metrics.idleBurn}</strong> units of idle burn. The agents are
+            identical. The staggered ones reach the ready beads at different times, so they do not
+            collide.
           </p>
         </motion.div>
       </AnimatePresence>

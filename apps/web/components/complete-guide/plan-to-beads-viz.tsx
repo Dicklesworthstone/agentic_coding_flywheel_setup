@@ -55,7 +55,7 @@ const PLAN_TO_BEAD_CONCEPTS: {
     id: "dash",
     label: "Failure Dashboard",
     planLine: "- Admins need a way to see files that failed processing.",
-    insight: "Depends entirely on the error states defined during indexing.",
+    insight: "Depends on the error states defined during indexing.",
     mapsTo: ["br-103"],
     color: "#FFBD2E",
   },
@@ -63,7 +63,7 @@ const PLAN_TO_BEAD_CONCEPTS: {
     id: "auth",
     label: "Authentication",
     planLine: "- System is internal only. Use SSO.",
-    insight: "The most fundamental dependency. Nothing else can be tested until this works.",
+    insight: "Everything else depends on it. Nothing can be tested until it works.",
     mapsTo: ["br-104"],
     color: "#71717A",
   },
@@ -80,7 +80,7 @@ const PLAN_TO_BEAD_CONCEPTS: {
     label: "Semantic Indexing",
     planLine: "- Implement semantic search using the PGVector embeddings we just generated.",
     insight:
-      "Depends on PGVector being fully configured and populated. Cannot be started parallel to auth.",
+      "Depends on PGVector being configured and populated. Cannot start in parallel with auth.",
     mapsTo: ["br-101", "br-102"],
     color: "#FF5500",
   },
@@ -96,7 +96,7 @@ const PLAN_TO_BEAD_CONCEPTS: {
     id: "tests",
     label: "E2E Tests",
     planLine: "- Add E2E tests for the whole flow.",
-    insight: "Must run absolutely last, after the UI and the backend are completely stable.",
+    insight: "Must run last, after the UI and the backend are stable.",
     mapsTo: ["br-105"],
     color: "#A1A1AA",
   },
@@ -168,12 +168,12 @@ const TRANSLATED_BEADS: readonly TranslationBead[] = [
     coverage: ["upload", "admin", "tests"],
     thinSummary: "Add admin dashboard",
     thinRisk:
-      "Without context, a dashboard becomes decoration instead of an operational recovery surface.",
+      "Without context, an agent may build a dashboard that shows failures but gives operators no way to recover from them.",
     richDetails: [
       {
         label: "Outcome",
         value:
-          "Surface failed ingestions, stalled jobs, and per-file parse diagnostics in one operational view.",
+          "Show failed ingestions, stalled jobs, and per-file parse diagnostics in one view.",
         concepts: ["upload", "admin"],
       },
       {
@@ -204,10 +204,10 @@ const MODE_COPY: Record<
 > = {
   thin: {
     label: "Thin beads",
-    description: "Titles survive, but the real operational nuance falls on the floor.",
+    description: "The titles carry over, but the operational details are lost.",
     readiness: 46,
     guesswork: "High guesswork",
-    takeaway: "Fresh agents still have to rediscover critical requirements during implementation.",
+    takeaway: "Fresh agents have to rediscover requirements during implementation.",
   },
   rich: {
     label: "Context-rich beads",
@@ -216,7 +216,7 @@ const MODE_COPY: Record<
     readiness: 94,
     guesswork: "Low guesswork",
     takeaway:
-      "Fresh agents can execute without improvising architecture or silently dropping intent.",
+      "Fresh agents can implement each bead without making up architecture or quietly dropping requirements.",
   },
 };
 
@@ -249,8 +249,8 @@ export function PlanToBeadsViz() {
             A plan is only useful once it becomes executable memory
           </h3>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-zinc-400 font-light">
-            Pick a concept from the plan, then compare what survives into a thin bead versus a
-            context-rich bead. The gap is the source of most swarm confusion.
+            Pick a concept from the plan, then compare what carries over into a thin bead and into
+            a context-rich bead. Whatever the thin bead leaves out, agents have to guess.
           </p>
         </div>
 
@@ -365,7 +365,7 @@ export function PlanToBeadsViz() {
               className="relative z-10 text-xs font-bold uppercase tracking-widest"
               style={{ color: selectedConcept.color }}
             >
-              Selected Concept Insight
+              What This Line Implies
             </div>
             <div className="relative z-10 mt-3 text-xl font-black tracking-tight text-white">
               {selectedConcept.label}
@@ -586,7 +586,7 @@ export function PlanToBeadsViz() {
               </span>
               <p className="mt-2 text-sm leading-relaxed text-zinc-400">
                 {mode === "rich"
-                  ? "Most architecture has already been decided upstream."
+                  ? "Most architecture decisions were already made in the plan."
                   : "Missing context must be rediscovered during implementation."}
               </p>
             </dd>
@@ -603,7 +603,7 @@ export function PlanToBeadsViz() {
           </p>
           <div className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#FFBD2E]/10 px-3 py-2 text-xs font-medium text-[#FFBD2E]">
             <Zap className="h-3.5 w-3.5" />
-            Impacts {selectedConcept.mapsTo.length} bead
+            Affects {selectedConcept.mapsTo.length} bead
             {selectedConcept.mapsTo.length > 1 ? "s" : ""}
           </div>
         </aside>

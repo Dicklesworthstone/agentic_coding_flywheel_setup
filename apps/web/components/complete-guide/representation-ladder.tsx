@@ -48,14 +48,14 @@ export function RepresentationLadder() {
         <div className="max-w-2xl">
           <div className="text-xs font-black uppercase tracking-[0.4em] text-[#FF5500] opacity-90 flex items-center gap-3">
             <div className="w-8 h-px bg-[#FF5500]/30" />
-            Cost Architecture
+            Rework Cost
           </div>
           <h4 className="mt-6 font-serif text-[1.875rem] font-normal leading-[1.08] tracking-[-0.01em] text-white sm:text-[2.375rem]">
             Where you catch the bug determines the rework bill
           </h4>
           <p className="mt-8 text-[1.1rem] leading-relaxed text-zinc-400 font-extralight opacity-80">
-            Inject the same mistake at different layers. The deeper it lands, the more downstream
-            structure has already hardened around it. This is the <Hl>Law of Rework Escalation</Hl>.
+            Inject the same mistake at each layer in turn. The later the layer, the more work has
+            already been built on the mistake, and <Hl>the more of it you have to redo</Hl>.
           </p>
         </div>
 
@@ -155,7 +155,7 @@ export function RepresentationLadder() {
                         className="w-full flex items-center justify-center gap-3 px-5 py-3 rounded-2xl border border-white/5 bg-white/[0.02] text-xs font-black uppercase tracking-[0.1em] text-white/40 hover:bg-[#FF5500]/10 hover:border-[#FF5500]/20 hover:text-[#FF5500] transition duration-500"
                       >
                         <Bug className="h-3.5 w-3.5" />
-                        Inject Leak
+                        Inject Bug
                       </motion.button>
                     ) : isBugSource ? (
                       <motion.div
@@ -164,7 +164,7 @@ export function RepresentationLadder() {
                         animate={{ opacity: 1, scale: 1 }}
                         className="text-[#FF5500] text-xs font-black uppercase tracking-[0.2em] text-center"
                       >
-                        Epicenter
+                        Bug Here
                       </motion.div>
                     ) : isCascade ? (
                       <motion.div
@@ -173,7 +173,7 @@ export function RepresentationLadder() {
                         animate={{ opacity: 1, scale: 1 }}
                         className="text-[#FFBD2E] text-xs font-black uppercase tracking-[0.2em] text-center"
                       >
-                        Impacted
+                        Affected
                       </motion.div>
                     ) : null}
                   </AnimatePresence>
@@ -186,13 +186,13 @@ export function RepresentationLadder() {
         <div className="flex flex-col gap-8">
           <div className="p-8 rounded-[2.5rem] bg-white/[0.01] border border-white/[0.03]">
             <span className="text-xs font-black text-white/20 uppercase tracking-[0.4em]">
-              Rework Intuition
+              Cost of a Fix
             </span>
             <div className="mt-8 flex flex-col gap-6">
               {[
-                { l: "Plan Space", t: "Fixes are pure reasoning. Zero code churn." },
-                { l: "Bead Space", t: "Fixes rewrite orchestration. High coordination cost." },
-                { l: "Code Space", t: "Fixes pay the double-tax: implementation + cleanup." },
+                { l: "Plan Space", t: "A fix is an edit to the plan. No code changes." },
+                { l: "Bead Space", t: "A fix means rewriting beads and their dependencies, which costs coordination time." },
+                { l: "Code Space", t: "A fix costs twice: you write the new code and clean up the old." },
               ].map((item, i) => (
                 <div key={i} className="flex flex-col gap-1">
                   <span className="text-xs font-bold text-white/40 tracking-wide">
@@ -214,17 +214,17 @@ export function RepresentationLadder() {
               className="p-10 rounded-[2.5rem] bg-white/[0.01] border border-white/[0.03] shadow-inner"
             >
               <span className="text-xs font-black text-[#FF5500] uppercase tracking-[0.5em] block mb-6">
-                Strategic Takeaway
+                Takeaway
               </span>
               <p className="text-[1.1rem] leading-relaxed text-zinc-300 font-extralight italic">
                 {bugLevel === null &&
-                  "Planning earns its keep because it is the cheapest layer for global reasoning. Press 'Inject' on any layer to visualize the cost cascade."}
+                  "The plan is the cheapest place to reason about the whole system. Press Inject Bug on any layer to see what a fix there costs."}
                 {bugLevel === 0 &&
-                  "Architectural shift at the prose layer. Nothing downstream has solidified. The project remains liquid and extremely cheap to pivot."}
+                  "Caught in the plan. No beads or code have been built on the mistake yet, so the fix is an edit to the prose."}
                 {bugLevel === 1 &&
-                  "Expensive pivot. Executable memory is now misaligned. Task boundaries, dependency edges, and priorities must be manually re-validated."}
+                  "Caught in the beads. The beads now encode the mistake, so task boundaries, dependency edges, and priorities all have to be checked again by hand."}
                 {bugLevel === 2 &&
-                  "Catastrophic failure. The system has already paid to embody the mistake in binary. Every line of code written must now be un-written and re-verified."}
+                  "Caught in the code. Agents have already implemented the mistake, so the code built on it has to be rewritten and tested again."}
               </p>
             </motion.div>
           </AnimatePresence>

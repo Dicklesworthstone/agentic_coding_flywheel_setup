@@ -77,7 +77,7 @@ const STAGES: TimelineStage[] = [
     who: "You",
     what: "Finish the operating manual before launch: agent behavior rules, tool usage, and coordination protocol.",
     tools: "Your editor, plus br agents --add",
-    insight: "Every agent reads this file on startup and rereads it after compaction. It replaces verbal instructions.",
+    insight: "Every agent reads this file on startup and rereads it after compaction, so you do not have to repeat instructions in chat.",
   },
   {
     id: "launch",

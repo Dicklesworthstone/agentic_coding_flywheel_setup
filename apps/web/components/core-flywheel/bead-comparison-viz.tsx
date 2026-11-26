@@ -47,7 +47,7 @@ const EXAMPLES: Record<TabId, ExampleData> = {
       { label: "Tests", weak: false, strong: true },
     ],
     insight:
-      "The weak version names a topic. The strong version scopes the actual requirement, the constraint, and the testing obligation.",
+      "“Add auth” names a topic. The strong version says what auth must gate, what unauthorized users must never see, and which e2e tests prove it.",
   },
   bead: {
     tab: "bead",
@@ -84,7 +84,7 @@ const EXAMPLES: Record<TabId, ExampleData> = {
       { label: "Tests", weak: false, strong: true },
     ],
     insight:
-      "The weak version names a topic. The strong version carries context, its dependencies, task scope, a concrete definition of done, and the testing plan.",
+      "“Improve search” names a topic. The strong version gives the context, the bead it depends on, the task, a definition of done, and the tests.",
   },
 };
 
@@ -268,7 +268,7 @@ function TerminalBlock({
       {isWeak && lines.length <= 2 && (
         <div className="mt-3 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-red-400/60 relative z-10">
           <span className="w-1.5 h-1.5 rounded-full bg-red-500/40" />
-          No scope, no constraints, no tests
+          Only names a topic
         </div>
       )}
     </div>
@@ -382,7 +382,7 @@ export function BeadComparisonViz() {
           </div>
           <p className="mt-2 text-sm text-zinc-400 font-light max-w-xl">
             A weak artifact names a topic. A strong one carries scope, constraints, and a test plan.
-            See the difference.
+            Switch between a plan bullet and a bead to compare them.
           </p>
         </div>
 

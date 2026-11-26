@@ -125,7 +125,7 @@ const PHASES: PhaseNarrative[] = [
       conflicts: 1,
       idleBurn: 0,
       completed: 0,
-      statusText: "A1 and A3 both started Task 2 \u2014 merge conflict!",
+      statusText: "A1 and A3 both started Task 2, so their edits conflict",
     },
     coordinated: {
       agents: [
@@ -163,7 +163,7 @@ const PHASES: PhaseNarrative[] = [
       conflicts: 1,
       idleBurn: 4200,
       completed: 0,
-      statusText: "A2 started T5 which depends on T1 \u2014 wasted tokens!",
+      statusText: "A2 started T5, which depends on unfinished T1, and is wasting tokens",
     },
     coordinated: {
       agents: [
@@ -183,10 +183,10 @@ const PHASES: PhaseNarrative[] = [
       conflicts: 0,
       idleBurn: 0,
       completed: 0,
-      statusText: "A2 working on T3, file reservations prevent collisions",
+      statusText: "A2 is working on T3; file reservations prevent collisions",
     },
     description:
-      "The chaotic side burns tokens on a blocked task (T5 depends on T1, which nobody started). The coordinated side moves forward. File reservations prevent overlap.",
+      "The chaotic side burns tokens on a blocked task (T5 depends on T1, which nobody started). On the coordinated side, three agents work on T1, T3, and T6, and file reservations keep them out of each other’s files.",
   },
   {
     // Phase 3: Recovery vs. flow
@@ -208,7 +208,7 @@ const PHASES: PhaseNarrative[] = [
       conflicts: 1,
       idleBurn: 8400,
       completed: 1,
-      statusText: "A4 finished T6 (low priority) while critical T1 was ignored",
+      statusText: "A4 finished low-priority T6 while top-priority T1 sat untouched",
     },
     coordinated: {
       agents: [
@@ -224,7 +224,7 @@ const PHASES: PhaseNarrative[] = [
       statusText: "A1 finished T1 \u2192 bv routes to T2 (now unblocked)",
     },
     description:
-      "On the left, A4 finished a low-priority task while a critical one sat untouched. On the right, closing T1 updated the dependency graph. bv immediately routes agents to newly-unblocked work.",
+      "On the left, A4 finished a low-priority task while the top-priority one sat untouched. On the right, closing T1 unblocked T2 and T5, and bv routed agents to them.",
   },
   {
     // Phase 4: Final tally
@@ -255,7 +255,7 @@ const PHASES: PhaseNarrative[] = [
       statusText: "5/6 done, 0 conflicts, 0 wasted tokens. T4 finishing now",
     },
     description:
-      "Same agents, same tasks, same time. Without the core loop: 3 tasks done, 1 merge conflict, and thousands of tokens burned on blocked work. With it: 5 done and no conflicts.",
+      "Both runs get the same four agents, six tasks, and amount of time. Without the core loop, 3 tasks finish, 1 merge conflict happens, and 12.6k tokens go to blocked work. With it, 5 tasks finish with no conflicts.",
   },
 ];
 
@@ -607,7 +607,7 @@ export function SwarmChaosViz() {
         </h4>
         <p className="text-[1.05rem] leading-relaxed text-zinc-400 font-light max-w-2xl">
           A simplified simulation: four agents and six tasks, side by side. One side uses the
-          core loop; the other does not. Press Start.
+          core loop; the other does not. Press Start Simulation to run it.
         </p>
       </div>
 

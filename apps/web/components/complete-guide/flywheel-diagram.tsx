@@ -21,7 +21,7 @@ export function FlywheelDiagram() {
       color: "#FFFFFF",
       input: "Fuzzy goals",
       output: "Mental model",
-      effect: "Defines the 'Why'",
+      effect: "Turns fuzzy goals into a clear idea of what to build and why.",
     },
     {
       id: "plan",
@@ -31,7 +31,7 @@ export function FlywheelDiagram() {
       color: "#FF5500",
       input: "Mental model",
       output: "Markdown plan",
-      effect: "Solves global architecture",
+      effect: "Settles the architecture of the whole system in the plan.",
     },
     {
       id: "beads",
@@ -41,7 +41,7 @@ export function FlywheelDiagram() {
       color: "#FFBD2E",
       input: "Markdown plan",
       output: "Bead graph",
-      effect: "Creates execution substrate",
+      effect: "Turns the plan into beads that agents can claim and implement.",
     },
     {
       id: "swarm",
@@ -51,7 +51,7 @@ export function FlywheelDiagram() {
       color: "#A1A1AA",
       input: "Beads + AGENTS.md",
       output: "Code changes",
-      effect: "Mechanizes implementation",
+      effect: "Agents implement the beads, following AGENTS.md.",
     },
     {
       id: "review",
@@ -61,13 +61,13 @@ export function FlywheelDiagram() {
       color: "#71717A",
       input: "Code changes",
       output: "Verified system",
-      effect: "Produces truth & memory",
+      effect: "Review and testing verify the code and record what was learned for the next cycle.",
     },
   ] as const;
 
   const cycleOptions = [1, 3, 6] as const;
   const metrics = [
-    { label: "Planning leverage", value: Math.min(99, 58 + cycleDepth * 12) },
+    { label: "Return on planning", value: Math.min(99, 58 + cycleDepth * 12) },
     { label: "Swarm determinism", value: Math.min(99, 42 + cycleDepth * 18) },
     { label: "Reusable memory", value: Math.min(99, 28 + cycleDepth * 24) },
   ];
@@ -110,11 +110,12 @@ export function FlywheelDiagram() {
             Interactive Visualization
           </div>
           <h3 className="font-serif text-[1.875rem] font-normal leading-[1.08] tracking-[-0.01em] text-white sm:text-[2.375rem]">
-            Why the flywheel compounds instead of spinning in place
+            How each turn of the flywheel speeds up the next
           </h3>
           <p className="mt-6 text-[1.1rem] leading-relaxed text-zinc-400 font-light">
-            Step through the loop. The same project gets faster and safer because every completed
-            cycle upgrades the artifacts feeding the next one. This is the{" "}
+            Step through the loop. Each completed cycle leaves a better plan, better beads, and a
+            better AGENTS.md for the next one, so the same project gets faster and safer. This is
+            the{" "}
             <span className="font-medium text-white border-b border-primary/40 pb-0.5 relative inline-block group/highlight">
               <span className="absolute inset-x-0 -bottom-px h-[2px] bg-primary opacity-0 group-hover/highlight:opacity-100 transition-opacity blur-[2px]" />
               compounding return on planning
@@ -360,7 +361,7 @@ export function FlywheelDiagram() {
                     className="w-1.5 h-1.5 rounded-full"
                     style={{ backgroundColor: currentStage.color }}
                   />
-                  Focused Context
+                  Current Stage
                 </div>
                 <h4 className="font-serif text-[2.5rem] font-normal leading-none tracking-[-0.01em] text-white sm:text-[3rem]">
                   {currentStage.label}

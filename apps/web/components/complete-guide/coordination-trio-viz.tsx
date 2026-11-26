@@ -17,9 +17,9 @@ const TRIO_TOOLS = [
     color: "#a78bfa",
     x: 300,
     y: 80,
-    desc: "The task graph is the system memory for what work exists and what depends on what.",
+    desc: "The task graph records what work exists and what depends on what.",
     without:
-      "Agents have no canonical work inventory. They improvise, duplicate effort, and miss hidden prerequisites.",
+      "Agents have no shared list of the work, so they duplicate each other's tasks and miss prerequisites.",
   },
   {
     id: "mail",
@@ -28,9 +28,9 @@ const TRIO_TOOLS = [
     color: "#FF5500",
     x: 140,
     y: 300,
-    desc: "Mail threads and file reservations let many agents coordinate without smashing into each other.",
+    desc: "Mail threads and file reservations let many agents work in one repo without editing the same files at once.",
     without:
-      "Agents cannot negotiate ownership or handoff details. Merge conflicts and stale assumptions multiply.",
+      "Agents cannot agree on who owns which files or pass details along at a handoff, so merge conflicts and stale assumptions pile up.",
   },
   {
     id: "bv",
@@ -39,9 +39,9 @@ const TRIO_TOOLS = [
     color: "#FFBD2E",
     x: 460,
     y: 300,
-    desc: "Graph analysis turns the bead graph into a prioritization compass instead of a flat backlog.",
+    desc: "bv runs graph analysis on the bead graph to rank the work, so agents take the bottlenecks first.",
     without:
-      "The swarm loses its sense of leverage. Bottlenecks remain blocked while agents work on lower-value tasks.",
+      "Agents pick from a flat list, so bottleneck beads stay blocked while agents work on lower-value tasks.",
   },
 ] as const;
 
@@ -77,11 +77,11 @@ export function CoordinationTrioViz() {
             Coordination Logic
           </div>
           <h3 className="mt-6 font-serif text-[1.875rem] font-normal leading-[1.08] tracking-[-0.01em] text-white sm:text-[2.375rem]">
-            Beads, Agent Mail, and bv are a single machine
+            Beads, Agent Mail, and bv each do a job the other two cannot
           </h3>
           <p className="mt-8 text-[1.1rem] leading-relaxed text-zinc-400 font-extralight opacity-80">
-            Hover or tap to inspect each piece. Click again to remove it and watch the system lose a
-            capability it cannot replace. This is the <Hl>Coordination Triangle</Hl>.
+            Hover over a tool to see what it does. Click or tap it to remove it and see{" "}
+            <Hl>what the swarm loses without it</Hl>.
           </p>
         </div>
 
@@ -94,7 +94,7 @@ export function CoordinationTrioViz() {
               className="flex items-center gap-3 px-6 py-3 rounded-2xl border border-white/10 bg-white/[0.02] text-xs font-black uppercase tracking-[0.2em] text-white/60 hover:text-white transition duration-500"
             >
               <Repeat className="h-3 w-3" />
-              Restore Machine
+              Restore Tool
             </motion.button>
           )}
         </div>
@@ -225,11 +225,11 @@ export function CoordinationTrioViz() {
               {[
                 {
                   l: "Agent Mail",
-                  t: "The high-bandwidth negotiation layer.",
+                  t: "Messages and file reservations between agents.",
                   c: "text-[#FF5500]",
                 },
-                { l: "br", t: "The durable, localized issue state.", c: "text-violet-400" },
-                { l: "bv", t: "The graph-theory compass for triage.", c: "text-[#FFBD2E]" },
+                { l: "br", t: "The issue tracker, stored in the repo.", c: "text-violet-400" },
+                { l: "bv", t: "Graph analysis that ranks beads for triage.", c: "text-[#FFBD2E]" },
               ].map((item, i) => (
                 <div key={i} className="flex flex-col gap-1">
                   <span className={`text-xs font-bold tracking-wide ${item.c} `}>
@@ -252,7 +252,7 @@ export function CoordinationTrioViz() {
                 className="p-10 rounded-[2.5rem] bg-[#100505] border border-red-500/10 shadow-inner"
               >
                 <span className="text-xs font-black text-red-500/60 uppercase tracking-[0.5em] block mb-6">
-                  Failure Mode Analysis
+                  What Breaks
                 </span>
                 <div className="text-lg font-black text-white mb-2">
                   Missing {TOOL_MAP.get(disabledTool)?.label}
@@ -274,7 +274,7 @@ export function CoordinationTrioViz() {
                   className="text-xs font-black uppercase tracking-[0.5em] block mb-6 opacity-90"
                   style={{ color: TOOL_MAP.get(hoveredTool)?.color }}
                 >
-                  Component Analysis
+                  What It Does
                 </div>
                 <div className="text-lg font-black text-white mb-2">
                   {TOOL_MAP.get(hoveredTool)?.label}
@@ -293,12 +293,12 @@ export function CoordinationTrioViz() {
                 className="p-10 rounded-[2.5rem] bg-[#0a0c10] border border-white/[0.05] shadow-inner"
               >
                 <span className="text-xs font-black text-primary/80 uppercase tracking-[0.5em] block mb-6">
-                  System Architecture
+                  How They Fit Together
                 </span>
                 <p className="text-[1.1rem] leading-relaxed text-zinc-300 font-extralight italic">
-                  The trio is not three nice-to-have tools. It is one operating system split into
-                  memory, communication, and leverage analysis. Remove any side of the triangle and
-                  the swarm loses determinism.
+                  The three tools split the coordination work: beads hold the task graph, Agent Mail
+                  carries messages and file reservations between agents, and bv ranks what to work
+                  on next. Remove any one and the other two cannot do its job.
                 </p>
               </motion.div>
             )}

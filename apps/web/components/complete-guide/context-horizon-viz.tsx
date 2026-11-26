@@ -41,7 +41,8 @@ export function ContextHorizonViz() {
             </h3>
           </div>
           <p className="text-xs text-white/50">
-            Why reasoning in plan-space dominates reasoning in code-space as projects scale.
+            As a project grows from prototype to production, its plan still fits in the context
+            window and its code does not.
           </p>
         </div>
 

@@ -47,7 +47,7 @@ const STAGES: readonly Stage[] = [
     label: "Raw Idea",
     icon: Lightbulb,
     artifact: "A rough description",
-    meaning: "You know the goal, not the system.",
+    meaning: "You know the goal but have not designed the system yet.",
     nextAction: "Turn it into a serious markdown plan.",
     color: "#FFFFFF",
     glowColor: "rgba(255,255,255,0.15)",
@@ -577,8 +577,8 @@ export function ArtifactLadderViz() {
             What you produce at each stage
           </h3>
           <p className="mt-8 text-[1.1rem] leading-relaxed text-zinc-400 font-extralight">
-            An idea becomes a plan, a plan becomes beads, beads become finished code. Click any
-            stage to see the artifact, what it means, and your next move.
+            An idea becomes a plan, the plan becomes beads, and the beads become finished code.
+            Click any stage to see the artifact, what it means, and your next move.
           </p>
         </div>
 
@@ -732,7 +732,7 @@ export function ArtifactLadderViz() {
             Plan to Bead
           </div>
           <p className="mt-2 text-sm leading-relaxed text-zinc-400 font-extralight">
-            Prose becomes executable memory. This is where agents stop guessing.
+            The prose plan becomes beads specific enough that agents no longer have to guess.
           </p>
         </div>
 
@@ -742,11 +742,11 @@ export function ArtifactLadderViz() {
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(34,197,94,0.1),transparent_50%)] pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
           <div className="relative z-10 flex items-center gap-2 text-xs font-black uppercase tracking-[0.3em] text-[#22c55e]">
             <CheckCircle className="h-3.5 w-3.5" />
-            The Insight
+            What Closing Does
           </div>
           <p className="relative z-10 mt-3 text-sm leading-relaxed text-zinc-300 font-medium">
-            Each completed bead reshapes the graph and unblocks new work. Finished beads create
-            ready beads.
+            Closing a bead can make the beads that waited on it ready, so finished work opens up
+            new work.
           </p>
         </div>
       </motion.div>

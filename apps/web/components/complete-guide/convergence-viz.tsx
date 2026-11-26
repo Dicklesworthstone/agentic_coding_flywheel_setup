@@ -6,18 +6,18 @@ import { motion, useInView, useReducedMotion } from "@/components/motion";
 import { cn } from "@/lib/utils";
 
 function getConvergencePhase(s: number) {
-  if (s < 0.2) return "Chaotic Expansion";
-  if (s < 0.5) return "Rapid Refinement";
-  if (s < 0.8) return "Incremental Tuning";
-  if (s < 0.95) return "Asymptotic Convergence";
-  return "Stable State (Do not touch)";
+  if (s < 0.2) return "Major Fixes";
+  if (s < 0.5) return "Architecture";
+  if (s < 0.8) return "Refinement";
+  if (s < 0.95) return "Polishing";
+  return "Steady State";
 }
 
 function getConvergenceVerdict(s: number) {
-  if (s < 0.4) return "Keep polishing. High structural volatility.";
-  if (s < 0.7) return "Good progress. Run 1-2 more passes.";
+  if (s < 0.4) return "Keep polishing. The structure still changes a lot between rounds.";
+  if (s < 0.7) return "Good progress. Run one or two more rounds.";
   if (s < 0.9) return "Ready to move on to implementation.";
-  return "Diminishing returns — stop polishing, start coding.";
+  return "Diminishing returns. Stop polishing and start implementing.";
 }
 
 const CONVERGENCE_SIGNALS = [
@@ -124,8 +124,8 @@ export function ConvergenceViz() {
             </h3>
           </div>
           <p className="mt-2 text-sm text-zinc-400 font-light max-w-xl">
-            Drag the sliders or pick a preset to see how beads tighten into a stable state before
-            implementation begins.
+            Drag the sliders or pick a preset to see how the weighted convergence score tells you
+            when the beads are ready for implementation.
           </p>
         </div>
 

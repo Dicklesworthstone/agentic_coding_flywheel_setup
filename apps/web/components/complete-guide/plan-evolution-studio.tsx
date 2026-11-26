@@ -45,7 +45,7 @@ const PLAN_MODEL_DATA = [
     color: "#FFBD2E",
     role: "Coverage expander",
     strengths: ["Alternative framings", "Missed edge cases"],
-    blindSpot: "Can drift off-topic if intent isn't rigorously anchored.",
+    blindSpot: "Can drift off-topic unless the goals are stated precisely.",
     contributions: { execution: 70, workflow: 95, architecture: 65, edgeCases: 80, novelty: 75 },
   },
   {
@@ -125,9 +125,9 @@ export function PlanEvolutionStudio() {
             Best-of-all-worlds synthesis
           </h4>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-zinc-400 font-light">
-            Toggle proposal plans on and off, then drag the refinement dial. The point is not “many
-            models” in the abstract; it is that complementary strengths plus fresh-round revision
-            produce a plan that is harder to surprise later.
+            Toggle proposal plans on and off, then drag the refinement dial. Models with different
+            strengths, revised over several fresh rounds, produce a plan that leaves fewer surprises
+            for implementation.
           </p>
         </div>
 
@@ -327,10 +327,10 @@ export function PlanEvolutionStudio() {
                   Round {refinementRound + 1}:{" "}
                   <span className="font-light text-[#FF5500]">
                     {refinementRound < 2
-                      ? "The plan is still absorbing strengths and closing obvious gaps."
+                      ? "The plan is still taking in the best ideas from each proposal and closing obvious gaps."
                       : refinementRound < 4
-                        ? "Fresh rounds are sanding down contradictions and exposing edge cases."
-                        : "You are now near the point where improvements are incremental."}
+                        ? "Each fresh round resolves contradictions and finds new edge cases."
+                        : "Further rounds now make only small improvements."}
                   </span>
                 </div>
               </motion.div>
@@ -374,8 +374,7 @@ export function PlanEvolutionStudio() {
                   ))
                 ) : (
                   <p className="flex items-center gap-2 text-[#27C93F] font-medium">
-                    <CheckCircle2 className="h-4 w-4" /> All proposal sources are active.
-                    Best-of-all-worlds.
+                    <CheckCircle2 className="h-4 w-4" /> All four proposals are included.
                   </p>
                 )}
               </div>

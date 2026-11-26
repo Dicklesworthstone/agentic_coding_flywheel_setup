@@ -71,8 +71,8 @@ export function AgentMailViz() {
           </div>
           <p className="mt-2 text-sm text-zinc-400 font-light max-w-xl">
             {mode === "broadcast"
-              ? "Broadcast spam burns context window with O(N²) irrelevant messages. Agents drown in noise."
-              : "Agent Mail uses targeted delivery and advisory locks to stay efficient. O(1) noise."}
+              ? "Broadcast sends every message to every agent, so traffic grows as O(N²) and most of what lands in each context window is irrelevant."
+              : "Agent Mail sends each message only to the agents it concerns and uses advisory locks, so the noise each agent sees stays constant as the swarm grows."}
           </p>
         </div>
 

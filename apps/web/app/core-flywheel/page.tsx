@@ -53,9 +53,9 @@ export default function CoreFlywheelPage() {
           }
           dek={
             <>
-              Three tools, one loop, most of the value. The beginner-friendly core of the Agentic
-              Coding Flywheel: Agent Mail for coordination, br for task structure, and bv for
-              deciding what to work on next.
+              Most of the value of the Agentic Coding Flywheel comes from three tools run as one
+              loop: Agent Mail for coordination, br for task structure, and bv for deciding what to
+              work on next. This guide teaches that beginner-friendly core.
             </>
           }
           primary={{ href: "#why", label: "Start reading" }}
@@ -94,8 +94,7 @@ export default function CoreFlywheelPage() {
           <GuideSection id="why">
             <P highlight>
               The full Flywheel has grown large enough that many people find it overwhelming at
-              first, and that reaction makes sense. But a much smaller core captures most of what
-              makes the approach work.
+              first. A much smaller core captures most of what makes the approach work.
             </P>
 
             <P>
@@ -107,8 +106,8 @@ export default function CoreFlywheelPage() {
             </P>
 
             <P>
-              The core loop uses just <Hl>three tools</Hl>. If you understand those three and use
-              them together, you already have the heart of the system.
+              The core loop uses <Hl>three tools</Hl>. If you understand those three and use them
+              together, you already have the heart of the system.
             </P>
 
             <DataTable
@@ -313,9 +312,8 @@ export default function CoreFlywheelPage() {
                 <code>bv</code> reads the bead graph, scores it with graph metrics such as PageRank
                 and critical path, and recommends the ready bead most worth doing next. Agents call
                 it with <code>--robot-*</code> flags such as <code>bv --robot-triage</code>; bare{" "}
-                <code>bv</code> opens an interactive TUI meant for humans. That turns the swarm from
-                &quot;many agents doing work&quot; into &quot;many agents{" "}
-                <Hl>moving the project forward in the right order</Hl>.&quot;
+                <code>bv</code> opens an interactive TUI meant for humans. With bv routing the work,
+                the swarm keeps <Hl>moving the project forward in the right order</Hl>.
               </P>
             </SubSection>
 
@@ -327,10 +325,16 @@ export default function CoreFlywheelPage() {
                 rows={[
                   [
                     "Agent Mail",
-                    "Agents overlap, duplicate work, and lose shared situational awareness",
+                    "Agents edit the same files, duplicate work, and lose track of who is doing what",
                   ],
-                  ["br", "Work stays vague, hidden in chat, and hard to coordinate across agents"],
-                  ["bv", "Agents pick tasks based on convenience instead of graph-aware leverage"],
+                  [
+                    "br",
+                    "Work stays vague and buried in chat, which makes it hard to split across agents",
+                  ],
+                  [
+                    "bv",
+                    "Agents pick whatever task is convenient instead of the one the dependency graph ranks highest",
+                  ],
                 ]}
               />
             </SubSection>
@@ -358,8 +362,8 @@ export default function CoreFlywheelPage() {
                 defines.
               </P>
               <P>
-                The general rule is simple. Debates belong in plan space. Translation and dependency
-                shaping belong in bead space. Implementation belongs in code space.
+                Debates belong in plan space, translation and dependency shaping in bead space, and
+                implementation in code space.
               </P>
               <TipBox variant="warning">
                 If the swarm starts discovering missing structure while coding, the answer is often
@@ -393,35 +397,34 @@ export default function CoreFlywheelPage() {
 - E2E coverage for upload, failed-ingestion review, retry, search, and filtering.`}
               />
               <P>
-                It gives a fresh agent workflows, constraints, architecture, testing, and failure
-                handling in one place. Before you turn the plan into beads, check that these five
+                This excerpt gives a fresh agent workflows, constraints, architecture, testing, and
+                failure handling in one place. Before you turn the plan into beads, check that these five
                 questions are answerable from the plan alone.
               </P>
             </SubSection>
 
             <SubSection title="Escalation Ladder">
               <P>
-                When something feels wrong, use the smallest escalation that actually fits the
-                problem:
+                When something feels wrong, use the smallest escalation that fits the problem:
               </P>
               <BulletList
                 items={[
                   <Fragment key="code">
-                    <strong>Local code confusion</strong> — stay in code space and resolve it there
+                    <strong>Local code confusion:</strong> stay in code space and resolve it there
                   </Fragment>,
                   <Fragment key="bead">
-                    <strong>Weak or underspecified bead</strong> — step back into bead space and
+                    <strong>Weak or underspecified bead:</strong> step back into bead space and
                     rewrite the bead
                   </Fragment>,
                   <Fragment key="graph">
-                    <strong>Wrong graph</strong> — fix the dependencies or add the missing bead
+                    <strong>Wrong graph:</strong> fix the dependencies or add the missing bead
                   </Fragment>,
                   <Fragment key="plan">
-                    <strong>Missing plan work</strong> — step back into plan space and revise the
+                    <strong>Missing plan work:</strong> step back into plan space and revise the
                     markdown plan
                   </Fragment>,
                   <Fragment key="agent">
-                    <strong>Degraded agent</strong> — restart it with a fresh session
+                    <strong>Degraded agent:</strong> restart it with a fresh session
                   </Fragment>,
                 ]}
               />
@@ -457,9 +460,9 @@ export default function CoreFlywheelPage() {
 
             <SubSection title="What a Good Bead Looks Like">
               <P>
-                The bead is the unit of work agents actually execute. Weak beads force
-                improvisation. Rich beads make execution mechanical. Here is a real bead from the
-                ACFS repo, lightly trimmed:
+                The bead is the unit of work agents execute. A weak bead leaves the agent to
+                improvise; a rich one makes execution mechanical. Here is a real bead from the ACFS
+                repo, lightly trimmed:
               </P>
               <CodeBlock
                 language="markdown"
@@ -493,7 +496,7 @@ Files to Modify:
               <P>
                 The prose does not need polish. A fresh agent should be able to understand the task,
                 the reason for it, and the acceptance criteria without reopening the whole markdown
-                plan. You can browse real beads from actual Flywheel projects at{" "}
+                plan. You can browse real beads from Flywheel projects at{" "}
                 <a
                   href="https://dicklesworthstone.github.io/beads_for_franken_engine"
                   target="_blank"
@@ -526,9 +529,9 @@ Files to Modify:
 
             <SubSection title="Weak vs. Strong Artifacts">
               <P>
-                Quality thresholds get easier to feel when you compare weak and strong versions
-                directly. The weak version names a topic. The strong version scopes the actual
-                requirement, constraint, and testing obligation.
+                The difference between a weak and a strong artifact is easiest to see side by side.
+                In both examples below, the weak version names a topic and the strong version tells
+                an agent what to build and how to test it.
               </P>
               <BeadComparisonViz />
             </SubSection>
@@ -638,9 +641,8 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
 
               <TipBox>
                 <strong>Beads are executable memory.</strong> The markdown plan is the best artifact
-                for whole-system thought. Beads are the plan after it has been transformed into a
-                format optimized for distributed execution. Weak beads force improvisation. Rich
-                beads make execution mechanical.
+                for thinking about the whole system. Beads are that plan rewritten as tasks that
+                several agents can work through in parallel.
               </TipBox>
 
               <SkillNote skills={["beads-workflow", "beads-br", "beads-bv"]}>
@@ -704,7 +706,7 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
                     If an agent seems confused after compaction, send: &quot;Reread AGENTS.md so
                     it&apos;s still fresh in your mind.&quot;
                   </Fragment>,
-                  "If an agent is truly degraded, kill it and start a fresh one.",
+                  "If rereading does not help, kill the agent and start a fresh one.",
                 ]}
               />
 
@@ -714,10 +716,11 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
               </P>
 
               <SkillNote skills={["ntm", "vibing-with-ntm"]}>
-                When you are ready to hand this rhythm to an agent. With both skills loaded, one
-                Claude Code session can spawn the swarm through ntm, send the marching orders, and
-                then tend it on a schedule. It checks each pane&apos;s real state before nudging
-                it, restarts agents that have degraded, and refuses to count busywork as progress.
+                Use these when you are ready to hand this rhythm to an agent. With both skills
+                loaded, one Claude Code session can spawn the swarm through ntm, send the marching
+                orders, and then tend it on a schedule. It checks each pane&apos;s real state before
+                nudging it, restarts agents that have degraded, and refuses to count busywork as
+                progress.
               </SkillNote>
             </SubSection>
 
@@ -728,7 +731,7 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
                 title="Fresh-Eyes Review"
                 prompt={`Great, now I want you to carefully read over all of the new code you just wrote and other existing code you just modified with "fresh eyes" looking super carefully for any obvious bugs, errors, problems, issues, confusion, etc. Carefully fix anything you uncover. Use ultrathink.`}
                 where="After each bead is implemented; repeat until a pass finds nothing new"
-                whyItWorks="Forces a mode switch from writing to adversarial reading while the code is still fresh. One of the cheapest quality multipliers in the whole method."
+                whyItWorks="Forces a switch from writing to adversarial reading while the code is still fresh. It is one of the cheapest quality checks in the method."
               />
 
               <P>
@@ -758,9 +761,9 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
           {/* ============================================================= */}
           <GuideSection id="operator">
             <P highlight>
-              The human is not supposed to micromanage every code edit or manually coordinate Agent
-              Mail threads. The human is there to keep the structure clean enough that the agents
-              can work effectively inside it.
+              Your job is to keep the plan, the beads, and AGENTS.md in good enough shape that the
+              agents can work inside them. You do not micromanage code edits or coordinate Agent
+              Mail threads by hand.
             </P>
 
             <HumanAgentTimelineViz />
@@ -769,20 +772,20 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
               <BulletList
                 items={[
                   <Fragment key="plan">
-                    <strong>Create the plan and beads</strong> — this is where most of your time and
+                    <strong>Create the plan and beads</strong>, which is where most of your time and
                     thinking goes
                   </Fragment>,
                   <Fragment key="agents-md">
-                    <strong>Write a good AGENTS.md</strong> — this is the operating manual that
-                    makes everything else work
+                    <strong>Write a good AGENTS.md</strong>, the operating manual every agent reads
+                    first
                   </Fragment>,
                   <Fragment key="launch">
-                    <strong>Launch agents with marching orders</strong> — the same generic prompt
+                    <strong>Launch agents with marching orders</strong>, the same generic prompt
                     every time
                   </Fragment>,
                   <Fragment key="graph">
-                    <strong>Keep the bead graph honest</strong> — notice when a missing task or
-                    dependency must be added
+                    <strong>Keep the bead graph honest</strong> by adding a task or dependency when
+                    you notice one is missing
                   </Fragment>,
                   <Fragment key="restart">
                     <strong>Restart or redirect agents</strong> when they drift, get loopy, or lose
@@ -815,8 +818,8 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
 
             <SubSection title="The Reality Check">
               <P>
-                When the swarm looks active but you suspect it is not actually closing the real gap,
-                stop and ask:
+                When the swarm looks busy but you suspect it is not closing the gap between what
+                exists and what you are trying to build, stop and ask:
               </P>
               <BlockQuote>
                 Where are we on this project? Do we actually have the thing we are trying to build?
@@ -824,8 +827,8 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
                 beads, would we close that gap completely? Why or why not?
               </BlockQuote>
               <P>
-                If the answer is &quot;no,&quot; the fix is usually not more implementation effort.
-                Revise the bead graph, add missing work, or step back into planning.
+                If the answer is &quot;no,&quot; more implementation rarely fixes it. Revise the bead
+                graph, add missing work, or step back into planning.
               </P>
 
               <SkillNote skills={["reality-check-for-project"]}>
@@ -838,8 +841,8 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
 
             <SubSection title="Minimum Viable AGENTS.md">
               <P>
-                Even the core loop needs a minimal <code>AGENTS.md</code> at the repo root. It does
-                not have to be a giant doctrine document, but it should cover:
+                Even the core loop needs a minimal <code>AGENTS.md</code> at the repo root. It can
+                be short, but it should cover:
               </P>
               <BulletList
                 items={[
@@ -943,8 +946,8 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
                 ]}
               />
               <TipBox variant="info">
-                If recovery feels hard, the bead or the AGENTS.md was probably too thin. That is a
-                signal to write richer beads and a more thorough operating manual.
+                If recovery feels hard, the bead or the AGENTS.md was probably too thin. Write
+                richer beads and a more thorough operating manual for the next round.
               </TipBox>
             </SubSection>
           </GuideSection>
@@ -955,8 +958,8 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
           {/* ============================================================= */}
           <GuideSection id="what-it-feels-like">
             <P>
-              At some point, the workflow stops feeling like extra ceremony and starts feeling like
-              a <Hl>calmer control surface</Hl>:
+              Once the loop is in place, the extra steps stop feeling like ceremony, and running
+              the swarm gets <Hl>calmer</Hl>:
             </P>
 
             <BulletList
@@ -981,25 +984,25 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
             />
 
             <P>
-              That operator feeling is a good sign. It usually means the artifacts are carrying the
-              work instead of your short-term memory.
+              That calm is a good sign. It usually means the beads and threads are holding the
+              state of the work, so your short-term memory does not have to.
             </P>
 
             <SubSection title="Why This Captures Most of the Value">
               <P>
-                People often assume the magic of the Flywheel comes from the total number of tools.
-                It does not. Most of the value comes from three things:
+                Most of the Flywheel&apos;s value comes from three properties of how the work is
+                organized, not from the number of tools:
               </P>
               <NumberedList
                 items={[
-                  "Work is explicit instead of implicit",
-                  "Coordination is externalized instead of living in human memory",
-                  "Task choice is graph-aware instead of random",
+                  "Work is written down as beads instead of left implicit in chat",
+                  "Coordination happens in Agent Mail instead of in your memory",
+                  "Agents choose tasks from the dependency graph instead of at random",
                 ]}
               />
               <P>
-                Those three properties are already present in the core loop. That is why the smaller
-                system gets you surprisingly far.
+                The core loop already has all three, which is why the smaller system gets you most of
+                the way.
               </P>
             </SubSection>
 
@@ -1010,9 +1013,8 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
                 need externalized coordination.
               </P>
               <P>
-                The loop earns its keep when work has enough structure, enough ambiguity, or enough
-                parallelism that explicit planning, explicit tasks, and explicit coordination start
-                paying for themselves.
+                The loop pays for itself once the work has real dependencies, open questions that
+                need a plan, or enough parallel tasks to keep several agents busy.
               </P>
             </SubSection>
           </GuideSection>
@@ -1024,8 +1026,8 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
           <GuideSection id="helpers">
             <P>
               Once the core loop runs smoothly, three helper utilities make it safer, catch bugs
-              earlier, and let agents reuse past work. They are{" "}
-              <Hl>multipliers on top of the core loop</Hl>, not prerequisites.
+              earlier, and let agents reuse past work. All three are <Hl>optional</Hl>: you can run
+              the core loop without any of them.
             </P>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -1034,7 +1036,7 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
                 name="DCG"
                 fullName="Destructive Command Guard"
                 color="#FF5F56"
-                description="A pre-execution hook for Claude Code, Codex, and other agent CLIs that blocks destructive git and filesystem commands before they run, with optional packs for databases, containers, and cloud CLIs. Checks are fast enough to run on every command."
+                description="A hook for Claude Code, Codex, and other agent CLIs that blocks destructive git and filesystem commands before they run, with optional packs for databases, containers, and cloud CLIs. Checks are fast enough to run on every command."
                 usage="Runs automatically once installed. When it blocks a command, take the safer route it suggests or ask a human to run the command."
                 command="dcg explain 'git reset --hard'"
               />
@@ -1080,9 +1082,8 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
                 ]}
               />
               <P>
-                Those things help, some of them a lot. But they build on the core loop; they are not
-                prerequisites. You can run the core loop with separate terminal tabs and no special
-                session manager.
+                Those things help, some of them a lot, but they all build on the core loop. You can
+                run the core loop with separate terminal tabs and no special session manager.
               </P>
             </SubSection>
 
@@ -1110,8 +1111,8 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
           <GuideSection id="getting-started">
             <SubSection title="Your First Project">
               <P>
-                Expect the planning and bead steps to take hours, not minutes. That time is the
-                point: it is where the method buys its quality.
+                Expect the planning and bead steps to take hours, not minutes. That time is where
+                the method gets its quality.
               </P>
               <NumberedList
                 items={[
@@ -1142,7 +1143,7 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
                   ["2 agents", "Feel the first real coordination benefits"],
                   [
                     "4 agents",
-                    "Experience meaningful swarm behavior where routing and handoff matter",
+                    "See swarm behavior, where routing and handoffs start to matter",
                   ],
                 ]}
               />
@@ -1202,8 +1203,8 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
                 ]}
               />
               <P>
-                At that point, the bigger document stops feeling like overhead and starts feeling
-                like leverage.
+                At that point, the extra material in the full guide is worth the time it takes to
+                learn.
               </P>
 
               <SkillNote skills={["choose-the-best-skills-for-me-to-run-in-this-project"]}>

@@ -166,7 +166,7 @@ export function SwarmExecutionViz() {
             >
               {mode === "staggered" ? (
                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium backdrop-blur-md shadow-[0_0_15px_rgba(16,185,129,0.15)]">
-                  <CheckCircle2 className="h-4 w-4" /> Seamless Claims
+                  <CheckCircle2 className="h-4 w-4" /> No Lock Collisions
                 </div>
               ) : (
                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-medium backdrop-blur-md shadow-[0_0_15px_rgba(239,68,68,0.15)]">

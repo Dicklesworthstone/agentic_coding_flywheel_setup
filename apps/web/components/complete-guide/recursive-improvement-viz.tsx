@@ -41,9 +41,9 @@ const LAYERS: Layer[] = [
     title: "CASS-Powered Refinement",
     tagline: "Requires session logging.",
     description:
-      "Instead of relying on one agent's opinion, mine session logs to find systematic patterns across many agents. 15 agents struggling with the same flag proves the flag is the problem, not the agents.",
+      "Mine session logs for patterns across many agents instead of relying on one agent's opinion. When 15 agents struggle with the same flag, the flag is the problem.",
     input: "10+ real sessions of tool usage via CASS",
-    output: "Skill rewrite that fixes every discovered failure pattern",
+    output: "A skill rewrite that addresses the failure patterns found",
     mechanism:
       "Search CASS for clarifying questions, repeated mistakes, creative workarounds, and outright failures. Feed findings to a fresh agent that rewrites the skill.",
     skillQuality: 62,
@@ -56,9 +56,9 @@ const LAYERS: Layer[] = [
     title: "Skills That Generate Work",
     tagline: "The system proposes its own improvements.",
     description:
-      "The idea-wizard skill examines a project and generates improvement ideas. The optimization skill finds bottlenecks. These skills create new beads, which agents implement, which improve the tools, which make the skills more effective.",
+      "The idea-wizard skill examines a project and generates improvement ideas. The optimization skill finds bottlenecks. These skills create new beads. Agents implement them, the tools improve, and better tools make the skills more effective.",
     input: "Current project state + existing bead graph",
-    output: "New beads for the highest-leverage improvements",
+    output: "New beads for the highest-value improvements",
     mechanism:
       "The human curates which generated ideas are worth pursuing. The system decides what to work on next.",
     skillQuality: 84,
@@ -71,11 +71,11 @@ const LAYERS: Layer[] = [
     title: "Skills Bundled With Installers",
     tagline: "The skill improves before the user ever sees it.",
     description:
-      "Every tool you ship includes a pre-optimized skill baked into its installer. The skill was refined through multiple CASS cycles before shipping. New users immediately benefit from all previous refinement.",
+      "Each tool you ship includes a skill in its installer, refined through several CASS cycles before release. New users get the benefit of all the earlier refinement from their first session.",
     input: "Accumulated CASS data from all previous users",
-    output: "A skill so refined that agents use the tool correctly on first contact",
+    output: "A skill good enough that agents use the tool correctly the first time",
     mechanism:
-      "The installer adds the skill automatically. The agent reads it and never hits the failure modes that plagued early adopters.",
+      "The installer adds the skill automatically. The agent reads it and avoids the failure modes that early adopters ran into.",
     skillQuality: 96,
     exampleInsight:
       '"Zero clarifying questions in 50 new-user sessions. Every agent used --format correctly because the skill now has an explicit example."',
@@ -132,7 +132,7 @@ export function RecursiveImprovementViz() {
           The Four Layers of Recursive Improvement
         </h4>
         <p className="mt-1 text-sm text-zinc-400">
-          Each layer amplifies the next. Start at Layer 1, not Layer 4.
+          Each layer builds on the one before it. Start with Layer 1.
         </p>
       </div>
 
@@ -367,12 +367,12 @@ export function RecursiveImprovementViz() {
       <div className="relative z-10 border-t border-white/[0.04] px-5 py-4 sm:px-8 bg-black/20">
         <p className="text-xs text-zinc-400 leading-relaxed">
           {activeLayer === 0
-            ? "Layer 1 requires zero infrastructure. You can do this today, right now, with any tool and two agent sessions."
+            ? "Layer 1 needs no infrastructure. You can do it today with any tool and two agent sessions."
             : activeLayer === 1
-              ? "Layer 2 reveals patterns no single agent would notice from its own experience alone. 15 agents struggling with the same flag proves the flag is the problem."
+              ? "Layer 2 finds patterns that no single agent would notice in its own sessions."
               : activeLayer === 2
-                ? "At Layer 3, the system is not just refining how it works but actively deciding what to work on next. The human curates rather than directs."
-                : "At Layer 4, new users never hit the failure modes that plagued early adopters. The improvement is invisible, baked into the installer."}
+                ? "At Layer 3 the system also decides what to work on next. The human picks which of its ideas to pursue."
+                : "At Layer 4 the refined skill ships inside the installer, so new users get the improvements without doing anything."}
         </p>
       </div>
     </div>
