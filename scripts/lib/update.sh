@@ -2879,6 +2879,19 @@ update_system_binary_path() {
             ;;
     esac
 
+    # Ubuntu 25.10+ defaults to uutils coreutils, whose timeout (0.10) signals
+    # only its direct child at a deadline and exits 124 for --signal=KILL. GNU
+    # timeout signals the whole process group and exits 137, which every
+    # installer deadline here relies on to stop TERM-resistant descendants.
+    # gnu-coreutils installs GNU's binary as gnutimeout beside the uutils one.
+    if [[ "$name" == timeout ]]; then
+        for candidate in /usr/bin/gnutimeout /bin/gnutimeout; do
+            [[ -x "$candidate" ]] || continue
+            printf '%s\n' "$candidate"
+            return 0
+        done
+    fi
+
     for candidate in \
         "/usr/bin/$name" \
         "/bin/$name" \
@@ -10839,15 +10852,20 @@ update_agent_mail_release_contract() {
     local installer_url="$2" installer_sha="$3"
     am_contract_result=()
     [[ "$installer_url" == https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail_rust/refs/heads/main/install.sh ]] || return 1
-    # Reviewed upstream revisions bc796a2d, baa88392 and 80a64560 share this
-    # signed-archive and destination-lock contract. 80a64560 changes source
+    # Reviewed upstream revisions bc796a2d, baa88392, 80a64560 and b7a56055 share
+    # this signed-archive and destination-lock contract. 80a64560 changes source
     # build receipts and rejects duplicate authenticated checksums; neither
-    # changes this release-archive adapter. Keep approval explicit: a checksum
-    # refresh alone must never authorize a new receipt adapter.
+    # changes this release-archive adapter. b7a56055 (with e8ce4ee9, 1eb2f203)
+    # only adds a macOS Rosetta arch override, moves the launchd bearer token to
+    # a private file, and passes project-only targets to MCP client setup: no
+    # Linux target, artifact name, SHA256SUMS/minisign key, DEST, lock or
+    # override variable changes. Keep approval explicit: a checksum refresh
+    # alone must never authorize a new receipt adapter.
     case "$installer_sha" in
         3de2d65db5405432e56e28eddfd5046226fc8d2bedf53b7fb56a003aa9e88454|\
         16c12f599faa11e633dd6bcf9a4f9fb4c0436a7a7514b249eff295bf0ef00af8|\
-        3ad113dd53c55102b48f472f36672576e068f6f8d8999dad69ac0536043af300)
+        3ad113dd53c55102b48f472f36672576e068f6f8d8999dad69ac0536043af300|\
+        b44be67a4f0894ee2b2554b7308adda3ff5d38bc0f7d08b724d464bb80f9880e)
             ;;
         *)
             log_to_file "MCP Agent Mail release adapter has not reviewed installer SHA-256 ${installer_sha:-<missing>}; using the independently verified upstream installer. Maintainers must review the adapter before enabling release reuse."
