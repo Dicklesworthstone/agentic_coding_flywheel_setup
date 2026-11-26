@@ -6282,6 +6282,9 @@ update_tool_rollback_binary_name() {
         pcr) printf '%s\n' "claude-post-compact-reminder" ;;
         brenner_bot) printf '%s\n' "brenner" ;;
         antigravity) printf '%s\n' "agy" ;;
+        mcp_agent_mail) printf '%s\n' "am" ;;
+        srps) printf '%s\n' "sysmoni" ;;             # installer publishes sysmoni + srps-* helpers, no `srps`
+        tru) printf '%s\n' "toon" ;;                 # checksum key is the toon_rust package; the binary is toon
         *) printf '%s\n' "$tool" ;;
     esac
 }
