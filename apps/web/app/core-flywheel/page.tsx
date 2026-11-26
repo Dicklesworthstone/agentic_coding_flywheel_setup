@@ -8,7 +8,7 @@ import {
   BulletList,
   CodeBlock,
   DataTable,
-  Divider,
+  GuideArticle,
   GuideNav,
   GuideSection,
   Hl,
@@ -18,7 +18,7 @@ import {
   SubSection,
   TipBox,
 } from "@/components/complete-guide/guide-components";
-import { GuideFooterCTA, GuideHero } from "@/components/complete-guide/guide-shell";
+import { GuideColophon, GuideFooterCTA, GuideHero } from "@/components/complete-guide/guide-shell";
 import { ArtifactLadderViz } from "@/components/core-flywheel/artifact-ladder-viz";
 import { BeadComparisonViz } from "@/components/core-flywheel/bead-comparison-viz";
 import { CoreLoopDiagram } from "@/components/core-flywheel/core-loop-diagram";
@@ -27,27 +27,12 @@ import { OperatingRhythmViz } from "@/components/core-flywheel/operating-rhythm-
 import { SwarmChaosViz } from "@/components/core-flywheel/swarm-chaos-viz";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { COMPLETE_GUIDE_MODELS } from "@/lib/complete-guide";
-
-// Mirrors the GuideSection ids/numbers below; drives the "On this page"
-// navigation and the cover's contents list.
-const CORE_SECTIONS = [
-  { id: "why", number: "1", label: "Why start here" },
-  { id: "terms", number: "2", label: "Five terms" },
-  { id: "core-loop", number: "3", label: "The core loop" },
-  { id: "three-tools", number: "4", label: "One machine" },
-  { id: "artifact-ladder", number: "5", label: "Artifact ladder" },
-  { id: "example", number: "6", label: "Worked example" },
-  { id: "operating-rhythm", number: "7", label: "Operating rhythm" },
-  { id: "operator", number: "8", label: "The human's job" },
-  { id: "failure-modes", number: "9", label: "Failure modes" },
-  { id: "what-it-feels-like", number: "10", label: "When it clicks" },
-  { id: "helpers", number: "11", label: "Helper tools" },
-  { id: "getting-started", number: "12", label: "Getting started" },
-];
-
-// Shown on the cover; lib/complete-guide.test.ts checks it against the
-// number of PromptBlock elements on this page.
-const CORE_FLYWHEEL_PROMPT_COUNT = 5;
+import {
+  CORE_FLYWHEEL_OUTLINE,
+  CORE_FLYWHEEL_PROMPT_COUNT,
+  CORE_FLYWHEEL_REVIEWED_ON,
+  guidePartCount,
+} from "@/lib/guide-outlines";
 
 export default function CoreFlywheelPage() {
   return (
@@ -87,20 +72,25 @@ export default function CoreFlywheelPage() {
             </>
           }
           stats={[
-            { value: String(CORE_SECTIONS.length), label: "Parts" },
+            { value: String(guidePartCount(CORE_FLYWHEEL_OUTLINE)), label: "Parts" },
             { value: "3", label: "Core tools" },
             { value: String(CORE_FLYWHEEL_PROMPT_COUNT), label: "Copy-ready prompts" },
           ]}
-          contents={CORE_SECTIONS}
+          contents={CORE_FLYWHEEL_OUTLINE}
+          promptCount={CORE_FLYWHEEL_PROMPT_COUNT}
         />
 
         <div className="relative mx-auto max-w-[1320px] px-5 sm:px-8 xl:grid xl:grid-cols-[14.5rem_minmax(0,1fr)] xl:gap-14 xl:px-10 2xl:grid-cols-[16rem_minmax(0,1fr)] 2xl:gap-20">
-          <GuideNav items={CORE_SECTIONS} title="The core flywheel" />
-          <article data-guide-article className="mx-auto min-w-0 max-w-[57rem] pt-14 sm:pt-20 xl:mx-0">
+          <GuideNav
+            items={CORE_FLYWHEEL_OUTLINE}
+            title="The core flywheel"
+            promptCount={CORE_FLYWHEEL_PROMPT_COUNT}
+          />
+          <GuideArticle outline={CORE_FLYWHEEL_OUTLINE}>
           {/* ============================================================= */}
           {/* SECTION 1: WHY THE CORE LOOP                                   */}
           {/* ============================================================= */}
-          <GuideSection id="why" number="1" title="Why a Simpler Starting Point">
+          <GuideSection id="why">
             <P highlight>
               The full Flywheel has grown large enough that many people find it overwhelming at
               first, and that reaction makes sense. But a much smaller core captures most of what
@@ -164,12 +154,11 @@ export default function CoreFlywheelPage() {
             </TipBox>
           </GuideSection>
 
-          <Divider />
 
           {/* ============================================================= */}
           {/* SECTION 2: FIVE TERMS                                          */}
           {/* ============================================================= */}
-          <GuideSection id="terms" number="2" title="Five Terms You Need">
+          <GuideSection id="terms">
             <P>
               Keep these five terms straight and the rest of the guide is much easier to follow.
             </P>
@@ -215,12 +204,11 @@ export default function CoreFlywheelPage() {
             </SubSection>
           </GuideSection>
 
-          <Divider />
 
           {/* ============================================================= */}
           {/* SECTION 3: THE CORE IDEA                                       */}
           {/* ============================================================= */}
-          <GuideSection id="core-loop" number="3" title="The Core Loop">
+          <GuideSection id="core-loop">
             <P highlight>
               The core loop is simple: generate a plan, encode it as beads, launch agents with
               marching orders, let them coordinate through Agent Mail while bv routes them toward
@@ -265,12 +253,11 @@ export default function CoreFlywheelPage() {
             <SwarmChaosViz />
           </GuideSection>
 
-          <Divider />
 
           {/* ============================================================= */}
           {/* SECTION 4: THE THREE TOOLS                                     */}
           {/* ============================================================= */}
-          <GuideSection id="three-tools" number="4" title="The Three Tools Are a Single Machine">
+          <GuideSection id="three-tools">
             <P>
               These three tools address three different failure modes. Each helps on its own, but
               the payoff comes when they run together as one loop.
@@ -340,12 +327,11 @@ export default function CoreFlywheelPage() {
             </SubSection>
           </GuideSection>
 
-          <Divider />
 
           {/* ============================================================= */}
           {/* SECTION 5: THE ARTIFACT LADDER                                 */}
           {/* ============================================================= */}
-          <GuideSection id="artifact-ladder" number="5" title="The Artifact Ladder">
+          <GuideSection id="artifact-ladder">
             <P>
               One reason agentic coding feels confusing at first is that the{" "}
               <Hl>active artifact keeps changing</Hl>. The easiest way to stay oriented is to know
@@ -433,12 +419,11 @@ export default function CoreFlywheelPage() {
             </SubSection>
           </GuideSection>
 
-          <Divider />
 
           {/* ============================================================= */}
           {/* SECTION 6: CONCRETE EXAMPLE                                    */}
           {/* ============================================================= */}
-          <GuideSection id="example" number="6" title="A Concrete Example: Atlas Notes">
+          <GuideSection id="example">
             <P>
               A small project makes the workflow easier to picture. Imagine building an internal
               tool called <strong>Atlas Notes</strong>: team members upload Markdown notes, the
@@ -569,12 +554,11 @@ Closed br-103 and released my file reservations.`}
             </SubSection>
           </GuideSection>
 
-          <Divider />
 
           {/* ============================================================= */}
           {/* SECTION 7: THE OPERATING RHYTHM                                */}
           {/* ============================================================= */}
-          <GuideSection id="operating-rhythm" number="7" title="The Operating Rhythm">
+          <GuideSection id="operating-rhythm">
             <P highlight>
               This section covers what <strong>you, the human</strong>, actually do. The agents
               handle the coordination plumbing (Agent Mail messages, file reservations, bead status
@@ -730,12 +714,11 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
             </SubSection>
           </GuideSection>
 
-          <Divider />
 
           {/* ============================================================= */}
           {/* SECTION 8: THE HUMAN'S JOB                                     */}
           {/* ============================================================= */}
-          <GuideSection id="operator" number="8" title="The Human&apos;s Job">
+          <GuideSection id="operator">
             <P highlight>
               The human is not supposed to micromanage every code edit or manually coordinate Agent
               Mail threads. The human is there to keep the structure clean enough that the agents
@@ -855,12 +838,11 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
             </SubSection>
           </GuideSection>
 
-          <Divider />
 
           {/* ============================================================= */}
           {/* SECTION 9: COMMON FAILURE MODES                                */}
           {/* ============================================================= */}
-          <GuideSection id="failure-modes" number="9" title="Common Failure Modes">
+          <GuideSection id="failure-modes">
             <DataTable
               headers={["Symptom", "Likely Cause", "Fix"]}
               rows={[
@@ -922,16 +904,11 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
             </SubSection>
           </GuideSection>
 
-          <Divider />
 
           {/* ============================================================= */}
           {/* SECTION 10: WHAT IT FEELS LIKE                                  */}
           {/* ============================================================= */}
-          <GuideSection
-            id="what-it-feels-like"
-            number="10"
-            title="What It Feels Like Once It Clicks"
-          >
+          <GuideSection id="what-it-feels-like">
             <P>
               At some point, the workflow stops feeling like extra ceremony and starts feeling like
               a <Hl>calmer control surface</Hl>:
@@ -995,12 +972,11 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
             </SubSection>
           </GuideSection>
 
-          <Divider />
 
           {/* ============================================================= */}
           {/* SECTION 11: HELPER UTILITIES                                    */}
           {/* ============================================================= */}
-          <GuideSection id="helpers" number="11" title="Helper Utilities: DCG, UBS & CASS">
+          <GuideSection id="helpers">
             <P>
               Once the core loop runs smoothly, three helper utilities make it safer, catch bugs
               earlier, and let agents reuse past work. They are{" "}
@@ -1074,12 +1050,11 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
             </SubSection>
           </GuideSection>
 
-          <Divider />
 
           {/* ============================================================= */}
           {/* SECTION 12: GETTING STARTED & GRADUATION                       */}
           {/* ============================================================= */}
-          <GuideSection id="getting-started" number="12" title="Getting Started">
+          <GuideSection id="getting-started">
             <SubSection title="Your First Project">
               <P>
                 Expect the planning and bead steps to take hours, not minutes. That time is the
@@ -1180,7 +1155,6 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
             </SubSection>
           </GuideSection>
 
-          <Divider />
           <GuideFooterCTA
             eyebrow="Ready for more?"
             title={
@@ -1198,7 +1172,8 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
             primary={{ href: "/complete-guide", label: "Read the complete guide" }}
             secondary={{ href: "/wizard/os-selection", label: "Install the stack" }}
           />
-          </article>
+          <GuideColophon reviewedOn={CORE_FLYWHEEL_REVIEWED_ON} sourcePath="core-flywheel/page.tsx" />
+          </GuideArticle>
         </div>
       </main>
     </ErrorBoundary>

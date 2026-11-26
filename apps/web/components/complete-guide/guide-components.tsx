@@ -2,6 +2,8 @@
 
 import {
   AlertTriangle,
+  ArrowDown,
+  ArrowRight,
   ArrowUp,
   Check,
   ChevronDown,
@@ -33,8 +35,15 @@ import {
   COPY_SUCCESS_MESSAGE,
   useCopyFeedback,
 } from "@/lib/hooks/useCopyFeedback";
+import { type GuidePart, guideSlug } from "@/lib/guide-outlines";
 import { useReducedMotion } from "@/lib/hooks/useReducedMotion";
 import { cn } from "@/lib/utils";
+import {
+  collectGuidePrompts,
+  type LibraryPrompt,
+  OPEN_PROMPT_LIBRARY_EVENT,
+  PromptLibrary,
+} from "./prompt-library";
 
 export { FlywheelDiagram } from "./flywheel-diagram";
 
@@ -43,19 +52,6 @@ export { FlywheelDiagram } from "./flywheel-diagram";
 // panels use the full article width.
 const BODY_TEXT = "text-[1.0625rem] leading-[1.75] text-zinc-300 sm:text-[1.125rem]";
 const MEASURE = "max-w-[68ch]";
-const ACCENT = "#FF5500";
-
-/** Stable, readable fragment ids for sub-headings ("planning-the-foundation-bundle"). */
-export function guideSlug(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/&/g, " and ")
-    .replace(/['’]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 72)
-    .replace(/-+$/, "");
-}
 
 const PROMPT_HIGHLIGHT_PATTERN =
   /(\[[A-Z_]+\]|\b(?:Do we have|Search|Review|Read|Write|Fix|Create|Update|OK|Look|Execute)\b)/g;
@@ -96,46 +92,134 @@ function renderHighlightedPrompt(text: string): ReactNode[] {
 }
 
 // =============================================================================
-// GUIDE SECTION
+// ARTICLE + OUTLINE
+// =============================================================================
+// The guide's outline (lib/guide-outlines.ts) is the single source for each
+// part's number and title, and for the "Up next" link that closes it.
+const GuideOutlineContext = createContext<readonly GuidePart[]>([]);
+
+export function GuideArticle({ outline, children }: { outline: readonly GuidePart[]; children: ReactNode }) {
+  return (
+    <GuideOutlineContext.Provider value={outline}>
+      <article data-guide-article className="mx-auto min-w-0 max-w-[57rem] pt-14 sm:pt-20 xl:mx-0">
+        {children}
+      </article>
+    </GuideOutlineContext.Provider>
+  );
+}
+
+function isPlainLeftClick(e: ReactMouseEvent<HTMLElement>) {
+  return !(e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey);
+}
+
+/**
+ * Scroll to a part, sub-heading or prompt, record it in history, and move
+ * keyboard focus with the reader (without a second scroll).
+ */
+function jumpToGuideTarget(id: string, smooth: boolean): boolean {
+  const target = document.getElementById(id);
+  if (!target) return false;
+  target.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "start" });
+  window.history.pushState(null, "", `#${id}`);
+  const focusTarget = target.matches("h2, h3")
+    ? target
+    : target.querySelector<HTMLElement>("h2, [data-prompt-text]");
+  if (focusTarget) {
+    if (!focusTarget.hasAttribute("tabindex")) focusTarget.setAttribute("tabindex", "-1");
+    focusTarget.focus({ preventScroll: true });
+  }
+  if (target.hasAttribute("data-guide-prompt")) {
+    // A brief outline shows which of several similar panels the jump landed on.
+    target.removeAttribute("data-flash");
+    void target.offsetWidth;
+    target.setAttribute("data-flash", "");
+    window.setTimeout(() => target.removeAttribute("data-flash"), 1600);
+  }
+  return true;
+}
+
+// =============================================================================
+// GUIDE SECTION - Chapter opener, body, and the link on to the next part
 // =============================================================================
 // Sub-headings read the enclosing section id so their fragment ids stay
 // unique across the page (two sections may both have a "Why It Works").
 const GuideSectionContext = createContext<string | null>(null);
 
-interface GuideSectionProps {
-  id: string;
-  /** Part number ("1"…"12"); an empty string marks an unnumbered interlude. */
-  number?: string;
-  title: string;
-  children: ReactNode;
-}
-
-export function GuideSection({ id, number, title, children }: GuideSectionProps) {
-  const eyebrow = number ? `Part ${number.padStart(2, "0")}` : "Interlude";
+export function GuideSection({ id, children }: { id: string; children: ReactNode }) {
+  const outline = useContext(GuideOutlineContext);
+  const reducedMotion = useReducedMotion();
+  const index = outline.findIndex((part) => part.id === id);
+  if (index < 0) throw new Error(`[guide] "${id}" is not in this guide's outline`);
+  const part = outline[index];
+  const next = outline[index + 1];
+  const totalParts = outline.filter((entry) => entry.number).length;
   const headingId = `${id}-heading`;
+  const numeral = part.number.padStart(2, "0");
 
   return (
-    <section
-      id={id}
-      aria-labelledby={headingId}
-      className="relative scroll-mt-[5.5rem] xl:scroll-mt-8"
-    >
+    <section id={id} aria-labelledby={headingId} className="relative scroll-mt-[5.5rem] xl:scroll-mt-8">
       <header className="mb-10 sm:mb-14">
-        <div className="flex items-center gap-4 font-mono text-xs font-medium uppercase tracking-[0.22em]">
-          <span className="text-[#FF7A33]">{eyebrow}</span>
-          <span aria-hidden="true" className="h-px flex-1 bg-gradient-to-r from-white/15 to-transparent" />
+        <div className="flex items-end gap-4 sm:gap-6">
+          {part.number && (
+            <span
+              aria-hidden="true"
+              className="guide-numeral -mb-[0.08em] select-none font-serif text-[4.75rem] leading-[0.8] tracking-[-0.04em] sm:text-[6.75rem] lg:text-[7.75rem]"
+            >
+              {numeral}
+            </span>
+          )}
+          <div className="flex min-w-0 flex-1 items-center gap-4 pb-1 font-mono text-xs font-medium uppercase tracking-[0.22em] sm:pb-2">
+            <span className="whitespace-nowrap text-[#FF7A33]">
+              {part.number ? `Part ${part.number}` : "Interlude"}
+              {part.number && <span className="text-zinc-500"> of {totalParts}</span>}
+            </span>
+            <span aria-hidden="true" className="h-px flex-1 bg-gradient-to-r from-white/15 to-transparent" />
+          </div>
         </div>
         <h2
           id={headingId}
           tabIndex={-1}
-          className="mt-5 max-w-[22ch] font-serif text-[2.625rem] font-normal leading-[1.02] tracking-[-0.012em] text-white outline-none sm:text-[3.375rem] lg:text-[3.875rem]"
+          className="mt-5 max-w-[22ch] font-serif text-[2.625rem] font-normal leading-[1.02] tracking-[-0.012em] text-white outline-none sm:mt-7 sm:text-[3.375rem] lg:text-[3.875rem]"
         >
-          {title}
+          {part.number ? <span className="sr-only">Part {part.number}: </span> : null}
+          {part.title}
         </h2>
       </header>
       <GuideSectionContext.Provider value={id}>
         <div className="space-y-7 sm:space-y-8">{children}</div>
       </GuideSectionContext.Provider>
+
+      {next && (
+        <p className="my-20 sm:my-28">
+          <a
+            href={`#${next.id}`}
+            onClick={(event) => {
+              if (!isPlainLeftClick(event)) return;
+              if (jumpToGuideTarget(next.id, !reducedMotion)) event.preventDefault();
+            }}
+            className="group/next flex items-center gap-5 border-y border-white/[0.08] py-6 transition-colors hover:border-white/[0.16] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/70 sm:gap-8 sm:py-8"
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block font-mono text-xs font-medium uppercase tracking-[0.2em] text-zinc-500">
+                Up next
+                <span className="text-[#FF7A33]">
+                  {" · "}
+                  {next.number ? `Part ${next.number.padStart(2, "0")}` : "Interlude"}
+                </span>
+              </span>
+              <span className="mt-2 block font-serif text-[1.75rem] leading-[1.1] tracking-[-0.01em] text-zinc-200 transition-colors group-hover/next:text-white sm:text-[2.25rem]">
+                {next.title}
+              </span>
+            </span>
+            <span
+              aria-hidden="true"
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/15 text-zinc-300 transition-colors group-hover/next:border-[#FF5500] group-hover/next:bg-[#FF5500] group-hover/next:text-black sm:h-14 sm:w-14"
+            >
+              <ArrowDown className="h-5 w-5" />
+            </span>
+          </a>
+        </p>
+      )}
     </section>
   );
 }
@@ -277,7 +361,9 @@ export function PromptBlock({
   return (
     <figure
       ref={figureRef}
-      className="overflow-hidden rounded-xl border border-white/[0.09] bg-[#07090D]"
+      id={`prompt-${guideSlug(title)}`}
+      data-guide-prompt={title}
+      className="guide-prompt scroll-mt-24 overflow-hidden rounded-xl border border-white/[0.09] bg-[#07090D] xl:scroll-mt-10"
     >
       {/* Toolbar: the title must stay the first <span> and the copy button
           its sibling (see e2e "prompt headers keep full titles"). */}
@@ -317,6 +403,7 @@ export function PromptBlock({
         <div
           id={bodyId}
           ref={bodyRef}
+          data-prompt-text
           tabIndex={0}
           aria-label={`Prompt text: ${title}`}
           role="region"
@@ -382,6 +469,8 @@ export function PromptBlock({
 // =============================================================================
 // Explicit ARIA roles keep table semantics when the phone layout switches
 // the rows to display:block (Safari drops them otherwise).
+const SHORT_CELL_CHARS = 26;
+
 export function DataTable({
   headers,
   rows,
@@ -390,6 +479,15 @@ export function DataTable({
   rows: (string | ReactNode)[][];
 }) {
   const wide = headers.length >= 4;
+  // On phones a column of short values (commands, counts) sits on its
+  // label's line; a column with any longer text goes underneath, so every
+  // card in the table has the same shape.
+  const inlineColumns = headers.map((_, column) =>
+    rows.every((row) => {
+      const cell = row[column];
+      return typeof cell === "string" && cell.length <= SHORT_CELL_CHARS;
+    }),
+  );
 
   return (
     <div
@@ -420,21 +518,28 @@ export function DataTable({
               role="row"
               className="max-md:block max-md:rounded-xl max-md:border max-md:border-white/[0.08] max-md:bg-white/[0.02] max-md:px-4 max-md:py-3.5 md:border-b md:border-white/[0.06] md:last:border-b-0"
             >
-              {row.map((cell, cellIndex) => (
-                <td
-                  key={cellIndex}
-                  role="cell"
-                  data-label={headers[cellIndex]}
-                  className={cn(
-                    "align-top text-[0.975rem] leading-relaxed max-md:block md:px-5 md:py-4",
-                    cellIndex === 0
-                      ? "font-semibold text-white max-md:text-[1.0625rem]"
-                      : "text-zinc-300 max-md:mt-3 max-md:before:mb-1 max-md:before:block max-md:before:font-mono max-md:before:text-xs max-md:before:font-medium max-md:before:uppercase max-md:before:tracking-[0.14em] max-md:before:text-zinc-400 max-md:before:content-[attr(data-label)]",
-                  )}
-                >
-                  {cell}
-                </td>
-              ))}
+              {row.map((cell, cellIndex) => {
+                const inline = inlineColumns[cellIndex];
+                return (
+                  <td
+                    key={cellIndex}
+                    role="cell"
+                    data-label={headers[cellIndex]}
+                    className={cn(
+                      "align-top text-[0.975rem] leading-relaxed max-md:block md:px-5 md:py-4",
+                      cellIndex === 0
+                        ? "font-semibold text-white max-md:text-[1.0625rem]"
+                        : "text-zinc-300 max-md:before:font-mono max-md:before:text-xs max-md:before:font-medium max-md:before:uppercase max-md:before:tracking-[0.14em] max-md:before:text-zinc-400 max-md:before:content-[attr(data-label)]",
+                      cellIndex > 0 &&
+                        (inline
+                          ? "max-md:mt-2 max-md:flex max-md:items-baseline max-md:gap-3 max-md:before:w-[6.5rem] max-md:before:shrink-0"
+                          : "max-md:mt-3 max-md:before:mb-1 max-md:before:block"),
+                    )}
+                  >
+                    {cell}
+                  </td>
+                );
+              })}
             </tr>
           ))}
         </tbody>
@@ -530,22 +635,6 @@ export function NumberedList({ items }: { items: (string | ReactNode)[] }) {
 }
 
 // =============================================================================
-// DIVIDER - Section break
-// =============================================================================
-export function Divider() {
-  return (
-    <div aria-hidden="true" className="my-20 flex items-center gap-5 sm:my-28">
-      <span className="h-px flex-1 bg-gradient-to-r from-transparent to-white/[0.12]" />
-      <svg viewBox="0 0 20 20" className="h-4 w-4 text-white/25">
-        <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="1.25" />
-        <circle cx="10" cy="2" r="2" fill={ACCENT} />
-      </svg>
-      <span className="h-px flex-1 bg-gradient-to-l from-transparent to-white/[0.12]" />
-    </div>
-  );
-}
-
-// =============================================================================
 // STAT CARD - For metrics and numbers
 // =============================================================================
 export function StatCard({
@@ -569,16 +658,13 @@ export function StatCard({
 }
 
 // =============================================================================
-// GUIDE NAV - "On this page": sticky sidebar (lg+) / sticky section rail
+// GUIDE NAV - "On this page": sticky sidebar (xl+) / sticky section rail
 // =============================================================================
 // One <nav> and one set of section links for every breakpoint: the links are
 // restyled, never duplicated, so assistive tech and tests see a single
-// navigation. Phones add a "Contents" sheet with sub-headings and progress.
-export interface GuideNavItem {
-  id: string;
-  label: string;
-  number: string;
-}
+// navigation. Phones add a "Contents" sheet with sub-headings and progress;
+// every width can open the prompt library.
+export type GuideNavItem = GuidePart;
 
 interface SubHeading {
   id: string;
@@ -594,20 +680,29 @@ function formatMinutes(minutes: number): string {
   return rest ? `${hours} h ${rest} min` : `${hours} h`;
 }
 
-function isPlainLeftClick(e: ReactMouseEvent<HTMLAnchorElement>) {
-  return !(e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey);
-}
-
-export function GuideNav({ items, title }: { items: GuideNavItem[]; title: string }) {
+export function GuideNav({
+  items,
+  title,
+  promptCount,
+}: {
+  items: readonly GuidePart[];
+  title: string;
+  /** Shown on the prompt library buttons (the page's PromptBlock count). */
+  promptCount: number;
+}) {
   const [activeId, setActiveId] = useState("");
   const [activeSubId, setActiveSubId] = useState("");
   const [subheadings, setSubheadings] = useState<Record<string, SubHeading[]>>({});
   const [minutesLeft, setMinutesLeft] = useState<number | null>(null);
+  const [percent, setPercent] = useState(0);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [libraryPrompts, setLibraryPrompts] = useState<LibraryPrompt[]>([]);
   const reducedMotion = useReducedMotion();
   const listRef = useRef<HTMLOListElement>(null);
   const progressRef = useRef(0);
   const bars = useRef(new Set<HTMLElement>());
+  const rings = useRef(new Set<SVGCircleElement>());
 
   // Progress bars are painted directly (transform only) so scrolling never
   // re-renders the nav; the callback ref paints a newly mounted bar at once.
@@ -619,6 +714,18 @@ export function GuideNav({ items, title }: { items: GuideNavItem[]; title: strin
     const set = bars.current;
     set.add(el);
     el.style.transform = `scaleX(${progressRef.current})`;
+    return () => {
+      set.delete(el);
+    };
+  }, []);
+
+  // The desktop progress dial: a circle drawn with pathLength=1, so the
+  // remaining fraction is exactly its dash offset.
+  const registerRing = useCallback((el: SVGCircleElement | null) => {
+    if (!el) return;
+    const set = rings.current;
+    set.add(el);
+    el.style.strokeDashoffset = String(1 - progressRef.current);
     return () => {
       set.delete(el);
     };
@@ -671,9 +778,11 @@ export function GuideNav({ items, title }: { items: GuideNavItem[]; title: strin
       const progress = travel > 0 ? Math.min(1, Math.max(0, -rect.top / travel)) : 0;
       progressRef.current = progress;
       for (const bar of bars.current) bar.style.transform = `scaleX(${progress})`;
+      for (const ring of rings.current) ring.style.strokeDashoffset = String(1 - progress);
 
       setActiveId(current);
       setActiveSubId(currentSub);
+      setPercent(Math.round(progress * 100));
       setMinutesLeft(Math.max(0, Math.ceil((words * (1 - progress)) / WORDS_PER_MINUTE)));
     };
     const schedule = () => {
@@ -712,22 +821,25 @@ export function GuideNav({ items, title }: { items: GuideNavItem[]; title: strin
     }
   }, [activeId, activeSubId, reducedMotion]);
 
-  const jumpTo = useCallback(
-    (id: string) => {
-      const target = document.getElementById(id);
-      if (!target) return false;
-      target.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" });
-      window.history.pushState(null, "", `#${id}`);
-      // Move keyboard focus with the reader, without a second scroll.
-      const heading = target.matches("h2, h3") ? target : target.querySelector<HTMLElement>("h2");
-      if (heading) {
-        if (!heading.hasAttribute("tabindex")) heading.setAttribute("tabindex", "-1");
-        heading.focus({ preventScroll: true });
-      }
-      return true;
-    },
-    [reducedMotion],
-  );
+  const jumpTo = useCallback((id: string) => jumpToGuideTarget(id, !reducedMotion), [reducedMotion]);
+
+  // The library reads the prompts from the page when it opens, so it always
+  // matches what is rendered (and costs nothing until someone asks for it).
+  const openLibrary = useCallback(() => {
+    setLibraryPrompts(collectGuidePrompts());
+    setLibraryOpen(true);
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener(OPEN_PROMPT_LIBRARY_EVENT, openLibrary);
+    return () => window.removeEventListener(OPEN_PROMPT_LIBRARY_EVENT, openLibrary);
+  }, [openLibrary]);
+
+  const onLibraryJump = (id: string) => {
+    setLibraryOpen(false);
+    // Let the dialog close (and hand focus back) before scrolling.
+    requestAnimationFrame(() => requestAnimationFrame(() => jumpTo(id)));
+  };
 
   const onNavClick = (e: ReactMouseEvent<HTMLAnchorElement>, id: string) => {
     // Keep native new-tab/window behavior and respect an earlier handler.
@@ -753,20 +865,37 @@ export function GuideNav({ items, title }: { items: GuideNavItem[]; title: strin
         aria-label="On this page"
         className="sticky top-0 z-30 -mx-5 border-b border-white/[0.07] bg-[#020408]/88 backdrop-blur-md backdrop-saturate-150 sm:-mx-8 xl:mx-0 xl:flex xl:h-dvh xl:flex-col xl:border-b-0 xl:bg-transparent xl:py-10 xl:backdrop-filter-none"
       >
-        {/* Desktop header: guide title, progress and time left */}
-        <div className="hidden xl:block xl:pb-5 xl:pl-3">
-          <p className="font-mono text-xs font-medium uppercase tracking-[0.2em] text-zinc-400">
-            {title}
-          </p>
-          <div className="relative mt-4 h-[2px] overflow-hidden rounded-full bg-white/10">
-            <span
-              ref={registerBar}
-              className="absolute inset-0 origin-left bg-[#FF5500] [transform:scaleX(0)]"
-            />
+        {/* Desktop header: a progress dial, the guide title and time left */}
+        <div className="hidden xl:flex xl:items-center xl:gap-3.5 xl:pb-6 xl:pl-3">
+          <div className="relative h-12 w-12 shrink-0">
+            <svg viewBox="0 0 48 48" aria-hidden="true" className="h-full w-full -rotate-90">
+              <circle cx="24" cy="24" r="21" fill="none" stroke="rgb(255 255 255 / 0.1)" strokeWidth="2" />
+              <circle
+                ref={registerRing}
+                cx="24"
+                cy="24"
+                r="21"
+                fill="none"
+                stroke="#FF5500"
+                strokeWidth="2"
+                pathLength={1}
+                strokeDasharray="1"
+                strokeDashoffset="1"
+              />
+            </svg>
+            <span className="absolute inset-0 flex items-center justify-center font-mono text-xs font-medium tabular-nums tracking-[-0.02em] text-zinc-200">
+              {percent}
+              <span className="text-zinc-500">%</span>
+            </span>
           </div>
-          <p className="mt-2.5 min-h-[1.25rem] font-mono text-xs tabular-nums text-zinc-400">
-            {timeLeft}
-          </p>
+          <div className="min-w-0">
+            <p className="font-mono text-xs font-medium uppercase tracking-[0.12em] text-zinc-300">
+              {title}
+            </p>
+            <p className="mt-1.5 min-h-[1rem] font-mono text-xs tabular-nums text-zinc-400">
+              {timeLeft}
+            </p>
+          </div>
         </div>
 
         <div className="flex items-center xl:min-h-0 xl:flex-1 xl:items-stretch">
@@ -848,13 +977,25 @@ export function GuideNav({ items, title }: { items: GuideNavItem[]; title: strin
           </button>
         </div>
 
-        <a
-          href="#main-content"
-          className="mt-4 hidden items-center gap-2 rounded-md py-2 pl-3 text-[0.8125rem] font-medium text-zinc-500 transition-colors hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/70 xl:flex"
-        >
-          <ArrowUp aria-hidden="true" className="h-3.5 w-3.5" />
-          Back to top
-        </a>
+        <div className="mt-4 hidden flex-col gap-0.5 border-t border-white/[0.06] pt-3 xl:flex">
+          <button
+            type="button"
+            onClick={openLibrary}
+            aria-haspopup="dialog"
+            className="flex items-center gap-2.5 rounded-md py-2 pl-3 pr-2 text-left text-[0.8125rem] font-medium text-zinc-300 transition-colors hover:bg-white/[0.04] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/70"
+          >
+            <SquareTerminal aria-hidden="true" className="h-3.5 w-3.5 text-[#FF7A33]" />
+            Prompt library
+            <span className="ml-auto font-mono text-xs tabular-nums text-zinc-500">{promptCount}</span>
+          </button>
+          <a
+            href="#main-content"
+            className="flex items-center gap-2.5 rounded-md py-2 pl-3 text-[0.8125rem] font-medium text-zinc-500 transition-colors hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/70"
+          >
+            <ArrowUp aria-hidden="true" className="h-3.5 w-3.5" />
+            Back to top
+          </a>
+        </div>
 
         {/* Phone reading progress, along the bottom edge of the bar */}
         <div aria-hidden="true" className="absolute inset-x-0 -bottom-px h-[2px] xl:hidden">
@@ -872,7 +1013,7 @@ export function GuideNav({ items, title }: { items: GuideNavItem[]; title: strin
           <p className="font-mono text-xs font-medium uppercase tracking-[0.2em] text-zinc-400">
             {title}
           </p>
-          <p className="mt-1 text-2xl font-semibold tracking-[-0.015em] text-white">Contents</p>
+          <p className="mt-1.5 font-serif text-[2rem] font-normal leading-none tracking-[-0.01em] text-white">Contents</p>
           <div className="relative mt-4 h-[2px] overflow-hidden rounded-full bg-white/10">
             <span ref={registerBar} className="absolute inset-0 origin-left bg-[#FF5500] [transform:scaleX(0)]" />
           </div>
@@ -881,6 +1022,22 @@ export function GuideNav({ items, title }: { items: GuideNavItem[]; title: strin
             {timeLeft ? ` · ${timeLeft}` : ""}
           </p>
         </div>
+        <button
+          type="button"
+          aria-haspopup="dialog"
+          onClick={() => {
+            setSheetOpen(false);
+            requestAnimationFrame(() => requestAnimationFrame(openLibrary));
+          }}
+          className="mb-5 flex min-h-16 w-full items-center gap-3.5 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-left transition-colors active:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/70"
+        >
+          <SquareTerminal aria-hidden="true" className="h-5 w-5 shrink-0 text-[#FF7A33]" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-base font-semibold text-white">Prompt library</span>
+            <span className="block text-sm text-zinc-400">{promptCount} copy-ready prompts, searchable</span>
+          </span>
+          <ArrowRight aria-hidden="true" className="h-4 w-4 shrink-0 text-zinc-500" />
+        </button>
         <ol role="list" className="space-y-0.5 pb-8">
           {items.map((item) => {
             const isActive = item.id === activeId;
@@ -926,6 +1083,15 @@ export function GuideNav({ items, title }: { items: GuideNavItem[]; title: strin
           })}
         </ol>
       </BottomSheet>
+
+      <PromptLibrary
+        open={libraryOpen}
+        prompts={libraryPrompts}
+        outline={items}
+        guideTitle={title}
+        onClose={() => setLibraryOpen(false)}
+        onJump={onLibraryJump}
+      />
     </>
   );
 }

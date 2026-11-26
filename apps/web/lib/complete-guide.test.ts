@@ -9,6 +9,15 @@ import {
 } from "./complete-guide";
 import { manifestModules } from "./generated/manifest-modules";
 import { manifestTools } from "./generated/manifest-tools";
+import {
+  COMPLETE_GUIDE_EXHIBIT_COUNT,
+  COMPLETE_GUIDE_OUTLINE,
+  CORE_FLYWHEEL_EXHIBIT_COUNT,
+  CORE_FLYWHEEL_OUTLINE,
+  CORE_FLYWHEEL_PROMPT_COUNT,
+  guidePartCount,
+  guideSlug,
+} from "./guide-outlines";
 
 const enabledStackModuleIds = new Set(
   manifestModules
@@ -28,6 +37,7 @@ const openGraphSource = await Bun.file(
 const twitterSource = await Bun.file(
   new URL("../app/complete-guide/twitter-image.tsx", import.meta.url),
 ).text();
+const coreSource = await Bun.file(new URL("../app/core-flywheel/page.tsx", import.meta.url)).text();
 const planEvolutionSource = await Bun.file(
   new URL("../components/complete-guide/plan-evolution-studio.tsx", import.meta.url),
 ).text();
@@ -37,31 +47,46 @@ describe("complete guide derived claims", () => {
     expect(pageSource.match(/<PromptBlock\b/g)?.length ?? 0).toBe(COMPLETE_GUIDE_PROMPT_COUNT);
   });
 
-  test("the core flywheel cover counts its own prompt blocks", async () => {
-    const coreSource = await Bun.file(
-      new URL("../app/core-flywheel/page.tsx", import.meta.url),
-    ).text();
-    const declared = Number(coreSource.match(/const CORE_FLYWHEEL_PROMPT_COUNT = (\d+);/)?.[1]);
-    expect(coreSource.match(/<PromptBlock\b/g)?.length ?? 0).toBe(declared);
+  test("the core flywheel's prompt count matches its prompt blocks", () => {
+    expect(coreSource.match(/<PromptBlock\b/g)?.length ?? 0).toBe(CORE_FLYWHEEL_PROMPT_COUNT);
   });
 
-  test("each guide's navigation lists its sections in order, with their part numbers", async () => {
-    const coreSource = await Bun.file(
-      new URL("../app/core-flywheel/page.tsx", import.meta.url),
-    ).text();
-    for (const [source, constant] of [
-      [pageSource, "GUIDE_SECTIONS"],
-      [coreSource, "CORE_SECTIONS"],
+  test("each guide's outline lists the sections its page renders, in order", () => {
+    for (const [source, outline, name] of [
+      [pageSource, COMPLETE_GUIDE_OUTLINE, "COMPLETE_GUIDE_OUTLINE"],
+      [coreSource, CORE_FLYWHEEL_OUTLINE, "CORE_FLYWHEEL_OUTLINE"],
     ] as const) {
-      const list = source.match(new RegExp(`const ${constant} = \\[([\\s\\S]*?)\\n\\];`))?.[1] ?? "";
-      const navigation = [...list.matchAll(/\{ id: "([^"]+)", number: "([^"]*)"/g)].map(
-        ([, id, number]) => `${id}#${number}`,
-      );
-      const sections = [...source.matchAll(/<GuideSection\s+id="([^"]+)"\s+number="([^"]*)"/g)].map(
-        ([, id, number]) => `${id}#${number}`,
-      );
-      expect(navigation.length).toBeGreaterThan(5);
-      expect(navigation).toEqual(sections);
+      const sections = [...source.matchAll(/<GuideSection\s+id="([^"]+)"/g)].map(([, id]) => id);
+      expect(sections.length).toBeGreaterThan(5);
+      expect(outline.map((part) => part.id)).toEqual(sections);
+      // Each page hands its own outline to the article and the navigation.
+      expect(source).toContain(`<GuideArticle outline={${name}}>`);
+      expect(source).toContain(`items={${name}}`);
+    }
+  });
+
+  test("each outline numbers its parts 1..n, with only interludes unnumbered", () => {
+    for (const outline of [COMPLETE_GUIDE_OUTLINE, CORE_FLYWHEEL_OUTLINE]) {
+      const numbers = outline.map((part) => part.number).filter(Boolean);
+      expect(numbers).toEqual(numbers.map((_, index) => String(index + 1)));
+      expect(guidePartCount(outline)).toBe(numbers.length);
+      expect(new Set(outline.map((part) => part.id)).size).toBe(outline.length);
+      for (const part of outline) expect(part.label && part.title).toBeTruthy();
+    }
+  });
+
+  test("exhibit counts match the interactive exhibits each page renders", () => {
+    const exhibits = (source: string) => source.match(/<[A-Z]\w*(?:Viz|Diagram|Studio|Ladder)\b/g)?.length ?? 0;
+    expect(exhibits(pageSource)).toBe(COMPLETE_GUIDE_EXHIBIT_COUNT);
+    expect(exhibits(coreSource)).toBe(CORE_FLYWHEEL_EXHIBIT_COUNT);
+  });
+
+  test("prompt titles make unique anchor ids on each page", () => {
+    for (const source of [pageSource, coreSource]) {
+      const titles = [...source.matchAll(/<PromptBlock\s+title="([^"]+)"/g)].map(([, title]) => title);
+      expect(titles.length).toBe(source.match(/<PromptBlock\b/g)?.length ?? -1);
+      const ids = titles.map((title) => guideSlug(title));
+      expect(new Set(ids).size).toBe(ids.length);
     }
   });
 

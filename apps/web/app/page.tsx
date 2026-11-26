@@ -20,7 +20,6 @@ import {
   Server,
   ShieldCheck,
   Sparkles,
-  Target,
   Terminal,
   X,
   Zap,
@@ -28,6 +27,7 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { GuideCovers } from "@/components/complete-guide/guide-covers";
 import { Jargon } from "@/components/jargon";
 import { fadeScale, fadeUp, motion, springs, staggerContainer } from "@/components/motion";
 import { Button } from "@/components/ui/button";
@@ -1378,199 +1378,8 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* The Flywheel Guide — Hero-Level CTA */}
-        <section className="relative overflow-hidden py-16 sm:py-24">
-          {/* Atmospheric glow */}
-          <div className="pointer-events-none absolute inset-0">
-            <div className="absolute left-1/4 top-1/2 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/[0.04] blur-[120px]" />
-            <div className="absolute right-1/4 top-1/2 h-[400px] w-[400px] translate-x-1/2 -translate-y-1/2 rounded-full bg-[oklch(0.7_0.2_330)]/[0.04] blur-[120px]" />
-          </div>
-
-          <div className="relative mx-auto max-w-4xl px-6 space-y-8">
-            <Link href="/complete-guide" className="group block">
-              <motion.div
-                className="relative overflow-hidden rounded-3xl border border-primary/20 p-px"
-                initial={{ opacity: 0, y: 40 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: "-100px" }}
-                transition={{ ...springs.gentle, delay: 0.05 }}
-                whileHover={{ y: -4 }}
-                style={{
-                  boxShadow:
-                    "0 0 60px -12px oklch(0.75 0.18 195 / 0.15), 0 24px 48px -12px rgba(0,0,0,0.4)",
-                }}
-              >
-                {/* Border gradient: the sweep animates background-position
-                    (main-thread paint every frame), so it only runs on hover
-                    instead of forever on an always-visible card. */}
-                <div
-                  className="absolute inset-0 rounded-3xl opacity-40 transition-opacity duration-500 group-hover:opacity-100 motion-safe:group-hover:[animation:shimmer_4s_linear_infinite]"
-                  style={{
-                    background:
-                      "linear-gradient(135deg, oklch(0.75 0.18 195 / 0.5), oklch(0.7 0.2 330 / 0.3), oklch(0.75 0.18 195 / 0.5))",
-                    backgroundSize: "200% 200%",
-                    padding: "1px",
-                    WebkitMask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
-                    WebkitMaskComposite: "xor",
-                    maskComposite: "exclude",
-                  }}
-                />
-
-                {/* Inner card */}
-                <div className="relative rounded-[23px] bg-gradient-to-br from-card via-card/95 to-card px-8 py-10 sm:px-12 sm:py-14">
-                  <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-widest text-primary">
-                    <BookOpen className="h-3.5 w-3.5" />
-                    Featured Guide
-                  </div>
-
-                  <h2
-                    className="mb-4 text-2xl font-extrabold tracking-tight sm:text-3xl lg:text-4xl"
-                    style={{ letterSpacing: "-0.025em" }}
-                  >
-                    <span className="text-gradient-cosmic">The Flywheel Methodology</span>
-                  </h2>
-
-                  <p className="mb-8 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">
-                    The definitive guide to planning-first agentic development: decompose complex
-                    projects into beads, detect convergence, coordinate agent swarms, and ship
-                    10&times; faster with the Flywheel approach.
-                  </p>
-
-                  <div className="mb-8 flex flex-wrap gap-x-6 gap-y-3 text-sm">
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Clock className="h-4 w-4 text-primary/60" />
-                      <span>12 in-depth sections</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Cpu className="h-4 w-4 text-primary/60" />
-                      <span>11 interactive visualizations</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Zap className="h-4 w-4 text-primary/60" />
-                      <span>Complete methodology</span>
-                    </div>
-                  </div>
-
-                  <div className="inline-flex items-center gap-3 rounded-xl bg-primary px-7 py-3.5 text-base font-bold text-primary-foreground shadow-lg transition duration-300 group-hover:shadow-[0_0_40px_-8px_oklch(0.75_0.18_195/0.5)] group-hover:scale-[1.03]">
-                    <BookOpen className="h-5 w-5" />
-                    Read the Flywheel Guide
-                    <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1.5" />
-                  </div>
-                </div>
-
-                {/* Decorative gradient orbs */}
-                <div className="pointer-events-none absolute -right-24 -top-24 h-56 w-56 rounded-full bg-primary/15 blur-3xl transition-opacity duration-500 group-hover:opacity-75" />
-                <div className="pointer-events-none absolute -bottom-20 -left-20 h-44 w-44 rounded-full bg-[oklch(0.7_0.2_330)]/15 blur-3xl transition-opacity duration-500 group-hover:opacity-75" />
-              </motion.div>
-            </Link>
-
-            {/* Core Flywheel — Simpler Starting Point */}
-            <Link href="/core-flywheel" className="group block">
-              <motion.div
-                className="relative overflow-hidden rounded-3xl border border-[#FF5500]/20 p-px"
-                initial={{ opacity: 0, y: 40 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: "-100px" }}
-                transition={{ ...springs.gentle, delay: 0.1 }}
-                whileHover={{ y: -4 }}
-                style={{
-                  boxShadow:
-                    "0 0 60px -12px oklch(0.75 0.18 30 / 0.12), 0 24px 48px -12px rgba(0,0,0,0.4)",
-                }}
-              >
-                {/* Border gradient: hover-only sweep (see the card above) */}
-                <div
-                  className="absolute inset-0 rounded-3xl opacity-30 transition-opacity duration-500 group-hover:opacity-80 motion-safe:group-hover:[animation:shimmer_4s_linear_infinite]"
-                  style={{
-                    background:
-                      "linear-gradient(135deg, oklch(0.75 0.18 30 / 0.5), oklch(0.78 0.16 75 / 0.3), oklch(0.75 0.18 30 / 0.5))",
-                    backgroundSize: "200% 200%",
-                    padding: "1px",
-                    WebkitMask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
-                    WebkitMaskComposite: "xor",
-                    maskComposite: "exclude",
-                  }}
-                />
-
-                {/* Inner card */}
-                <div className="relative rounded-[23px] bg-gradient-to-br from-card via-card/95 to-card px-8 py-10 sm:px-12 sm:py-14">
-                  <motion.div
-                    className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#FF5500]/30 bg-[#FF5500]/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-widest text-[#FF5500]"
-                    initial={{ opacity: 0, x: -10 }}
-                    whileInView={{ opacity: 1, x: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ ...springs.snappy, delay: 0.1 }}
-                  >
-                    <Target className="h-3.5 w-3.5" />
-                    Start Here
-                  </motion.div>
-
-                  <motion.h2
-                    className="mb-4 text-2xl font-extrabold tracking-tight sm:text-3xl lg:text-4xl"
-                    style={{ letterSpacing: "-0.025em" }}
-                    initial={{ opacity: 0, y: 10 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ ...springs.smooth, delay: 0.15 }}
-                  >
-                    <span className="bg-gradient-to-r from-[#FF5500] to-[#FFBD2E] bg-clip-text text-transparent">
-                      The Core Flywheel
-                    </span>
-                  </motion.h2>
-
-                  <motion.p
-                    className="mb-8 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg"
-                    initial={{ opacity: 0, y: 10 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ ...springs.smooth, delay: 0.2 }}
-                  >
-                    New to the Flywheel? Start with just three tools — Agent Mail, beads, and bv.
-                    This focused guide covers the core loop that captures most of the
-                    methodology&apos;s value, without the full system&apos;s complexity.
-                  </motion.p>
-
-                  <motion.div
-                    className="mb-8 flex flex-wrap gap-x-6 gap-y-3 text-sm"
-                    initial={{ opacity: 0 }}
-                    whileInView={{ opacity: 1 }}
-                    viewport={{ once: true }}
-                    transition={{ ...springs.smooth, delay: 0.25 }}
-                  >
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Zap className="h-4 w-4 text-[#FF5500]/60" />
-                      <span>3 core tools</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Cpu className="h-4 w-4 text-[#FF5500]/60" />
-                      <span>6 interactive visualizations</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Clock className="h-4 w-4 text-[#FF5500]/60" />
-                      <span>Beginner-friendly</span>
-                    </div>
-                  </motion.div>
-
-                  <motion.div
-                    className="inline-flex items-center gap-3 rounded-xl bg-[#FF5500] px-7 py-3.5 text-base font-bold text-black shadow-lg transition duration-300 group-hover:shadow-[0_0_40px_-8px_oklch(0.75_0.18_30/0.5)] group-hover:scale-[1.03]"
-                    initial={{ opacity: 0, y: 10 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ ...springs.snappy, delay: 0.3 }}
-                  >
-                    <Target className="h-5 w-5" />
-                    Read the Core Loop Guide
-                    <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1.5" />
-                  </motion.div>
-                </div>
-
-                {/* Decorative gradient orbs */}
-                <div className="pointer-events-none absolute -right-24 -top-24 h-56 w-56 rounded-full bg-[#FF5500]/12 blur-3xl transition-opacity duration-500 group-hover:opacity-75" />
-                <div className="pointer-events-none absolute -bottom-20 -left-20 h-44 w-44 rounded-full bg-[#FFBD2E]/10 blur-3xl transition-opacity duration-500 group-hover:opacity-75" />
-              </motion.div>
-            </Link>
-          </div>
-        </section>
+        {/* The two long-form guides, as editorial covers */}
+        <GuideCovers />
 
         {/* Features Grid */}
         <FeaturesSection />

@@ -1280,3 +1280,116 @@
     mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent 100%);
   }
 }
+
+/* Chapter numerals: a warm serif figure that cools as it descends. The
+   numeral is aria-hidden; the heading carries the part number in text. */
+.guide-numeral {
+  background-image: linear-gradient(180deg, #ff7a33 0%, rgb(255 85 0 / 0.5) 55%, rgb(255 85 0 / 0.1) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* The flywheel dial spins up once and its momentum arc draws itself in. */
+@media (prefers-reduced-motion: no-preference) {
+  .guide-dial {
+    animation: guide-dial-spin 2.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .guide-dial-arc {
+    stroke-dasharray: 1;
+    animation: guide-arc-draw 2.1s 0.3s cubic-bezier(0.65, 0, 0.35, 1) both;
+  }
+
+  .guide-dial-head {
+    animation: guide-fade-in 0.6s 2.1s ease-out both;
+  }
+
+  dialog[data-guide-dialog][open] .guide-dialog-panel {
+    animation: guide-sheet-in 0.36s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  dialog[data-guide-dialog][open]::backdrop {
+    animation: guide-fade-in 0.24s ease-out both;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) and (min-width: 40rem) {
+  dialog[data-guide-dialog][open] .guide-dialog-panel {
+    animation-name: guide-dialog-in;
+    animation-duration: 0.26s;
+  }
+}
+
+@keyframes guide-dial-spin {
+  from {
+    rotate: -48deg;
+  }
+  to {
+    rotate: 0deg;
+  }
+}
+
+@keyframes guide-arc-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes guide-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes guide-sheet-in {
+  from {
+    translate: 0 100%;
+  }
+  to {
+    translate: 0 0;
+  }
+}
+
+@keyframes guide-dialog-in {
+  from {
+    opacity: 0;
+    translate: 0 10px;
+    scale: 0.985;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+    scale: 1;
+  }
+}
+
+/* A jump from the prompt library outlines the prompt it landed on. */
+.guide-prompt {
+  transition:
+    border-color 0.9s ease,
+    box-shadow 0.9s ease;
+}
+
+.guide-prompt[data-flash] {
+  border-color: rgb(255 85 0 / 0.75);
+  box-shadow: 0 0 0 4px rgb(255 85 0 / 0.16);
+  transition-duration: 0.12s;
+}
+
+/* No page scroll behind the open prompt library. */
+html:has(dialog[data-guide-dialog][open]) {
+  overflow: hidden;
+}
+
+/* The library's search field shows focus on its whole frame (an orange
+   focus-within edge), so the bare input needs no second outline. */
+dialog[data-guide-dialog] input[type="search"]:focus-visible {
+  outline: none;
+}

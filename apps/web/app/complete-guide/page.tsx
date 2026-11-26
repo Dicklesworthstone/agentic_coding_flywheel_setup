@@ -11,7 +11,7 @@ import {
   BulletList,
   CodeBlock,
   DataTable,
-  Divider,
+  GuideArticle,
   GuideNav,
   GuideSection,
   Hl,
@@ -23,7 +23,7 @@ import {
   SubSection,
   TipBox,
 } from "@/components/complete-guide/guide-components";
-import { GuideFooterCTA, GuideHero } from "@/components/complete-guide/guide-shell";
+import { GuideColophon, GuideFooterCTA, GuideHero } from "@/components/complete-guide/guide-shell";
 import { PlanEvolutionStudio } from "@/components/complete-guide/plan-evolution-studio";
 import { PlanToBeadsViz } from "@/components/complete-guide/plan-to-beads-viz";
 import { RecursiveImprovementViz } from "@/components/complete-guide/recursive-improvement-viz";
@@ -41,6 +41,7 @@ import {
 } from "@/lib/complete-guide";
 import { manifestModules, manifestProvenance } from "@/lib/generated/manifest-modules";
 import { manifestTools } from "@/lib/generated/manifest-tools";
+import { COMPLETE_GUIDE_OUTLINE, guidePartCount } from "@/lib/guide-outlines";
 
 const enabledStackModuleIds = new Set(
   manifestModules
@@ -61,24 +62,8 @@ const STACK_TOOL_ROWS = COMPLETE_GUIDE_STACK_TOOLS.map((tool) => [
   tool.shortDesc,
 ]);
 
-// Mirrors the GuideSection ids/numbers below. Drives the "On this page"
-// navigation (sidebar on desktop, section rail on phones) and the cover's
-// contents list.
-const GUIDE_SECTIONS = [
-  { id: "workflow", number: "1", label: "Workflow" },
-  { id: "philosophy", number: "2", label: "Why plan first" },
-  { id: "planning", number: "3", label: "The plan" },
-  { id: "beads", number: "4", label: "Plan → beads" },
-  { id: "polishing", number: "5", label: "Polish beads" },
-  { id: "idea-wizard", number: "", label: "Existing projects" },
-  { id: "coordination", number: "6", label: "Coordination" },
-  { id: "swarm", number: "7", label: "The swarm" },
-  { id: "review", number: "8", label: "Review & harden" },
-  { id: "toolchain", number: "9", label: "Toolchain" },
-  { id: "flywheel", number: "10", label: "Flywheel" },
-];
 // The interlude is unnumbered, so the cover counts parts, not nav entries.
-const GUIDE_PART_COUNT = GUIDE_SECTIONS.filter((section) => section.number).length;
+const GUIDE_PART_COUNT = guidePartCount(COMPLETE_GUIDE_OUTLINE);
 
 export default function CompleteGuidePage() {
   return (
@@ -126,17 +111,22 @@ export default function CompleteGuidePage() {
             { value: String(COMPLETE_GUIDE_PHASE_COUNT), label: "Phases" },
             { value: String(COMPLETE_GUIDE_STACK_TOOL_COUNT), label: "Stack tools" },
           ]}
-          contents={GUIDE_SECTIONS}
+          contents={COMPLETE_GUIDE_OUTLINE}
+          promptCount={COMPLETE_GUIDE_PROMPT_COUNT}
         />
 
         <div className="relative mx-auto max-w-[1320px] px-5 sm:px-8 xl:grid xl:grid-cols-[14.5rem_minmax(0,1fr)] xl:gap-14 xl:px-10 2xl:grid-cols-[16rem_minmax(0,1fr)] 2xl:gap-20">
-          <GuideNav items={GUIDE_SECTIONS} title="The complete guide" />
-          <article data-guide-article className="mx-auto min-w-0 max-w-[57rem] pt-14 sm:pt-20 xl:mx-0">
+          <GuideNav
+            items={COMPLETE_GUIDE_OUTLINE}
+            title="The complete guide"
+            promptCount={COMPLETE_GUIDE_PROMPT_COUNT}
+          />
+          <GuideArticle outline={COMPLETE_GUIDE_OUTLINE}>
 
           {/* ============================================================= */}
           {/* SECTION 1: THE COMPLETE WORKFLOW                                */}
           {/* ============================================================= */}
-          <GuideSection id="workflow" number="1" title="The Complete Workflow">
+          <GuideSection id="workflow">
             <P highlight>
               This is the end-to-end methodology for creating software with frontier AI models,
               exhaustive markdown planning, beads-based task management, and coordinated agent
@@ -334,12 +324,11 @@ export default function CompleteGuidePage() {
             </SubSection>
           </GuideSection>
 
-          <Divider />
 
           {/* ============================================================= */}
           {/* SECTION 2: WHY PLANNING DOMINATES                              */}
           {/* ============================================================= */}
-          <GuideSection id="philosophy" number="2" title="Why Planning Is 85% of the Work">
+          <GuideSection id="philosophy">
             <P>
               You spend 85% of your time on planning. The first time you try it, it feels wrong. No
               code is being written. Every instinct tells you to just start building. That
@@ -501,12 +490,11 @@ export default function CompleteGuidePage() {
             </SubSection>
           </GuideSection>
 
-          <Divider />
 
           {/* ============================================================= */}
           {/* SECTION 3: CREATING & REFINING THE PLAN                        */}
           {/* ============================================================= */}
-          <GuideSection id="planning" number="3" title="Creating & Refining the Markdown Plan">
+          <GuideSection id="planning">
             <SubSection title="Before You Start: The Foundation Bundle">
               <P>
                 Before writing the plan itself, you need a coherent foundation. Think of it as
@@ -803,12 +791,11 @@ For each proposed change, give me your detailed analysis and rationale/justifica
             </SubSection>
           </GuideSection>
 
-          <Divider />
 
           {/* ============================================================= */}
           {/* SECTION 4: PLANS BECOME BEADS                                  */}
           {/* ============================================================= */}
-          <GuideSection id="beads" number="4" title="Converting the Plan into Beads">
+          <GuideSection id="beads">
             <TipBox variant="warning">
               <strong>Watch for the plan-bead gap.</strong> In the destructive_command_guard
               sessions, agents occasionally got stuck between plan revision and bead creation: the
@@ -981,12 +968,11 @@ br sync --flush-only                                     # Export to JSONL (no g
             </SubSection>
           </GuideSection>
 
-          <Divider />
 
           {/* ============================================================= */}
           {/* SECTION 5: POLISHING BEADS                                     */}
           {/* ============================================================= */}
-          <GuideSection id="polishing" number="5" title="Check Your Beads N Times, Implement Once">
+          <GuideSection id="polishing">
             <P>
               Before you burn up a lot of tokens with a big agent swarm on a new project, the old
               woodworking maxim of &quot;Measure twice, cut once!&quot; is worth revising as{" "}
@@ -1095,12 +1081,11 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
             </SubSection>
           </GuideSection>
 
-          <Divider />
 
           {/* ============================================================= */}
           {/* SECTION 5b: IDEA-WIZARD & AD-HOC CHANGES                       */}
           {/* ============================================================= */}
-          <GuideSection id="idea-wizard" number="" title="Adding Features to Existing Projects">
+          <GuideSection id="idea-wizard">
             <P>
               The full planning pipeline (Phases 1-5) is for new projects built from scratch. For
               existing projects that need new features, the <strong>Idea-Wizard</strong> is a
@@ -1393,12 +1378,11 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
             </SubSection>
           </GuideSection>
 
-          <Divider />
 
           {/* ============================================================= */}
           {/* SECTION 6: THE COORDINATION STACK                              */}
           {/* ============================================================= */}
-          <GuideSection id="coordination" number="6" title="The Coordination Stack">
+          <GuideSection id="coordination">
             <P>
               Then you&apos;re ready to start implementing. The fastest way to do that is to start
               up a big swarm of agents that coordinate using three interlocking tools:
@@ -1882,12 +1866,11 @@ bv --robot-triage --robot-triage-by-label    # Group by domain`}
             </SubSection>
           </GuideSection>
 
-          <Divider />
 
           {/* ============================================================= */}
           {/* SECTION 7: LAUNCHING & RUNNING THE SWARM                       */}
           {/* ============================================================= */}
-          <GuideSection id="swarm" number="7" title="Launching & Running the Swarm">
+          <GuideSection id="swarm">
             <P>
               You can create sessions using Claude Code, Codex, and Antigravity CLI in different
               panes in tmux, or use the{" "}
@@ -2309,12 +2292,11 @@ caam activate claude backup-2   # Switch instantly`}
             </SubSection>
           </GuideSection>
 
-          <Divider />
 
           {/* ============================================================= */}
           {/* SECTION 8: REVIEW, TESTING & HARDENING                         */}
           {/* ============================================================= */}
-          <GuideSection id="review" number="8" title="Review, Testing & Hardening">
+          <GuideSection id="review">
             <P>
               Code review in a multi-agent swarm follows a different rhythm than traditional code
               review. There is no pull request, no human reviewer, no approval gate. Instead, review
@@ -2676,12 +2658,11 @@ And you can't do this sort of thing using regex or a script, you MUST manually r
             </SubSection>
           </GuideSection>
 
-          <Divider />
 
           {/* ============================================================= */}
           {/* SECTION 9: THE COMPLETE TOOLCHAIN                              */}
           {/* ============================================================= */}
-          <GuideSection id="toolchain" number="9" title="The Complete Toolchain">
+          <GuideSection id="toolchain">
             <P>
               The generated ACFS manifest currently defines {COMPLETE_GUIDE_STACK_TOOL_COUNT}{" "}
               default-enabled stack modules, all free and open-source. This list is derived from the
@@ -3074,12 +3055,11 @@ alias gmi='$HOME/.local/bin/agy-locked'  # legacy shortcut: same locked launcher
             </SubSection>
           </GuideSection>
 
-          <Divider />
 
           {/* ============================================================= */}
           {/* SECTION 10: THE FLYWHEEL EFFECT                                */}
           {/* ============================================================= */}
-          <GuideSection id="flywheel" number="10" title="The Flywheel Effect">
+          <GuideSection id="flywheel">
             <P highlight>
               If you simply use these tools, workflows, and prompts in the way just described, you
               can create really incredible software in just a couple days, sometimes in just one
@@ -3908,7 +3888,6 @@ ntm spawn my-first-project --cc=2 --cod=1 --agy=1`}
             </SubSection>
           </GuideSection>
 
-          <Divider />
           <GuideFooterCTA
             eyebrow="Next step"
             title={
@@ -3926,7 +3905,8 @@ ntm spawn my-first-project --cc=2 --cod=1 --agy=1`}
             primary={{ href: "/wizard/os-selection", label: "Launch the setup wizard" }}
             secondary={{ href: "/core-flywheel", label: "Read the Core Flywheel" }}
           />
-          </article>
+          <GuideColophon reviewedOn={COMPLETE_GUIDE_REVIEWED_ON} sourcePath="complete-guide/page.tsx" />
+          </GuideArticle>
         </div>
       </main>
     </ErrorBoundary>
