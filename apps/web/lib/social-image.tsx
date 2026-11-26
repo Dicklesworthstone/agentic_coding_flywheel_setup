@@ -10,6 +10,15 @@ import { ImageResponse } from "next/og";
 // conditional children inside <svg>, no <text>/<polygon>/strokeDasharray, and
 // colors are hex or rgba strings.
 
+/**
+ * The card design's version. Platforms cache a card by its URL, and Next
+ * versions that URL by the content of the route file alone (not of this
+ * template), so every opengraph-image.tsx and twitter-image.tsx carries a
+ * "Share card design N" line. After a visible change to the cards, bump this
+ * and those lines together; lib/social-image-routes.test.ts checks they agree.
+ */
+export const SOCIAL_CARD_DESIGN = 2;
+
 export type SocialImageVariant = "opengraph" | "twitter";
 export type SocialImageTheme =
   | "default"
@@ -218,6 +227,41 @@ function clampSweep(sweep: number): number {
   return Math.min(Math.max(sweep, 2), 359.5);
 }
 
+/** The bezel ticks the arc has swept over, as [minor, major] paths. */
+function litTickPaths(fromDegrees: number, sweep: number): [string, string] {
+  const minor: string[] = [];
+  const major: string[] = [];
+  for (let index = 0; index < 120; index++) {
+    const degrees = (index / 120) * 360;
+    // Clockwise distance from the arc's start to this tick.
+    const along = (((degrees - fromDegrees) % 360) + 360) % 360;
+    if (along > sweep) continue;
+    const isMajor = index % 10 === 0;
+    const inner = polar(isMajor ? 248 : 262, degrees);
+    const outer = polar(BEZEL_RADIUS, degrees);
+    (isMajor ? major : minor).push(
+      `M${inner.x.toFixed(1)} ${inner.y.toFixed(1)}L${outer.x.toFixed(1)} ${outer.y.toFixed(1)}`,
+    );
+  }
+  return [minor.join("") || "M0 0", major.join("") || "M0 0"];
+}
+
+/** Spokes from the hub's rim out to the node ring, one per angle. */
+function spokePath(angles: number[], hubRadius: number): string {
+  return (
+    angles
+      .map((degrees) => {
+        const inner = polar(hubRadius + 10, degrees);
+        const outer = polar(NODE_RADIUS, degrees);
+        return `M${inner.x.toFixed(1)} ${inner.y.toFixed(1)}L${outer.x.toFixed(1)} ${outer.y.toFixed(1)}`;
+      })
+      .join("") || "M0 0"
+  );
+}
+
+/** Where a plain card's three nodes sit: the triangle of the guides' dial. */
+const QUIET_NODE_ANGLES = [150, 270, 30];
+
 /** Clockwise arc on the bezel (screen angles: 90 is down, 180 left, 270 up). */
 function arcPath(fromDegrees: number, sweep: number): string {
   const clamped = clampSweep(sweep);
@@ -270,10 +314,14 @@ function wrappedLines(words: string[], size: number): number {
   return lines;
 }
 
-/** The largest display size (short titles get bigger) that keeps two lines. */
-function titleSize(words: string[], variant: SocialImageVariant): number {
+/**
+ * The largest display size (short titles get bigger) that keeps two lines.
+ * A stats row is the tallest footer, so a card with one is capped lower.
+ */
+function titleSize(words: string[], variant: SocialImageVariant, hasStats: boolean): number {
   const characters = words.join(" ").length;
   let size = characters <= 12 ? 118 : characters <= 18 ? 106 : characters <= 26 ? 94 : 84;
+  if (hasStats) size = Math.min(size, 90);
   while (size > 56 && wrappedLines(words, size) > 2) size -= 4;
   return variant === "twitter" ? Math.round(size * 0.95) : size;
 }
@@ -286,10 +334,30 @@ function hubFontSize(hub: string, numeric: boolean): number {
 // -----------------------------------------------------------------------------
 // Pieces
 // -----------------------------------------------------------------------------
-function dialSvg(palette: Palette, top: number, arcFrom: number, arcSweep: number, hasHub: boolean) {
-  const arc = arcPath(arcFrom, arcSweep);
-  const end = polar(BEZEL_RADIUS, arcFrom + clampSweep(arcSweep));
+/**
+ * The dial. A free-running arc is a momentum trail: it fades in from its tail
+ * and lights the bezel ticks it has swept. A wizard arc is a progress gauge
+ * from six o'clock, solid along its length. Spokes join the hub to the nodes.
+ */
+function dialSvg(
+  palette: Palette,
+  top: number,
+  arc: { from: number; sweep: number; trail: boolean },
+  hasHub: boolean,
+  spokeAngles: number[],
+) {
+  const sweep = clampSweep(arc.sweep);
+  const path = arcPath(arc.from, sweep);
+  const tail = polar(BEZEL_RADIUS, arc.from);
+  const end = polar(BEZEL_RADIUS, arc.from + sweep);
   const hubRadius = hasHub ? 92 : 64;
+  const [litMinor, litMajor] = litTickPaths(arc.from, sweep);
+  // A trail's gradient runs from its tail to its head; a gauge's sweeps the
+  // whole dial diagonally so a long arc still shows all three stops.
+  const gradient = arc.trail
+    ? { x1: tail.x.toFixed(1), y1: tail.y.toFixed(1), x2: end.x.toFixed(1), y2: end.y.toFixed(1) }
+    : { x1: "0", y1: "600", x2: "600", y2: "0" };
+  const tailOpacity = arc.trail ? "0" : "1";
   return (
     <svg
       width={DIAL_SIZE}
@@ -299,10 +367,15 @@ function dialSvg(palette: Palette, top: number, arcFrom: number, arcSweep: numbe
       style={{ display: "flex", position: "absolute", left: DIAL_X - DIAL_HALF, top }}
     >
       <defs>
-        <linearGradient id="af-arc" x1="0" y1="600" x2="600" y2="0" gradientUnits="userSpaceOnUse">
-          <stop offset="0" stopColor={palette.arc[0]} />
+        {/* A trail burns brightest at its head, in the accent of the head dot. */}
+        <linearGradient id="af-arc" {...gradient} gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor={palette.arc[0]} stopOpacity={tailOpacity} />
           <stop offset="0.5" stopColor={palette.arc[1]} />
-          <stop offset="1" stopColor={palette.arc[2]} />
+          <stop offset="1" stopColor={arc.trail ? palette.ink : palette.arc[2]} />
+        </linearGradient>
+        <linearGradient id="af-arc-glow" {...gradient} gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor={palette.accent} stopOpacity={arc.trail ? "0" : "0.16"} />
+          <stop offset="1" stopColor={palette.accent} stopOpacity={arc.trail ? "0.24" : "0.16"} />
         </linearGradient>
         <radialGradient id="af-glow" cx="300" cy="300" r="300" gradientUnits="userSpaceOnUse">
           <stop offset="0" stopColor={palette.accent} stopOpacity="0.2" />
@@ -314,8 +387,11 @@ function dialSvg(palette: Palette, top: number, arcFrom: number, arcSweep: numbe
       <circle cx="300" cy="300" r="297" stroke="#FFFFFF" strokeOpacity="0.07" strokeWidth="1" />
       <path d={MINOR_TICKS} stroke="#FFFFFF" strokeOpacity="0.13" strokeWidth="1.5" />
       <path d={MAJOR_TICKS} stroke="#FFFFFF" strokeOpacity="0.32" strokeWidth="2" />
+      <path d={litMinor} stroke={palette.accent} strokeOpacity="0.5" strokeWidth="1.5" />
+      <path d={litMajor} stroke={palette.ink} strokeOpacity="0.9" strokeWidth="2" />
       <circle cx="300" cy="300" r={NODE_RADIUS} stroke="#FFFFFF" strokeOpacity="0.09" strokeWidth="1" />
       <circle cx="300" cy="300" r="146" stroke="#FFFFFF" strokeOpacity="0.06" strokeWidth="1" />
+      <path d={spokePath(spokeAngles, hubRadius)} stroke="#FFFFFF" strokeOpacity="0.1" strokeWidth="1" />
       <circle
         cx="300"
         cy="300"
@@ -325,10 +401,19 @@ function dialSvg(palette: Palette, top: number, arcFrom: number, arcSweep: numbe
         strokeOpacity="0.14"
         strokeWidth="1"
       />
-      {/* An empty hub keeps a single pivot dot (r=0 draws nothing). */}
-      <circle cx="300" cy="300" r={hasHub ? 0 : 5} fill={palette.accent} />
-      <path d={arc} stroke={palette.accent} strokeOpacity="0.16" strokeWidth="18" strokeLinecap="round" />
-      <path d={arc} stroke="url(#af-arc)" strokeWidth="4" strokeLinecap="round" />
+      {/* An empty hub shows the axle: an accent ring round the pivot (r=0 draws nothing). */}
+      <circle
+        cx="300"
+        cy="300"
+        r={hasHub ? 0 : 24}
+        fill="#080A10"
+        stroke={palette.accent}
+        strokeOpacity="0.6"
+        strokeWidth="1.5"
+      />
+      <circle cx="300" cy="300" r={hasHub ? 0 : 6} fill={palette.accent} />
+      <path d={path} stroke="url(#af-arc-glow)" strokeWidth="18" strokeLinecap="round" />
+      <path d={path} stroke="url(#af-arc)" strokeWidth="4" strokeLinecap="round" />
       <circle cx={end.x.toFixed(1)} cy={end.y.toFixed(1)} r="17" fill={palette.accent} fillOpacity="0.2" />
       <circle cx={end.x.toFixed(1)} cy={end.y.toFixed(1)} r="7.5" fill={palette.accent} />
     </svg>
@@ -363,7 +448,7 @@ function brandLockup(palette: Palette) {
 function titleBlock(data: SocialImageData, palette: Palette, variant: SocialImageVariant) {
   const plain = data.title.split(/\s+/).filter(Boolean);
   const accented = (data.accent ?? "").split(/\s+/).filter(Boolean);
-  const size = titleSize([...plain, ...accented], variant);
+  const size = titleSize([...plain, ...accented], variant, (data.stats ?? []).length > 0);
   const space = Math.round(size * 0.22);
   const words = [
     ...plain.map((text) => ({ text, accent: false })),
@@ -554,14 +639,17 @@ export async function renderSocialImage(
   const twitter = variant === "twitter";
 
   const step = data.step;
-  const arcFrom = step ? 90 : 198;
-  const arcSweep = step ? (360 * Math.min(step.current, step.total)) / Math.max(1, step.total) : 68;
+  const arc = step
+    ? { from: 90, sweep: (360 * Math.min(step.current, step.total)) / Math.max(1, step.total), trail: false }
+    : { from: 164, sweep: 102, trail: true };
 
   const hub = data.hub ? data.hub.trim() : "";
   const numericHub = /^\d+$/.test(hub);
   const nodes = (data.nodes ?? []).slice(0, 6);
-  const nodeSpots = nodeAngles(nodes.length).map((degrees) => polar(NODE_RADIUS, degrees, DIAL_X, centerY));
-  const quietDots = nodes.length === 0 ? [150, 214, 266].map((degrees) => polar(NODE_RADIUS, degrees, DIAL_X, centerY)) : [];
+  const chipAngles = nodeAngles(nodes.length);
+  const nodeSpots = chipAngles.map((degrees) => polar(NODE_RADIUS, degrees, DIAL_X, centerY));
+  const quietAngles = nodes.length === 0 ? QUIET_NODE_ANGLES : [];
+  const quietDots = quietAngles.map((degrees) => polar(NODE_RADIUS, degrees, DIAL_X, centerY));
 
   const extras = extrasBlock(data, palette);
   // The copy is budgeted to two lines (see social-image-routes.test.ts); the
@@ -606,7 +694,7 @@ export async function renderSocialImage(
         }}
       />
 
-      {dialSvg(palette, centerY - DIAL_HALF, arcFrom, arcSweep, hub.length > 0)}
+      {dialSvg(palette, centerY - DIAL_HALF, arc, hub.length > 0, nodes.length > 0 ? chipAngles : quietAngles)}
 
       {quietDots.map((spot, index) => (
         <div

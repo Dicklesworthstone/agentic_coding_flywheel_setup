@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { TOOLS } from "../app/learn/tools/[tool]/tool-data";
 import cloudSocialImages from "./cloud-social-images.json";
 import { LESSONS } from "./lessons";
-import { renderSocialImage, type SocialImageData } from "./social-image";
+import { renderSocialImage, SOCIAL_CARD_DESIGN, type SocialImageData } from "./social-image";
 import {
   getStaticRouteSocialData,
   lessonSocialData,
@@ -52,6 +52,17 @@ describe("share card routes", () => {
       expect(files).toContain(join(base, "opengraph-image.tsx"));
       expect(files).toContain(join(base, "twitter-image.tsx"));
     }
+  });
+
+  test("every route file carries the current card design, so its URL is re-versioned", () => {
+    // Next versions a card's URL by its route file's content only (see
+    // SOCIAL_CARD_DESIGN); a file left on an old design keeps serving the
+    // cached old card on X, Slack and LinkedIn.
+    const stale = files.filter(
+      (file) => !readFileSync(file, "utf-8").includes(`// Share card design ${SOCIAL_CARD_DESIGN}: `),
+    );
+    expect(stale.map((file) => relative(APP_DIR, file))).toEqual([]);
+    expect(files.length).toBeGreaterThan(50);
   });
 
   test("static image routes and the copy table cover each other exactly", () => {

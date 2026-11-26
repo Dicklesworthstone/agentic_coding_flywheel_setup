@@ -1,3 +1,9 @@
+import {
+  CORE_FLYWHEEL_EXHIBIT_COUNT,
+  CORE_FLYWHEEL_OUTLINE,
+  CORE_FLYWHEEL_PROMPT_COUNT,
+  guidePartCount,
+} from "@/lib/guide-outlines";
 import type { SocialImageData } from "@/lib/social-image";
 
 // Share-card copy for every static route, plus the builders for lesson and
@@ -49,7 +55,12 @@ const STATIC_ROUTE_SOCIAL_DATA: Record<string, SocialImageData> = {
     path: "/core-flywheel",
     theme: "guide",
     nodes: ["Agent Mail", "br", "bv"],
-    tags: ["One machine", "Three tools", "One loop"],
+    // The landing cover's figures (lib/guide-outlines.ts, pinned to the page by test).
+    stats: [
+      { value: String(guidePartCount(CORE_FLYWHEEL_OUTLINE)), label: "Parts" },
+      { value: String(CORE_FLYWHEEL_EXHIBIT_COUNT), label: "Visualizations" },
+      { value: String(CORE_FLYWHEEL_PROMPT_COUNT), label: "Copy-ready prompts" },
+    ],
   },
   "/complete-guide": {
     badge: "The complete guide",
