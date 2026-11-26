@@ -834,17 +834,19 @@ _file_sha256() {
     local path="$1"
     local bin=""
     local out=""
+    local digest=""
 
     bin="$(_system_binary_path sha256sum 2>/dev/null || true)"
     if [[ -n "$bin" ]]; then
-        out="$("$bin" "$path" 2>/dev/null || true)"
+        out="$("$bin" "$path" 2>/dev/null)" || return 1
     else
         bin="$(_system_binary_path shasum 2>/dev/null || true)"
         [[ -n "$bin" ]] || return 1
-        out="$("$bin" -a 256 "$path" 2>/dev/null || true)"
+        out="$("$bin" -a 256 "$path" 2>/dev/null)" || return 1
     fi
-    [[ -n "$out" ]] || return 1
-    printf '%s\n' "${out%% *}"
+    digest="${out%% *}"
+    [[ "$digest" =~ ^[0-9a-fA-F]{64}$ ]] || return 1
+    printf '%s\n' "$digest"
 }
 
 _short_sha() {
@@ -945,7 +947,7 @@ _service_process_pid() {
 #   stale        running a replaced/deleted executable with different bytes
 #   not-running  no live process
 #   unknown      could not compare (no procfs, unreadable link, no installed
-#                binary resolved)
+#                binary resolved, or unreadable content)
 _service_binary_drift() {
     local service="$1"
     local pid="" exe="" installed="" running_id="" installed_id=""
@@ -999,7 +1001,13 @@ _service_binary_drift() {
     # after unlink.
     running_sha="$(_file_sha256 "/proc/$pid/exe" 2>/dev/null || true)"
     installed_sha="$(_file_sha256 "$installed" 2>/dev/null || true)"
-    if [[ -n "$running_sha" && "$running_sha" == "$installed_sha" ]]; then
+    # Different identities do not prove different bytes when either read fails.
+    if [[ -z "$running_sha" || -z "$installed_sha" ]]; then
+        printf '%s|%s|%s\n' "$service" "unknown" \
+            "cannot compare content for pid $pid ($exe) with $installed: SHA-256 unavailable"
+        return 0
+    fi
+    if [[ "$running_sha" == "$installed_sha" ]]; then
         $deleted && exe="deleted $exe"
         printf '%s|%s|%s\n' "$service" "ok" \
             "pid $pid runs identical content (sha256 ${running_sha:0:12}) via $exe"
@@ -1016,31 +1024,45 @@ _service_binary_drift() {
         "pid $pid runs $exe (sha256 $(_short_sha "/proc/$pid/exe")); installed: $installed (sha256 $(_short_sha "$installed"))"
 }
 
-# Warn loudly about every managed service running something other than the
-# installed binary. Returns 0 when everything is current, 1 when any service
-# is running a stale executable.
+# Warn about stale services and comparisons that could not be completed.
+# Returns 0 when every running selected service is current, 1 for drift or
+# an inconclusive comparison. Unknown results never recommend a restart.
 _report_binary_drift() {
     local service="" line="" state="" detail=""
     local drift_found=false
+    local comparison_unknown=false
 
     for service in "${_SELECTED_SERVICES[@]}"; do
         line="$(_service_binary_drift "$service")"
         state="${line#*|}"
         detail="${state#*|}"
         state="${state%%|*}"
-        [[ "$state" == "stale" ]] || continue
-        if ! $drift_found; then
-            printf '\n' >&2
-            _warn "Running-binary drift: an updated tool is installed but the live service still runs the old executable."
-            drift_found=true
-        fi
-        _warn "  $service: $detail"
-        _warn "  Restart just this service: acfs services restart $service"
+        case "$state" in
+            stale)
+                if ! $drift_found; then
+                    printf '\n' >&2
+                    _warn "Running-binary drift: an updated tool is installed but the live service still runs the old executable."
+                    drift_found=true
+                fi
+                _warn "  $service: $detail"
+                _warn "  Restart just this service: acfs services restart $service"
+                ;;
+            unknown)
+                if ! $comparison_unknown; then
+                    printf '\n' >&2
+                    _warn "Running-binary comparison incomplete: some services could not be checked."
+                    comparison_unknown=true
+                fi
+                _warn "  $service: $detail"
+                ;;
+        esac
     done
 
     if $drift_found; then
         _warn "A restart interrupts that service; Agent Mail stays up unless you restart it too."
         _warn "Pick a quiescent moment: in-flight agent work in that service is cut off."
+    fi
+    if $drift_found || $comparison_unknown; then
         printf '\n' >&2
         return 1
     fi

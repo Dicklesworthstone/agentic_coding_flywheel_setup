@@ -17628,6 +17628,12 @@ STUBS
         _proc_fs_available() { return 0; }
         _service_process_pid() { [[ "$1" == "cass" ]] && printf "4242\n"; }
         _proc_exe_path() { _EXE_DELETED=true; _EXE_PATH="/home/u/.local/bin/cass"; return 0; }
+        _file_sha256() {
+            case "$1" in
+                /proc/*) printf "%064d\n" 1 ;;
+                *)       printf "%064d\n" 2 ;;
+            esac
+        }
         _short_sha() { printf "abc123abc123\n"; }
         _service_binary_drift cass
     ' _ "$services"
@@ -17649,6 +17655,12 @@ STUBS
         _service_process_pid() { printf "77\n"; }
         _proc_exe_path() { _EXE_DELETED=false; _EXE_PATH="/home/u/.local/bin/cass"; return 0; }
         _file_identity() { case "$1" in /proc/*) printf "1:100\n" ;; *) printf "1:200\n" ;; esac; }
+        _file_sha256() {
+            case "$1" in
+                /proc/*) printf "%064d\n" 1 ;;
+                *)       printf "%064d\n" 2 ;;
+            esac
+        }
         _short_sha() { printf "deadbeefcafe\n"; }
         _service_binary_drift cass
     ' _ "$services"
@@ -17715,6 +17727,86 @@ STUBS
     assert_output --partial "older-cli deleted=true: agent-mail|stale|pid 1347 runs a deleted executable ($dir/older-cli)"
 }
 
+@test "acfs services hashes reject failed commands and malformed digests" {
+    local services="$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+    local hash_command="$BATS_TEST_TMPDIR/hash-command"
+    local digest="" tool="" result=""
+    printf -v digest '%064d' 1
+
+    cat > "$hash_command" <<'EOF'
+#!/usr/bin/env bash
+case "$ACFS_TEST_HASH_RESULT" in
+    valid)         printf '%064d  fixture\n' 1 ;;
+    empty-failure) exit 1 ;;
+    valid-failure) printf '%064d  fixture\n' 1; exit 1 ;;
+    malformed)     printf '%s  fixture\n' 'not-a-digest' ;;
+esac
+EOF
+    chmod +x "$hash_command"
+
+    for tool in sha256sum shasum; do
+        for result in valid empty-failure valid-failure malformed; do
+            run env ACFS_TEST_HASH_RESULT="$result" bash -c '
+                source "$1"
+                set +e
+                HASH_COMMAND="$2"
+                HASH_TOOL="$3"
+                _system_binary_path() {
+                    [[ "$1" == "$HASH_TOOL" ]] || return 1
+                    printf "%s\n" "$HASH_COMMAND"
+                }
+                _file_sha256 /fixture
+            ' _ "$services" "$hash_command" "$tool"
+
+            if [[ "$result" == valid ]]; then
+                assert_success
+                assert_output "$digest"
+            else
+                assert_failure
+                assert_output ""
+            fi
+        done
+    done
+}
+
+@test "acfs services drift reports unknown when either content hash is unavailable" {
+    local services="$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+    local missing="" gone=""
+
+    run bash -c '
+        source "$1"
+        set +e
+        _AM_BIN="/home/u/.local/bin/am"
+        _proc_fs_available() { return 0; }
+        _service_process_pid() { printf "1347\n"; }
+        _proc_exe_path() { _EXE_DELETED=$gone; _EXE_PATH="/home/u/old-am"; return 0; }
+        _file_identity() { case "$1" in /proc/*) printf "1:100\n" ;; *) printf "1:200\n" ;; esac; }
+        _file_sha256() {
+            case "$1" in
+                /proc/*) [[ "$missing" != running && "$missing" != both ]] || return 1 ;;
+                *)       [[ "$missing" != installed && "$missing" != both ]] || return 1 ;;
+            esac
+            printf "%064d\n" 1
+        }
+        for missing in running installed both; do
+            for gone in false true; do
+                printf "missing=%s deleted=%s: " "$missing" "$gone"
+                _service_binary_drift agent-mail
+            done
+        done
+    ' _ "$services"
+
+    assert_success
+    [ "${#lines[@]}" -eq 6 ]
+    for missing in running installed both; do
+        for gone in false true; do
+            assert_output --partial "missing=$missing deleted=$gone: agent-mail|unknown|cannot compare content"
+        done
+    done
+    refute_output --partial "|stale|"
+    refute_output --partial "|ok|"
+}
+
 @test "acfs services drift reports not-running and unknown states without procfs (#381)" {
     local services="$PROJECT_ROOT/scripts/lib/acfs-services.sh"
 
@@ -17774,10 +17866,105 @@ STUBS
     assert_output --partial "RC=0"
 }
 
+@test "acfs services human drift does not claim unknown comparisons are current" {
+    local services="$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+    local scenario=""
+
+    for scenario in unknown-only mixed stale; do
+        run bash -c '
+            source "$1"
+            set +e
+            SCENARIO="$2"
+            _load_service_selection() {
+                _SERVICE_SELECTION_MODE=scoped
+                _SELECTED_SERVICES=(agent-mail)
+                if [[ "$SCENARIO" != unknown-only ]]; then
+                    _SELECTED_SERVICES+=(cm cass)
+                fi
+                return 0
+            }
+            _initialize_bins() { return 0; }
+            _service_binary_drift() {
+                case "$1" in
+                    agent-mail) printf "agent-mail|unknown|cannot read executable content\n" ;;
+                    cm) printf "cm|ok|pid 7 runs the installed binary\n" ;;
+                    cass)
+                        if [[ "$SCENARIO" == stale ]]; then
+                            printf "cass|stale|pid 42 runs different content\n"
+                        else
+                            printf "cass|not-running|no live process\n"
+                        fi
+                        ;;
+                esac
+            }
+            cmd_drift
+        ' _ "$services" "$scenario"
+
+        assert_failure
+        assert_output --partial "Running-binary comparison incomplete"
+        assert_output --partial "agent-mail: cannot read executable content"
+        refute_output --partial "Every running ACFS-managed service is executing its installed binary."
+        refute_output --partial "acfs services restart agent-mail"
+        refute_output --partial "acfs services restart cm"
+        if [[ "$scenario" == stale ]]; then
+            assert_output --partial "Running-binary drift"
+            assert_output --partial "cass: pid 42 runs different content"
+            assert_output --partial "acfs services restart cass"
+        else
+            refute_output --partial "acfs services restart"
+            refute_output --partial "Running-binary drift:"
+        fi
+    done
+}
+
+@test "acfs services robot drift preserves unknown and stale exit semantics" {
+    local services="$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+    local scenario=""
+
+    for scenario in unknown stale; do
+        run bash -c '
+            source "$1"
+            set +e
+            SCENARIO="$2"
+            _load_service_selection() {
+                _SERVICE_SELECTION_MODE=scoped
+                _SELECTED_SERVICES=(agent-mail cm cass)
+            }
+            _initialize_bins() { return 0; }
+            _service_binary_drift() {
+                case "$1" in
+                    agent-mail) printf "agent-mail|unknown|cannot read executable content\n" ;;
+                    cm) printf "cm|ok|pid 7 runs the installed binary\n" ;;
+                    cass)
+                        if [[ "$SCENARIO" == stale ]]; then
+                            printf "cass|stale|pid 42 runs different content\n"
+                        else
+                            printf "cass|not-running|no live process\n"
+                        fi
+                        ;;
+                esac
+            }
+            cmd_drift --robot
+        ' _ "$services" "$scenario"
+
+        [ "${#lines[@]}" -eq 3 ]
+        assert_output --partial "agent-mail|unknown|cannot read executable content"
+        assert_output --partial "cm|ok|pid 7 runs the installed binary"
+        refute_output --partial "acfs services restart"
+        if [[ "$scenario" == stale ]]; then
+            [ "$status" -eq 1 ]
+            assert_output --partial "cass|stale|pid 42 runs different content"
+        else
+            assert_success
+            assert_output --partial "cass|not-running|no live process"
+        fi
+    done
+}
+
 @test "acfs doctor runs the managed-service drift check (#381)" {
     local doctor="$PROJECT_ROOT/scripts/lib/doctor.sh"
 
-    run grep -F 'bash "$service_manager" drift --robot' "$doctor"
+    run grep -F '"$bash_bin" --noprofile --norc -p "$service_manager" drift --robot' "$doctor"
     assert_success
 
     run grep -F 'check_service_binary_drift' "$doctor"
