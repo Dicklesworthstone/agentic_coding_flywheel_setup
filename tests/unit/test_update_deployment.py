@@ -1648,15 +1648,28 @@ printf 'MINISIGN:%s\n' "$UPDATE_MINISIGN_STATUS"
         self.assertIn("launcher:vercel", self.events())
         self.assertNotIn("launchers:agy", self.events())
 
+    # update_native_agent_and_verify (e3b832f2) requires the updated command to
+    # exist, be executable and answer --version. The smoke probe runs through
+    # the target runner, which this dispatch fixture stubs, so stub the probe
+    # too; the real existence, mode and non-empty version checks still apply.
+    NATIVE_SMOKE = "update_run_smoke_probe() { printf '%s 1.0-fixture\\n' \"${1##*/}\"; }\n"
+
+    def native_agents(self, *names):
+        for name in names:
+            path = self.bin / name
+            path.write_text("#!/bin/sh\nexit 0\n")
+            path.chmod(0o755)
+
     def test_antigravity_launcher_failure_is_counted_and_other_selected_agents_continue(self):
         self.selection("agents.antigravity", "agents.omp")
+        self.native_agents("agy-real", "omp")
         for force, present, first_event in (
             ("false", "agy-real,omp", f"native:{self.bin}/agy-real update"),
             ("true", "omp", "installer:antigravity"),
         ):
             with self.subTest(force=force):
                 self.events_file.write_text("")
-                result = self.shell(r'''
+                result = self.shell(self.NATIVE_SMOKE + r'''
 update_install_agy_locked_launchers() { fixture_record "launchers:agy"; return 47; }
 update_agents
 printf 'COUNTS:%s:%s\n' "$SUCCESS_COUNT" "$FAIL_COUNT"
@@ -1670,7 +1683,8 @@ printf 'COUNTS:%s:%s\n' "$SUCCESS_COUNT" "$FAIL_COUNT"
 
     def test_antigravity_launcher_failure_honors_abort_before_later_agents(self):
         self.selection("agents.antigravity", "agents.omp")
-        self.shell(r'''
+        self.native_agents("agy-real", "omp")
+        self.shell(self.NATIVE_SMOKE + r'''
 update_install_agy_locked_launchers() { fixture_record "launchers:agy"; return 47; }
 update_agents
 ''', TEST_PRESENT="agy-real,omp", TEST_ABORT="true", code=1)
