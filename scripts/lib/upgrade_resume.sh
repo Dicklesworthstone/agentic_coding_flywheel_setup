@@ -481,11 +481,14 @@ retarget_resume_checkpoint() {
                 .ubuntu_upgrade as $previous |
                 if (($previous.target_migrations // []) | type) != "array" then
                     error("invalid target migration history")
+                elif $previous.install_handoff != null and $previous.install_handoff.status != "awaiting" then
+                    error("installer handoff already attempted; reconcile it before requesting a separate upgrade")
                 else
                     .ubuntu_upgrade.target_migrations = (($previous.target_migrations // []) + [{
                         from: $previous.target_version, to: "26.04", at: $now,
                         live_version: $current, previous: ($previous | del(.target_migrations))
                     }]) |
+                    del(.ubuntu_upgrade.install_handoff) |
                     .ubuntu_upgrade.target_version = "26.04" |
                     .ubuntu_upgrade.upgrade_path = $path |
                     .ubuntu_upgrade.completed_upgrades = [] |

@@ -541,6 +541,8 @@ check_retarget() {
         success|two-hops|eol-source|at-new-target|already-retargeted) EXPECTED_STATUS=0 ;;
     esac
     case "$scenario" in
+        awaiting-handoff) OLD_TARGET=24.04; EXPECTED_STATUS=0 ;;
+        completed-handoff) OLD_TARGET=24.04 ;;
         two-hops) LIVE_VERSION=22.04; PLAN=$'24.04\n26.04' ;;
         eol-source) LIVE_VERSION=25.10 ;;
         at-new-target) LIVE_VERSION=26.04; PLAN='' ;;
@@ -560,10 +562,22 @@ check_retarget() {
         jq '.ubuntu_upgrade.target_migrations = {}' "$ACFS_STATE_FILE" > "$WORK/malformed.json"
         mv "$WORK/malformed.json" "$ACFS_STATE_FILE"
     fi
+    if [[ "$scenario" == awaiting-handoff || "$scenario" == completed-handoff ]]; then
+        jq --arg status "${scenario%-handoff}" '
+            .ubuntu_upgrade.current_stage = "completed" |
+            .ubuntu_upgrade.install_handoff = {status: $status,
+                attempt: (if $status == "awaiting" then "" else "install-attempt.0123456789" end)}
+        ' "$ACFS_STATE_FILE" > "$WORK/handoff.json"
+        mv "$WORK/handoff.json" "$ACFS_STATE_FILE"
+    fi
     INITIAL_STATE=$(cat "$ACFS_STATE_FILE")
     printf 'CONTINUE_INSTALL_ARGS=(--yes --mode safe --only cloud.wrangler --skip-ubuntu-upgrade)\n' > "$ACFS_CONTINUE_CONTEXT_FILE"
     printf '#!/bin/bash\nINSTALL_ARGS=(--yes --mode safe --only cloud.wrangler --skip-ubuntu-upgrade)\nexit 0\n' > "$ACFS_RESUME_DIR/continue_install.sh"
     case "$scenario" in
+        awaiting-handoff|completed-handoff)
+            printf 'CONTINUE_REQUIRES_TTY=true\nCONTINUE_INSTALL_ARGS=(--mode safe --only cloud.wrangler --skip-ubuntu-upgrade)\n' > "$ACFS_CONTINUE_CONTEXT_FILE"
+            printf '#!/bin/bash\nINSTALL_ARGS=(--mode safe --only cloud.wrangler --skip-ubuntu-upgrade)\nexit 0\n' > "$ACFS_RESUME_DIR/continue_install.sh"
+            ;;
         missing-skip) printf 'CONTINUE_INSTALL_ARGS=(--yes --mode safe)\n' > "$ACFS_CONTINUE_CONTEXT_FILE" ;;
         argv-mismatch) printf 'CONTINUE_INSTALL_ARGS=(--yes --mode vibe --skip-ubuntu-upgrade)\n' > "$ACFS_CONTINUE_CONTEXT_FILE" ;;
         duplicate-argv) printf 'INSTALL_ARGS=(--skip-ubuntu-upgrade)\n' >> "$ACFS_RESUME_DIR/continue_install.sh" ;;
@@ -606,6 +620,7 @@ check_retarget() {
             .ubuntu_upgrade.needs_reboot == false and
             .ubuntu_upgrade.resume_after_reboot == false and
             .ubuntu_upgrade.current_stage == "initializing" and
+            .ubuntu_upgrade.install_handoff == null and
             .ubuntu_upgrade.target_migrations[0].previous == $original.ubuntu_upgrade and
             .ubuntu_upgrade.target_migrations[0].live_version == $live
         ' "$ACFS_STATE_FILE" >/dev/null
@@ -629,7 +644,7 @@ check_retarget() {
 if [[ "$EUID" == 0 ]]; then
     # Ownership is part of the production recovery boundary. Exercise it with
     # real root-owned fixtures rather than replacing the root check in tests.
-    for scenario in success two-hops eol-source at-new-target already-retargeted \
+    for scenario in success two-hops eol-source at-new-target already-retargeted awaiting-handoff completed-handoff \
         obsolete-source future-source future-target busy-upgrader busy-state changed-target changed-state \
         dirty-packages pending-reboot active-continuation activating-continuation systemd-unavailable \
         unresolved-continuation no-path write-failure malformed-history missing-skip argv-mismatch \
@@ -638,7 +653,7 @@ if [[ "$EUID" == 0 ]]; then
         run "explicit checkpoint recovery: $scenario" check_retarget "$scenario"
     done
 else
-    printf 'SKIP 34 checkpoint recovery filesystem cases: run as root to exercise ownership checks\n'
+    printf 'SKIP 36 checkpoint recovery filesystem cases: run as root to exercise ownership checks\n'
 fi
 printf '\n%s passed; %s failed. Fixtures retained at %s\n' "$PASS" "$FAIL" "$SUITE"
 [[ "$FAIL" == 0 ]]
