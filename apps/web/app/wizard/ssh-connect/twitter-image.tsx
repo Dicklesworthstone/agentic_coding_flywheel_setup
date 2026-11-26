@@ -3,7 +3,6 @@ import { getStaticRouteSocialData, socialImageAlt } from "@/lib/social-image-rou
 
 const data = getStaticRouteSocialData("/wizard/ssh-connect");
 
-export const runtime = "edge";
 export const alt = socialImageAlt(data);
 export const size = { width: 1200, height: 600 };
 export const contentType = "image/png";

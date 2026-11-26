@@ -6,7 +6,6 @@ import { TOOLS } from "./tool-data";
 
 // The card shows the tool's example command only when it is one short
 // invocation; pipelines and long examples fall back to tags (toolSocialData).
-export const runtime = "edge";
 export const alt =
   "Agent Flywheel tool deep dive card: the tool's name, what it does, and an example command";
 export const size = { width: 1200, height: 600 };

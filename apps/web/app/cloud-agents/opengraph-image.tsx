@@ -4,7 +4,6 @@ import { getStaticRouteSocialData, socialImageAlt } from "@/lib/social-image-rou
 // Served from the pre-rendered PNGs in lib/cloud-social-images.json.
 const data = getStaticRouteSocialData("/cloud-agents");
 
-export const runtime = "edge";
 export const alt = socialImageAlt(data);
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";

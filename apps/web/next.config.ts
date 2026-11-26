@@ -43,6 +43,9 @@ const nextConfig: NextConfig = {
   // tsconfig so Next never writes scope-specific includes into tsconfig.json.
   ...(scopedDistDir ? { distDir: scopedDistDir } : {}),
   ...(scopedTsconfigPath ? { typescript: { tsconfigPath: scopedTsconfigPath } } : {}),
+  // `next dev` otherwise writes an untracked apps/web/AGENTS.md whenever an
+  // agent runs it; the repo-root AGENTS.md is the one agents should follow.
+  agentRules: false,
   turbopack: {
     // Bun workspaces install deps at the workspace root; Turbopack needs this
     // to resolve `next` and other packages when multiple lockfiles exist.

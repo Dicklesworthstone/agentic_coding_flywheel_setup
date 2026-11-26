@@ -1,3 +1,6 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+
 import { ImageResponse } from "next/og";
 
 // One share-card system for every route: a near-black editorial canvas, the
@@ -146,30 +149,28 @@ const PALETTES: Record<SocialImageTheme, Palette> = {
 };
 
 // -----------------------------------------------------------------------------
-// Fonts: static TTFs bundled with the route (Satori cannot read WOFF2).
+// Fonts: static TTFs in app/fonts/og (Satori cannot read WOFF2). The image
+// routes run on the Node.js runtime, so the fonts are read from disk relative
+// to the project root, as the Next.js docs recommend; each path is a literal so
+// output file tracing ships the files with any route rendered on demand.
+// process.cwd() is apps/web under `next` and under `bun test` from apps/web.
 // -----------------------------------------------------------------------------
 type OgFont = {
   name: string;
-  data: ArrayBuffer;
+  data: Buffer;
   weight: 400 | 500 | 600;
   style: "normal" | "italic";
 };
-
-async function readFont(url: URL): Promise<ArrayBuffer> {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`[social-image] font ${url.pathname}: HTTP ${response.status}`);
-  return response.arrayBuffer();
-}
 
 let fontCache: Promise<OgFont[]> | undefined;
 
 function loadFonts(): Promise<OgFont[]> {
   fontCache ??= Promise.all([
-    readFont(new URL("../app/fonts/og/InstrumentSerif-Regular.ttf", import.meta.url)),
-    readFont(new URL("../app/fonts/og/InstrumentSerif-Italic.ttf", import.meta.url)),
-    readFont(new URL("../app/fonts/og/InstrumentSans-Regular.ttf", import.meta.url)),
-    readFont(new URL("../app/fonts/og/InstrumentSans-SemiBold.ttf", import.meta.url)),
-    readFont(new URL("../app/fonts/og/JetBrainsMono-Medium.ttf", import.meta.url)),
+    readFile(join(process.cwd(), "app/fonts/og/InstrumentSerif-Regular.ttf")),
+    readFile(join(process.cwd(), "app/fonts/og/InstrumentSerif-Italic.ttf")),
+    readFile(join(process.cwd(), "app/fonts/og/InstrumentSans-Regular.ttf")),
+    readFile(join(process.cwd(), "app/fonts/og/InstrumentSans-SemiBold.ttf")),
+    readFile(join(process.cwd(), "app/fonts/og/JetBrainsMono-Medium.ttf")),
   ]).then(
     ([serif, serifItalic, sans, sansSemiBold, mono]): OgFont[] => [
       { name: "Instrument Serif", data: serif, weight: 400, style: "normal" },

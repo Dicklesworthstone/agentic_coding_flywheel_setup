@@ -3,7 +3,6 @@ import { getLessonBySlug, LESSONS } from "@/lib/lessons";
 import { createSocialImage } from "@/lib/social-image";
 import { lessonSocialData } from "@/lib/social-image-routes";
 
-export const runtime = "edge";
 export const alt =
   "Agent Flywheel learning hub lesson card: the lesson title, what it covers, and how long it takes";
 export const size = { width: 1200, height: 630 };
