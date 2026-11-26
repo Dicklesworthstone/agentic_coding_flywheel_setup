@@ -105,12 +105,23 @@ A changed source, replaced destination or changed launcher requires a new review
 An unrelated existing `acfs-fleet` file or symlink is never overwritten.
 
 Each distinct cohort gets its own immutable-by-convention release directory.
-The active symlink changes only after all files and the final manifest are
-written, synced and verified. The update retains every previous release.
-Interrupted writes retain their partial evidence and leave the old launcher
-usable. An incomplete release is refused, not overwritten or deleted on retry.
-There is no garbage collection, forced repair or destructive rollback command.
-Concurrent cooperating installations use an exclusive kernel directory lock.
+Files are first written into a private `.acfs-fleet-stage-*` directory under the
+installation prefix, outside `releases/`. After every file and the final manifest
+have been synced and verified against the approved source, the complete directory
+is atomically moved into `releases/RUNTIME_ID/` and sealed read-only. The active
+symlink changes only after that verification and publication finish. The update
+retains every previous release.
+
+A disconnect or SIGKILL during staging leaves the old launcher usable and keeps
+the partial directory as private evidence. Rerun the same approved installation:
+it builds a fresh stage without adopting, overwriting or deleting the interrupted
+one. Staging directories do not appear in `acfs-fleet runtimes`. A crash after
+publication but before launcher activation also permits retry: the complete
+release is verified and reused. Changed source, destination identities or launcher
+still require a new approval. Existing incomplete or damaged directories already
+under `releases/` remain refused. There is no garbage collection, forced repair
+or destructive rollback command. Concurrent cooperating installations use an
+exclusive kernel directory lock.
 
 **Keep the runtime ID with the operation's private records, outside its strict
 journal directory.** Fleet preparation approval includes controller-derived
@@ -191,10 +202,11 @@ unprivileged child processes. Controller peers record arguments and perform no
 SSH, provider request, agent launch, or work dispatch. Tests cover installation
 without the checkout, upgrades, retained releases, literal arguments, stdin,
 exit/signals, explicit old-runtime selection, directory locking, damaged/partial
-releases and refusal boundaries. An actual SIGKILL during release publication
-checks that the old active command remains usable and the partial new release is
-retained rather than activated or silently repaired. They do not replace
-full acceptance against installed ACFS hosts and authenticated providers.
+releases and refusal boundaries. Actual SIGKILLs during a first install, during
+an update, and after complete-cohort publication verify that the old active command
+remains usable where present, partial evidence is retained, and the same approved
+plan can be retried successfully. They do not replace full acceptance against
+installed ACFS hosts and authenticated providers.
 
 The observer integration suite also exercises legacy-to-current upgrades,
 capability-aware selection, and the actual installed status controller with its

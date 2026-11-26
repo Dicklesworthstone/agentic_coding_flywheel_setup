@@ -76,6 +76,31 @@ if "--exit" in sys.argv: sys.exit(23)
                 else ("dir", p.stat().st_mode & 0o777) if p.is_dir()
                 else ("file", p.stat().st_mode & 0o777, p.read_bytes()) for p in root.rglob("*")}
 
+    def interrupt_install(self, preview, *, after_publication=False):
+        source = self.checkout / "acfs-fleet.py"
+        completed_manifest = self.prefix / "releases" / preview["plan"]["runtime"] / runtime.MANIFEST
+        hook = f'''original = r.os.fsync
+def crash(fd):
+    original(fd)
+    if Path({str(completed_manifest)!r}).is_file(): os.kill(os.getpid(), signal.SIGKILL)
+r.os.fsync = crash
+''' if after_publication else '''original = r.publish
+def crash(fd, name, raw, mode):
+    original(fd, name, raw, mode)
+    if name == "swarm-fleet-launch.py": os.kill(os.getpid(), signal.SIGKILL)
+r.publish = crash
+'''
+        program = f'''import importlib.util, os, signal
+from pathlib import Path
+spec = importlib.util.spec_from_file_location("r", {str(source)!r})
+r = importlib.util.module_from_spec(spec); spec.loader.exec_module(r)
+{hook}
+r.install(Path({str(self.prefix)!r}), Path({str(self.bin_dir)!r}), {preview['plan_sha256']!r})
+'''
+        killed = subprocess.run([sys.executable, "-I", "-c", program], capture_output=True, text=True,
+                                timeout=10, env=self.env, **self.credentials)
+        self.assertEqual(killed.returncode, -signal.SIGKILL, killed.stderr)
+
     def test_preview_is_repeatable_and_creates_nothing(self):
         before = self.members(self.home)
         first, second = self.preview(), self.preview()
@@ -331,32 +356,63 @@ if "--exit" in sys.argv: sys.exit(23)
         first = self.install()
         (self.checkout / "swarm-fleet-prepare.py").write_text(self.peer + "# update to interrupt\n")
         preview = self.preview()
-        source = self.checkout / "acfs-fleet.py"
-        program = f'''import importlib.util, os, signal
-from pathlib import Path
-spec = importlib.util.spec_from_file_location("r", {str(source)!r})
-r = importlib.util.module_from_spec(spec); spec.loader.exec_module(r)
-original = r.publish
-def crash(fd, name, raw, mode):
-    original(fd, name, raw, mode)
-    if name == "swarm-fleet-launch.py": os.kill(os.getpid(), signal.SIGKILL)
-r.publish = crash
-r.install(Path({str(self.prefix)!r}), Path({str(self.bin_dir)!r}), {preview['plan_sha256']!r})
-'''
-        killed = subprocess.run([sys.executable, "-I", "-c", program], capture_output=True, text=True,
-                                timeout=10, env=self.env, **self.credentials)
-        self.assertEqual(killed.returncode, -signal.SIGKILL, killed.stderr)
+        self.interrupt_install(preview)
         self.assertEqual(os.readlink(self.bin_dir / "acfs-fleet"), first["pinned_launcher"])
-        partial = self.prefix / "releases" / preview["plan"]["runtime"]
+        target = self.prefix / "releases" / preview["plan"]["runtime"]
+        self.assertFalse(target.exists())
+        stages = list(self.prefix.glob(".acfs-fleet-stage-*"))
+        self.assertEqual(len(stages), 1)
+        partial = stages[0]
+        self.assertEqual(partial.stat().st_mode & 0o777, 0o700)
         self.assertTrue((partial / "swarm-fleet-launch.py").exists())
         self.assertFalse((partial / runtime.MANIFEST).exists())
         version = self.run_cli(["version"], installed=True)
         self.assertEqual(version.returncode, 0, version.stderr)
         self.assertEqual(json.loads(version.stdout)["runtime"], first["runtime"])
-        before = self.members(self.home)
+        inventory = self.run_cli(["runtimes"], installed=True)
+        self.assertEqual(inventory.returncode, 0, inventory.stderr)
+        self.assertEqual([row["runtime"] for row in json.loads(inventory.stdout)["runtimes"]],
+                         [first["runtime"]])
+        before = self.members(partial)
+        self.assertEqual(self.preview(), preview)
         retry = self.run_cli([*self.options(), "--apply", "--accept-plan", preview["plan_sha256"]])
-        self.assertEqual(retry.returncode, 2)
-        self.assertEqual(self.members(self.home), before)
+        self.assertEqual(retry.returncode, 0, retry.stderr)
+        self.assertEqual(self.members(partial), before)
+        self.assertEqual(list(self.prefix.glob(".acfs-fleet-stage-*")), stages)
+        self.assertEqual(os.readlink(self.bin_dir / "acfs-fleet"), str(target / "acfs-fleet.py"))
+        for command in runtime.COMMANDS:
+            self.assertEqual(self.run_cli([command, "--help"], installed=True).returncode, 0)
+
+    def test_sigkill_first_install_can_retry_the_same_approval(self):
+        preview = self.preview()
+        self.interrupt_install(preview)
+        self.assertFalse(os.path.lexists(self.bin_dir / "acfs-fleet"))
+        self.assertEqual(list((self.prefix / "releases").iterdir()), [])
+        partial = next(self.prefix.glob(".acfs-fleet-stage-*"))
+        before = self.members(partial)
+        self.assertEqual(self.preview(), preview)
+        retry = self.run_cli([*self.options(), "--apply", "--accept-plan", preview["plan_sha256"]])
+        self.assertEqual(retry.returncode, 0, retry.stderr)
+        self.assertEqual(self.members(partial), before)
+        version = self.run_cli(["version"], installed=True)
+        self.assertEqual(version.returncode, 0, version.stderr)
+        self.assertEqual(json.loads(version.stdout)["runtime"], preview["plan"]["runtime"])
+
+    def test_sigkill_after_cohort_publication_reuses_complete_release_on_retry(self):
+        first = self.install()
+        (self.checkout / "swarm-fleet-prepare.py").write_text(self.peer + "# publish before crash\n")
+        preview = self.preview()
+        self.interrupt_install(preview, after_publication=True)
+        self.assertEqual(os.readlink(self.bin_dir / "acfs-fleet"), first["pinned_launcher"])
+        target = self.prefix / "releases" / preview["plan"]["runtime"]
+        before = self.members(target)
+        self.assertEqual(list(self.prefix.glob(".acfs-fleet-stage-*")), [])
+        self.assertEqual(self.preview(), preview)
+        retry = self.run_cli([*self.options(), "--apply", "--accept-plan", preview["plan_sha256"]])
+        self.assertEqual(retry.returncode, 0, retry.stderr)
+        self.assertEqual(self.members(target), before)
+        self.assertEqual(target.stat().st_mode & 0o777, 0o500)
+        self.assertEqual(os.readlink(self.bin_dir / "acfs-fleet"), str(target / "acfs-fleet.py"))
 
 
 if __name__ == "__main__":

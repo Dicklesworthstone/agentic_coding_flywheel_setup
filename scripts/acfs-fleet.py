@@ -148,7 +148,8 @@ def runtime_commands(manifest):
     return [command for command, name in COMMANDS.items() if name in manifest["files"]]
 
 
-def verify(root):
+def verify_contents(root):
+    """Verify a complete immutable cohort, including one not yet published."""
     root = path_arg(str(root))
     with directory(root, private=True) as fd:
         raw = read_file(fd, MANIFEST, True)
@@ -160,6 +161,12 @@ def verify(root):
         require(set(os.listdir(fd)) == set(files) | {MANIFEST}, "unexpected_runtime_members")
         require(read_file(fd, MANIFEST, True) == raw and encode(saved) == encode(manifest),
                 "runtime_integrity_mismatch")
+    return data, manifest, release
+
+
+def verify(root):
+    root = path_arg(str(root))
+    data, manifest, release = verify_contents(root)
     require(root.name == release and root.parent.name == "releases", "runtime_release_mismatch")
     return data, manifest, release
 
@@ -284,16 +291,36 @@ def install(prefix, bin_dir, approval=None):
             pass
         with directory(prefix / "releases", owned=True, private=True) as releases:
             if not os.path.lexists(prefix / "releases" / release):
-                os.mkdir(release, 0o700, dir_fd=releases)
-                os.fsync(releases)
-                with directory(prefix / "releases" / release, owned=True, private=True) as dest:
+                # Keep incomplete cohorts outside the release inventory. A
+                # disconnect or SIGKILL must not reserve the content-addressed
+                # destination forever and prevent retrying the approved plan.
+                # Interrupted staging directories remain private evidence;
+                # retries never adopt, execute, overwrite, or delete them.
+                temporary = ".acfs-fleet-stage-" + secrets.token_hex(12)
+                staged = prefix / temporary
+                os.mkdir(temporary, 0o700, dir_fd=store)
+                os.fsync(store)
+                with directory(staged, owned=True, private=True) as dest:
                     for name, raw in data.items():
                         publish(dest, name, raw, 0o500 if name == "acfs-fleet.py" else 0o400)
                     publish(dest, MANIFEST, encode(manifest), 0o400)  # completion marker last
                     os.fsync(dest)
+                    require(verify_contents(staged)[2] == release, "staged_runtime_mismatch")
+                    assert_path(dest, staged)
+                    assert_path(store, prefix)
+                    assert_path(releases, prefix / "releases")
+                    require(not os.path.lexists(prefix / "releases" / release), "runtime_release_appeared")
+                    os.rename(temporary, release, src_dir_fd=store, dst_dir_fd=releases)
+                    os.fsync(releases)
+                    os.fsync(store)
+            verify(prefix / "releases" / release)
+            # Moving a directory between parents requires owner write access
+            # on Linux. Seal it after publication, before activating it. A
+            # retry also finishes this step after a crash just past rename.
+            with directory(prefix / "releases" / release, owned=True, private=True) as dest:
+                if stat.S_IMODE(os.fstat(dest).st_mode) != 0o500:
                     os.fchmod(dest, 0o500)
                     os.fsync(dest)
-            verify(prefix / "releases" / release)
         assert_path(store, prefix)
         assert_path(bin_fd, bin_dir)
         require(current_link(bin_fd, prefix) == plan["previous_launcher"], "launcher_changed_since_review")
@@ -334,6 +361,8 @@ Use COMMAND --help for the existing operation and recovery options.
 Installation is offline and preview-only by default, as the target user without
 sudo. Prefix and bin directory must already exist and be user-owned, not writable
 by others. Releases are retained; an update never deletes a previous runtime.
+Interrupted installs retain private staging evidence outside the release inventory;
+rerun the same reviewed install to build and publish a complete cohort.
 --runtime selects an exact installed cohort without changing the active symlink.
 Use the original runtime for recovery; absent or damaged releases never fall back.
 Retained four/five-file runtimes stay usable but do not provide collect.
