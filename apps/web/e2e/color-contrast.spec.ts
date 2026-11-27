@@ -494,6 +494,23 @@ test.describe("Instructional text readability (bd-64cg3)", () => {
   });
 });
 
+/** Presses `key` with nothing focused and reports whether a window keydown
+ *  handler claimed it (called preventDefault, or stopped the event). */
+async function windowClaimsKey(page: Page, key: string): Promise<boolean> {
+  await page.evaluate(() => {
+    (document.activeElement as HTMLElement | null)?.blur();
+    delete document.body.dataset.keyClaimed;
+    // Added after the exhibits' listeners, so it runs after them and sees
+    // whether any of them called preventDefault. If one stopped the event,
+    // this never runs and the unset flag counts as claimed.
+    window.addEventListener("keydown", (event) => {
+      document.body.dataset.keyClaimed = String(event.defaultPrevented);
+    }, { once: true });
+  });
+  await page.keyboard.press(key);
+  return (await page.locator("body").getAttribute("data-key-claimed")) !== "false";
+}
+
 test.describe("Guide exhibit auto-play toggles", () => {
   test.use({ contextOptions: { reducedMotion: "no-preference" } });
 
@@ -516,36 +533,32 @@ test.describe("Guide exhibit auto-play toggles", () => {
 
     // Exhibits may take only Left/Right on the window. With an exhibit on
     // screen and nothing focused, Space, Up/Down and a bare letter belong to
-    // the page; each handler runs only while its exhibit is on screen, so
-    // every exhibit with one is checked in turn.
+    // the page. Each of these four exhibits has a window handler that acts
+    // only while the exhibit is on screen, so each is checked in turn. Its
+    // handler is registered once the exhibit first scrolls into view, so
+    // ArrowRight must be claimed before the page keys count as left alone.
     const exhibits: Array<[string, Locator]> = [
       ["core loop", toggles.nth(0)],
       ["artifact ladder", ladder],
       ["operating rhythm", toggles.nth(2)],
       ["human/agent timeline", page.getByRole("heading", { name: "Who Does What in the Core Loop" })],
-      ["swarm chaos", page.getByRole("button", { name: "Start Simulation" })],
     ];
     const claimed: string[] = [];
     for (const [name, target] of exhibits) {
-      for (const key of ["Space", "ArrowDown", "ArrowUp", "r"]) {
-        // Space and Down scroll the page, so bring the exhibit back first,
-        // and give its in-view observer a moment to register the handler.
+      await expect.poll(async () => {
         await target.scrollIntoViewIfNeeded();
-        await page.waitForTimeout(150);
-        await page.evaluate(() => {
-          (document.activeElement as HTMLElement | null)?.blur();
-          // Added after the exhibits' listeners, so it runs after them and
-          // sees whether any of them called preventDefault.
-          window.addEventListener("keydown", (event) => {
-            document.body.dataset.keyClaimed = String(event.defaultPrevented);
-          }, { once: true });
-        });
-        await page.keyboard.press(key);
-        if (await page.locator("body").getAttribute("data-key-claimed") !== "false") claimed.push(`${name}: ${key}`);
+        return windowClaimsKey(page, "ArrowRight");
+      }, { message: `${name} handles ArrowRight while on screen` }).toBe(true);
+      for (const key of ["Space", "ArrowDown", "ArrowUp", "r"]) {
+        // Space and Down scroll the page, so bring the exhibit back first.
+        await target.scrollIntoViewIfNeeded();
+        if (await windowClaimsKey(page, key)) claimed.push(`${name}: ${key}`);
       }
     }
     expect(claimed).toEqual([]);
-    await expect(ladder).toHaveAttribute("aria-pressed", "true");
+    // Stepping by hand paused the ladder's auto-play, and no page key
+    // switched it back on.
+    await expect(ladder).toHaveAttribute("aria-pressed", "false");
     // Auto-play never runs with Reduce Motion, so its toggles are not offered.
     await page.emulateMedia({ reducedMotion: "reduce" });
     await expect(toggles).toHaveCount(0);

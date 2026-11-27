@@ -1061,21 +1061,30 @@
    WCAG 4.5:1 for text; /40 lands at ≈3.5:1 and /20 at ≈1.7:1. The ~1,000
    lesson call sites now use semantic text tokens (bd-152ke); until the other
    reading surfaces are converted, this scoped rule keeps their text readable. It only
-   affects `color`, so decorative borders/backgrounds keep their alpha. */
-.text-aa-floor :is(
-  .text-white\/20,
-  .text-white\/25,
-  .text-white\/30,
-  .text-white\/35,
-  .text-white\/40,
-  .text-white\/45,
-  .text-white\/50
-) {
-  color: color-mix(in oklab, var(--color-white) 58%, transparent);
-}
+   affects `color`, so decorative borders/backgrounds keep their alpha.
 
-.text-aa-floor :is(.text-zinc-500, .text-zinc-600, .text-slate-500, .text-neutral-500, .text-gray-500) {
-  color: var(--color-zinc-400);
+   It lives in the utilities layer with the same specificity as one class
+   (`:where` adds none), so it beats the bare class it lifts (it comes later in
+   the layer) but loses to state variants such as `hover:` and `group-hover:`,
+   which add a pseudo-class. Unlayered, it beat every Tailwind utility, and
+   those hover colours never showed. A breakpoint variant (`md:text-white`)
+   has no extra specificity and still loses to it. */
+@layer utilities {
+  :where(.text-aa-floor) :is(
+    .text-white\/20,
+    .text-white\/25,
+    .text-white\/30,
+    .text-white\/35,
+    .text-white\/40,
+    .text-white\/45,
+    .text-white\/50
+  ) {
+    color: color-mix(in oklab, var(--color-white) 58%, transparent);
+  }
+
+  :where(.text-aa-floor) :is(.text-zinc-500, .text-zinc-600, .text-slate-500, .text-neutral-500, .text-gray-500) {
+    color: var(--color-zinc-400);
+  }
 }
 
 /* Scroll fade indicators */
