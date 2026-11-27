@@ -716,6 +716,9 @@ acfs_interactive_module_selector() {
     SKIP_TAGS=() SKIP_CATEGORIES=()
     ACFS_MODULES_IN_ORDER=(tools.reviewed tools.unchecked)
     ACFS_EFFECTIVE_PLAN=(tools.reviewed)
+    # The manifest index declares these maps in a real run; undeclared, bash
+    # reads a module id subscript as arithmetic and aborts.
+    declare -gA ACFS_MODULE_TAGS=() ACFS_MODULE_CATEGORY=()
 }
 '''
         args = ('--target-ubuntu=26.04', '--interactive', '--profile=vibe', '--skip-cloud',
@@ -733,7 +736,7 @@ acfs_interactive_module_selector() {
 
     def test_reviewed_legacy_installs_and_smoke_checks_observe_each_cloud_choice(self):
         installer = definitions(MAIN.read_text(), ['parse_args', 'acfs_legacy_module_selected',
-                                                   'install_cloud_db_legacy_cloud', 'smoke_test'])
+                                                   'install_cloud_db_legacy_cloud', 'run_smoke_test'])
         helpers = (ROOT / 'scripts/lib/install_helpers.sh').read_text()
         edges = r'''
 acfs_interactive_module_selector() {
@@ -756,7 +759,7 @@ ensure_base_deps() {
     touch "$TARGET_HOME/.bun/bin/bun"
     chmod +x "$TARGET_HOME/.bun/bin/bun"
     install_cloud_db_legacy_cloud
-    smoke_test
+    run_smoke_test
     exit $?
 }
 '''
