@@ -241,6 +241,33 @@ mv() {
                 else:
                     self.assertEqual((folder / "state.json").read_bytes(), original)
 
+    def test_default_resume_preserves_work_before_first_completed_phase(self):
+        # Use the real state writers. SIGKILL leaves the active cursor, while
+        # SIGTERM between steps clears the cursor without setting failed_phase.
+        for interrupted in (False, True):
+            with self.subTest(interrupted=interrupted):
+                state = json.loads(checkpoint_bytes())
+                state["completed_phases"] = []
+                folder = self.fixture("first-phase", content=json.dumps(state).encode())
+                setup = 'state_phase_start user_setup\n'
+                if interrupted:
+                    setup += 'state_mark_interrupted\n'
+                setup += 'cp "$ACFS_STATE_FILE" "$ACFS_HOME/before-resume.json"'
+                status, output = self.run_resume(
+                    folder, "default", version="old-version", extra=setup)
+                self.assertEqual(status, 0, output)
+                before = (folder / "before-resume.json").read_bytes()
+                self.assertEqual((folder / "state.json").read_bytes(), before)
+                self.assertIsNone(json.loads(before).get("failed_phase"))
+                self.assertIn("user_setup", json.loads(before)["partial_phases"])
+
+    def test_pristine_checkpoint_still_requires_fresh_confirmation(self):
+        state = json.loads(checkpoint_bytes())
+        state["completed_phases"] = []
+        folder = self.fixture("pristine", content=json.dumps(state).encode())
+        status, output = self.run_resume(folder, "default", version="old-version")
+        self.assertEqual(status, 1, output)
+
     def test_same_version_source_change_invalidates_finalize_in_all_resume_paths(self):
         for path in RESUME_PATHS:
             with self.subTest(path=path):

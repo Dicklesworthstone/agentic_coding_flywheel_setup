@@ -1664,7 +1664,7 @@ confirm_resume() {
 
     # Extract all resume info in a single jq call (5→1 subprocess spawns)
     # Note: Uses ASCII Unit Separator (0x1f) as delimiter since bash strips null bytes
-    local completed_count=0 last_phase="" started_at="" failed_phase="" mode=""
+    local completed_count=0 last_phase="" started_at="" failed_phase="" mode="" pending_phase="" has_work=false
     if command -v jq &>/dev/null; then
         local extracted
         if ! extracted=$(echo "$state" | jq -r '
@@ -1673,13 +1673,17 @@ confirm_resume() {
                 (.completed_phases[-1] // "unknown"),
                 (.started_at // "unknown"),
                 (.failed_phase // ""),
-                (.mode // "unknown")
+                (.mode // "unknown"),
+                (.current_phase // .partial_phases[-1] // ""),
+                ((.interrupted == true or (.current_phase // "") != "" or
+                  (.partial_phases | length) > 0 or (.phase_attempts | length) > 0 or
+                  (.phase_steps | length) > 0) | tostring)
             ] | join("\u001f")
         '); then
             _confirm_resume_log_warn "Cannot read the installation checkpoint. Refusing to resume."
             return 3
         fi
-        IFS=$'\x1f' read -r completed_count last_phase started_at failed_phase mode <<< "$extracted"
+        IFS=$'\x1f' read -r completed_count last_phase started_at failed_phase mode pending_phase has_work <<< "$extracted"
     fi
 
     # Handle explicit CLI flags first (these override everything)
@@ -1697,15 +1701,13 @@ confirm_resume() {
         force_resume_requested=true
     fi
 
-    # If nothing completed and no failed phase recorded, there is no meaningful resume point.
-    if [[ "$force_resume_requested" != "true" ]] && [[ "$completed_count" -eq 0 ]] && [[ -z "$failed_phase" || "$failed_phase" == "null" ]]; then
+    # A signal between the first phase's steps can leave no completed phase
+    # and no failed_phase. Keep its progress and verification obligations.
+    if [[ "$force_resume_requested" != true && "$has_work" != true && "$completed_count" -eq 0 &&
+          ( -z "$failed_phase" || "$failed_phase" == null ) ]]; then
         return 1
     fi
 
-    local last_phase_name="${ACFS_PHASE_NAMES[$last_phase]:-$last_phase}"
-    if [[ "$completed_count" -eq 0 && -n "$failed_phase" && "$failed_phase" != "null" ]]; then
-        last_phase_name="${ACFS_PHASE_NAMES[$failed_phase]:-$failed_phase}"
-    fi
     local total_phases="${#ACFS_PHASE_IDS[@]}"
 
     local resume_version=""
@@ -1769,13 +1771,12 @@ confirm_resume() {
             return 3
         fi
         IFS=$'\x1f' read -r completed_count last_phase started_at failed_phase mode <<< "$extracted"
-
-        last_phase_name="${ACFS_PHASE_NAMES[$last_phase]:-$last_phase}"
-        if [[ "$completed_count" -eq 0 && -n "$failed_phase" && "$failed_phase" != "null" ]]; then
-            last_phase_name="${ACFS_PHASE_NAMES[$failed_phase]:-$failed_phase}"
-        fi
     fi
 
+    if [[ "$completed_count" -eq 0 ]]; then
+        last_phase="${failed_phase:-${pending_phase:-the beginning}}"
+    fi
+    local last_phase_name="${ACFS_PHASE_NAMES[$last_phase]:-$last_phase}"
     if [[ "$force_resume_requested" == "true" ]]; then
         local forced_resume_phase="$last_phase_name"
         if [[ -z "$forced_resume_phase" || "$forced_resume_phase" == "unknown" ]]; then
@@ -1795,7 +1796,11 @@ confirm_resume() {
     _confirm_resume_log_info "  Started: $started_at"
     _confirm_resume_log_info "  Mode: $mode"
     _confirm_resume_log_info "  Progress: $completed_count/$total_phases phases"
-    _confirm_resume_log_info "  Last completed: $last_phase_name"
+    if [[ "$completed_count" -gt 0 ]]; then
+        _confirm_resume_log_info "  Last completed: $last_phase_name"
+    else
+        _confirm_resume_log_info "  Resume from: $last_phase_name"
+    fi
 
     if [[ -n "$failed_phase" && "$failed_phase" != "null" ]]; then
         local failed_name="${ACFS_PHASE_NAMES[$failed_phase]:-$failed_phase}"
