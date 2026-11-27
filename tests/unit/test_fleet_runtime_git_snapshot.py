@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Installed Git-aware tests through real promotion and local publication.
 
-All executing controllers are production code. Three unused fleet roles are
+All executing controllers are production code. Four unused fleet roles are
 inert sentinels; these tests neither launch agents nor claim live SSH acceptance.
 Private test repositories, installed releases and journals are retained.
 """
@@ -33,7 +33,9 @@ class InstalledGitSnapshotTests(unittest.TestCase):
         self.source.mkdir(mode=0o700)
         for name in EXECUTED:
             (self.source / name).write_bytes((ROOT / "scripts" / name).read_bytes())
-        for role in ("prepare", "dispatch", "status"):
+        # The current runtime schema ships every role (acfs-fleet.py FILES), so
+        # install refuses a source tree without them, provision included.
+        for role in ("prepare", "dispatch", "status", "provision"):
             (self.source / ("swarm-fleet-" + role + ".py")).write_text(
                 "raise SystemExit('unused controller must never execute')\n")
         self.prefix, self.bin_dir = fx.root / "fleet", fx.root / "bin"
