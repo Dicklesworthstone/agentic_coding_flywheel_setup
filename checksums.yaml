@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-11-26T17:46:25+00:00
+# checksums.yaml - Auto-generated 2026-11-27T03:46:21+00:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -44,7 +44,7 @@ installers:
 
   cass:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/coding_agent_session_search/main/install.sh"
-    sha256: "6c161faf5c3ad3aec807495a34bb9aef8e6563e584668a916dd0b11697763c1e"
+    sha256: "f8db1fd8ca06cf50c2913ebe926b71d2f060610c65cee3541ece6c98954f97e3"
 
   claude:
     url: "https://claude.ai/install.sh"
@@ -60,7 +60,7 @@ installers:
 
   dcg:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/destructive_command_guard/main/install.sh"
-    sha256: "3c27d0126882cc72ff05937529b3e4a0a894edf922322287e43e60742bea611d"
+    sha256: "9140182e0700f97bf96e55daa1f123b27a2a4ae09ccdf1f09872fe6da1c6224f"
 
   dsr:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/doodlestein_self_releaser/main/install.sh"
@@ -188,7 +188,7 @@ installers:
 
   xf:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/xf/main/install.sh"
-    sha256: "039f9433ef5861efe4e9b07289d99f404cbf68a79f33d75afd50e41033598183"
+    sha256: "43bda44b4fb9533a613601d24d2395f1d5bf1524a587af5b65bdccae5f32c0ab"
 
   zoxide:
     url: "https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh"
