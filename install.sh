@@ -12550,6 +12550,15 @@ ACFS_SMOKE_AGENT_MAIL
 # ============================================================
 # Print summary
 # ============================================================
+acfs_summary_module_available() {
+    local module="$1" outcome
+    acfs_legacy_module_selected "$module" || return 1
+    for outcome in "${ACFS_MODULE_FAILURES[@]}" "${ACFS_OPTIONAL_MODULE_SKIPS[@]}"; do
+        [[ "${outcome%% *}" != "$module" ]] || return 1
+    done
+    return 0
+}
+
 print_summary() {
     if [[ "$DRY_RUN" == "true" ]]; then
         {
@@ -12640,15 +12649,19 @@ Re-run the installer (it resumes) or check the log to retry these."
             optional_list_gum+="  ○ ${_optional_item}
 "
         done
-        optional_section_plain="${YELLOW}  ○  Optional modules skipped (not installed; see WARN lines above):${NC}\n${optional_list_plain}${GRAY}Checksum skips clear once the pin is refreshed: acfs update --stack${NC}\n\n"
+        local optional_retry="After the reported problem is resolved, retry the installer with the same module selection."
+        if acfs_summary_module_available acfs.update && acfs_summary_module_available acfs.doctor; then
+            optional_retry="After installation succeeds and the pin is refreshed, retry skipped stack tools with acfs update --stack."
+        fi
+        optional_section_plain="${YELLOW}  ○  Optional modules skipped (not installed; see WARN lines above):${NC}\n${optional_list_plain}${GRAY}${optional_retry}${NC}\n\n"
         optional_section_gum="○ Optional modules skipped (not installed; see WARN lines above):
 
-${optional_list_gum}Checksum skips clear once the pin is refreshed: acfs update --stack"
+${optional_list_gum}${optional_retry}"
     fi
 
     # Build dynamic Tailscale status
     local tailscale_section=""
-    if command -v tailscale &>/dev/null; then
+    if [[ "$summary_has_failures" == false ]] && acfs_summary_module_available network.tailscale && command -v tailscale &>/dev/null; then
         if check_tailscale_auth 2>/dev/null; then
             local ts_ip
             ts_ip=$(tailscale ip -4 2>/dev/null || echo "connected")
@@ -12683,7 +12696,7 @@ ${optional_list_gum}Checksum skips clear once the pin is refreshed: acfs update 
     local target_ssh_repair_command="cat ~/.ssh/acfs_ed25519.pub | ssh root@YOUR_SERVER_IP $target_ssh_remote_command_q"
 
     local ssh_key_warning_section=""
-    if [[ "${ACFS_SSH_KEY_WARNING:-false}" == "true" ]]; then
+    if [[ "$summary_has_failures" == false && "${ACFS_SSH_KEY_WARNING:-false}" == true ]] && acfs_summary_module_available users.ubuntu; then
         ssh_key_warning_section="SSH key setup required for $TARGET_USER:
 
   You connected with a password, so no SSH key was copied to $TARGET_USER.
@@ -12705,39 +12718,38 @@ ${optional_list_gum}Checksum skips clear once the pin is refreshed: acfs update 
 "
     fi
 
-    local next_steps_content=""
-    if [[ "${ACFS_SSH_KEY_WARNING:-false}" == "true" ]]; then
-        next_steps_content="Next steps:
-
-  1. Set up SSH key access for $TARGET_USER using the command above.
-
-  2. Then reconnect as $TARGET_USER:
-     exit
-     $target_ssh_command
-
-  3. Run the onboarding tutorial:
-     onboard
-
-  4. Check everything is working:
-     acfs doctor
-
-  5. Start your agent cockpit:
-     ntm"
+    local -a next_steps=()
+    if [[ "$summary_has_failures" == true ]]; then
+        next_steps+=("Keep this session open and resolve the reported failures before proceeding.")
+        next_steps+=("Resume the same installation:"$'\n'"     $(generate_resume_hint)")
     else
-        next_steps_content="Next steps:
-
-  1. If you logged in as root, reconnect as $TARGET_USER:
-     exit
-     $target_ssh_command
-
-  2. Run the onboarding tutorial:
-     onboard
-
-  3. Check everything is working:
-     acfs doctor
-
-  4. Start your agent cockpit:
-     ntm"
+        if acfs_summary_module_available users.ubuntu; then
+            if [[ -n "$ssh_key_warning_section" ]]; then
+                next_steps+=("Set up SSH key access for $TARGET_USER using the instructions above.")
+            fi
+            next_steps+=("If you logged in as root, keep this connection open and test the $TARGET_USER login from another local terminal:"$'\n'"     $target_ssh_command")
+        fi
+        if acfs_summary_module_available acfs.onboard; then
+            next_steps+=($'Run the onboarding tutorial:\n     onboard')
+        fi
+        if acfs_summary_module_available acfs.doctor; then
+            next_steps+=($'Check the selected installation:\n     acfs doctor')
+        fi
+        if acfs_summary_module_available stack.ntm; then
+            next_steps+=($'Start your agent cockpit:\n     ntm')
+        fi
+        if (( ${#next_steps[@]} == 0 )); then
+            next_steps+=("Continue with the modules selected for this installation.")
+        fi
+    fi
+    local next_steps_content="Next steps:" step
+    local step_num=0
+    for step in "${next_steps[@]}"; do
+        ((step_num += 1))
+        next_steps_content+=$'\n\n'"  $step_num. $step"
+    done
+    if [[ -n "${ACFS_LOG_FILE:-}" ]]; then
+        next_steps_content+=$'\n\n'"Installation log: $ACFS_LOG_FILE"
     fi
 
     local summary_content="Version: $ACFS_VERSION
@@ -12801,20 +12813,11 @@ $summary_content"
             if [[ -n "$tailscale_section" ]]; then
                 echo -e "${YELLOW}Service Authentication:${NC}"
                 echo ""
-                if command -v tailscale &>/dev/null && check_tailscale_auth 2>/dev/null; then
-                    local ts_ip_display
-                    ts_ip_display=$(tailscale ip -4 2>/dev/null || echo "connected")
-                    echo -e "  ${GREEN}✓${NC} Tailscale: connected (${BLUE}$ts_ip_display${NC})"
-                else
-                    echo -e "  ${YELLOW}🔐${NC} Tailscale (Secure Remote Access):"
-                    echo -e "     ${BLUE}sudo tailscale up${NC}"
-                    echo -e "     ${GRAY}→ Log in with your Google account${NC}"
-                    echo -e "     ${GRAY}→ Then access this VPS from anywhere!${NC}"
-                fi
+                printf '%s\n' "$tailscale_section"
                 echo ""
             fi
             # Show SSH key warning if password-only connection was detected
-            if [[ "${ACFS_SSH_KEY_WARNING:-false}" == "true" ]]; then
+            if [[ -n "$ssh_key_warning_section" ]]; then
                 echo -e "${RED}════════════════════════════════════════════════════════════${NC}"
                 echo -e "${RED}  ⚠  SSH KEY SETUP REQUIRED FOR TARGET USER${NC}"
                 echo -e "${RED}════════════════════════════════════════════════════════════${NC}"
@@ -12844,32 +12847,7 @@ $summary_content"
                 echo -e "${RED}════════════════════════════════════════════════════════════${NC}"
                 echo ""
             fi
-            echo -e "${YELLOW}Next steps:${NC}"
-            echo ""
-            if [[ "${ACFS_SSH_KEY_WARNING:-false}" == "true" ]]; then
-                echo "  1. Set up SSH key for $TARGET_USER user (see warning above)"
-                echo ""
-                echo "  2. Then reconnect as $TARGET_USER:"
-            else
-                echo "  1. If you logged in as root, reconnect as $TARGET_USER:"
-            fi
-            echo -e "     ${GRAY}exit${NC}"
-            echo -e "     ${GRAY}$target_ssh_command${NC}"
-            echo ""
-            local step_num=2
-            if [[ "${ACFS_SSH_KEY_WARNING:-false}" == "true" ]]; then
-                step_num=3
-            fi
-            echo "  $step_num. Run the onboarding tutorial:"
-            echo -e "     ${BLUE}onboard${NC}"
-            echo ""
-            ((step_num++))
-            echo "  $step_num. Check everything is working:"
-            echo -e "     ${BLUE}acfs doctor${NC}"
-            echo ""
-            ((step_num++))
-            echo "  $step_num. Start your agent cockpit:"
-            echo -e "     ${BLUE}ntm${NC}"
+            printf '%s\n' "$next_steps_content"
             echo ""
             echo -e "${GREEN}╚════════════════════════════════════════════════════════════╝${NC}"
             echo ""

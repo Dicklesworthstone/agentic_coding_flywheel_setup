@@ -16047,7 +16047,7 @@ EOF
     run grep -F 'target_ssh_command="ssh -i ~/.ssh/acfs_ed25519 ${TARGET_USER}@YOUR_SERVER_IP"' "$PROJECT_ROOT/install.sh"
     assert_success
 
-    run grep -F 'echo -e "     ${GRAY}$target_ssh_command${NC}"' "$PROJECT_ROOT/install.sh"
+    run grep -F '     $target_ssh_command")' "$PROJECT_ROOT/install.sh"
     assert_success
 
     run grep -F 'target_ssh_command="ssh ${TARGET_USER}@YOUR_SERVER_IP"' "$PROJECT_ROOT/install.sh"
