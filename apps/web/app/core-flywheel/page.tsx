@@ -655,7 +655,9 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
               <TipBox>
                 <strong>Beads are executable memory.</strong> The markdown plan is the best artifact
                 for thinking about the whole system. Beads are that plan rewritten as tasks that
-                several agents can work through in parallel.
+                several agents can work through in parallel. Each agent works like a short-order
+                cook with one ticket: everything it needs is on the bead, so it can give the task
+                its full attention without knowing the rest of the project.
               </TipBox>
 
               <SkillNote skills={["beads-workflow", "beads-br", "beads-bv"]}>
@@ -949,7 +951,10 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
               />
               <P>
                 I leave the how to the agents, and the follow-up prompt says so: &quot;use your
-                expert judgment on all decisions to make the optimal choice.&quot; When I handed one
+                expert judgment on all decisions to make the optimal choice.&quot; The same goes for
+                the plan. I describe the goal, who it&apos;s for, and the hard constraints, but not
+                the method, because each instruction about method narrows the solutions a model
+                will consider, and it often knows a better one than I do. When I handed one
                 of my own calls, a visual review, to an agent, it recorded in the bead that the
                 decision was delegated and how to overturn it.
               </P>

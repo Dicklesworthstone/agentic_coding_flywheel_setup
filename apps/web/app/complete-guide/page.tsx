@@ -353,8 +353,10 @@ export default function CompleteGuidePage() {
               A markdown plan, even one of several hundred kilobytes, is much smaller than the
               codebase it describes. When models reason about a plan instead of raw implementation, they can
               hold the <Hl>whole system in their context window at once</Hl>. Once you start turning
-              that plan into code, the system quickly becomes too large to understand as a whole.
-              Planning first lets you do global reasoning while it is still possible.
+              that plan into code, the system quickly becomes too large to understand as a whole,
+              and the model sees it as if through a telescope, one small circle at a time, missing
+              the forest for the trees. Planning first lets you do global reasoning while it is
+              still possible.
             </P>
 
             <BlockQuote>
@@ -417,6 +419,27 @@ export default function CompleteGuidePage() {
               </P>
 
               <P>
+                What I leave out matters as much. I give the goal, who the software is for, and the
+                hard constraints (the language, the libraries it has to build on, that it must be
+                memory-safe), but not how to meet them. For FrankenSQLite I asked for a drop-in
+                replacement for SQLite that allows concurrent writers. I didn&apos;t say which
+                concurrency scheme to use, because I didn&apos;t know. The obvious candidate,
+                Postgres&apos;s model taken as is, would have broken compatibility with
+                SQLite&apos;s file format; the design had to work at the level of pages. I wrote
+                about this in an article called &quot;The Perils of Overprompting&quot;: each
+                instruction about method narrows the space of solutions the model can search, and
+                like a genie granting a badly worded wish, the model then does what you said rather
+                than what you wanted.
+              </P>
+
+              <P>
+                Push back, too, when a model starts trimming the scope. Trained on human work, models
+                have learned to be conservative and to call things too much for a first version. I
+                tell them never to say that to me again, and to make the plan bolder and more
+                ambitious instead.
+              </P>
+
+              <P>
                 Settle as many important disagreements as possible in planning, before the swarm
                 starts burning expensive implementation tokens. Implementation can still surface
                 surprises, but the workflow front-loads decisions into plan space.
@@ -456,6 +479,26 @@ export default function CompleteGuidePage() {
                 And that isn&apos;t at all in tension with my approach, as I hope to illustrate
                 here.
               </BlockQuote>
+            </SubSection>
+
+            <SubSection title="Why This Isn't Waterfall">
+              <P>
+                The other objection I hear is that we tried this already, it was called waterfall,
+                and it didn&apos;t work. That was right for teams of people, who took months to
+                write a plan and found out how wrong it was only after months more of building.
+                Agents work thousands of times faster, so the loop from plan to working code and
+                back is short, and a plan that turns out wrong gets fixed in days.
+              </P>
+
+              <P>
+                Planning also works because it separates two roles that software development
+                usually merges: architect and builder. When you build a house, the crew framing the
+                walls doesn&apos;t design the living room as it goes. An architect draws the
+                blueprints ahead of time and gets them approved, and the builders follow them,
+                putting their skill into building each part well. The plan and the beads are
+                the blueprints. An agent implementing a bead doesn&apos;t have to understand every
+                decision behind the design; it has to build its part well.
+              </P>
             </SubSection>
 
             <SubSection title="Three Reasoning Spaces">
@@ -707,9 +750,11 @@ export default function CompleteGuidePage() {
                 one of the three. {COMPLETE_GUIDE_MODELS.claudeExecutor} adds little to a{" "}
                 {COMPLETE_GUIDE_MODELS.leadPlanner} plan, because it comes from the same lab with
                 close to the same data and training, and shares the lead&apos;s blind spots. A
-                cheaper model from another lab is still worth asking for ideas, since the smarter
-                models reject the bad ones anyway, but it helps much less as one of the three when
-                the other two beat it at everything.
+                cheaper model from another lab is still worth asking for ideas. Blending plans
+                isn&apos;t like blending whisky, where one cheap bottle drags down the batch: the
+                lead rejects the bad ideas, so if nine of a weaker model&apos;s ten ideas are bad
+                and one is good, asking it paid for itself. It helps much less as one of the three,
+                though, when the other two beat it at everything.
               </P>
 
               <P>
@@ -1170,6 +1215,25 @@ Then make all the requisite changes to the various design documents and plans ac
                   </Fragment>,
                 ]}
               />
+
+              <P>
+                Why not go straight from the plan to code? Even a long plan glosses over things it
+                takes for granted. Writing every bead so that it stands on its own brings those
+                assumptions into the open, and it turns the order of the work into an explicit
+                dependency graph. That is also why converting the plan takes as many rounds as
+                writing it: the first set of beads leaves things out of the plan and often gets
+                dependencies backwards.
+              </P>
+
+              <P>
+                Self-contained beads also let each agent manage its own context. Think of a
+                short-order cook. A ticket comes in for a corned beef sandwich, and the cook makes
+                the best sandwich they can, without worrying that table three has been waiting 20
+                minutes for its check or how to bake tonight&apos;s dessert. An agent that takes
+                the bead bv recommends, marks it in progress, and finds everything it needs inside
+                it can spend all its attention on that one task. It doesn&apos;t need to be a
+                genius about the whole project, only about its ticket.
+              </P>
 
               <TipBox variant="info">
                 The beads are written for the agents more than for you. When you need to read them,
@@ -3065,6 +3129,24 @@ When a Rust build or test is needed, offload it with rch (for example, rch exec 
               </P>
 
               <P>
+                People ask whether I still read every line of code. I don&apos;t read every line of
+                the plan. I use the product early and often, feed what I find back in, and spot-check
+                the places where a mistake is most likely. In the hedge fund business, where I come
+                from, a portfolio manager doesn&apos;t check every cell of an analyst&apos;s model;
+                they probe the one most likely to be wrong. Joel Spolsky&apos;s account of a spec
+                review with Bill Gates, from the years when Spolsky worked on Excel, makes the same
+                point: one detailed question about how the date functions handled leap years told
+                Gates whether the whole spec had been thought through.
+              </P>
+
+              <P>
+                On FrankenSQLite the place to probe is the concurrency: how the page versions avoid
+                corrupting the B-trees, and what happens at the edge cases. Knowing where the bodies
+                are buried is a big part of what separates engineering with agents from vibe coding.
+                Spot checks are a supplement, though; the tests in Part 8 carry the weight.
+              </P>
+
+              <P>
                 <strong>When the &quot;foregone conclusion&quot; breaks down:</strong> If you find
                 yourself doing heavy cognitive work during implementation, planning or bead
                 polishing fell short. The symptoms point to the cause:{" "}
@@ -3290,6 +3372,14 @@ caam activate claude backup-2   # Switch instantly`}
                 </Fragment>,
               ]}
             />
+
+            <P>
+              I push hardest on the third question. When an agent finds and fixes a bug, fixing it
+              isn&apos;t enough. I want a test or check that stops any bug of that class from
+              getting past us again, and a hunt for every other bug that rhymes with it: the same
+              mistake in another file or in another form. Over time the test suite comes to hold
+              every kind of mistake the project has made.
+            </P>
 
             <P>When reviews come back clean, have them move on to the next bead:</P>
 
@@ -4118,6 +4208,16 @@ And you can't do this sort of thing using regex or a script, you MUST manually r
                 without changing your AGENTS.md, beads, Agent Mail setup, or workflow? If yes,
                 you&apos;re vendor-neutral.
               </P>
+
+              <P>
+                Neutral tooling doesn&apos;t mean replacing the harness. Most of the money and talent
+                in this field now goes into Claude Code and Codex, and I believe the labs train
+                their models together with their own harnesses, so a custom agent loses something
+                even when it calls the same model. I use the official harnesses and build around
+                them: ntm drives ordinary Claude Code, Codex, and Antigravity sessions through tmux,
+                cass indexes all of their session logs, Agent Mail is an MCP server, and the rest
+                are CLIs and skills that work the same in each.
+              </P>
             </SubSection>
 
             <SubSection title="Validation Gates">
@@ -4293,6 +4393,13 @@ What changes to [TOOL] would make it work even better for you and be more useful
                 where="After an agent finishes using a tool in a real project"
                 whyItWorks="Many of the methods we use for people apply directly to agents. 'By robots, for robots.' The prompt produces structured, actionable feedback, and running it across several agents on different kinds of projects gives you a varied sample. One caveat: like the customers who would have asked for a 'faster horse' instead of a car, agents are unreliable judges of features that do not exist yet. The real test comes after implementation, in real use."
               />
+
+              <P>
+                I ran five rounds of this on UBS, each after long sessions in a TypeScript project
+                and a Rust project, with Claude Code, Codex, and Gemini. I didn&apos;t act on every
+                answer. I put all the feedback in one document and asked for the common threads,
+                because a change that only one agent in one project wants doesn&apos;t generalize.
+              </P>
             </SubSection>
 
             <SubSection title="CASS Memory: Three-Layer Architecture">
@@ -4551,6 +4658,26 @@ Then rewrite the skill to fix every issue you found. Make the happy path obvious
                 constant nagging.
               </BlockQuote>
 
+              <P>
+                Designing for agents changes what a good tool looks like. A linter built for people
+                has to keep false positives rare, or its users stop trusting it, and it has to apply
+                its fixes mechanically, or the warnings just pile up. Neither constraint holds for
+                an agent. It doesn&apos;t get bored grinding through noise, and a hint about what
+                might be wrong on a line is enough for it to diagnose and fix the problem. So UBS
+                flags far more than a linter would: even if 97% of its findings were false
+                positives, one real bug among the rest would make the scan worth running.
+              </P>
+
+              <P>
+                I also treat the agent as a customer who is always right. If agents keep calling a
+                tool the wrong way, the design is at fault, and the interface or its documentation
+                should change. When an agent&apos;s intent is clear, the tool should do what it
+                meant and mention the correct form in its response. When it isn&apos;t clear, the
+                error should say what the agent may have been trying to do and how to do that. No
+                error message should be cryptic: when dcg blocks a command, it says what it blocked,
+                why, and a safe way to get the same result.
+              </P>
+
               <SkillNote
                 skills={[
                   "agent-ergonomics-and-intuitiveness-maximization-for-cli-tools",
@@ -4602,6 +4729,14 @@ Then rewrite the skill to fix every issue you found. Make the happy path obvious
                 it more natural and intuitive and powerful for the agents. Then taking that revised
                 tool and improving the skill for using that tool, then rinse and repeat.
               </BlockQuote>
+
+              <P>
+                The rule I use for what goes where: anything that can be done mechanically belongs
+                in a CLI, and anything that needs judgment belongs in a skill. Each turn of the loop
+                asks the session history both questions: which mistakes the skill should prevent,
+                and which steps the skill still has the agent do by hand that the CLI could do
+                mechanically.
+              </P>
             </SubSection>
 
             <SubSection title="How to Actually Do This (Step by Step)">
@@ -4872,6 +5007,27 @@ cass search "tool_name" --workspace /data/projects/PROJECT --json --limit 100`}
                 deeper each round, since one pass rarely exhausts what an optimization skill can
                 find.
               </SkillNote>
+
+              <P>
+                On my ports, a long optimization run rests on golden artifacts: outputs the original
+                project produced for a realistic sample of inputs, frozen and checked by a
+                conformance harness. Each pass benchmarks before and after, keeps a change only if
+                it measurably helps and every golden output still matches, and reverts it otherwise.
+                The same works for any system you already trust: freeze what it does now, then
+                optimize hard against that.
+              </P>
+
+              <P>
+                The loop also keeps what I call a negative-evidence ledger, a file listing every
+                lever tried, what it measured, and whether it was kept. Before I added one, the
+                runs kept stalling. The same models looking at the same evidence proposed the same
+                failed ideas again and again: try, measure no gain, revert, and try again a few
+                hours later. With the ledger, agents skip what has already failed. Read as a whole,
+                it also tells them which kinds of change have paid off and which keep failing, so
+                they put their effort into the first kind. Unlike the ledgers that stand in for
+                progress (Part 7), this one is read before every attempt and changes what the agent
+                does next.
+              </P>
             </SubSection>
 
             <SubSection title="The Operator Library">
