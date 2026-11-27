@@ -1,4 +1,4 @@
-import { errors, expect, test, type Page } from "@playwright/test";
+import { errors, expect, test, type Locator, type Page } from "@playwright/test";
 import { COMPLETE_GUIDE_PROMPT_COUNT } from "../lib/complete-guide";
 import { LESSONS } from "../lib/lessons";
 
@@ -497,7 +497,7 @@ test.describe("Instructional text readability (bd-64cg3)", () => {
 test.describe("Guide exhibit auto-play toggles", () => {
   test.use({ contextOptions: { reducedMotion: "no-preference" } });
 
-  test("keep a fixed name, report state, leave Space to the page, and drop out with reduced motion", async ({ page }) => {
+  test("keep a fixed name, report state, leave page keys alone, and drop out with reduced motion", async ({ page }) => {
     await page.goto("/complete-guide");
     // The visible On/Paused suffix is aria-hidden, so the name never changes.
     const flywheelTour = page.getByRole("button", { name: "Auto-Tour", exact: true });
@@ -513,18 +513,38 @@ test.describe("Guide exhibit auto-play toggles", () => {
     await ladder.click();
     await expect(ladder).toHaveAttribute("aria-pressed", "true");
     await expect(ladder).toHaveAccessibleName("Auto-Play");
-    // With the exhibit on screen and nothing focused, Space belongs to the
-    // page (it scrolls): no exhibit's window handler may claim it.
-    await page.evaluate(() => {
-      (document.activeElement as HTMLElement | null)?.blur();
-      // Added after the exhibits' window listeners, so it runs after them and
-      // sees whether any of them called preventDefault.
-      window.addEventListener("keydown", (event) => {
-        document.body.dataset.spaceClaimed = String(event.defaultPrevented);
-      }, { once: true });
-    });
-    await page.keyboard.press("Space");
-    await expect(page.locator("body")).toHaveAttribute("data-space-claimed", "false");
+
+    // Exhibits may take only Left/Right on the window. With an exhibit on
+    // screen and nothing focused, Space, Up/Down and a bare letter belong to
+    // the page; each handler runs only while its exhibit is on screen, so
+    // every exhibit with one is checked in turn.
+    const exhibits: Array<[string, Locator]> = [
+      ["core loop", toggles.nth(0)],
+      ["artifact ladder", ladder],
+      ["operating rhythm", toggles.nth(2)],
+      ["human/agent timeline", page.getByRole("heading", { name: "Who Does What in the Core Loop" })],
+      ["swarm chaos", page.getByRole("button", { name: "Start Simulation" })],
+    ];
+    const claimed: string[] = [];
+    for (const [name, target] of exhibits) {
+      for (const key of ["Space", "ArrowDown", "ArrowUp", "r"]) {
+        // Space and Down scroll the page, so bring the exhibit back first,
+        // and give its in-view observer a moment to register the handler.
+        await target.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(150);
+        await page.evaluate(() => {
+          (document.activeElement as HTMLElement | null)?.blur();
+          // Added after the exhibits' listeners, so it runs after them and
+          // sees whether any of them called preventDefault.
+          window.addEventListener("keydown", (event) => {
+            document.body.dataset.keyClaimed = String(event.defaultPrevented);
+          }, { once: true });
+        });
+        await page.keyboard.press(key);
+        if (await page.locator("body").getAttribute("data-key-claimed") !== "false") claimed.push(`${name}: ${key}`);
+      }
+    }
+    expect(claimed).toEqual([]);
     await expect(ladder).toHaveAttribute("aria-pressed", "true");
     // Auto-play never runs with Reduce Motion, so its toggles are not offered.
     await page.emulateMedia({ reducedMotion: "reduce" });

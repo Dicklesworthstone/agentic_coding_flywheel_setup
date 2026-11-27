@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
 
 /** Where each stage's label sits around its node. "end" ends the label at the
@@ -22,6 +22,7 @@ export function FlywheelDiagram() {
   const [activeStage, setActiveStage] = useState(0);
   const [cycleDepth, setCycleDepth] = useState(1);
   const [autoTour, setAutoTour] = useState(true);
+  const depthLabelId = useId();
 
   const stages = [
     {
@@ -147,14 +148,21 @@ export function FlywheelDiagram() {
         <div className="flex flex-wrap items-center gap-4">
           {/* Label above the buttons on phones, beside them from sm. */}
           <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-3">
-            <span className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-400">
+            <span id={depthLabelId} className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-400">
               Simulation Depth
             </span>
-            <div className="flex gap-2 p-1.5 rounded-2xl bg-[#020408] border border-white/[0.05] shadow-inner">
+            {/* One choice at a time: the group is named by the label, and
+                aria-pressed says which depth is showing. */}
+            <div
+              role="group"
+              aria-labelledby={depthLabelId}
+              className="flex gap-2 p-1.5 rounded-2xl bg-[#020408] border border-white/[0.05] shadow-inner"
+            >
               {cycleOptions.map((cycleCount, index) => (
                 <button
                   key={cycleCount}
                   type="button"
+                  aria-pressed={cycleDepth === index}
                   onClick={() => {
                     setCycleDepth(index);
                     setAutoTour(false);
@@ -172,8 +180,8 @@ export function FlywheelDiagram() {
           </div>
           {/* Not offered with Reduce Motion, where the tour never runs. A
               toggle with a fixed name: aria-pressed carries the state and the
-              visible On/Paused suffix is aria-hidden. Paused text is zinc-400
-              (white/40 was 3.6:1). */}
+              visible On/Paused suffix is aria-hidden. Paused text is zinc-400,
+              like the core guide's toggles. */}
           {!rm && (
             <button
               type="button"

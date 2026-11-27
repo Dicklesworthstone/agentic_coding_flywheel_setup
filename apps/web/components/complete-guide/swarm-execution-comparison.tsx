@@ -577,8 +577,9 @@ export function SwarmExecutionViz() {
             <div
               className={cn(
                 "font-mono text-sm font-semibold tabular-nums md:font-sans md:text-xs md:uppercase md:tracking-[0.22em]",
-                // /60, not /55 or md:/45: the page's AA floor rule only lifts
-                // bare text-white/NN classes, and /55 measured 4.48:1.
+                // /60, not /55 or md:/45: the page's AA floor rule lifts only
+                // the bare text-white/20 to /50 classes (no variants), and /55
+                // measured 4.48:1.
                 phaseIndex === index ? "text-white md:text-white/60" : "text-white/60",
               )}
             >

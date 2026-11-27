@@ -532,10 +532,12 @@ export function ArtifactLadderViz() {
         </div>
 
         {/* Not offered with Reduce Motion, where auto-play never runs; the
-            stage rows step through by hand. The name stays "Auto-Play" and
-            aria-pressed carries the state; the visible "On" is aria-hidden. */}
-        <div className="flex shrink-0 flex-col items-start lg:items-end gap-4">
-          {!reducedMotion && (
+            stage rows step through by hand. The whole wrapper goes, or an
+            empty item would still add the header's gap on phones. The name
+            stays "Auto-Play" and aria-pressed carries the state; the visible
+            "On" is aria-hidden. */}
+        {!reducedMotion && (
+          <div className="flex shrink-0 flex-col items-start lg:items-end gap-4">
             <button
               type="button"
               onClick={toggleAutoPlay}
@@ -564,8 +566,8 @@ export function ArtifactLadderViz() {
                 Auto-Play{autoPlay && <span aria-hidden="true"> On</span>}
               </span>
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Main content: ladder + detail panel */}

@@ -1,7 +1,7 @@
 "use client";
 
 import { Radar, Target } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useId, useRef, useState } from "react";
 import { motion, useInView, useReducedMotion } from "@/components/motion";
 import { cn } from "@/lib/utils";
 
@@ -63,6 +63,7 @@ export function ConvergenceViz() {
 
   // 0.0 to 1.0
   const [values, setValues] = useState([0.3, 0.2, 0.4]);
+  const presetsLabelId = useId();
   const [particles] = useState(() =>
     Array.from({ length: 40 }, (_, i) => ({
       id: i,
@@ -134,10 +135,19 @@ export function ConvergenceViz() {
           </p>
         </div>
 
-        {/* PRESETS: one row on phones 360px and up; on narrower screens the
-            row wraps instead of clipping "Ship" (it lost 38px at 320px). */}
-        <div className="flex max-w-full shrink-0 flex-wrap items-center gap-1 sm:gap-2 p-1.5 bg-black/40 rounded-2xl border border-white/[0.05] shadow-inner">
-          <span className="text-xs text-zinc-500 mx-1.5 sm:mx-2 uppercase tracking-wider sm:tracking-widest font-bold">
+        {/* PRESETS: beside its label the row needs 300px, and a phone header
+            gives it 230-300px (it clipped "Ship" at 320px). Below sm the label
+            takes its own line inside the pill, so the four buttons (226px)
+            stay on one line from 320px up; from sm the row fits as one line. */}
+        <div
+          role="group"
+          aria-labelledby={presetsLabelId}
+          className="flex max-w-full shrink-0 flex-wrap items-center gap-1 sm:gap-2 p-1.5 bg-black/40 rounded-2xl border border-white/[0.05] shadow-inner"
+        >
+          <span
+            id={presetsLabelId}
+            className="basis-full text-xs text-zinc-500 mx-1.5 mt-0.5 sm:mt-0 sm:basis-auto sm:mx-2 uppercase tracking-wider sm:tracking-widest font-bold"
+          >
             Presets
           </span>
           {CONVERGENCE_PRESETS.map((preset) => {
