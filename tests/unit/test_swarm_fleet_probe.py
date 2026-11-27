@@ -31,16 +31,6 @@ def deployed_cli(home):
     All destinations are inside a newly created test home. No update, install,
     package manager, repository fetch, or system service is invoked.
     """
-    updater = (ROOT / "scripts/lib/update.sh").read_text()
-    publisher_start = "update_atomic_deploy_file() ("
-    publisher_end = "\n# Re-deploy acfs.zshrc"
-    if updater.count(publisher_start) != 1 or updater.count(publisher_end) != 1:
-        raise AssertionError("Review the atomic deployment function boundary")
-    publisher = publisher_start + updater.split(publisher_start, 1)[1].split(publisher_end, 1)[0]
-    start, end = "sync_acfs_deployed() {", "\nsync_acfs_global_wrapper() {"
-    if updater.count(start) != 1 or updater.count(end) != 1:
-        raise AssertionError("Review the deployed-runtime function boundary")
-    function = start + updater.split(start, 1)[1].split(end, 1)[0]
     # Limit this fixture checkout to the real public-dispatch dependency set.
     # The unmodified sync loop must discover and install these registered paths;
     # unrelated onboarding and shell assets are not part of this feature test.
@@ -50,10 +40,18 @@ def deployed_cli(home):
     for name in ("doctor.sh", "swarm_inventory.sh", "swarm_fleet_probe.sh"):
         shutil.copyfile(ROOT / "scripts/lib" / name, library / name)
         (library / name).chmod(0o644)
-    env = {"HOME": str(home), "PATH": "/usr/bin:/bin", "ACFS_REPO_ROOT": str(checkout)}
-    subprocess.run(["/bin/bash", "-eu", "-c",
+    env = {"HOME": str(home), "TARGET_HOME": str(home), "PATH": "/usr/bin:/bin"}
+    # Source the whole updater library, as test_update_deployment.py does, so
+    # the sync keeps every helper it calls (atomic publisher, module selection,
+    # runtime mode repair). A hand-cut excerpt broke each time update.sh gained
+    # or reordered one.
+    subprocess.run(["/bin/bash", "--noprofile", "--norc", "-c",
+                    'source "$1" || exit 90\n'
+                    'ACFS_REPO_ROOT="$2"\n'
                     'update_runtime_acfs_home() { printf "%s\\n" "$HOME/.acfs"; }\n'
-                    'log_to_file() { :; }\n' + publisher + '\n' + function + '\nsync_acfs_deployed\n'],
+                    'log_to_file() { :; }\n'
+                    'if sync_acfs_deployed; then exit 0; else exit "$?"; fi\n',
+                    "_", str(ROOT / "scripts/lib/update.sh"), str(checkout)],
                    env=env, check=True, capture_output=True, timeout=30)
     return home / ".acfs/bin/acfs"
 
@@ -323,13 +321,17 @@ class FleetTests(unittest.TestCase):
 
     def test_probe_executes_exact_command_against_executable_transport_fixture(self):
         transport = self.file("ssh-fixture", '#!' + sys.executable + '\nimport sys\nprint(' + repr(json.dumps(response())) + ')\n', 0o755)
-        result = m.probe_one(selected()[0], 99, 5, ssh=str(transport))
+        # The known-hosts snapshot must be a real private file descriptor:
+        # private_snapshot_path refuses anything else before the transport runs.
+        with tempfile.TemporaryFile() as known:
+            result = m.probe_one(selected()[0], known.fileno(), 5, ssh=str(transport))
         self.assertEqual(result["status"], "measured")
         self.assertEqual(result["observation"]["capacity"]["recommended_agents"], 6)
 
     def test_failed_transport_never_exposes_endpoint_or_output(self):
         transport = self.file("bad-ssh", '#!' + sys.executable + '\nimport sys\nprint("SECRET @ alpha.example"); sys.exit(255)\n', 0o755)
-        result = m.probe_one(selected()[0], 99, 5, ssh=str(transport))
+        with tempfile.TemporaryFile() as known:
+            result = m.probe_one(selected()[0], known.fileno(), 5, ssh=str(transport))
         self.assertEqual(result, {"id": "alpha", "status": "failed", "code": "probe_command_failed"})
 
     def test_create_only_private_durable_snapshot(self):
