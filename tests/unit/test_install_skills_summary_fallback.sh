@@ -198,6 +198,11 @@ export ACFS_FORCE_REINSTALL=true
 
 SKILLS_COUNTER="$workdir/${name}.skills.count"
 SUMMARY_COUNTER="$workdir/${name}.summary.count"
+# Test 1 exports a checkpoint with a deliberately failed stack phase. Exercise
+# each EXIT path before any failure marker exists in its own checkpoint.
+ACFS_STATE_FILE="$workdir/${name}.state.json"
+state_init
+if state_has_required_failures; then exit 2; fi
 
 # acfs_generated_install_stack_meta_skill: counting stub. Its real body (dry-run-safe
 # network install) is exercised for real in Test 1; this test isolates
@@ -211,7 +216,7 @@ acfs_generated_install_stack_meta_skill() {
 eval "\$(declare -f print_summary | sed '1s/print_summary/__real_print_summary/')"
 print_summary() {
     printf 'x' >> "\$SUMMARY_COUNTER"
-    __real_print_summary "\$@" >/dev/null 2>&1
+    __real_print_summary "\$@" > "$workdir/${name}.summary.log" 2>&1
 }
 HAS_GUM=false
 EOF
@@ -294,8 +299,24 @@ EOF
 
     assert "A1. normal completion: skills installed exactly once (not zero, not twice)" "$([[ "$a_skills" -eq 1 ]] && echo true || echo false)"
     assert "A2. normal completion: summary printed exactly once" "$([[ "$a_summary" -eq 1 ]] && echo true || echo false)"
+    local clean=false
+    if grep -Fq 'Installation Complete' "$workdir/scenario_a.summary.log" \
+        && ! grep -Fq 'Finished With Failures' "$workdir/scenario_a.summary.log"; then
+        clean=true
+    fi
+    assert "A3. a completed run with a clean checkpoint displays the successful handoff" "$clean"
     assert "B1. crash bypassing record-and-continue: fallback installed skills exactly once" "$([[ "$b_skills" -eq 1 ]] && echo true || echo false)"
     assert "B2. crash bypassing record-and-continue: fallback printed the summary exactly once" "$([[ "$b_summary" -eq 1 ]] && echo true || echo false)"
+    local aborted_summary="$workdir/scenario_b.summary.log"
+    local recovered=false
+    if grep -Fq 'installer exited before normal completion (status 1)' "$aborted_summary" \
+        && grep -Fq 'Finished With Failures' "$aborted_summary" \
+        && grep -Fq -- '--resume' "$aborted_summary" \
+        && grep -Fq 'https://agent-flywheel.com/learn' "$aborted_summary" \
+        && ! grep -Fq 'Installation Complete' "$aborted_summary"; then
+        recovered=true
+    fi
+    assert "B3. a successful skills fallback still reports the original interruption and how to resume" "$recovered"
     assert "C1. benign pre-confirmation exit: fallback did NOT install skills (proves the guard isn't unconditional)" "$([[ "$c_skills" -eq 0 ]] && echo true || echo false)"
     assert "C2. benign pre-confirmation exit: fallback did NOT print a bogus summary" "$([[ "$c_summary" -eq 0 ]] && echo true || echo false)"
 }

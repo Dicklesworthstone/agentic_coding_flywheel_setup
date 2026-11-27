@@ -2498,6 +2498,9 @@ cleanup() {
     # dry-run, user declined) never trigger it at all.
     if [[ "$report_install" == true && "${ACFS_INSTALL_RUN_CONFIRMED:-0}" == "1" && "${ACFS_SKILLS_AND_SUMMARY_DONE:-0}" != "1" ]]; then
         ACFS_SKILLS_AND_SUMMARY_DONE=1
+        # A successful skills fallback cannot certify the remaining phases.
+        # An unexpected exit may precede every persisted step/failure marker.
+        ACFS_PHASE_FAILURES+=("installer exited before normal completion (status $exit_code)")
         log_error "Installation ended before reaching normal completion; attempting best-effort skills install + onboarding summary anyway."
         local skills_installer=""
         local skills_map_decl=""
@@ -12722,6 +12725,7 @@ ${optional_list_gum}${optional_retry}"
     if [[ "$summary_has_failures" == true ]]; then
         next_steps+=("Keep this session open and resolve the reported failures before proceeding.")
         next_steps+=("Resume the same installation:"$'\n'"     $(generate_resume_hint)")
+        next_steps+=("Open the onboarding lessons in your browser while you recover the VPS:"$'\n'"     https://agent-flywheel.com/learn")
     else
         if acfs_summary_module_available users.ubuntu; then
             if [[ -n "$ssh_key_warning_section" ]]; then
