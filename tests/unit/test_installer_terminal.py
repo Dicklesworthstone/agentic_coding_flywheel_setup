@@ -606,6 +606,7 @@ state_mark_interrupted() { printf '%s\n' "$_ACFS_SIGNAL_RECEIVED" >> "$TEST_INTE
 exec 199>>"$TEST_INSTALL_LOCK"
 flock -n 199
 acfs_remember_install_lock 199 "$TEST_INSTALL_LOCK"
+ACFS_INSTALL_OWNS_CHECKPOINT=true
 trap cleanup EXIT
 ''' if pid_only else ":",
             # A sudo exec can make the privileged helper unsignalable by the

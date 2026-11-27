@@ -239,6 +239,7 @@ EOF
     write_scenario_common "$scen_b" "scenario_b"
     cat >> "$scen_b" <<'EOF'
 DRY_RUN=false
+ACFS_INSTALL_OWNS_CHECKPOINT=true
 ACFS_INSTALL_RUN_CONFIRMED=1
 ACFS_SKILLS_AND_SUMMARY_DONE=0
 # Neither function is called here on purpose: simulates a failure that

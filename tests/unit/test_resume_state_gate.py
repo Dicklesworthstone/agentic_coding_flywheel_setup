@@ -1297,13 +1297,41 @@ trap cleanup EXIT
             for flag in ("--resume", "--force-reinstall"):
                 with self.subTest(case=name, flag=flag):
                     result, events, folder = self.run_scoped(
-                        (flag,), alter=alter, custom=custom,
+                        (flag,), alter=alter, custom=custom, with_cleanup=True,
                         options={"TARGET_UBUNTU_VERSION_EXPLICIT": "true"})
                     self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
                     self.assertFalse(any(event.startswith("mut:") for event in events), events)
                     self.assertNotIn("upgrade", events)
                     self.assertNotIn("install_lock", events)
+                    self.assertFalse(any(event.startswith("failure_") for event in events), events)
                     self.assert_unchanged(folder, custom=custom)
+
+    def test_second_installer_cannot_report_failure_or_interrupt_the_active_run(self):
+        for signal_name in ("", "INT"):
+            with self.subTest(signal_name=signal_name):
+                result, events, folder = self.run_scoped(
+                    ("--resume",), with_cleanup=True, execution=r'''
+printf 'active run\n' > "$ACFS_HOME/.install.lock"
+exec 195>>"$ACFS_HOME/.install.lock"
+flock -xn 195
+acfs_attach_to_running_install() { trace watching; return 1; }
+''' + f"_ACFS_SIGNAL_RECEIVED={shlex.quote(signal_name)}")
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn("watching", events)
+                self.assertNotIn("install_lock", events)
+                self.assertFalse(any(event.startswith("failure_") for event in events), events)
+                self.assert_unchanged(folder)
+                self.assertEqual((folder / "home/.acfs/.install.lock").read_text(), "active run\n")
+
+    def test_installer_uses_the_scope_present_at_lock_acquisition(self):
+        result, events, _ = self.run_scoped(("--resume",), execution=r'''
+acfs_remember_install_lock() {
+    trace install_lock
+    state_update '.module_selection.selected_modules += ["agents.codex"]'
+}
+''')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("agents.codex", self.scope_event(events, "resolved"))
 
     def test_valid_custom_checkpoint_and_legacy_full_install_remain_supported(self):
         result, events, _ = self.run_scoped(("--resume",), custom=True)

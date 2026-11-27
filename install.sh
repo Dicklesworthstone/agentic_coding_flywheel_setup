@@ -466,6 +466,7 @@ ACFS_INTERACTIVE_RESUME_ONLY=false
 RESET_STATE_ONLY=false
 ACFS_INSTALL_LOCK_FD=""
 ACFS_INSTALL_LOCK_FILE=""
+ACFS_INSTALL_OWNS_CHECKPOINT=false
 
 # Preflight options
 SKIP_PREFLIGHT=false
@@ -2355,7 +2356,8 @@ acfs_attach_to_running_install() {
             fi
             sleep 2
         done
-        return 0
+        log_info "Stopped receiving live output before the installer released its lock."
+        return 1
     fi
 
     # No flock available for the watcher: just follow until the user stops.
@@ -2386,7 +2388,8 @@ cleanup() {
     # else's checkpoint or while its writer holds the lock. Their EXIT trap
     # must still release resources, but has no installation to report.
     local report_install=true
-    if [[ "${RESET_STATE_ONLY:-false}" == true || "${DRY_RUN:-false}" == true \
+    if [[ "${ACFS_INSTALL_OWNS_CHECKPOINT:-false}" != true \
+        || "${RESET_STATE_ONLY:-false}" == true || "${DRY_RUN:-false}" == true \
         || "${PRINT_MODE:-false}" == true || "${PRINT_PLAN_MODE:-false}" == true \
         || "${LIST_MODULES:-false}" == true || "${PIN_REF_MODE:-false}" == true ]]; then
         report_install=false
@@ -13115,7 +13118,6 @@ main() {
                 log_error "The saved module selection cannot be used safely. Resolve the checkpoint before reinstalling."
                 exit 1
             fi
-            acfs_apply_saved_installation_selection
         fi
     elif [[ "$PRINT_PLAN_MODE" == true || "$DRY_RUN" == true || "$PRINT_MODE" == true ]]; then
         acfs_preview_installation_selection
@@ -13147,30 +13149,42 @@ main() {
         # before `if` can catch the failure. We test in a subshell first,
         # then only exec in the main shell if the subshell succeeded.
         local _acfs_lock_fd=""
-        if (exec 199>"$_acfs_lock_file") 2>/dev/null; then
-            exec 199>"$_acfs_lock_file"
+        if (exec 199>>"$_acfs_lock_file") 2>/dev/null; then
+            exec 199>>"$_acfs_lock_file"
             _acfs_lock_fd=199
-        elif (exec 198>"$_acfs_lock_file") 2>/dev/null; then
-            exec 198>"$_acfs_lock_file"
+        elif (exec 198>>"$_acfs_lock_file") 2>/dev/null; then
+            exec 198>>"$_acfs_lock_file"
             _acfs_lock_fd=198
         fi
         if [[ -n "$_acfs_lock_fd" ]]; then
-            if command -v flock &>/dev/null; then
-                if ! flock -n "$_acfs_lock_fd"; then
-                    # Another installer holds the lock. Rather than failing outright,
-                    # attach to its live progress (and show how to watch it). (#301)
-                    if acfs_attach_to_running_install "$_acfs_lock_file" "$_acfs_lock_dir/logs"; then
-                        # We followed the other installer to completion (interactive).
-                        exit 0
-                    fi
-                    log_error "Wait for it to finish, then retry. Lock file: $_acfs_lock_file"
-                    exit 1
+            if ! command -v flock &>/dev/null; then
+                log_error "flock is required to serialize installations. Install util-linux and retry."
+                exit 1
+            fi
+            if ! flock -n "$_acfs_lock_fd"; then
+                # A second invocation only watches the lock holder. Its EXIT
+                # trap must never update that installation's checkpoint.
+                if acfs_attach_to_running_install "$_acfs_lock_file" "$_acfs_lock_dir/logs"; then
+                    exit 0
                 fi
+                log_error "Wait for it to finish, then retry. Lock file: $_acfs_lock_file"
+                exit 1
             fi
             acfs_remember_install_lock "$_acfs_lock_fd" "$_acfs_lock_file"
         else
             log_error "Unable to open ACFS install lock file: $_acfs_lock_file"
             exit 1
+        fi
+
+        if [[ "$RESET_STATE_ONLY" != true ]]; then
+            # The previous installer may have finished between the initial
+            # validation and flock. Resolve the scope that actually won the lock.
+            if ! acfs_load_installation_selection; then
+                log_error "The saved checkpoint changed or cannot be validated. Inspect it before reinstalling."
+                exit 1
+            fi
+            acfs_apply_saved_installation_selection
+            ACFS_INSTALL_OWNS_CHECKPOINT=true
         fi
     fi
 
