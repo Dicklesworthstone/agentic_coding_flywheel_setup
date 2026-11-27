@@ -518,8 +518,11 @@ def issue_for($id; $index):
   if ($id | type) == "string" then $index[$id] // {}
   else first(issue_list[]? | select(.id == $id)) // {} end;
 def bead_id_in_subject($id; $subject):
-  ($id | tostring) as $needle
-  | ($subject | tostring) as $body
+  # Commit evidence is untrusted input: a non-string subject is malformed and
+  # must fail the whole report rather than be coerced into matchable text.
+  if ($subject | type) != "string" then error("commit subject must be a string") else . end
+  | ($id | tostring) as $needle
+  | $subject as $body
   | ($needle | length) as $width
   | any($body | indices($needle)[]?;
       . as $offset
