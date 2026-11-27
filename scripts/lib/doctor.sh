@@ -2646,6 +2646,10 @@ get_version_line() {
         # UBS has a directory size check that can block --version; bypass it.
         if [[ "${exec_path##*/}" == ubs ]]; then
             version=$(UBS_MAX_DIR_SIZE_MB=10000 doctor_version_probe "$timeout_bin" "$DOCTOR_VERSION_TIMEOUT" merge "$exec_path" "$argument") || probe_status=$?
+        elif [[ "${exec_path##*/}" == cargo || "${exec_path##*/}" == rustc || "${exec_path##*/}" == rustup ]]; then
+            # Rustup proxies may install an absent active toolchain even for a
+            # version probe. Diagnostics must report its absence, not fetch it.
+            version=$(RUSTUP_AUTO_INSTALL=0 doctor_version_probe "$timeout_bin" "$DOCTOR_VERSION_TIMEOUT" merge "$exec_path" "$argument") || probe_status=$?
         else
             version=$(doctor_version_probe "$timeout_bin" "$DOCTOR_VERSION_TIMEOUT" merge "$exec_path" "$argument") || probe_status=$?
         fi
@@ -4705,15 +4709,17 @@ _is_bespoke_covered() {
         db.postgres18.1) return 0 ;;
         # check_identity
         users.ubuntu|users.ubuntu.*) return 0 ;;
-        # check_workspace
-        base.filesystem.[12]) return 0 ;;
+        # check_workspace covers /data/projects, not the target's managed
+        # workspace policy template. Keep base.filesystem.2 active.
+        base.filesystem.1) return 0 ;;
         acfs.workspace|acfs.workspace.*) return 0 ;;
         # check_shell
         shell|shell.*) return 0 ;;
         # check_core_tools  (cli.modern.* maps to rg, tmux, fzf, gh, etc.)
         cli.modern|cli.modern.*) return 0 ;;
-        # check_core_tools  (languages)
-        lang.bun|lang.uv|lang.rust|lang.rust.*|lang.go) return 0 ;;
+        # check_core_tools covers Cargo readiness, not the required nightly
+        # toolchain. Keep lang.rust.2 and future Rust checks active.
+        lang.bun|lang.uv|lang.rust|lang.rust.1|lang.go) return 0 ;;
         # check_shell / check_core_tools  (individual tools)
         tools.atuin|tools.zoxide|tools.ast_grep|tools.vault) return 0 ;;
         # The Claude/Codex manifest probes verify the same version/help
@@ -5006,6 +5012,12 @@ check_manifest_supplemental() {
 
         local fix
         fix="$(fix_for_module "$module_id")"
+
+        if [[ "$module_id" == lang.rust ]]; then
+            # `rustup show` can install a missing active toolchain. Preserve
+            # the authored verification while keeping Doctor read-only.
+            cmd=$'export RUSTUP_AUTO_INSTALL=0\n'"$cmd"
+        fi
 
         # Execute the check command in the same context the manifest expects.
         local probe_status=0

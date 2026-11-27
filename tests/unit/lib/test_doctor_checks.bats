@@ -1953,6 +1953,139 @@ EOF
         .[2].id == "utils.future_tool" and .[2].status == "skip" and .[2].fix == null' >/dev/null
 }
 
+# Keep the authored manifest probes intact while isolating their target home.
+# A fixture identity avoids inspecting /root when the suite runs as root; the
+# actual manifest runner still executes each verification in a subprocess.
+doctor_manifest_home_fixture() {
+    doctor_selection_fixture "$1"
+    TARGET_USER=acfs_manifest_fixture
+    ACFS_BIN_DIR="$TARGET_HOME/.local/bin"
+    # Import the generated resolver functions without leaking its shell options
+    # or PATH. Only account lookup is replaced with the isolated fixture below.
+    # shellcheck disable=SC1090
+    source <(
+        source "$PROJECT_ROOT/scripts/generated/doctor_checks.sh"
+        declare -f acfs_generated_system_binary_path acfs_generated_resolve_current_user \
+            acfs_generated_passwd_home_from_entry
+    )
+    _acfs_doctor_resolve_current_user() { printf '%s\n' "$TARGET_USER"; }
+    _acfs_doctor_getent_passwd_entry() {
+        printf '%s:x:%s:%s::%s:/bin/bash\n' "$TARGET_USER" "$UID" "$(id -g)" "$TARGET_HOME"
+    }
+    acfs_generated_getent_passwd_entry() {
+        printf '%s:x:%s:%s::%s:/bin/bash\n' "$TARGET_USER" "$UID" "$(id -g)" "$TARGET_HOME"
+    }
+    doctor_load_module_selection
+}
+
+doctor_keep_generated_checks() {
+    local entry="" requested="" id=""
+    local -a selected=()
+    for entry in "${MANIFEST_CHECKS[@]}"; do
+        id="${entry%%$'\t'*}"
+        for requested in "$@"; do
+            [[ "$id" == "$requested" ]] || continue
+            selected+=("$entry")
+            break
+        done
+    done
+    if [[ ${#selected[@]} -ne $# ]]; then
+        fail "requested generated verification was not found"
+        return 1
+    fi
+    MANIFEST_CHECKS=("${selected[@]}")
+}
+
+@test "doctor selection: working Cargo still verifies required nightly without automatic installation" {
+    doctor_manifest_home_fixture '{"module_selection":{"schema_version":1,"selected_modules":["lang.rust"]}}'
+    doctor_keep_generated_checks lang.rust.2
+    mkdir -p "$TARGET_HOME/.cargo/bin"
+    export DOCTOR_TEST_DOWNLOADS="$BATS_TEST_TMPDIR/unexpected-install"
+    export RUSTUP_AUTO_INSTALL=1
+    cat > "$DOCTOR_TEST_BIN/cargo" <<'EOF'
+#!/bin/bash
+if [[ "${RUSTUP_AUTO_INSTALL:-1}" != 0 ]]; then
+    printf 'cargo\n' >> "$DOCTOR_TEST_DOWNLOADS"
+    exit 3
+fi
+printf 'cargo\n' >> "$DOCTOR_TEST_PROBES"
+printf 'cargo fixture 1.0\n'
+EOF
+    cat > "$TARGET_HOME/.cargo/bin/rustup" <<'EOF'
+#!/bin/bash
+[[ "$1" == show ]] || exit 2
+if [[ "${RUSTUP_AUTO_INSTALL:-1}" != 0 ]]; then
+    printf 'rustup\n' >> "$DOCTOR_TEST_DOWNLOADS"
+    exit 3
+fi
+printf 'rustup\n' >> "$DOCTOR_TEST_PROBES"
+cat "$HOME/toolchains"
+EOF
+    chmod +x "$DOCTOR_TEST_BIN/cargo" "$TARGET_HOME/.cargo/bin/rustup"
+    printf 'stable-x86_64-unknown-linux-gnu (default)\n' > "$TARGET_HOME/toolchains"
+    FIX_MODE=true
+    DOCTOR_FIX_SCOPED=true
+
+    check_command tool.cargo Cargo cargo "repair rust"
+    check_manifest_supplemental
+
+    [ ! -e "$DOCTOR_TEST_DOWNLOADS" ]
+    [ "$RUSTUP_AUTO_INSTALL" = 1 ]
+    [ "$PASS_COUNT:$FAIL_COUNT" = 1:1 ]
+    [ "${DOCTOR_FIX_PENDING_IDS[*]}" = lang.rust.2 ]
+    [ "$(cat "$DOCTOR_TEST_PROBES")" = $'cargo\nrustup' ]
+    doctor_selection_json | jq -e '
+        .[0].id == "tool.cargo" and .[0].status == "pass" and
+        .[1].id == "lang.rust.2" and .[1].status == "fail" and
+        (.[1].fix | contains("--only lang.rust"))' >/dev/null
+
+    printf 'nightly-x86_64-unknown-linux-gnu (default)\n' > "$TARGET_HOME/toolchains"
+    check_manifest_supplemental
+    [ ! -e "$DOCTOR_TEST_DOWNLOADS" ]
+    [ "$PASS_COUNT:$FAIL_COUNT" = 2:1 ]
+    doctor_selection_json | jq -e '.[-1].id == "lang.rust.2" and .[-1].status == "pass"' >/dev/null
+}
+
+@test "doctor selection: workspace policy template is verified independently of the project directory" {
+    doctor_manifest_home_fixture '{"module_selection":{"schema_version":1,"selected_modules":["base.filesystem"]}}'
+    doctor_keep_generated_checks base.filesystem.2
+    FIX_MODE=true
+    DOCTOR_FIX_SCOPED=true
+
+    check_manifest_supplemental
+
+    [ "$FAIL_COUNT:$WARN_COUNT:$PASS_COUNT" = 1:0:0 ]
+    [ "${DOCTOR_FIX_PENDING_IDS[*]}" = base.filesystem.2 ]
+    doctor_selection_json | jq -e '
+        .[0].id == "base.filesystem.2" and .[0].status == "fail" and
+        (.[0].fix | contains("--only base.filesystem"))' >/dev/null
+
+    mkdir -p "$TARGET_HOME/.acfs/docs"
+    printf 'Workspace policy fixture\n' > "$TARGET_HOME/.acfs/docs/AGENTS.workspace.md"
+    check_manifest_supplemental
+
+    [ "$FAIL_COUNT:$PASS_COUNT" = 1:1 ]
+    doctor_selection_json | jq -e '.[-1].id == "base.filesystem.2" and .[-1].status == "pass"' >/dev/null
+}
+
+@test "doctor selection: excluded Rust and workspace invariants do not execute or queue repairs" {
+    doctor_manifest_home_fixture '{"module_selection":{"schema_version":1,"selected_modules":["lang.bun"]}}'
+    doctor_keep_generated_checks base.filesystem.2 lang.rust.2
+    FIX_MODE=true
+    DOCTOR_FIX_SCOPED=true
+    _doctor_run_manifest_check() {
+        printf 'unexpected verification\n' >> "$DOCTOR_TEST_PROBES"
+        return 1
+    }
+
+    check_manifest_supplemental
+
+    [ ! -e "$DOCTOR_TEST_PROBES" ]
+    [ "$FAIL_COUNT:$WARN_COUNT:$PASS_COUNT:$SKIP_COUNT" = 0:0:0:2 ]
+    [ "${#DOCTOR_FIX_PENDING_IDS[@]}" -eq 0 ]
+    doctor_selection_json | jq -e 'length == 2 and all(.status == "skip" and .fix == null)' >/dev/null
+}
+
 @test "doctor selection: legacy failures in skipped_tools do not hide broken tools" {
     doctor_selection_fixture '{"skipped_tools":["lang.bun","agents.claude"]}'
     [ "$ACFS_STATE_SELECTION_MODE" = legacy ]
