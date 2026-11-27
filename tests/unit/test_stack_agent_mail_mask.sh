@@ -895,8 +895,18 @@ write_unit=true
 external_listener=false
 launch_log="$HOME/launches"
 mkdir -p "$storage_root"
+# The native image stand-in runs under the argv[0] "$am_bin serve-http ...".
+# Ubuntu 26.04's /bin/sleep is the uutils multicall binary, which picks its
+# program from argv[0] and exits ("unknown program 'am'"); GNU sleep stays
+# installed there as gnusleep.
+sleep_image=/bin/sleep
+[[ ! -x /usr/bin/gnusleep ]] || sleep_image=/usr/bin/gnusleep
+if ! (exec -a "$am_bin serve-http --port 8765" "$sleep_image" 0); then
+    echo "No sleep binary here runs under a custom argv[0]: $sleep_image" >&2
+    exit 1
+fi
 mv "$am_bin" "$am_bin.script-fixture"
-cp /bin/sleep "$am_bin"
+cp "$sleep_image" "$am_bin"
 trap 'for child in $(jobs -pr); do kill "$child" 2>/dev/null || true; done; wait 2>/dev/null || true' EXIT
 
 # Invoked by the extracted production helpers.
@@ -952,7 +962,7 @@ echo 'FALLBACK PASS: identical replacement with a new inode is preserved'
 history="$HOME/mcp_agent_mail/.mcp-agent-mail-install-transaction.committed.second"
 mkdir "$history"
 mv "$am_bin" "$history/old-cli"
-cp /bin/sleep "$am_bin"
+cp "$sleep_image" "$am_bin"
 printf '\nfixture: new release bytes\n' >> "$am_bin"
 launch_agent_mail_fallback
 current_pid="$(cat "$fallback_pid_file")"
@@ -994,7 +1004,7 @@ kill -0 "$current_pid"
 systemctl() { return 1; }
 echo 'FALLBACK PASS: supervised process is left to systemd during handoff'
 
-cp /bin/sleep "$HOME/unrelated-am"
+cp "$sleep_image" "$HOME/unrelated-am"
 (exec -a "$am_bin serve-http --port 8765" "$HOME/unrelated-am" 120) &
 unrelated_pid=$!
 for _ in {1..100}; do
