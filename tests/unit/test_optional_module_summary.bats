@@ -13,6 +13,7 @@ setup() {
     INSTALL_SH="$PROJECT_ROOT/install.sh"
 
     eval "$(sed -n '/^record_skipped_tool() {$/,/^}$/p' "$INSTALL_SH")"
+    eval "$(sed -n '/^acfs_smoke_install_fix_command() {$/,/^}$/p' "$INSTALL_SH")"
     eval "$(sed -n -e '/^acfs_summary_module_available() {$/,/^}$/p' -e '/^generate_resume_hint() {$/,/^}$/p' -e '/^acfs_legacy_module_selected() {$/,/^}$/p' "$INSTALL_SH")"
     eval "$(sed -n '/^should_run_module() {$/,/^}$/p' "$PROJECT_ROOT/scripts/lib/install_helpers.sh")"
     eval "$(sed -n '/^print_summary() {$/,/^}$/p' "$INSTALL_SH")"
@@ -85,7 +86,8 @@ setup() {
     [[ "$output" == *"stack.mcp_agent_mail (checksum)"* ]]
     [[ "$output" == *"Optional modules skipped"* ]]
     [[ "$output" == *"stack.pfr (checksum)"* ]]
-    [[ "$output" == *"acfs update --stack"* ]]
+    [[ "$output" == *"--resume"* ]]
+    [[ "$output" != *"--force-reinstall"* && "$output" != *"acfs update --stack"* ]]
     # The optional block follows the failures block, never displaces it.
     local failures_pos optional_pos
     failures_pos="${output%%COMPLETED WITH FAILURES*}"
@@ -139,6 +141,7 @@ setup() {
         [[ "$output" != *YOUR_SERVER_IP* && "$output" != *'sudo tailscale up'* ]]
         [[ "$output" != *'onboarding tutorial'* && "$output" != *'agent cockpit'* ]]
         [[ "$output" != *'acfs update --stack'* ]]
+        [[ "$output" != *'--force-reinstall'* ]]
         [[ ! -e "$BATS_TEST_TMPDIR/probes" ]]
     done
 }
@@ -154,7 +157,8 @@ setup() {
         [[ "$status" -eq 0 && "$output" == *"Installation Complete"* ]]
         [[ "$output" == *"stack.ntm (checksum)"* && "$output" == *"network.tailscale (checksum)"* ]]
         [[ "$output" != *'agent cockpit'* && "$output" != *'sudo tailscale up'* ]]
-        [[ "$output" == *'Continue with the modules selected'* ]]
+        [[ "$output" == *'--only stack.ntm --only network.tailscale'* ]]
+        [[ "$output" != *'acfs update --stack'* ]]
     done
 }
 
@@ -169,6 +173,25 @@ setup() {
         [[ "$status" -eq 0 && "$output" == *"Finished With Failures"* ]]
         [[ "$output" == *"--resume"*'--only users.ubuntu --only stack.ntm --only acfs.onboard'* ]]
         [[ "$output" != *"YOUR_SERVER_IP"* && "$output" != *"agent cockpit"* && "$output" != *"onboarding tutorial"* ]]
+    done
+}
+
+@test "mixed optional skips can be repaired without installing an omitted updater or unrelated modules" {
+    ACFS_GENERATED_SELECTION_READY=true
+    declare -gA ACFS_EFFECTIVE_RUN=([agents.grok]=1 [stack.agent_settings_backup]=1 [base.system]=1)
+    ACFS_STATE_FILE="/tmp/operator checkpoint.json"
+    ACFS_COMMIT_SHA_FULL=""
+    ACFS_REF_INPUT=v1.2.3
+    NO_DEPS=true
+    record_skipped_tool agents.grok checksum
+    record_skipped_tool stack.agent_settings_backup 'network unavailable'
+    for HAS_GUM in false true; do
+        run print_summary
+        [[ "$status" -eq 0 ]]
+        [[ "$output" == *'ACFS_STATE_FILE=/tmp/operator\ checkpoint.json'* ]]
+        [[ "$output" == *'--force-reinstall --only agents.grok --only stack.agent_settings_backup --ref v1.2.3'* ]]
+        [[ "$output" == *'--no-deps'* ]]
+        [[ "$output" != *'--only base.system'* && "$output" != *'acfs update'* && "$output" != *'acfs doctor'* ]]
     done
 }
 

@@ -12656,23 +12656,24 @@ Re-run the installer (it resumes) or check the log to retry these."
     # leaving a single WARN line in the log as the only trace (#387).
     local optional_section_plain=""
     local optional_section_gum=""
+    local -a optional_retry_ids=()
     if [[ ${#ACFS_OPTIONAL_MODULE_SKIPS[@]} -gt 0 ]]; then
-        local _optional_item
+        local _optional_item skipped_id
         local optional_list_plain=""
         local optional_list_gum=""
         for _optional_item in "${ACFS_OPTIONAL_MODULE_SKIPS[@]}"; do
+            skipped_id="${_optional_item%% *}"
+            if [[ "$skipped_id" =~ ^[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)+$ ]] && acfs_legacy_module_selected "$skipped_id"; then
+                optional_retry_ids+=("$skipped_id")
+            fi
             optional_list_plain+="  ○ ${_optional_item}\n"
             optional_list_gum+="  ○ ${_optional_item}
 "
         done
-        local optional_retry="After the reported problem is resolved, retry the installer with the same module selection."
-        if acfs_summary_module_available acfs.update && acfs_summary_module_available acfs.doctor; then
-            optional_retry="After installation succeeds and the pin is refreshed, retry skipped stack tools with acfs update --stack."
-        fi
-        optional_section_plain="${YELLOW}  ○  Optional modules skipped (not installed; see WARN lines above):${NC}\n${optional_list_plain}${GRAY}${optional_retry}${NC}\n\n"
+        optional_section_plain="${YELLOW}  ○  Optional modules skipped (not installed; see WARN lines above):${NC}\n${optional_list_plain}"
         optional_section_gum="○ Optional modules skipped (not installed; see WARN lines above):
 
-${optional_list_gum}${optional_retry}"
+${optional_list_gum}"
     fi
 
     # Build dynamic Tailscale status
@@ -12754,6 +12755,9 @@ ${optional_list_gum}${optional_retry}"
         fi
         if acfs_summary_module_available stack.ntm; then
             next_steps+=($'Start your agent cockpit:\n     ntm')
+        fi
+        if (( ${#optional_retry_ids[@]} > 0 )); then
+            next_steps+=("After resolving the warnings, retry the skipped modules using this installation's options. For a checksum mismatch, verify that the chosen revision contains the corrected pin:"$'\n'"     $(acfs_smoke_install_fix_command "${optional_retry_ids[@]}")")
         fi
         if (( ${#next_steps[@]} == 0 )); then
             next_steps+=("Continue with the modules selected for this installation.")
