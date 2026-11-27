@@ -10,7 +10,14 @@ import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { HelpPanel } from "@/components/wizard/HelpPanel";
 import { useStepValidation } from "@/lib/hooks/useStepValidation";
-import { getUserOS, getVPSIP, useUserOS } from "@/lib/userPreferences";
+import {
+  getCreateVPSChecklist,
+  getInPlaceUbuntuRelease,
+  getUserOS,
+  getVPSIP,
+  useCreateVPSChecklist,
+  useUserOS,
+} from "@/lib/userPreferences";
 import { cn, withCurrentSearch } from "@/lib/utils";
 import {
   canAccessWizardStep,
@@ -43,6 +50,16 @@ export default function WizardLayout({ children }: { children: React.ReactNode }
   // control. useUserOS is the SSR-safe (query-backed) read of the same
   // preference the forward skip below checks with getUserOS().
   const [userOS] = useUserOS();
+  const [, , checklistLoaded] = useCreateVPSChecklist();
+  // Saved progress can belong to an earlier server. A current choice to keep
+  // an existing Ubuntu release must also govern bookmarks and revisited steps.
+  // The hook subscribes to changes; the live getter remains authoritative even
+  // while an older persisted query is being refreshed.
+  const inPlaceRelease = checklistLoaded
+    ? getInPlaceUbuntuRelease(getCreateVPSChecklist())
+    : null;
+  const showStepContent = hideSharedStepChrome || currentStep <= 6 ||
+    (checklistLoaded && inPlaceRelease === null);
   const prevStepId = currentStep === 3 && userOS === "linux" ? 1 : currentStep - 1;
   const prevStep = WIZARD_STEPS.find((s) => s.id === prevStepId);
   const nextStep = WIZARD_STEPS.find((s) => s.id === currentStep + 1);
@@ -65,6 +82,13 @@ export default function WizardLayout({ children }: { children: React.ReactNode }
 
   useEffect(() => {
     if (hideSharedStepChrome) return;
+    if (currentStep > 6) {
+      if (!checklistLoaded) return;
+      if (inPlaceRelease) {
+        router.replace(withCurrentSearch("/wizard/ssh-connect"));
+        return;
+      }
+    }
 
     // Treat known preferences as completing the step that produces them, so a
     // returning visitor (or a `?os=` deep link) is not bounced to step 1 when
@@ -89,12 +113,26 @@ export default function WizardLayout({ children }: { children: React.ReactNode }
 
     const redirectStep = getNextReachableWizardStep(persistedSteps);
     router.replace(withCurrentSearch(`/wizard/${redirectStep.slug}`));
-  }, [currentStep, hideSharedStepChrome, router]);
+  }, [currentStep, hideSharedStepChrome, router, checklistLoaded, inPlaceRelease]);
+
+  // Check again when navigation is invoked, including a callback registered
+  // before a same-tab or cross-tab change to the server's upgrade choice.
+  const guardInPlaceNavigation = useCallback(
+    (stepId: number) => {
+      if (stepId <= 6) return false;
+      if (!checklistLoaded) return true;
+      if (!getInPlaceUbuntuRelease(getCreateVPSChecklist())) return false;
+      router.replace(withCurrentSearch("/wizard/ssh-connect"));
+      return true;
+    },
+    [checklistLoaded, router],
+  );
 
   const handleStepClick = useCallback(
     (stepId: number) => {
       const step = WIZARD_STEPS.find((s) => s.id === stepId);
       if (!step) return;
+      if (guardInPlaceNavigation(stepId)) return;
 
       // Advancing to the immediate next step completes the current one: the
       // mobile Next button has no other way to record progress, and without
@@ -143,7 +181,7 @@ export default function WizardLayout({ children }: { children: React.ReactNode }
 
       router.push(withCurrentSearch(`/wizard/${step.slug}`));
     },
-    [router, currentStep, validate, showErrors, clearErrors, completedSteps, markCompletedStep],
+    [router, currentStep, validate, showErrors, clearErrors, completedSteps, markCompletedStep, guardInPlaceNavigation],
   );
 
   const progress = (currentStep / WIZARD_STEPS.length) * 100;
@@ -171,11 +209,12 @@ export default function WizardLayout({ children }: { children: React.ReactNode }
     return () => observer.disconnect();
   }, [forwardCtaEl]);
 
-  const hasNextStep = Boolean(nextStep) && !hideSharedStepChrome;
+  const hasNextStep = Boolean(nextStep) && !hideSharedStepChrome && showStepContent;
   const showDockNext = hasNextStep && !(forwardCtaEl && ctaInView);
   const dockNextLabel = forwardAction?.label ?? "Next";
   const dockNextBlocked = Boolean(forwardAction?.disabled) || Boolean(forwardAction?.loading);
   const handleDockNext = useCallback(() => {
+    if (nextStep && guardInPlaceNavigation(nextStep.id)) return;
     if (forwardAction) {
       if (forwardAction.loading) return;
       if (forwardAction.disabled) {
@@ -188,7 +227,7 @@ export default function WizardLayout({ children }: { children: React.ReactNode }
       return;
     }
     if (nextStep) handleStepClick(nextStep.id);
-  }, [forwardAction, nextStep, handleStepClick, validate, currentStep]);
+  }, [forwardAction, nextStep, handleStepClick, validate, currentStep, guardInPlaceNavigation]);
 
   // "Swipe to navigate" (the hint in StepperMobile) is bound to the whole
   // fixed dock — progress strip and Back/Next row — not just the 60px strip.
@@ -384,7 +423,25 @@ export default function WizardLayout({ children }: { children: React.ReactNode }
                 )}
 
                 {/* Page content */}
-                <div className="animate-scale-in">{children}</div>
+                <div className="animate-scale-in">
+                  {showStepContent ? children : (
+                    <div role="status" className="space-y-3 text-sm text-muted-foreground">
+                      {inPlaceRelease ? (
+                        <>
+                          <p>Continue with the installation that keeps Ubuntu {inPlaceRelease} LTS.</p>
+                          <Link
+                            href={withCurrentSearch("/wizard/ssh-connect")}
+                            className="inline-flex min-h-11 items-center underline"
+                          >
+                            Return to your existing VPS installation
+                          </Link>
+                        </>
+                      ) : (
+                        <p>Loading your server&apos;s installation choices...</p>
+                      )}
+                    </div>
+                  )}
+                </div>
 
                 {/* Back link (desktop). Forward navigation belongs to the
                   page's own contextual Continue button, which sits directly

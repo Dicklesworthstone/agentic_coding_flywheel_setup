@@ -1967,6 +1967,53 @@ test("existing VPS skips purchase and preserves the server's real release throug
   await expect(page.locator("[data-wizard-primary-cta]")).toBeDisabled();
 });
 
+for (const release of ["22.04", "24.04"]) {
+  test(`returning visitors keep Ubuntu ${release} on bookmarked installation steps`, async ({ page }) => {
+    const completedSteps = Array.from({ length: 13 }, (_, index) => index + 1);
+    await setupWizardState(page, { os: "mac", ip: "203.0.113.42", completedSteps });
+    await page.evaluate((version) => {
+      localStorage.setItem("agent-flywheel-create-vps-checklist", JSON.stringify([
+        "existing-vps", "existing-admin-access", version,
+      ]));
+    }, release);
+    const choices = "?mode=safe&profile=agents-only&ref=release%2Fv1.2&user=developer";
+
+    // Completed steps are deliberately retained from a previous setup. They
+    // cannot authorize an OS upgrade that the current server choice excludes.
+    for (const step of ["run-installer", "status-check", "launch-onboarding"]) {
+      await page.goto(`/wizard/${step}${choices}`);
+      await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/ssh-connect"));
+      await expect(page.getByRole("heading", {
+        name: `Install ACFS on Ubuntu ${release} LTS`,
+      })).toBeVisible();
+      const command = page.locator("code").filter({ hasText: "install.sh" }).first();
+      await expect(command).toContainText("--skip-ubuntu-upgrade");
+      await expect(command).not.toContainText("--target-ubuntu");
+      await expect(command).toContainText("--mode safe");
+      await expect(command).toContainText('--profile "agents-only"');
+      await expect(command).toContainText('--ref "release/v1.2"');
+      await expect(command).toContainText('TARGET_USER="developer"');
+    }
+    expect(await page.evaluate(
+      (key) => JSON.parse(localStorage.getItem(key) ?? "[]"), COMPLETED_STEPS_KEY,
+    )).toEqual(completedSteps);
+
+    // Optional terminal help remains available without mounting an installer.
+    await page.goto(`/wizard/windows-terminal-setup${choices}`);
+    await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/windows-terminal-setup"));
+
+    // The existing explicit upgrade opt-in still unlocks the regular wizard.
+    await page.goto(`/wizard/create-vps${choices}`);
+    await page.getByLabel(/Upgrade this server to Ubuntu/).click();
+    await page.goto(`/wizard/run-installer${choices}`);
+    await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/run-installer"));
+    const upgraded = page.locator("code").filter({ hasText: "install.sh" }).first();
+    await expect(upgraded).toContainText("--target-ubuntu=26.04");
+    await expect(upgraded).not.toContainText("--skip-ubuntu-upgrade");
+    await expect(upgraded).toContainText('--profile "agents-only"');
+  });
+}
+
 test.describe("Create VPS - Button Disabled States", () => {
   test.beforeEach(async ({ page }) => {
     await setupWizardState(page, { os: "mac" });
