@@ -607,8 +607,11 @@ Closed br-103 and released my file reservations.`}
                 send it through review rounds: paste it into a fresh{" "}
                 {COMPLETE_GUIDE_MODELS.gptPro} conversation each round, and between those rounds
                 have models that did not write it (a Codex session or a fresh subagent of the lead)
-                audit it. The lead integrates each round; keep going until reviewers stop finding
-                substantive problems.
+                audit it. The lead integrates each round. I usually do at least 8 to 10 rounds,
+                and more for a complex plan. Don&apos;t wait for a round that finds nothing, because
+                reviewers always find something: stop when the changes devolve into pointless
+                minutiae, or when the plan starts looking too much like code, with detailed schemas
+                and the like.
               </P>
 
               <SkillNote skills={["planning-workflow"]}>
@@ -632,7 +635,7 @@ Closed br-103 and released my file reservations.`}
               />
 
               <P>
-                Then polish the beads, 4-6 rounds, with this prompt. Each round catches things the
+                Then polish the beads, at least 8 to 10 rounds, with this prompt. Each round catches things the
                 previous one missed. This is the &quot;measure twice, cut once&quot; step of the
                 method, and the one people most often shortchange.
               </P>
@@ -644,7 +647,7 @@ Closed br-103 and released my file reservations.`}
 DO NOT OVERSIMPLIFY THINGS! DO NOT LOSE ANY FEATURES OR FUNCTIONALITY!
 
 Also, make sure that as part of these beads, we include comprehensive unit tests and e2e test scripts with great, detailed logging so we can be sure that everything is working perfectly after implementation. Remember to ONLY use the \`br\` tool to create and modify the beads and to add the dependencies to beads. Use ultrathink.`}
-                where={`The lead (${COMPLETE_GUIDE_MODELS.leadPlanner}), repeated 4-6 times, handing slices of a large graph to ${COMPLETE_GUIDE_MODELS.claudeExecutor} subagents; start a fresh session if improvements flatten out`}
+                where={`The lead (${COMPLETE_GUIDE_MODELS.leadPlanner}), repeated at least 8-10 times, handing slices of a large graph to ${COMPLETE_GUIDE_MODELS.claudeExecutor} subagents; start a fresh session if improvements flatten out`}
                 whyItWorks="Fixing a bead is far cheaper than fixing the code built from it. The warnings against oversimplifying matter because models otherwise 'improve' beads by deleting complexity they do not fully understand."
               />
 
@@ -970,7 +973,9 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
                 Turns this question into a course correction: it compares the code with what the
                 README and plan promise, writes a plan to close every gap, turns that into beads,
                 and refines them until a round finds nothing new. On a long project, run it at the
-                start of each working session and again whenever progress feels uncertain.
+                start of each working session and again whenever progress feels uncertain. I run
+                it on all my projects a few times a week, and on all of them again whenever a new
+                frontier model comes out; running it often costs little.
               </SkillNote>
             </SubSection>
 
@@ -1283,9 +1288,9 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
                   </Fragment>,
                   "Have the lead planner write the plan, and two other model families write competing ones.",
                   "Have the lead merge them into a single strong plan.",
-                  "Run review rounds (a fresh GPT Pro conversation each round, integrated by the lead) until the suggestions turn incremental.",
+                  "Run review rounds (a fresh GPT Pro conversation each round, integrated by the lead) until the changes turn into minutiae, usually 8-10 rounds.",
                   "Tell the lead to create beads from the plan, with dependencies.",
-                  "Polish the beads 4-6 times with fresh review passes.",
+                  "Polish the beads 8-10 times with fresh review passes.",
                   <Fragment key="triage">
                     Run <code>bv --robot-triage</code> to check that the graph and its top
                     recommendations make sense.
@@ -1333,7 +1338,7 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
                   "Merge the plans into one markdown plan",
                   "Write a minimal AGENTS.md",
                   "Tell an agent to create beads",
-                  "Polish beads 4-6 times",
+                  "Polish beads 8-10 times",
                   "Launch agents one at a time with the marching orders",
                   "Tend the swarm every 10-15 minutes",
                   "Have agents do a fresh-eyes review after each bead",

@@ -68,7 +68,7 @@ const STAGES: readonly Stage[] = [
     icon: GitBranch,
     artifact: "Encoded executable work",
     meaning: "Dependencies and boundaries are explicit.",
-    nextAction: "Polish it 4-6 times, then ask bv what matters next.",
+    nextAction: "Polish it 8-10 times, then ask bv what matters next.",
     color: "#FF5500",
     glowColor: "rgba(255,85,0,0.2)",
   },

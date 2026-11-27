@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { COMPLETE_GUIDE_REVIEWED_ON } from "../lib/complete-guide";
 
 /**
  * Antigravity (agy) migration — live browser coverage (bd-47kjh.10.1.6).
@@ -112,7 +113,7 @@ test.describe
         await page.waitForLoadState("networkidle");
 
         await test.step("renders the dated current-model guidance", async () => {
-          await expect(page.getByText("Last reviewed November 26, 2026")).toBeVisible();
+          await expect(page.getByText(`Last reviewed ${COMPLETE_GUIDE_REVIEWED_ON}`)).toBeVisible();
           await expect(page.getByText(/Claude Fable 5\.2/).first()).toBeVisible();
           await expect(page.getByText(/GPT-6 Pro/).first()).toBeVisible();
           await expect(page.getByText(/GPT-6\.2 Astra/).first()).toBeVisible();

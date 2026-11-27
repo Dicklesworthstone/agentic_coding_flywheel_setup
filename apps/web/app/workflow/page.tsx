@@ -996,8 +996,9 @@ export default function WorkflowPage() {
                 Paste the merged plan into a fresh GPT-6 Pro conversation and ask for its best
                 revisions as git-diff style changes, each with its rationale. Paste the answer into
                 the lead and have it integrate the revisions in place, saying which it agrees with
-                and which it rejects. Start a fresh conversation for each round; after four or five
-                rounds the suggestions usually become incremental.
+                and which it rejects. Start a fresh conversation for each round. A simple plan
+                mostly converges after about five rounds; I usually do at least 8 to 10, and stop
+                when the changes devolve into minutiae.
               </p>
             </WorkflowStep>
 

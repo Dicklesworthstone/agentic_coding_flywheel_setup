@@ -185,7 +185,7 @@ export default function CompleteGuidePage() {
                   <strong>You polish the beads obsessively.</strong> &quot;Check your beads N times,
                   implement once,&quot; where N is as many as you can stomach. Each polishing round
                   finds things the previous round missed: duplicates, missing dependencies,
-                  incomplete context. You run this 4-6+ times until convergence.
+                  incomplete context. I usually run at least 8 to 10 rounds.
                 </Fragment>,
                 <Fragment key="launch-swarm">
                   <strong>You launch a swarm of agents.</strong> Claude Code, Codex, and Antigravity
@@ -332,9 +332,11 @@ export default function CompleteGuidePage() {
           {/* ============================================================= */}
           <GuideSection id="philosophy">
             <P>
-              You spend 85% of your time on planning. The first time you try it, it feels wrong:
-              no code is being written, and every instinct tells you to start building. That
-              discomfort is normal.
+              Most of your time goes into planning. In a September 2026 post I put my own share at
+              over 90% of my human time and energy: nearly all of it on the plan, and nearly as much
+              again turning the plan into beads and polishing them. The first time you try it, it
+              feels wrong: no code is being written, and every instinct tells you to start
+              building. That discomfort is normal.
             </P>
 
             <BlockQuote>
@@ -398,6 +400,14 @@ export default function CompleteGuidePage() {
               </P>
 
               <P>
+                The whole approach is built to get the most out of my human time, the one resource
+                I can&apos;t buy more of. Tokens and agent time I can add by stacking accounts and
+                running more projects in parallel. So I spend my attention where it changes the
+                whole system, on the plan and the beads, and hand most of what follows to the
+                agents.
+              </P>
+
+              <P>
                 When prompting the model to create the initial markdown plan, you spend a lot of
                 time explaining the goals and intent of the project and detailing the workflows: how
                 you want the final software to work from the standpoint of the user&apos;s
@@ -414,7 +424,7 @@ export default function CompleteGuidePage() {
 
             <SubSection title="You Don't Need to Know Everything Upfront">
               <P>
-                The most common objection to spending 85% of your time on planning: &quot;I
+                The most common objection to spending most of your time on planning: &quot;I
                 don&apos;t really know all the requirements at the beginning, and I need the
                 flexibility to change things later.&quot; This is not at all in tension with the
                 methodology. Thorough planning uses frontier models to{" "}
@@ -686,6 +696,18 @@ export default function CompleteGuidePage() {
               </P>
 
               <P>
+                The other planners are useful because they were trained differently, on different
+                pre-training data with different post-training. Three strong models trained that
+                differently give you a much richer dialogue than one, and four is better still.
+                That&apos;s why I don&apos;t count {COMPLETE_GUIDE_MODELS.claudeExecutor} as the
+                second opinion on a {COMPLETE_GUIDE_MODELS.leadPlanner} plan: it comes from the same
+                lab, with close to the same data and training, and it shares the lead&apos;s blind
+                spots. A cheaper model from another lab can serve as an extra voice, and I often ask
+                one for ideas, since bad ideas get rejected by the smarter models anyway. But it
+                helps much less as one of the three when the other two beat it at everything.
+              </P>
+
+              <P>
                 The graph database plan began as two drafts written in parallel in the Claude and
                 ChatGPT apps, one by Fable and one by GPT Pro, before the project existed on a
                 computer. The merged plan kept Fable&apos;s draft as its backbone and grafted in
@@ -811,8 +833,13 @@ For each proposed change, give me your detailed analysis and rationale/justifica
               <P>
                 Once the lead has integrated a round, start a fresh{" "}
                 {COMPLETE_GUIDE_MODELS.gptPro} conversation and do it again. Expect big changes in
-                the early rounds; after four or five the suggestions usually become incremental,
-                and a large plan can keep improving for many more. To automate the rounds,{" "}
+                the early rounds. A simple plan mostly converges after about five; I usually do at
+                least 8 to 10, and the more complex the plan or specification, the more it takes (a
+                frontier math research skill took me 26). {COMPLETE_GUIDE_MODELS.gptPro} in the
+                app has its own usage limits, separate from Codex, so the rounds don&apos;t eat
+                into your coding agents&apos; quota. If the page shows an error mid-answer, don&apos;t stop the
+                response or try to steer it: close the tab and reopen it later, and it will usually
+                still be running. To automate the rounds,{" "}
                 <code>apr</code> (Automated Plan Reviser Pro, installed by ACFS) bundles your README
                 and plan, runs each round in ChatGPT in the background, and writes the integration
                 prompt for the lead (<code>apr run N</code>, then{" "}
@@ -861,12 +888,51 @@ For each proposed change, give me your detailed analysis and rationale/justifica
               </P>
 
               <P>
-                Stop when fresh reviewers stop finding substantive problems, whatever the round
-                count. In the mining plan&apos;s last round, eight auditors who had
-                written none of the claims checked 171 of them: 102 were verified, 59 partly
-                supported and 2 rejected, and no conflict survived. After that the plan changed only
-                in small edits.
+                One review I use on plans, skills, and code alike asks the model whether it
+                disagrees with anything, and how sure it is:
               </P>
+
+              <PromptBlock
+                title="Do You Disagree?"
+                prompt={`I want you to meticulously and comprehensively study <whatever you want: code, a document, a skill, a diagram, etc>; do you see anything you disagree with? Anything that is obviously contradictory? Foolishly inconsistent? Misguided and unlikely to work in practice?
+
+Ask yourself WHY you feel that way and meditate and ruminate on all of it deeply and profoundly. Finally, explain your thought process and conclusions and your justifications/rationale for them, as well as your confidence in those (and also how you know you're confident, and how confident you REALLY are!).
+
+Important: don't disagree just to be disagreeable, it's OK to just agree if you think it's right!`}
+                where="Any model that didn't write the thing under review, on a plan, a skill, a design document, or code"
+                whyItWorks="A request to find problems invites the model to manufacture some. This one asks for disagreement and its reasons, makes the model state and then question its own confidence, and explicitly allows it to agree, so what comes back is what it actually thinks is wrong."
+              />
+
+              <P>
+                Don&apos;t wait for a round that finds nothing, because reviewers always find
+                something. Stop when the changes devolve into pointless minutiae, or when the plan
+                starts looking too much like code, with detailed schemas and the like. In the mining
+                plan&apos;s last round, eight auditors who had written none of the claims checked
+                171 of them: 102 were verified, 59 partly supported and 2 rejected, and no conflict
+                survived. After that the plan changed only in small edits.
+              </P>
+
+              <P>
+                When you can&apos;t tell whether the reviewers are still finding real problems,
+                take the last few rounds of material issues from each model, start a new{" "}
+                {COMPLETE_GUIDE_MODELS.leadPlanner} session, and ask it for a candid analysis of
+                whether the models are going in circles or fixating on minor nonsense.
+              </P>
+
+              <P>
+                Once a plan has taken shape, I follow up with a prompt that has done wonders for my
+                recent plans. It asks the model to design the system for the agents who will run
+                it:
+              </P>
+
+              <PromptBlock
+                title="Agent-Ergonomics Pass"
+                prompt={`OK, now I want you to think deeply about how to make this entire system as agent-intuitive, agent-ergonomic, and agent-accretive as you can possibly imagine. Put yourself in the driver's seat and imagine that YOU are the one using this system and driving it. What would most enable you to do an awesome job understanding the situation accurately and optimally controlling everything to drive the best and most accurate results possible, with the least expenditure of resources?
+
+Then make all the requisite changes to the various design documents and plans accordingly. Don't just think of the project as an assemblage of various parts or components: really try to profoundly and deeply conceptualize it as a synthetic SYSTEM that is maximally coherent, cohesive, modular, and interconnected, forming a tower of linked abstractions that are maximally legible to you as an agent. Really ruminate and meditate on all of this incredibly deeply before responding or taking any actions.`}
+                where={`The lead planner or ${COMPLETE_GUIDE_MODELS.gptPro}, after the plan exists and before beads; highest effort setting`}
+                whyItWorks="Agents will operate most of what you build, so a system they can read and drive well is usually a better system for people too. Asking the model to imagine itself as the operator turns that into concrete design changes. Use it in planning: on an existing codebase it can make sweeping changes, so adapt it with care."
+              />
 
               <SkillNote skills={["planning-workflow"]}>
                 Packages the plan-review loop as one skill: the exact prompts for a GPT Pro review
@@ -1018,6 +1084,23 @@ For each proposed change, give me your detailed analysis and rationale/justifica
               For existing projects with a specific plan file, prefix it: &quot;OK so now read ALL
               of PLAN_FILE_NAME.md; please take ALL of that and elaborate on it...&quot; The rest of
               the prompt stays the same.
+            </P>
+
+            <P>
+              Since August 2026 I&apos;ve had two models create the beads together. The lead writes
+              them while {COMPLETE_GUIDE_MODELS.openaiPlanner} in Codex reviews in real time, and
+              the two exchange Agent Mail the whole way through, sometimes using comments on beads
+              as a second channel. I tell both to collaborate and agree, and they usually settle on
+              the better version or a hybrid of the two. It works better than either model alone,
+              and I do the same for the planning steps.
+            </P>
+
+            <P>
+              Bead creation is also the best time to stop process porn: beads whose output is
+              acceptance certificates, gates, and status reports rather than features. The swarm
+              will pick that work up eagerly, because closing it feels like progress. Cut those
+              beads now, think through how a swarm could game this particular project, and forbid
+              those moves by name in AGENTS.md. You still have to watch for it during execution.
             </P>
 
             <TipBox variant="warning">
@@ -1238,7 +1321,7 @@ br sync --flush-only                                     # Export to JSONL (no g
 DO NOT OVERSIMPLIFY THINGS! DO NOT LOSE ANY FEATURES OR FUNCTIONALITY!
 
 Also, make sure that as part of these beads, we include comprehensive unit tests and e2e test scripts with great, detailed logging so we can be sure that everything is working perfectly after implementation. Remember to ONLY use the \`br\` tool to create and modify the beads and to add the dependencies to beads. Use ultrathink.`}
-              where={`The lead (${COMPLETE_GUIDE_MODELS.leadPlanner} in ${COMPLETE_GUIDE_MODELS.leadPlannerSurface}), run 4-6+ times; on a large graph it hands each round's slices to ${COMPLETE_GUIDE_MODELS.claudeExecutor} subagents`}
+              where={`The lead (${COMPLETE_GUIDE_MODELS.leadPlanner} in ${COMPLETE_GUIDE_MODELS.leadPlannerSurface}), run at least 8-10 times on a typical project; on a large graph it hands each round's slices to ${COMPLETE_GUIDE_MODELS.claudeExecutor} subagents`}
               whyItWorks="This prompt keeps beads from being frozen too early: the model stays in plan space while it is still finding real improvements, and plan space is where reasoning is cheapest and most global. The warnings against oversimplifying and losing functionality matter because models otherwise tend to 'improve' artifacts by deleting complexity they do not fully understand. The prompt also writes tests into the bead definitions themselves, so test work cannot be left for later."
             />
 
@@ -1288,6 +1371,11 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
                 <strong>plateau at low quality</strong>, kill the current approach and restart
                 fresh.
               </TipBox>
+
+              <P>
+                On a typical project I polish the beads for at least 8 to 10 rounds. As with the
+                plan, stop when the changes devolve into minutiae, not when they stop altogether.
+              </P>
 
               <P>
                 On a very large bead set, read the second signal from the size and kind of the
@@ -1392,6 +1480,17 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
                 that only the plan&apos;s first item was ready, and the accounting engine&apos;s
                 plan reviews recorded an empty cycle report and clean bv robot runs.
               </P>
+
+              <P>
+                Then ask whether the same work could be wired for more parallelism:
+              </P>
+
+              <PromptBlock
+                title="Rewire for Concurrency"
+                prompt={`Is there a better way to wire the beads dependencies using /beads-bv to implement the same work, but with greater opportunity for agent concurrency so as to enable faster overall development velocity using a larger swarm size?`}
+                where="Any strong agent, once the plan is fully converted to beads and polished"
+                whyItWorks="A wider graph lets you provision a larger swarm with ntm. The extra agents then have whole beads to work on, instead of trying to be useful by taking smaller slices of beads or inventing ceremony to look busy."
+              />
             </SubSection>
           </GuideSection>
 
@@ -1763,6 +1862,45 @@ Remember: use your expert judgment on all decisions to make the optimal choice. 
                 the snippet about 100 times, usually after a compaction, and almost nothing
                 bespoke.
               </P>
+
+              <P>
+                Since September 2026 the snippet has its own button on my Stream Deck, with a crown
+                icon and the label &quot;Use Your Judgment.&quot; I press it after every reality
+                check, and whenever a model finishes a long task and comes back with a report and
+                decisions it wants me to make. With a thorough plan and granular beads behind them,
+                I almost always want the agents to do what they think is best within those
+                constraints, and the more work went into the planning and beads, the better the
+                button works. When I&apos;m triaging many projects at once, I don&apos;t always
+                read the whole report before pressing it. The closing line is deliberate too:
+                &quot;keep cranking away&quot; seems to work better than a bare
+                &quot;proceed.&quot;
+              </P>
+
+              <P>
+                I run the reality check on all my projects a few times a week, and across all of
+                them again whenever a new frontier model comes out. There&apos;s no real downside to
+                running it often. Lately I end the opener with &quot;Be sure to fully apply ALL
+                phases of the skill.&quot;
+              </P>
+
+              <P>
+                When a session tells you it&apos;s nearly out of context, have it write its
+                successor&apos;s first message:
+              </P>
+
+              <PromptBlock
+                title="Next-Session Handoff"
+                prompt={`ok, give me the perfect prompt to start the next session with to ensure that we don't lose any threads and that none of the great ideas fall through the cracks.`}
+                where="The current session, when it reports that its context is nearly full"
+                whyItWorks="The session that did the work knows which threads are still open. It puts them in a prompt the next session can act on, so nothing depends on compaction or on your memory."
+              />
+
+              <P>
+                I use the same move when a new model comes out. In September 2026 the outgoing
+                Opus model wrote the handoff prompt for its successor, and the new model then killed
+                and restarted all the old workers in ntm. Raise your expectations of how much gets
+                done each time a stronger model arrives.
+              </P>
             </SubSection>
 
             <SubSection title="A Separate Plan for Each New Feature Family">
@@ -1908,6 +2046,12 @@ Remember: use your expert judgment on all decisions to make the optimal choice. 
                 inbox), <code>macro_prepare_thread</code> (join existing thread with summary),{" "}
                 <code>macro_file_reservation_cycle</code> (reserve, work, auto-release), and{" "}
                 <code>macro_contact_handshake</code> (cross-agent contact setup).
+              </P>
+
+              <P>
+                Messages don&apos;t interrupt a working agent, and I think that&apos;s better for
+                productivity. An agent pulled out of its task loses focus the way a person does.
+                Agents check their inboxes between tasks, the way you check email.
               </P>
 
               <AgentMailViz />
@@ -2119,6 +2263,42 @@ bv --robot-triage --robot-triage-by-label    # Group by domain`}
                 self-contained. The agent can pick up any bead fresh without needing the full
                 conversation history.
               </P>
+
+              <P>
+                Much of what&apos;s in my AGENTS.md files came from things that went wrong. When an agent
+                does something I don&apos;t want repeated, I explain the problem and ask it to add a
+                section to AGENTS.md that addresses it. Because the file is read by every agent,
+                in every harness, a warning one model writes protects the others too. After a
+                deployment, for example:
+              </P>
+
+              <PromptBlock
+                title="Fold Lessons into AGENTS.md"
+                prompt={`take the most important lessons learned from the deployment process and use them to expand/elaborate on that towards the end of AGENTS.md so future deployments are smoother`}
+                where="The session that just finished a deployment or any other messy task, while the details are still in its context"
+                whyItWorks="The session that hit the problems knows what went wrong and what fixed it. Written into AGENTS.md, that knowledge reaches every later agent instead of disappearing with the session."
+              />
+
+              <P>
+                For a serious failure I&apos;m blunter. In August 2026 an agent burned a long
+                stretch of tokens on process and ceremony instead of the missing functionality the
+                project needed, and I sent it this:
+              </P>
+
+              <PromptBlock
+                title="Never Do This Again"
+                prompt={`What you just did is *SO* bad and representative of everything we *must* avoid in this project: you devolved into "process porn" and useless ceremony, burned massive amounts of valuable tokens and TIME on stuff that most likely has NEGATIVE value rather than implementing the vast amounts of missing functionality this project needs to even remotely start to achieve its stated goals. I need you to write a section in AGENTS.md that would cause you in the future, upon reading it with a fresh state, to NEVER EVER, EVER, *EVER*, do ANYTHING LIKE THIS AGAIN.`}
+                where="The agent that just went off the rails, as soon as you notice"
+                whyItWorks="The agent writes the rule while the evidence is still in its context, and writes it for the reader who has to obey it: a fresh instance of itself. Have it write its own section rather than copying one from another project, because each project's failure looks a little different. When the first draft is done, give it to GPT Pro for a final polishing round."
+              />
+
+              <P>
+                The prompt is blunt, but what it asks for is a structural fix. Scolding on its own
+                works less well with the newest models than it used to. It&apos;s usually better to
+                work out why the agent went astray (what went wrong in its reasoning, what it
+                forgot) and what structure or operating procedure would have kept it on track, then
+                put that into AGENTS.md or a skill.
+              </P>
             </SubSection>
 
             <SubSection title="Single-Branch Git Model">
@@ -2288,6 +2468,21 @@ bv --robot-triage --robot-triage-by-label    # Group by domain`}
                 impactful bead to work on next&quot; works the same whether you are building a CLI
                 tool, a web app, or a protocol library.
               </P>
+
+              <P>
+                When you do need a one-off prompt, write it as a dump of everything you care about,
+                then show it to {COMPLETE_GUIDE_MODELS.leadPlanner} in the Claude app at its highest
+                effort setting, prefaced with:
+              </P>
+
+              <PromptBlock
+                title="Improve My Prompt"
+                prompt={`I made this prompt for Claude Code on my computer. Try to revise it to expand it and make it better and more likely to work super well; whatever you think would improve the final product the most, feel free to add that to the prompt to make it truly excellent and optimal:
+
+<PASTE YOUR ORIGINAL PROMPT>`}
+                where={`${COMPLETE_GUIDE_MODELS.leadPlanner} in the Claude app, highest effort, before you send the prompt to your coding agent`}
+                whyItWorks="It helps most when your prompt is half-baked and you're not sure of the best way to do the task. There's no guarantee the rewrite works better than your original; I sometimes doubt it with mine, because specific word choices can coax out the behavior I want. So try both versions and keep whichever worked better in practice."
+              />
             </SubSection>
 
             <SubSection title="Security Is Integrated, Not Automatic">
@@ -2589,6 +2784,24 @@ When a Rust build or test is needed, offload it with rch (for example, rch exec 
                 perspective.
               </P>
 
+              <P>
+                Every pane in these swarms is a full Claude Code, Codex, or Antigravity instance.
+                Subagents are strictly less capable, so I use them for fan-out jobs inside one
+                agent&apos;s task, like the bead drafting in Part 4, and not as swarm workers.
+              </P>
+
+              <P>
+                Implementation is where cheaper models can earn a place. If the beads are granular
+                and came from a good plan made by frontier models, flash-class models can implement
+                them; in September 2026 I built most of one project that way as an experiment. Keep
+                the frontier models on the plan and the beads, have them check the cheap
+                models&apos; work for bugs, and require lots of end-to-end tests. Don&apos;t use the
+                cheap models for planning. What you&apos;re optimizing is the total wall time to
+                finish your projects with everything working, relative to what you spend, so I
+                track tokens in tiers: the frontier models on top, then the next tier down, then
+                the flash models.
+              </P>
+
               <DataTable
                 headers={["Open Beads", "Claude (cc)", "Codex (cod)", "Antigravity (agy)"]}
                 rows={[
@@ -2650,6 +2863,13 @@ When a Rust build or test is needed, offload it with rch (for example, rch exec 
               </P>
 
               <P>
+                The split helps even when the orchestrator runs the same model as its workers. You
+                give it your wishes in shorthand, and it turns them into detailed orders, monitors
+                the work, and does the quality control. Switching from creator to critic makes a
+                model more objective and honest about the work, and you stay out of the details.
+              </P>
+
+              <P>
                 Long orders go in files, with a one-line ping to the pane such as &quot;hand-off
                 received, thanks. Next order: &lt;file&gt;. Start now.&quot; The robotics run
                 accumulated more than 80: standing rules for every pane, per-agent orders, rework
@@ -2687,6 +2907,20 @@ When a Rust build or test is needed, offload it with rch (for example, rch exec 
                 builds contend, keep workers code-first: in both projects they skipped the heavy
                 suites (robotics workers ran at most a compile check of their own crate), and the
                 orchestrator ran the suites centrally through <code>rch</code>.
+              </P>
+
+              <P>
+                Tell the orchestrator up front what to do when the queue runs dry, or idle workers
+                will invent work. In an August 2026 kickoff I gave it a ladder. First, reopen beads
+                marked in progress that have had no work for a long time, since their agents are
+                usually long dead. When no open beads remain, run rounds of the testing skills (
+                <code>/testing-conformance-harnesses</code> and the others whose names start with{" "}
+                <code>testing-</code>). When those rounds stop finding much for the tokens they
+                burn, apply <code>/mock-code-finder</code>, <code>/deadlock-finder-and-fixer</code>,{" "}
+                <code>/reality-check-for-project</code>, <code>/profiling-software-performance</code>,{" "}
+                <code>/extreme-software-optimization</code>, and, for a port,{" "}
+                <code>/running-the-gauntlet-on-your-rust-port</code>, and turn what they find into
+                new beads for the same swarm.
               </P>
             </SubSection>
 
@@ -3106,6 +3340,15 @@ caam activate claude backup-2   # Switch instantly`}
                 <code>/testing-conformance-harnesses</code> verifies an implementation against a
                 spec or a reference implementation, which is what a port needs.
               </SkillNote>
+
+              <P>
+                Unit tests with mocks are the least useful kind. The tests that earn their keep are
+                realistic end-to-end integration tests with no mocks, conformance harnesses with
+                golden artifacts for ports, and fuzzing for parsers. People often ask how I know my
+                code works when I don&apos;t review every line myself. In September 2026 I posted
+                the answer: about 40,000 tests of every kind, including many end-to-end integration
+                tests, passing in one run.
+              </P>
 
               <P>
                 Larger projects produce large test suites. BrennerBot has nearly 5,000 tests.
@@ -4580,6 +4823,30 @@ cass search "tool_name" --workspace /data/projects/PROJECT --json --limit 100`}
                 who read every obscure CS paper ever published, because the agent is drawing on that
                 literature and the skill tells it which parts to apply.
               </P>
+
+              <P>
+                You can also send the agent to the literature directly. Most people wouldn&apos;t
+                think academic papers have anything to do with nice-looking documents, but if you
+                want your work to look special rather than like every other app, you have to reach
+                the frontier first; from there you can go further. Working on a markdown renderer in
+                August 2026, I sent:
+              </P>
+
+              <PromptBlock
+                title="Research the Untapped Frontier"
+                prompt={`Think about any world-class, SOTA typography visual optimization research (stuff involving dynamic programming and things like that to get "NEXT LEVEL" quality) that exist but which remain untapped in this project. Do exhaustive research online looking through academic papers and the like.`}
+                where="Any agent with web access, on a working project; swap typography for your own domain and name a kind of technique you suspect applies"
+                whyItWorks="It asks for what the project doesn't use yet, not for generic improvements, and it sends the agent to papers rather than to blog posts and other apps. Naming one kind of technique (dynamic programming here) shows the depth you want without limiting the search to it."
+              />
+
+              <P>For speed, I chain the three optimization skills below in one prompt:</P>
+
+              <PromptBlock
+                title="Optimization Loop"
+                prompt={`First read ALL of the AGENTS.md file and README.md file super carefully and understand ALL of both! Then use your code investigation agent mode to fully understand the code and technical architecture and purpose of the project. Then use /profiling-software-performance and then use /repeatedly-apply-skill at least 30 times sequentially to apply /extreme-software-optimization`}
+                where="Any agent on a working codebase; even a cheap flash-class model does well with it"
+                whyItWorks="Profiling first points every pass at measured hotspots instead of guesses, and thirty sequential passes go much deeper than one. In August 2026 a nearly free flash model ran it for 20 minutes on a markdown renderer that frontier models had written, and found a couple of speedups above 5,000x and several of 2x or more."
+              />
 
               <SkillNote
                 skills={[

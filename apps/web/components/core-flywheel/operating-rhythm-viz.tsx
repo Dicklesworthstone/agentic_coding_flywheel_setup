@@ -49,7 +49,7 @@ const STEPS: Step[] = [
     label: "Encode",
     icon: GitBranch,
     color: "#FF5500",
-    action: "Have an agent convert the plan into beads with br, then polish them 4-6 times",
+    action: "Have an agent convert the plan into beads with br, then polish them 8-10 times",
     output: "A dependency graph of self-contained beads (dozens to hundreds)",
     timing: "Hours, including polish",
     inLoop: false,
