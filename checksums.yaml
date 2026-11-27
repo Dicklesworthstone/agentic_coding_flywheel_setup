@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-11-27T03:46:21+00:00
+# checksums.yaml - Auto-generated 2026-11-27T07:16:19+00:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -64,7 +64,7 @@ installers:
 
   dsr:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/doodlestein_self_releaser/main/install.sh"
-    sha256: "047272f8b19e33102f8ee539de72eb9525f67cb9d715756123bea944719d9932"
+    sha256: "8f7787068643df470b82e1ec9d6ff2f3c2df4b7f867c23bacc83ecaf3f63a8ad"
 
   ee:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/eidetic_engine_cli/main/install.sh"
