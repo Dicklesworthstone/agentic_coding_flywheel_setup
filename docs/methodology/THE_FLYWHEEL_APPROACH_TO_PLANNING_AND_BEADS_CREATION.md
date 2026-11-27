@@ -219,7 +219,7 @@ Each successful cycle makes the next one faster, safer, and less dependent on im
 
 ## 2. Philosophy: Why Planning Dominates
 
-The central thesis of the Flywheel approach is that **85%+ of your time, attention, and energy should go into planning**, not implementation. This feels wrong the first time you do it because there is a long stretch where little or no code is written. But that is precisely why it works: the expensive thinking happens while the project still fits inside the model's head.
+The central thesis of the Flywheel approach is that **90%+ of your human time, attention, and energy should go into planning** (the markdown plan, then creating and polishing the beads), not implementation, where the swarm executes the beads. This feels wrong the first time you do it because there is a long stretch where little or no code is written. But that is precisely why it works: the expensive thinking happens while the project still fits inside the model's head.
 
 ### The Core Insight
 
@@ -550,7 +550,7 @@ By claiming 80+ errors exist, the model keeps searching exhaustively rather than
 
 ### Convergence
 
-After 4-5 rounds, the suggestions become very incremental and you reach a steady state. This is when the plan is ready for conversion to beads.
+The suggestions usually turn incremental after about five rounds, but I keep going to at least 8-10 and stop when the changes devolve into minutiae. Then the plan is ready for conversion to beads.
 
 In practical terms, the handoff decision is this:
 

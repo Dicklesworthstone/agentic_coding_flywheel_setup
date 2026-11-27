@@ -928,9 +928,9 @@ export default function WorkflowPage() {
           </Card>
         </motion.div>
 
-        {/* Phase 1: Ideation and Planning */}
+        {/* Phase 1: Ideation and the markdown plan */}
         <CollapsibleSection
-          title="Phase 1: Ideation & Planning"
+          title="Phase 1: Ideation & the Plan"
           icon={Lightbulb}
           defaultOpen={true}
           badge="Start Here"
@@ -1041,9 +1041,9 @@ export default function WorkflowPage() {
 
           <p className="text-muted-foreground mb-6">
             Beads are granular tasks/epics with explicit dependencies, stored in JSONL or SQLite.
-            This phase converts the monolithic plan into an actionable DAG (Directed Acyclic Graph)
-            for parallel agent execution. Real examples: CASS project = 347 beads, SLB = 76 beads
-            (14 epics, 62 tasks).
+            This phase is the second half of planning: it converts the monolithic plan into an
+            actionable DAG (Directed Acyclic Graph) for parallel agent execution. Real examples:
+            CASS project = 347 beads, SLB = 76 beads (14 epics, 62 tasks).
           </p>
 
           <div className="space-y-2">

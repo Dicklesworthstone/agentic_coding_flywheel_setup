@@ -130,9 +130,10 @@ export default function CoreFlywheelPage() {
             />
 
             <P>
-              Separate the process into two layers: the <Hl>planning substrate</Hl> (frontier models
-              used to create and refine the markdown plan) and the <Hl>core operating loop</Hl>{" "}
-              (Agent Mail, br, and bv once the plan is ready to drive execution).
+              Separate the process into two layers: the <Hl>planning substrate</Hl> (the frontier
+              models that write and refine the markdown plan, then turn it into beads and polish
+              them) and the <Hl>core operating loop</Hl> (Agent Mail, br, and bv, which drive
+              execution once the beads are ready).
             </P>
 
             <SubSection title="Who This Is For">
@@ -151,8 +152,8 @@ export default function CoreFlywheelPage() {
 
             <TipBox variant="info">
               &quot;Three-tool core&quot; means the execution machinery you keep running while the
-              project is being built. It does not mean you skip planning. The first step is still
-              an excellent markdown plan.
+              project is being built. It does not mean you skip planning. Planning still comes
+              first: an excellent markdown plan, then beads polished until they are ready.
             </TipBox>
           </GuideSection>
 
@@ -1275,8 +1276,8 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
           <GuideSection id="getting-started">
             <SubSection title="Your First Project">
               <P>
-                Expect the planning and bead steps to take hours, not minutes. That time is where
-                the method gets its quality.
+                Expect planning, from the first markdown plan through the polished beads, to take
+                hours, not minutes. That time is where the method gets its quality.
               </P>
               <NumberedList
                 items={[

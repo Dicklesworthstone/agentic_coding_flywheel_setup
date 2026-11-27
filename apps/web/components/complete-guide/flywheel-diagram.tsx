@@ -25,7 +25,7 @@ export function FlywheelDiagram() {
     },
     {
       id: "plan",
-      label: "Planning",
+      label: "Plan",
       x: 420,
       y: 60,
       color: "#FF5500",

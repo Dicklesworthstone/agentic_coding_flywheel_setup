@@ -21,7 +21,7 @@ export interface GuidePart {
 
 export const COMPLETE_GUIDE_OUTLINE: readonly GuidePart[] = [
   { id: "workflow", number: "1", label: "Workflow", title: "The Complete Workflow" },
-  { id: "philosophy", number: "2", label: "Why plan first", title: "Why Planning Is 85% of the Work" },
+  { id: "philosophy", number: "2", label: "Why plan first", title: "Why Planning Is 90% of the Work" },
   { id: "planning", number: "3", label: "The plan", title: "Creating & Refining the Markdown Plan" },
   { id: "beads", number: "4", label: "Plan → beads", title: "Converting the Plan into Beads" },
   { id: "polishing", number: "5", label: "Polish beads", title: "Check Your Beads N Times, Implement Once" },
@@ -75,7 +75,7 @@ export const CORE_FLYWHEEL_EXHIBIT_COUNT = 7;
 /** PromptBlock count on the core guide (the complete guide's lives in lib/complete-guide.ts). */
 export const CORE_FLYWHEEL_PROMPT_COUNT = 7;
 
-export const CORE_FLYWHEEL_REVIEWED_ON = "November 26, 2026";
+export const CORE_FLYWHEEL_REVIEWED_ON = "November 27, 2026";
 
 export const GUIDE_SOURCE_BASE =
   "https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/blob/main/apps/web/app";

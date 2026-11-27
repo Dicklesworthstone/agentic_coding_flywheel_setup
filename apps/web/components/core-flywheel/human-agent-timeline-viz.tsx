@@ -64,7 +64,7 @@ const STAGES: TimelineStage[] = [
     color: HUMAN_COLOR_LIGHT,
     icon: Layers,
     who: "You (via the lead)",
-    what: "Tell the lead planner to create beads from the plan, with dependencies. Then have it polish them 4\u20136 times.",
+    what: "Tell the lead planner to create beads from the plan, with dependencies. Then have it polish them 8\u201310 times.",
     tools: `${COMPLETE_GUIDE_MODELS.leadPlannerSurface} (${COMPLETE_GUIDE_MODELS.leadPlanner.replace(/^Claude /, "")}) with br`,
     insight: "You prompt the agent. The agent runs the br commands.",
   },

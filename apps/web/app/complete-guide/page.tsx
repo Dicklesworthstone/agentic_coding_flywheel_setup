@@ -332,10 +332,10 @@ export default function CompleteGuidePage() {
           {/* ============================================================= */}
           <GuideSection id="philosophy">
             <P>
-              Most of your time goes into planning. In a September 2026 post I put planning at over
-              90% of my human time and energy, and turning the finished plan into beads and
-              polishing them takes nearly as long as writing the plan did. The first time you try
-              it, it feels wrong: no code is being written, and every instinct tells you to start
+              Most of your time goes into planning, which means everything before the swarm starts
+              executing beads: first the markdown plan, then creating and polishing the beads,
+              which takes me nearly as long as writing the plan. The first time you try it, it
+              feels wrong: no code is being written, and every instinct tells you to start
               building. That discomfort is normal.
             </P>
 
@@ -373,8 +373,9 @@ export default function CompleteGuidePage() {
             </P>
 
             <BlockQuote>
-              This workflow is what prevents it from generating slop. I spend 85% of my time and
-              energy in the planning phases.
+              For the past two years, I&apos;ve been stressing the paramount importance of the
+              planning process in agentic software development. It&apos;s where I spend 90%+ of my
+              human time and energy.
             </BlockQuote>
 
             <P>
@@ -487,7 +488,9 @@ export default function CompleteGuidePage() {
               />
 
               <P>
-                Plan space is where you figure out what the system should be. Bead space is where
+                Plan space and bead space together are planning; code space is implementation,
+                where the swarm executes the beads. Plan space is where you figure out what the
+                system should be. Bead space is where
                 you turn that into <Hl>executable memory</Hl>, a graph of self-contained work units
                 detailed enough that agents don&apos;t have to keep consulting the full plan. Code
                 space is where agents implement, review, and test locally. Know which space you are
@@ -1070,10 +1073,11 @@ Then make all the requisite changes to the various design documents and plans ac
             </P>
 
             <P highlight>
-              Planning and bead creation are two separate stages. Always have a very detailed
-              markdown plan first, then treat turning that plan into beads as its own problem, with
-              its own challenges. Once you are in &quot;bead space&quot; you never look back at the
-              markdown plan, which is why every detail has to make it into the beads.
+              Writing the markdown plan and creating the beads are two separate steps of planning.
+              Always have a very detailed markdown plan first, then treat turning that plan into
+              beads as its own problem, with its own challenges. Once you are in &quot;bead
+              space&quot; you never look back at the markdown plan, which is why every detail has
+              to make it into the beads.
             </P>
 
             <PromptBlock
@@ -1095,7 +1099,7 @@ Then make all the requisite changes to the various design documents and plans ac
               time, and the two exchange Agent Mail the whole way through, sometimes using comments
               on beads as a second channel. I ask them to agree with each other, and they tend to
               defer to the better version or form a hybrid of the two. It works better than either
-              model alone, and the same pairing works for the planning steps.
+              model alone, and the same pairing works for writing the markdown plan.
             </P>
 
             <P>
@@ -1874,7 +1878,7 @@ Remember: use your expert judgment on all decisions to make the optimal choice. 
                 check, and whenever a model finishes a long task and comes back with a report and
                 decisions it wants me to make. With a thorough plan and granular beads behind them,
                 I almost always want the agents to do what they think is best within those
-                constraints, and the more work went into the planning and beads, the better the
+                constraints, and the more work went into the plan and the beads, the better the
                 button works. When I&apos;m triaging many projects at once, I don&apos;t always
                 read the whole report before pressing it. The closing line is deliberate too:
                 &quot;keep cranking away&quot; seems to work better than a bare
@@ -3897,7 +3901,8 @@ And you can't do this sort of thing using regex or a script, you MUST manually r
               <TipBox variant="warning">
                 <strong>Common beginner mistakes:</strong> Making a hasty plan all at once instead
                 of the multi-model iterative process. Trying to convert the plan to beads in a
-                single pass. Not doing at least 3 rounds of polishing. &quot;Well, of course the
+                single pass. Stopping after a round or two of polishing instead of the 8-10 I
+                usually run. &quot;Well, of course the
                 project is going to suck and be a buggy mess if you do that.&quot;
               </TipBox>
             </SubSection>
@@ -4457,7 +4462,7 @@ Then rewrite the skill to fix every issue you found. Make the happy path obvious
                 headers={["Phase", "Typical Duration", "Notes"]}
                 rows={[
                   [
-                    "Planning (multi-model synthesis + refinement)",
+                    "Markdown plan (multi-model synthesis + refinement)",
                     "3+ hours for a complex feature",
                     "Feels slow because no code is written, but it pays off in every later phase",
                   ],
@@ -4481,7 +4486,7 @@ Then rewrite the skill to fix every issue you found. Make the happy path obvious
 
               <P>
                 CASS itself (a complex Rust program used by thousands of people) was made in around
-                a week, but the human personally only spent a few hours on it. The rest of the time
+                a week, but I personally only spent a few hours on it. The rest of the time
                 was spent by a swarm of agents implementing and polishing it and writing tests.
               </P>
             </SubSection>
