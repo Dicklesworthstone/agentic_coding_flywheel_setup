@@ -964,8 +964,17 @@ export default function WorkflowPage() {
 
             <WorkflowStep number={2} title="Get Competing Plans" color="bg-amber-500">
               <p>
-                Give the same prompt to GPT-6.2 Astra in Codex and to Gemini 4 Neon in
-                Antigravity, without showing either one the other plans. Each model family has
+                Give the same prompt to GPT-6 Pro (the &quot;GPT Pro&quot; option in{" "}
+                <a
+                  href="https://chatgpt.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex min-h-6 items-center text-primary hover:underline"
+                >
+                  ChatGPT
+                </a>
+                , on any ChatGPT Pro plan), to GPT-6.2 Astra in Codex, and to Gemini 4 Neon in
+                Antigravity, without showing any of them the other plans. Each model family has
                 its own tastes and blind spots, so the plans come out quite different.
               </p>
             </WorkflowStep>
@@ -982,7 +991,17 @@ export default function WorkflowPage() {
               </p>
             </WorkflowStep>
 
-            <WorkflowStep number={4} title="Generate Brilliant Ideas" color="bg-amber-500">
+            <WorkflowStep number={4} title="Refine with GPT Pro" color="bg-amber-500">
+              <p>
+                Paste the merged plan into a fresh GPT-6 Pro conversation and ask for its best
+                revisions as git-diff style changes, each with its rationale. Paste the answer into
+                the lead and have it integrate the revisions in place, saying which it agrees with
+                and which it rejects. Start a fresh conversation for each round; after four or five
+                rounds the suggestions usually become incremental.
+              </p>
+            </WorkflowStep>
+
+            <WorkflowStep number={5} title="Generate Brilliant Ideas" color="bg-amber-500">
               <p className="mb-3">
                 For maximum creativity, use this prompt to generate innovative features:
               </p>
@@ -995,9 +1014,9 @@ export default function WorkflowPage() {
 
           <SimplerGuide>
             <GuideTip>
-              <strong>Why use 3 models?</strong> Each AI has different training data, architectures,
-              and &quot;thinking styles&quot;. The synthesis captures the strengths of all three
-              while compensating for individual weaknesses.
+              <strong>Why use several models?</strong> Each AI has different training data,
+              architectures, and &quot;thinking styles&quot;. The synthesis captures the strengths
+              of each while compensating for individual weaknesses.
             </GuideTip>
             <GuideExplain term="Time investment">
               This phase takes ~1-2 hours, with agents doing most work autonomously. Output: A
@@ -1742,7 +1761,7 @@ export default function WorkflowPage() {
               {[
                 {
                   color: "from-amber-500 to-orange-600",
-                  text: "Plan with 3 AI models: Claude Fable 5.2 leads, GPT-6.2 Astra and Gemini 4 Neon compete → the lead synthesizes",
+                  text: "Plan with several AI models: Claude Fable 5.2 leads; GPT-6 Pro, GPT-6.2 Astra and Gemini 4 Neon compete → the lead synthesizes, then GPT-6 Pro review rounds",
                 },
                 {
                   color: "from-amber-500 to-orange-600",

@@ -116,6 +116,9 @@ describe("complete guide derived claims", () => {
 
   test("intentional current-model exceptions remain explicit", () => {
     expect(COMPLETE_GUIDE_MODELS.antigravity).toBe("Gemini 4 Neon (XHigh)");
+    // GPT Pro is the ChatGPT Chat option, a different product from GPT-6.2 Astra in Work/Codex.
+    expect(COMPLETE_GUIDE_MODELS.gptPro).toBe("GPT-6 Pro");
+    expect(COMPLETE_GUIDE_MODELS.gptPro).not.toBe(COMPLETE_GUIDE_MODELS.openaiPlanner);
     expect(COMPLETE_GUIDE_MODELS.restrictedPreview).toBe("Claude Mythos 5.2");
     // JSX prose may be re-wrapped by the formatter; compare rendered spacing.
     expect(pageSource.replace(/\s+/g, " ")).toContain("is not generally available");

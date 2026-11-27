@@ -450,7 +450,7 @@ export default function CoreFlywheelPage() {
 
             <NumberedList
               items={[
-                "A lead planner writes the markdown plan, two other model families write competing ones, and the lead merges them into a single strong plan.",
+                "A lead planner writes the markdown plan, two other model families write competing ones, and the lead merges them into a single strong plan, then refines it through review rounds.",
                 "You tell the lead to turn that plan into beads (upload pipeline, indexing, admin screen, auth, and end-to-end tests) with explicit dependencies, then have it polish them.",
                 "You launch 2-4 agents, one at a time, with the same marching orders. They read AGENTS.md, join Agent Mail, and use bv to pick beads.",
                 "You tend the swarm: check progress every 10-15 minutes, rescue confused agents, and add missing beads when needed.",
@@ -586,7 +586,8 @@ Closed br-103 and released my file reservations.`}
                 {COMPLETE_GUIDE_MODELS.leadPlannerSurface} at xhigh effort, runs the project from
                 here on. Tell it what you want to build and which of your earlier projects to model
                 the plan on; it writes the first edition. Give the same kickoff to{" "}
-                {COMPLETE_GUIDE_MODELS.openaiPlanner} in Codex and{" "}
+                {COMPLETE_GUIDE_MODELS.gptPro} in {COMPLETE_GUIDE_MODELS.gptProSurface},{" "}
+                {COMPLETE_GUIDE_MODELS.openaiPlanner} in Codex, and{" "}
                 {COMPLETE_GUIDE_MODELS.antigravity} in Antigravity for competing plans, then hand
                 those to the lead and ask it to merge them:
               </P>
@@ -603,17 +604,17 @@ Closed br-103 and released my file reservations.`}
               <P>
                 At minimum, the plan should cover the user-facing workflows, the important
                 constraints, the major architectural decisions, and the testing expectations. Then
-                send it through review rounds by models that did not write it (a Codex session or a
-                fresh subagent of the lead), and have the lead integrate each round until reviewers
-                stop finding substantive problems.
+                send it through review rounds: paste it into a fresh{" "}
+                {COMPLETE_GUIDE_MODELS.gptPro} conversation each round, and between those rounds
+                have models that did not write it (a Codex session or a fresh subagent of the lead)
+                audit it. The lead integrates each round; keep going until reviewers stop finding
+                substantive problems.
               </P>
 
               <SkillNote skills={["planning-workflow"]}>
-                Lays this step out with the exact prompts for a review round, for integrating its
-                revisions, and for blending competing plans. Its rounds are written for a reasoning
-                model in a web app; with a lead in {COMPLETE_GUIDE_MODELS.leadPlannerSurface}, have
-                the lead send them to fresh-context reviewers instead. It hands the finished plan
-                on to bead conversion.
+                Lays this step out with the exact prompts for a GPT Pro review round, for
+                integrating its revisions in your coding agent, and for blending competing plans.
+                It hands the finished plan on to bead conversion.
               </SkillNote>
             </SubSection>
 
@@ -1284,6 +1285,7 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
                   </Fragment>,
                   "Have the lead planner write the plan, and two other model families write competing ones.",
                   "Have the lead merge them into a single strong plan.",
+                  "Run review rounds (a fresh GPT Pro conversation each round, integrated by the lead) until the suggestions turn incremental.",
                   "Tell the lead to create beads from the plan, with dependencies.",
                   "Polish the beads 4-6 times with fresh review passes.",
                   <Fragment key="triage">

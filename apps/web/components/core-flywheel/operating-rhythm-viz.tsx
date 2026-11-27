@@ -39,7 +39,7 @@ const STEPS: Step[] = [
     label: "Plan",
     icon: FileText,
     color: "#a78bfa",
-    action: "A lead planner writes the plan, two other models write competing ones, and the lead merges them",
+    action: "A lead planner writes the plan, other model families write competing ones, and the lead merges them",
     output: "A markdown plan covering workflows, constraints, architecture, and tests",
     timing: "Hours, not minutes",
     inLoop: false,

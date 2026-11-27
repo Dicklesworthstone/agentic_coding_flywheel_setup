@@ -1,8 +1,7 @@
 import { notFound } from "next/navigation";
 import { createSocialImage } from "@/lib/social-image";
 import { toolSocialData } from "@/lib/social-image-routes";
-import type { ToolId } from "./tool-data";
-import { TOOLS } from "./tool-data";
+import { getTool } from "./tool-data";
 
 // The card shows the tool's example command only when it is one short
 // invocation; pipelines and long examples fall back to tags (toolSocialData).
@@ -14,7 +13,7 @@ export const contentType = "image/png";
 
 export default async function Image({ params }: { params: Promise<{ tool: string }> }) {
   const { tool } = await params;
-  const doc = TOOLS[tool as ToolId];
+  const doc = getTool(tool);
   if (!doc) notFound();
   return createSocialImage(toolSocialData(doc), "opengraph");
 }

@@ -54,7 +54,7 @@ const STAGES: TimelineStage[] = [
     icon: FileText,
     who: "You",
     what: "Have a lead planner write the plan and two other model families write competing ones, then have the lead merge them into a single strong design document",
-    tools: `${COMPLETE_GUIDE_MODELS.leadPlanner.replace(/^Claude /, "")} (lead), ${COMPLETE_GUIDE_MODELS.openaiPlanner}, ${COMPLETE_GUIDE_MODELS.antigravity}`,
+    tools: `${COMPLETE_GUIDE_MODELS.leadPlanner.replace(/^Claude /, "")} (lead), ${COMPLETE_GUIDE_MODELS.gptPro}, ${COMPLETE_GUIDE_MODELS.openaiPlanner}, ${COMPLETE_GUIDE_MODELS.antigravity}`,
     insight: "The plan and the beads are where most of your time and thinking go. No code yet.",
   },
   {

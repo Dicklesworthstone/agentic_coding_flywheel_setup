@@ -957,10 +957,10 @@ export const jargonDictionary: Record<string, JargonTerm> = {
   "extended-thinking": {
     term: "Extended Thinking",
     short: "AI mode where the model 'thinks' longer for more complex reasoning",
-    long: "Extended Thinking (also called 'reasoning mode' or 'Chain of Thought') is a mode where AI models spend more time reasoning before responding. Instead of quickly generating an answer, the model works through the problem step by step, similar to how a human might sketch out their thought process. This produces better results for complex problems like architecture decisions, debugging tricky issues, or planning multi-step implementations. GPT-6.2 Astra, Claude Fable 5.2 and Claude Opus 5.5 (with extended thinking), and Gemini 4 Carbon all offer deep-reasoning modes.",
+    long: "Extended Thinking (also called 'reasoning mode' or 'Chain of Thought') is a mode where AI models spend more time reasoning before responding. Instead of quickly generating an answer, the model works through the problem step by step, similar to how a human might sketch out their thought process. This produces better results for complex problems like architecture decisions, debugging tricky issues, or planning multi-step implementations. GPT-6 Pro and GPT-6.2 Astra, Claude Fable 5.2 and Claude Opus 5.5 (with extended thinking), and Gemini 4 Carbon all offer deep-reasoning modes.",
     analogy:
       "Like the difference between answering '2+2' instantly versus working through a calculus problem on paper. Some questions benefit from the AI 'showing its work' internally before giving you the final answer.",
-    why: "For planning complex features or debugging subtle bugs, extended thinking produces dramatically better results. The Agent Flywheel workflow uses Claude Fable 5.2 at xhigh effort as the lead planner, with GPT-6.2 Astra and Gemini 4 Neon writing competing plans, then Claude Code or Codex CLI for execution. You pay more per query, but the quality difference is worth it for important decisions.",
+    why: "For planning complex features or debugging subtle bugs, extended thinking produces dramatically better results. The Agent Flywheel workflow uses Claude Fable 5.2 at xhigh effort as the lead planner, with GPT-6 Pro in ChatGPT, GPT-6.2 Astra and Gemini 4 Neon writing competing plans and GPT-6 Pro running the review rounds, then Claude Code or Codex CLI for execution. You pay more per query, but the quality difference is worth it for important decisions.",
     related: ["llm", "ai-agents", "prompt"],
   },
 

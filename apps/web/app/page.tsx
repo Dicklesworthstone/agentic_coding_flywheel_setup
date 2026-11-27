@@ -970,10 +970,10 @@ const PRICING_ITEMS = [
     name: "ChatGPT Pro",
     price: "$100–200",
     period: "/month",
-    description: "Codex, with GPT-6.2 Astra and Sol",
+    description: "GPT Pro for plan reviews, plus Codex",
     icon: Cpu,
     gradient: "from-emerald-400 to-teal-500",
-    note: "Pro tiers start at $100; competing plans and audits",
+    note: "Pro tiers start at $100; GPT-6 Pro, Astra and Sol",
   },
 ];
 

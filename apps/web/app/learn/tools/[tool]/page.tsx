@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import type { ToolId } from "./tool-data";
-import { TOOL_IDS, TOOLS } from "./tool-data";
+import { getTool, TOOL_IDS } from "./tool-data";
 import { ToolPageContent } from "./tool-page-content";
 
 interface Props {
@@ -21,7 +20,7 @@ export function generateStaticParams(): { tool: string }[] {
  */
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { tool } = await params;
-  const doc = TOOLS[tool as ToolId];
+  const doc = getTool(tool);
 
   if (!doc) {
     return {
@@ -37,7 +36,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function ToolCardPage({ params }: Props) {
   const { tool } = await params;
-  const doc = TOOLS[tool as ToolId];
+  const doc = getTool(tool);
 
   if (!doc) {
     notFound();

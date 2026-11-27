@@ -1,5 +1,5 @@
 export const COMPLETE_GUIDE_REVIEWED_ON = "November 26, 2026";
-export const COMPLETE_GUIDE_PROMPT_COUNT = 48;
+export const COMPLETE_GUIDE_PROMPT_COUNT = 49;
 export const COMPLETE_GUIDE_PHASE_COUNT = 13;
 
 export const COMPLETE_GUIDE_MODELS = {
@@ -8,6 +8,13 @@ export const COMPLETE_GUIDE_MODELS = {
   leadPlannerSurface: "Claude Code",
   claudeExecutor: "Claude Opus 5.5",
   claudeFallback: "Claude Sonnet 5.5",
+  /**
+   * The "GPT Pro" option in ChatGPT (Pro effort; every ChatGPT Pro tier has it).
+   * Writes a competing first draft and runs the plan-review rounds. It is a Chat
+   * option with its own limits, separate from GPT-6.2 Astra in Work and Codex.
+   */
+  gptPro: "GPT-6 Pro",
+  gptProSurface: "ChatGPT",
   /** Writes a competing plan and audits the lead's, in Codex. */
   openaiPlanner: "GPT-6.2 Astra",
   /** The model the ACFS `cod` alias runs (acfs/zsh/acfs.zshrc), at xhigh effort. */
@@ -21,7 +28,7 @@ export const COMPLETE_GUIDE_MODEL_SOURCES = [
   {
     provider: "OpenAI",
     href: "https://help.openai.com/en/articles/20001354-gpt-6-and-other-models-in-chatgpt",
-    note: "GPT-6.2 Astra and Sol availability in ChatGPT Work and Codex",
+    note: "GPT-6 Pro in Chat on every Pro tier; GPT-6.2 Astra and Sol in ChatGPT Work and Codex",
   },
   {
     provider: "ChatGPT Pro",

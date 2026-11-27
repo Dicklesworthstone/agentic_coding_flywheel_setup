@@ -1022,13 +1022,15 @@ export default function RentVPSPage() {
               </div>
               <div className="rounded-lg border border-border/50 bg-card/50 p-3">
                 <p className="font-medium text-foreground">
-                  ChatGPT Pro (from $100/month): Codex and Competing Plans
+                  ChatGPT Pro (from $100/month): GPT Pro for Planning, plus Codex
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  Runs Codex with GPT-6.2 Sol, a strong implementation agent, and GPT-6.2 Astra,
-                  which writes a competing plan to the lead planner&apos;s and audits it. A second
-                  model family catches mistakes one model misses. Pro comes in several usage tiers
-                  starting at $100/month; the full-setup total below budgets the $200 tier.
+                  Includes GPT-6 Pro, the &quot;GPT Pro&quot; option in ChatGPT, which writes a
+                  competing first draft of the plan and runs the review rounds that refine it.
+                  It also runs Codex with GPT-6.2 Sol, a strong implementation agent, and GPT-6.2
+                  Astra, which audits the plan. A second model family catches mistakes one model
+                  misses. Pro comes in several usage tiers starting at $100/month; the full-setup
+                  total below budgets the $200 tier.
                 </p>
               </div>
               <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
@@ -1054,8 +1056,9 @@ export default function RentVPSPage() {
                 <em>not</em> have enough capacity for agentic workflows; you&apos;ll hit rate limits
                 almost immediately. Claude Max is required: it runs the lead planner (Claude Fable
                 5.2) that creates the detailed plan documents this approach depends on, and the
-                agents that execute them. ChatGPT Pro adds Codex, a second model family for
-                competing plans, plan audits, and implementation.
+                agents that execute them. ChatGPT Pro adds a second model family: GPT Pro for the
+                competing draft and the plan-review rounds, and Codex for plan audits and
+                implementation.
                 <br />
                 <br />
                 <strong>Perspective:</strong> A junior US developer costs ~$8k+/month. This is

@@ -652,7 +652,7 @@ Don't commit ephemeral files. Use /effort max."`}
         <div className="mt-6">
           <CodeBlock
             code={`# 1. Gather proposals from multiple models
-# (Claude Fable 5.2 leads; GPT-6.2 Astra and Gemini 4 Neon write competing plans)
+# (Claude Fable 5.2 leads; GPT-6 Pro, GPT-6.2 Astra and Gemini 4 Neon write competing plans)
 # Save each as markdown in competing_proposal_plans/
 
 # 2. Synthesize into a master plan

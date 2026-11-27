@@ -157,7 +157,8 @@ export default function CompleteGuidePage() {
                 </Fragment>,
                 <Fragment key="competing-plans">
                   <strong>You ask other model families for competing plans.</strong>{" "}
-                  {COMPLETE_GUIDE_MODELS.openaiPlanner} in Codex and{" "}
+                  {COMPLETE_GUIDE_MODELS.gptPro} in {COMPLETE_GUIDE_MODELS.gptProSurface},{" "}
+                  {COMPLETE_GUIDE_MODELS.openaiPlanner} in Codex, and{" "}
                   {COMPLETE_GUIDE_MODELS.antigravity} in Antigravity get the same kickoff and plan
                   without seeing each other&apos;s work. Their approaches differ more than you would
                   expect, and each has its own strengths and blind spots.
@@ -168,10 +169,11 @@ export default function CompleteGuidePage() {
                   worlds&quot; hybrid, and checks every fact it takes from another model.
                 </Fragment>,
                 <Fragment key="iterate-relentlessly">
-                  <strong>You iterate relentlessly.</strong> Round after round of review by models
-                  and subagents that did not write the plan, until reviewers stop finding
-                  substantive problems. Recent plans run to hundreds of kilobytes of markdown, and
-                  the length comes from those rounds.
+                  <strong>You iterate relentlessly.</strong> Round after round of review, each in a
+                  fresh {COMPLETE_GUIDE_MODELS.gptPro} conversation or by models and subagents that
+                  did not write the plan, with the lead integrating each round, until reviewers stop
+                  finding substantive problems. Recent plans run to hundreds of kilobytes of
+                  markdown, and the length comes from those rounds.
                 </Fragment>,
                 <Fragment key="convert-to-beads">
                   <strong>You convert the plan into beads.</strong> Beads are self-contained work
@@ -561,10 +563,13 @@ export default function CompleteGuidePage() {
                 (pick it with <code>/model</code>, then set <code>/effort xhigh</code>), in charge
                 of the whole project. It writes the plan, commissions the research and the reviews,
                 blends in the other models&apos; work, turns the plan into beads, and runs the
-                swarm. {COMPLETE_GUIDE_MODELS.openaiPlanner} in Codex and{" "}
-                {COMPLETE_GUIDE_MODELS.antigravity} in Antigravity write competing plans and review
-                the lead&apos;s. Provider access, quotas, and model names change, so treat this
-                dated recommendation as a starting point rather than an evergreen ranking.
+                swarm. {COMPLETE_GUIDE_MODELS.gptPro} (the &quot;GPT Pro&quot; option in{" "}
+                {COMPLETE_GUIDE_MODELS.gptProSurface}, on any ChatGPT Pro plan) is its main
+                partner: it writes a competing first draft and then runs the review rounds.{" "}
+                {COMPLETE_GUIDE_MODELS.openaiPlanner} in Codex and{" "}
+                {COMPLETE_GUIDE_MODELS.antigravity} in Antigravity write further competing plans and
+                audit the lead&apos;s. Provider access, quotas, and model names change, so treat
+                this dated recommendation as a starting point rather than an evergreen ranking.
               </P>
 
               <P>
@@ -594,6 +599,11 @@ export default function CompleteGuidePage() {
                     "Lead planner, in charge of the project",
                     `${COMPLETE_GUIDE_MODELS.leadPlanner} in ${COMPLETE_GUIDE_MODELS.leadPlannerSurface}`,
                     "Writes and blends the plan, commissions reviews, makes the beads, runs the swarm",
+                  ],
+                  [
+                    "Competing first draft and plan-review rounds",
+                    `${COMPLETE_GUIDE_MODELS.gptPro} in ${COMPLETE_GUIDE_MODELS.gptProSurface}`,
+                    "A fresh conversation for each round; paste its revisions into the lead to integrate",
                   ],
                   [
                     "Competing plan and adversarial review",
@@ -666,12 +676,22 @@ export default function CompleteGuidePage() {
 
             <SubSection title="Multi-Model Plans">
               <P>
-                For the best results, have other model families plan the same project
-                independently while the lead writes its own: {COMPLETE_GUIDE_MODELS.openaiPlanner}{" "}
-                in Codex and {COMPLETE_GUIDE_MODELS.antigravity} in Antigravity. The plans come out
-                quite different, because each model has its own &quot;tastes&quot; and blind spots.
+                For the best results, have other models plan the same project independently while
+                the lead writes its own: {COMPLETE_GUIDE_MODELS.gptPro} in{" "}
+                {COMPLETE_GUIDE_MODELS.gptProSurface}, {COMPLETE_GUIDE_MODELS.openaiPlanner} in
+                Codex, and {COMPLETE_GUIDE_MODELS.antigravity} in Antigravity. The plans come out quite
+                different, because each model has its own &quot;tastes&quot; and blind spots.
                 Running a plan past several different models is the cheapest way to catch
                 architectural mistakes.
+              </P>
+
+              <P>
+                The graph database plan began as two drafts written in parallel in the Claude and
+                ChatGPT apps, one by Fable and one by GPT Pro, before the project existed on a
+                computer. The merged plan kept Fable&apos;s draft as its backbone and grafted in
+                ideas found only in the GPT Pro draft, and both drafts are kept in the repo&apos;s
+                planning folder. The author had long used GPT Pro as the final arbiter of competing
+                plans; since July 2026 he has Fable do the merging.
               </P>
 
               <P>
@@ -737,8 +757,10 @@ export default function CompleteGuidePage() {
               </P>
 
               <P>
-                When a review or synthesis comes from outside the repo, such as a model in a web
-                app, paste its git-diff style output into the lead session to integrate it:
+                When a plan, review, or synthesis comes from outside the repo, such as a{" "}
+                {COMPLETE_GUIDE_MODELS.gptPro} conversation in{" "}
+                {COMPLETE_GUIDE_MODELS.gptProSurface}, paste its git-diff style output into the
+                lead session to integrate it:
               </P>
 
               <PromptBlock
@@ -768,12 +790,43 @@ export default function CompleteGuidePage() {
 
             <SubSection title="Iterative Refinement">
               <P>
-                Now run review rounds. Each round goes to reviewers that did not write the plan:
-                fresh-context subagents the lead commissions, or a Codex or Antigravity session
-                started for the purpose. A reviewer that wrote none of the plan has nothing to
-                defend, and one that has not seen the previous round&apos;s conclusions does not
-                simply confirm them. The author&apos;s review prompt has the reviewer learn the
-                project&apos;s rules and finished-state description first, then hunt for mistakes:
+                Now run review rounds. The main loop uses {COMPLETE_GUIDE_MODELS.gptPro}: paste the
+                current plan into a <strong>fresh</strong> {COMPLETE_GUIDE_MODELS.gptPro}{" "}
+                conversation with this prompt, then paste its revisions into the lead with the
+                integration prompt above. A fresh conversation keeps the model from anchoring on
+                its own earlier output.
+              </P>
+
+              <PromptBlock
+                title="Plan Refinement Prompt"
+                prompt={`Carefully review this entire plan for me and come up with your best revisions in terms of better architecture, new features, changed features, etc. to make it better, more robust/reliable, more performant, more compelling/useful, etc.
+
+For each proposed change, give me your detailed analysis and rationale/justification for why it would make the project better along with the git-diff style changes relative to the original markdown plan shown below:
+
+<PASTE YOUR EXISTING COMPLETE PLAN HERE>`}
+                where={`${COMPLETE_GUIDE_MODELS.gptPro} in ${COMPLETE_GUIDE_MODELS.gptProSurface} (fresh conversation each round)`}
+                whyItWorks="Each round finds architectural issues, missing features, and robustness problems that the previous round missed. Asking for 'rationale/justification' keeps the model from making arbitrary changes: it has to argue for each revision, which filters out changes that seem clever but do not improve the plan. The git-diff format makes it say exactly what should change, and the lead's agree/disagree grading when it integrates the round is the second filter."
+              />
+
+              <P>
+                Once the lead has integrated a round, start a fresh{" "}
+                {COMPLETE_GUIDE_MODELS.gptPro} conversation and do it again. Expect big changes in
+                the early rounds; after four or five the suggestions usually become incremental,
+                and a large plan can keep improving for many more. To automate the rounds,{" "}
+                <code>apr</code> (Automated Plan Reviser Pro, installed by ACFS) bundles your README
+                and plan, runs each round in ChatGPT in the background, and writes the integration
+                prompt for the lead (<code>apr run N</code>, then{" "}
+                <code>apr integrate N --copy</code>).
+              </P>
+
+              <P>
+                Between those rounds, and whenever you are working without ChatGPT, have reviewers
+                inside the harness audit the plan: fresh-context subagents the lead commissions, or
+                a Codex or Antigravity session started for the purpose. A reviewer that wrote none
+                of the plan has nothing to defend, and one that has not seen the previous
+                round&apos;s conclusions does not simply confirm them. The author&apos;s audit
+                prompt has the reviewer learn the project&apos;s rules and finished-state
+                description first, then hunt for mistakes:
               </P>
 
               <PromptBlock
@@ -808,21 +861,19 @@ export default function CompleteGuidePage() {
               </P>
 
               <P>
-                Stop when fresh reviewers stop finding substantive problems, not after a set
-                number of rounds. In the mining plan&apos;s last round, eight auditors who had
+                Stop when fresh reviewers stop finding substantive problems, whatever the round
+                count. In the mining plan&apos;s last round, eight auditors who had
                 written none of the claims checked 171 of them: 102 were verified, 59 partly
                 supported and 2 rejected, and no conflict survived. After that the plan changed only
                 in small edits.
               </P>
 
               <SkillNote skills={["planning-workflow"]}>
-                Packages the plan-review loop as one skill: the exact prompts for a review round,
-                for integrating its revisions, and for blending competing plans, plus a check
-                between rounds that grounds every load-bearing claim in a verifiable source. Its
-                rounds are written for a reasoning model in a web app; with a lead in{" "}
-                {COMPLETE_GUIDE_MODELS.leadPlannerSurface}, have the lead send them to fresh-context
-                reviewers instead. It hands the finished plan on to bead conversion and polishing,
-                whose prompts live in <code>/beads-workflow</code>.
+                Packages the plan-review loop as one skill: the exact prompts for a GPT Pro review
+                round, for integrating its revisions in your coding agent, and for blending
+                competing plans, plus a check between rounds that grounds every load-bearing claim
+                in a verifiable source. It hands the finished plan on to bead conversion and
+                polishing, whose prompts live in <code>/beads-workflow</code>.
               </SkillNote>
 
               <P>
@@ -1561,10 +1612,11 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
               </P>
 
               <P>
-                Send the self-contained proposal independently to the other model families,{" "}
-                {COMPLETE_GUIDE_MODELS.openaiPlanner} and {COMPLETE_GUIDE_MODELS.antigravity}, and
-                to a fresh session of {COMPLETE_GUIDE_MODELS.leadPlanner}, all with the same prompt
-                asking for improvements in git-diff format:
+                Send the self-contained proposal independently to {COMPLETE_GUIDE_MODELS.gptPro}{" "}
+                in {COMPLETE_GUIDE_MODELS.gptProSurface}, {COMPLETE_GUIDE_MODELS.openaiPlanner} in
+                Codex, {COMPLETE_GUIDE_MODELS.antigravity}, and a fresh session of{" "}
+                {COMPLETE_GUIDE_MODELS.leadPlanner}, all with the same prompt asking for
+                improvements in git-diff format:
               </P>
 
               <PromptBlock
@@ -1572,7 +1624,7 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
                 prompt={`How can we improve this proposal to make it smarter and better-- to make the most radically innovative and accretive and useful and compelling additions and revisions you can possibly imagine. Give me your proposed changes in the form of git-diff style changes against the file below, which is named PROPOSAL_TO_INTEGRATE_IDEAS_FROM_<EXTERNAL>_INTO_<YOUR_PROJECT>.md:
 
 <the complete proposal document>`}
-                where={`${COMPLETE_GUIDE_MODELS.openaiPlanner}, ${COMPLETE_GUIDE_MODELS.antigravity}, and a fresh ${COMPLETE_GUIDE_MODELS.leadPlanner} session, each independently`}
+                where={`${COMPLETE_GUIDE_MODELS.gptPro}, ${COMPLETE_GUIDE_MODELS.openaiPlanner}, ${COMPLETE_GUIDE_MODELS.antigravity}, and a fresh ${COMPLETE_GUIDE_MODELS.leadPlanner} session, each independently`}
                 whyItWorks="Each model has different architectural tastes and blind spots. The git-diff format makes every model show the exact text it would change, which keeps the synthesis step manageable."
               />
 
@@ -2490,7 +2542,7 @@ When a Rust build or test is needed, offload it with rch (for example, rch exec 
                   ],
                   [
                     "Competing plans",
-                    `${COMPLETE_GUIDE_MODELS.openaiPlanner} (Codex) + ${COMPLETE_GUIDE_MODELS.antigravity}`,
+                    `${COMPLETE_GUIDE_MODELS.gptPro} (${COMPLETE_GUIDE_MODELS.gptProSurface}), ${COMPLETE_GUIDE_MODELS.openaiPlanner} (Codex), ${COMPLETE_GUIDE_MODELS.antigravity}`,
                     "Independent model families expose different blind spots",
                   ],
                   [
@@ -2500,8 +2552,8 @@ When a Rust build or test is needed, offload it with rch (for example, rch exec 
                   ],
                   [
                     "Plan review rounds",
-                    "Reviewers that did not write the plan",
-                    "Codex and Antigravity sessions, or fresh subagents of the lead",
+                    `${COMPLETE_GUIDE_MODELS.gptPro} (${COMPLETE_GUIDE_MODELS.gptProSurface}), plus reviewers that did not write the plan`,
+                    "A fresh conversation each round; between rounds, Codex and Antigravity sessions or fresh subagents of the lead audit it",
                   ],
                   [
                     "Plan → Beads conversion",
@@ -3855,9 +3907,10 @@ alias gmi='$HOME/.local/bin/agy-locked'  # legacy shortcut: same locked launcher
                 server capacity are separate choices. A starter setup can use one provider account
                 plus a modest VPS, then add capacity only after measured limits justify it. As of{" "}
                 {COMPLETE_GUIDE_REVIEWED_ON}, the lead planner, {COMPLETE_GUIDE_MODELS.leadPlanner},
-                runs in {COMPLETE_GUIDE_MODELS.leadPlannerSurface} on a Claude subscription. The
-                Codex models ({COMPLETE_GUIDE_MODELS.openaiPlanner} for competing plans and audits,{" "}
-                {COMPLETE_GUIDE_MODELS.codexExecutor} for implementation) are most practical for
+                runs in {COMPLETE_GUIDE_MODELS.leadPlannerSurface} on a Claude subscription.{" "}
+                {COMPLETE_GUIDE_MODELS.gptPro} for the plan-review rounds, and the Codex models (
+                {COMPLETE_GUIDE_MODELS.openaiPlanner} for competing plans and audits,{" "}
+                {COMPLETE_GUIDE_MODELS.codexExecutor} for implementation), are most practical for
                 heavy use on{" "}
                 <a
                   href="https://help.openai.com/en/articles/9793128-what-is-chatgpt-pro"

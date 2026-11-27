@@ -500,3 +500,11 @@ const RAW_TOOLS: Record<ToolId, ToolCard> = {
 export const TOOLS = withCanonicalManifestMetadata(RAW_TOOLS);
 
 export const TOOL_IDS = Object.keys(TOOLS) as ToolId[];
+
+/**
+ * The tool a route segment names, or undefined. Only own keys count, so a URL
+ * like /learn/tools/constructor is a 404 rather than Object.prototype.constructor.
+ */
+export function getTool(id: string): ToolCard | undefined {
+  return Object.hasOwn(TOOLS, id) ? TOOLS[id as ToolId] : undefined;
+}

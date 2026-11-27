@@ -10,7 +10,7 @@ const EXHIBIT_PANEL_CLASS =
   "my-12 overflow-hidden rounded-3xl border border-white/[0.06] bg-[#05070a] shadow-2xl relative group/viz transition duration-500 hover:border-primary/20";
 
 type PlanDimensionId = "architecture" | "workflow" | "edgeCases" | "novelty" | "execution";
-type PlanModelId = "lead" | "openai" | "gemini";
+type PlanModelId = "lead" | "gptPro" | "openai" | "gemini";
 
 const PLAN_DIMENSIONS = [
   { id: "architecture", label: "Architecture" },
@@ -31,6 +31,15 @@ const PLAN_MODEL_DATA = [
     contributions: { execution: 85, workflow: 75, architecture: 90, edgeCases: 70, novelty: 70 },
   },
   {
+    id: "gptPro",
+    label: COMPLETE_GUIDE_MODELS.gptPro,
+    color: "#FFFFFF",
+    role: "Competing first draft, review rounds",
+    strengths: ["Ideas the lead's draft lacked", "Round after round of revisions"],
+    blindSpot: "Without it, the plan gets fewer deep review rounds and none of the ideas only its draft had.",
+    contributions: { execution: 70, workflow: 80, architecture: 90, edgeCases: 85, novelty: 85 },
+  },
+  {
     id: "openai",
     label: COMPLETE_GUIDE_MODELS.openaiPlanner,
     color: "#a78bfa",
@@ -43,7 +52,7 @@ const PLAN_MODEL_DATA = [
     id: "gemini",
     label: COMPLETE_GUIDE_MODELS.antigravity,
     color: "#FFBD2E",
-    role: "Third plan, coverage expander",
+    role: "Competing plan, coverage expander",
     strengths: ["Alternative framings", "Missed edge cases"],
     blindSpot: "Without it, the plan has fewer alternative framings to choose from.",
     contributions: { execution: 65, workflow: 95, architecture: 65, edgeCases: 80, novelty: 80 },
@@ -65,6 +74,7 @@ export function PlanEvolutionStudio() {
   const reducedMotion = prefersReducedMotion ?? false;
   const [enabledModels, setEnabledModels] = useState<Record<PlanModelId, boolean>>({
     lead: true,
+    gptPro: true,
     openai: true,
     gemini: true,
   });
@@ -168,7 +178,6 @@ export function PlanEvolutionStudio() {
                 }}
                 className={cn(
                   "min-w-0 rounded-2xl border p-5 text-left transition duration-300 relative overflow-hidden group/model",
-                  index === 0 && "sm:col-span-2",
                   enabled
                     ? "border-white/[0.08] bg-white/[0.02] shadow-lg"
                     : "border-white/[0.03] bg-transparent opacity-50 hover:opacity-80",
@@ -365,7 +374,7 @@ export function PlanEvolutionStudio() {
                   ))
                 ) : (
                   <p className="flex items-center gap-2 text-[#27C93F] font-medium">
-                    <CheckCircle2 className="h-4 w-4" /> All three proposals are included.
+                    <CheckCircle2 className="h-4 w-4" /> All four proposals are included.
                   </p>
                 )}
               </div>
