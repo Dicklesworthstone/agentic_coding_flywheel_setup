@@ -43,8 +43,8 @@ def deployed_cli(home):
     env = {"HOME": str(home), "TARGET_HOME": str(home), "PATH": "/usr/bin:/bin"}
     # Source the whole updater library, as test_update_deployment.py does, so
     # the sync keeps every helper it calls (atomic publisher, module selection,
-    # runtime mode repair). A hand-cut excerpt broke each time update.sh gained
-    # or reordered one.
+    # runtime mode repair). A hand-cut excerpt broke when the sync gained
+    # helpers and when the function after it changed to a () ( ... ) body.
     subprocess.run(["/bin/bash", "--noprofile", "--norc", "-c",
                     'source "$1" || exit 90\n'
                     'ACFS_REPO_ROOT="$2"\n'
