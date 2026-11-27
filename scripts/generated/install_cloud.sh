@@ -822,6 +822,7 @@ acfs_install_executable_into_primary_bin() {
 }
 
 # Install Supabase CLI from GitHub release (verified via sha256 checksums)
+smoke_timeout="$(acfs_child_primary_bin_tool_path timeout)" || exit 127
 arch=""
 case "$(uname -m)" in
   x86_64) arch="amd64" ;;
@@ -921,16 +922,9 @@ acfs_install_executable_into_primary_bin "$extracted_bin" "supabase"
 # budget before failing.
 smoke_ok=""
 for smoke_attempt in 1 2 3; do
-  if command -v timeout >/dev/null 2>&1; then
-    if timeout 60 "$target_bin/supabase" --version >/dev/null 2>&1; then
-      smoke_ok=1
-      break
-    fi
-  else
-    if "$target_bin/supabase" --version >/dev/null 2>&1; then
-      smoke_ok=1
-      break
-    fi
+  if "$smoke_timeout" --kill-after=5s 60s "$target_bin/supabase" --version >/dev/null 2>&1; then
+    smoke_ok=1
+    break
   fi
   if [ "$smoke_attempt" -lt 3 ]; then
     sleep 2

@@ -2340,8 +2340,13 @@ update_create_target_readable_temp_file() {
 # directly and rely on the temp-file capture to stay hang-proof. Override the ceiling
 # with UPDATE_CMD_TIMEOUT.
 _run_bounded() {
-    if [[ "$(type -t -- "${1:-}" 2>/dev/null)" == "file" ]] && command -v timeout >/dev/null 2>&1; then
-        timeout --kill-after=30s "${UPDATE_CMD_TIMEOUT:-1800}" "$@" </dev/null
+    if [[ "$(type -t -- "${1:-}" 2>/dev/null)" == "file" ]]; then
+        local timeout_bin=""
+        timeout_bin="$(update_system_binary_path timeout)" || {
+            printf 'Cannot enforce external update command deadline: GNU timeout unavailable.\n' >&2
+            return 127
+        }
+        "$timeout_bin" --kill-after=30s "${UPDATE_CMD_TIMEOUT:-1800}" "$@" </dev/null
     else
         "$@" </dev/null
     fi
@@ -2879,17 +2884,18 @@ update_system_binary_path() {
             ;;
     esac
 
-    # Ubuntu 25.10+ defaults to uutils coreutils, whose timeout (0.10) signals
-    # only its direct child at a deadline and exits 124 for --signal=KILL. GNU
-    # timeout signals the whole process group and exits 137, which every
-    # installer deadline here relies on to stop TERM-resistant descendants.
-    # gnu-coreutils installs GNU's binary as gnutimeout beside the uutils one.
     if [[ "$name" == timeout ]]; then
-        for candidate in /usr/bin/gnutimeout /bin/gnutimeout; do
-            [[ -x "$candidate" ]] || continue
-            printf '%s\n' "$candidate"
-            return 0
-        done
+        # Ubuntu 26.04's uutils timeout cannot KILL TERM-resistant descendants.
+        local version=""
+        if [[ -x /usr/bin/gnutimeout ]]; then
+            builtin printf '%s\n' /usr/bin/gnutimeout
+        elif [[ -x /usr/bin/timeout ]] && version="$(LC_ALL=C /usr/bin/timeout --version 2>/dev/null)" \
+            && [[ "$version" == 'timeout (GNU coreutils) '* ]]; then
+            builtin printf '%s\n' /usr/bin/timeout
+        else
+            return 1
+        fi
+        return 0
     fi
 
     for candidate in \
@@ -3322,12 +3328,11 @@ update_run_in_target_context() {
 update_run_bounded_in_target_context() {
     [[ $# -gt 0 ]] || return 1
     local timeout_bin=""
-    local -a command_argv=("$@")
-    timeout_bin="$(update_system_binary_path timeout 2>/dev/null || true)"
-    if [[ -n "$timeout_bin" ]]; then
-        command_argv=("$timeout_bin" --kill-after=30s "${UPDATE_CMD_TIMEOUT:-1800}" "${command_argv[@]}")
-    fi
-    update_run_in_target_context "" "${command_argv[@]}"
+    timeout_bin="$(update_system_binary_path timeout)" || {
+        printf 'Cannot enforce target-account update deadline: GNU timeout unavailable.\n' >&2
+        return 127
+    }
+    update_run_in_target_context "" "$timeout_bin" --kill-after=30s "${UPDATE_CMD_TIMEOUT:-1800}" "$@"
 }
 
 # A native self-updater can exit successfully after leaving an unusable
@@ -6399,10 +6404,11 @@ update_run_smoke_probe() {
     local end_marker="${receipt}:done"
     local -a command_argv=("$sh_bin" -c 'printf "\n%s\n" "$1"; shift; exec "$@"' \
         acfs-smoke "$receipt" "$binary" "$@")
-    timeout_bin="$(update_system_binary_path timeout 2>/dev/null || true)"
-    if [[ -n "$timeout_bin" ]]; then
-        command_argv=("$timeout_bin" --kill-after=5s "${UPDATE_SMOKE_TIMEOUT:-20}" "${command_argv[@]}")
-    fi
+    timeout_bin="$(update_system_binary_path timeout)" || {
+        printf 'Cannot enforce target-account smoke probe deadline: GNU timeout unavailable.\n' >&2
+        return 126
+    }
+    command_argv=("$timeout_bin" --kill-after=5s "${UPDATE_SMOKE_TIMEOUT:-20}" "${command_argv[@]}")
     # A pipe capture waits for every inherited writer, even after timeout has
     # returned because the foreground probe finished. Use the updater's file
     # capture so a probe's background helper cannot stall the update forever.
@@ -9672,6 +9678,7 @@ run_cmd_claude_update() {
 }
 
 supabase_release_update_script() {
+    declare -f update_system_binary_path
     cat <<'EOF'
 set -euo pipefail
 
@@ -9701,6 +9708,10 @@ supabase_system_binary_path() {
   return 1
 }
 
+SUPABASE_TIMEOUT_BIN="$(update_system_binary_path timeout)" || {
+  echo "Supabase CLI: GNU timeout required for post-install verification" >&2
+  exit 127
+}
 SUPABASE_CURL_BIN="$(supabase_system_binary_path curl 2>/dev/null || true)"
 SUPABASE_CURL_ARGS=(--connect-timeout 30 --max-time 300 -fsSL)
 if [[ -n "$SUPABASE_CURL_BIN" ]] && curl_help="$("$SUPABASE_CURL_BIN" --help all 2>/dev/null)" && [[ "$curl_help" == *"--proto"* ]]; then
@@ -9839,16 +9850,9 @@ install -m 0755 "$extracted_bin" "${ACFS_PRIMARY_BIN_DIR:-${ACFS_BIN_DIR:-$HOME/
 supabase_installed_bin="${ACFS_PRIMARY_BIN_DIR:-${ACFS_BIN_DIR:-$HOME/.local/bin}}/supabase"
 supabase_smoke_ok=""
 for supabase_attempt in 1 2 3; do
-  if command -v timeout &>/dev/null; then
-    if timeout 60 "$supabase_installed_bin" --version >/dev/null 2>&1; then
-      supabase_smoke_ok=1
-      break
-    fi
-  else
-    if "$supabase_installed_bin" --version >/dev/null 2>&1; then
-      supabase_smoke_ok=1
-      break
-    fi
+  if "$SUPABASE_TIMEOUT_BIN" --kill-after=5s 60s "$supabase_installed_bin" --version >/dev/null 2>&1; then
+    supabase_smoke_ok=1
+    break
   fi
   if [[ "$supabase_attempt" -lt 3 ]]; then
     sleep 2

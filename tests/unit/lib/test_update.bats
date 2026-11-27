@@ -18756,3 +18756,42 @@ _asb_current_manifest() {
     run_cmd "Ordinary success" true
     [[ "$SUCCESS_COUNT" -eq 1 && "$SKIP_COUNT" -eq 1 && "$FAIL_COUNT" -eq 0 ]]
 }
+
+@test "update commands and smoke probes stop before native execution without a GNU deadline" {
+    local marker="$BATS_TEST_TMPDIR/native-started"
+    update_system_binary_path() {
+        case "$1" in
+            timeout) return 1 ;;
+            sh) printf '%s\n' /bin/sh ;;
+            *) return 1 ;;
+        esac
+    }
+    update_run_in_target_context() { shift; "$@"; }
+
+    local rc=0
+    _run_bounded /usr/bin/touch "$marker" || rc=$?
+    [[ "$rc" -eq 127 && ! -e "$marker" ]]
+    rc=0
+    update_run_bounded_in_target_context /usr/bin/touch "$marker" || rc=$?
+    [[ "$rc" -eq 127 && ! -e "$marker" ]]
+    run update_run_smoke_probe /usr/bin/touch "$marker"
+    [[ "$status" -eq 126 && ! -e "$marker" ]]
+    run _run_bounded printf '%s' ok
+    [[ "$status" -eq 0 && "$output" == "ok" ]]
+
+    local supabase_script
+    rc=0
+    supabase_script="$(supabase_release_update_script)"
+    output="$(/bin/bash -c "$supabase_script" 2>&1)" || rc=$?
+    [[ "$rc" -eq 127 && "$output" == *"GNU timeout required"* ]]
+}
+
+@test "update deadlines preserve successful external commands and native smoke status" {
+    update_run_in_target_context() { shift; "$@"; }
+    run _run_bounded /bin/sh -c 'exit 13'
+    [[ "$status" -eq 13 ]]
+    run update_run_bounded_in_target_context /bin/sh -c 'exit 14'
+    [[ "$status" -eq 14 ]]
+    run update_run_smoke_probe /bin/sh -c 'printf ready; exit 15'
+    [[ "$status" -eq 15 && "$output" == "ready" ]]
+}
