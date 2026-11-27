@@ -590,6 +590,7 @@ DOCTOR_FIX_LOG="${DOCTOR_FIX_LOG:-}"
 DOCTOR_FIX_DRY_RUN=false
 DOCTOR_FIX_YES=false
 DOCTOR_FIX_PROMPT=false
+DOCTOR_FIX_INPUT_CLOSED=false
 DOCTOR_FIX_FINALIZED=false
 
 # Counters for fix summary
@@ -598,6 +599,7 @@ declare -g FIX_SKIPPED=0
 declare -g FIX_FAILED=0
 declare -g FIX_MANUAL=0
 declare -g FIX_FILTERED=0
+declare -g FIX_DECLINED=0
 
 # A bare category selects that category's checks; dotted selectors name one
 # exact check. doctor.sh validates these against the completed diagnostic
@@ -1777,6 +1779,38 @@ doctor_fix_mark_failed_command() {
     DOCTOR_FIX_FAILED_COMMAND_IDS+=("$check_id")
 }
 
+# Read responses directly from the controlling terminal. A pipe or a tool
+# feeding Doctor diagnostic input must never approve a repair.
+doctor_fix_confirm_repair() {
+    local check_id="$1" action="$2" answer=""
+    [[ "$DOCTOR_FIX_INPUT_CLOSED" == false ]] || return 1
+    if ! printf 'Apply [%s] %s? [y/N] ' "$check_id" "$action" > /dev/tty ||
+       ! IFS= read -r answer < /dev/tty; then
+        DOCTOR_FIX_INPUT_CLOSED=true
+        echo 'Confirmation input closed. Skipping the remaining repairs.' >&2
+        return 1
+    fi
+    [[ "${answer,,}" == y || "${answer,,}" == yes ]]
+}
+
+fix_dcg_install_and_hook() {
+    local check_id="$1"
+    local claude_fix_hint="Install Claude Code first, then re-run acfs doctor --fix"
+    if ! doctor_fix_binary_path dcg >/dev/null 2>&1; then
+        fix_verified_install "$check_id" "dcg" "dcg" --easy-mode || return $?
+    fi
+    if doctor_fix_binary_path claude >/dev/null 2>&1; then
+        fix_dcg_hook "$check_id"
+    else
+        if declare -f fix_for_module >/dev/null 2>&1; then
+            claude_fix_hint="$(fix_for_module "agents.claude")"
+        fi
+        FIXES_MANUAL+=("$check_id|Install Claude Code before registering the DCG hook|$claude_fix_hint")
+        FIX_MANUAL=$((FIX_MANUAL + 1))
+        return 0
+    fi
+}
+
 # Dispatch a fix based on check ID
 # Returns 0 if fix was applied or not needed, 1 if fix failed
 dispatch_fix() {
@@ -1802,6 +1836,7 @@ dispatch_fix() {
     # promise for a bare --fix. Apply them only when the caller opted in.
     if [[ "$check_status" == "warn" ]] && [[ "${DOCTOR_FIX_YES:-false}" != "true" ]]; then
         local warning_retry="acfs doctor --fix --yes"
+        [[ "$DOCTOR_FIX_PROMPT" != true ]] || warning_retry+=" --prompt"
         local warning_selector=""
         for warning_selector in "${DOCTOR_FIX_ONLY_SELECTORS[@]}"; do
             warning_retry+=" --only $warning_selector"
@@ -1819,10 +1854,13 @@ dispatch_fix() {
         return 0
     done
 
+    local action=""
+    local -a repair=()
     case "$check_id" in
         # PATH fixes
         path.*)
-            fix_path_ordering "$check_id"
+            action="Update PATH ordering in .zshrc"
+            repair=(fix_path_ordering "$check_id")
             ;;
 
         # Config file copies. SCRIPT_DIR/../../acfs/* only exists in a repo
@@ -1834,130 +1872,146 @@ dispatch_fix() {
             [[ "$check_id" == "config.tmux" ]] && cfg_rel="tmux/tmux.conf"
             local cfg_src="${SCRIPT_DIR:-}/../../acfs/$cfg_rel"
             if [[ -n "${SCRIPT_DIR:-}" ]] && [[ -f "$cfg_src" ]]; then
-                fix_config_copy "$check_id" "$cfg_src" \
-                    "$(doctor_fix_runtime_acfs_home)/$cfg_rel"
+                action="Copy the missing ACFS configuration file"
+                repair=(fix_config_copy "$check_id" "$cfg_src" \
+                    "$(doctor_fix_runtime_acfs_home)/$cfg_rel")
             else
                 FIXES_MANUAL+=("$check_id|Source asset not available from this install|Run: acfs update")
-                FIX_MANUAL=$((FIX_MANUAL + 1))
-            fi
-            ;;
-
-        # DCG hook
-        hook.dcg.*)
-            fix_dcg_hook "$check_id"
-            ;;
-
-        # Stack tools (fixes #160 - meta_skill and other stack tools)
-        stack.meta_skill*)
-            fix_verified_install "$check_id" "ms" "ms" --easy-mode
-            ;;
-        stack.mcp_agent_mail*)
-            fix_mcp_agent_mail "$check_id"
-            ;;
-        stack.ntm)
-            fix_verified_install "$check_id" "ntm" "ntm"
-            ;;
-        stack.ubs|stack.ultimate_bug_scanner|stack.ultimate_bug_scanner.*)
-            fix_verified_install "$check_id" "ubs" "ubs" --easy-mode
-            ;;
-        stack.beads_viewer|stack.bv)
-            fix_verified_install "$check_id" "bv" "bv"
-            ;;
-        stack.beads_rust|stack.beads_rust.*)
-            fix_verified_install "$check_id" "br" "br"
-            ;;
-        stack.cass)
-            fix_verified_install_with_target_tmpdir "$check_id" "cass" "cass" --easy-mode --verify
-            ;;
-        stack.cm|stack.cm.*)
-            fix_verified_install "$check_id" "cm" "cm" --easy-mode --verify
-            ;;
-        stack.caam)
-            fix_verified_install "$check_id" "caam" "caam"
-            ;;
-        stack.ru)
-            fix_verified_install_with_env "$check_id" "ru" "ru" "RU_NON_INTERACTIVE=1"
-            ;;
-        stack.rch)
-            fix_verified_install "$check_id" "rch" "rch" --easy-mode
-            ;;
-        stack.dcg|stack.dcg.*)
-            local claude_fix_hint="Install Claude Code first, then re-run acfs doctor --fix"
-            if ! doctor_fix_binary_path dcg >/dev/null 2>&1; then
-                fix_verified_install "$check_id" "dcg" "dcg" --easy-mode || return $?
-            fi
-            if doctor_fix_binary_path claude >/dev/null 2>&1; then
-                fix_dcg_hook "$check_id"
-            else
-                if declare -f fix_for_module >/dev/null 2>&1; then
-                    claude_fix_hint="$(fix_for_module "agents.claude")"
-                fi
-                FIXES_MANUAL+=("$check_id|Install Claude Code before registering the DCG hook|$claude_fix_hint")
                 FIX_MANUAL=$((FIX_MANUAL + 1))
                 return 0
             fi
             ;;
 
+        # DCG hook
+        hook.dcg.*)
+            action="Register the DCG hook in Claude Code"
+            repair=(fix_dcg_hook "$check_id")
+            ;;
+
+        # Stack tools (fixes #160 - meta_skill and other stack tools)
+        stack.meta_skill*)
+            action="Install ms"
+            repair=(fix_verified_install "$check_id" "ms" "ms" --easy-mode)
+            ;;
+        stack.mcp_agent_mail*)
+            action="Repair Agent Mail installation, database and managed service as needed"
+            repair=(fix_mcp_agent_mail "$check_id")
+            ;;
+        stack.ntm)
+            action="Install ntm"
+            repair=(fix_verified_install "$check_id" "ntm" "ntm")
+            ;;
+        stack.ubs|stack.ultimate_bug_scanner|stack.ultimate_bug_scanner.*)
+            action="Install ubs"
+            repair=(fix_verified_install "$check_id" "ubs" "ubs" --easy-mode)
+            ;;
+        stack.beads_viewer|stack.bv)
+            action="Install bv"
+            repair=(fix_verified_install "$check_id" "bv" "bv")
+            ;;
+        stack.beads_rust|stack.beads_rust.*)
+            action="Install br"
+            repair=(fix_verified_install "$check_id" "br" "br")
+            ;;
+        stack.cass)
+            action="Install cass"
+            repair=(fix_verified_install_with_target_tmpdir "$check_id" "cass" "cass" --easy-mode --verify)
+            ;;
+        stack.cm|stack.cm.*)
+            action="Install cm"
+            repair=(fix_verified_install "$check_id" "cm" "cm" --easy-mode --verify)
+            ;;
+        stack.caam)
+            action="Install caam"
+            repair=(fix_verified_install "$check_id" "caam" "caam")
+            ;;
+        stack.ru)
+            action="Install ru"
+            repair=(fix_verified_install_with_env "$check_id" "ru" "ru" "RU_NON_INTERACTIVE=1")
+            ;;
+        stack.rch)
+            action="Install rch"
+            repair=(fix_verified_install "$check_id" "rch" "rch" --easy-mode)
+            ;;
+        stack.dcg|stack.dcg.*)
+            action="Install DCG if missing and register its Claude Code hook when available"
+            repair=(fix_dcg_install_and_hook "$check_id")
+            ;;
+
         # Symlinks
         symlink.br)
-            fix_symlink_create "$check_id" "$(doctor_fix_runtime_home)/.cargo/bin/br" "$(doctor_fix_runtime_home)/.local/bin/br"
+            action="Link br into ~/.local/bin"
+            repair=(fix_symlink_create "$check_id" "$(doctor_fix_runtime_home)/.cargo/bin/br" "$(doctor_fix_runtime_home)/.local/bin/br")
             ;;
         symlink.bv)
-            fix_symlink_create "$check_id" "$(doctor_fix_runtime_home)/.cargo/bin/bv" "$(doctor_fix_runtime_home)/.local/bin/bv"
+            action="Link bv into ~/.local/bin"
+            repair=(fix_symlink_create "$check_id" "$(doctor_fix_runtime_home)/.cargo/bin/bv" "$(doctor_fix_runtime_home)/.local/bin/bv")
             ;;
         symlink.am)
-            fix_symlink_create "$check_id" "$(doctor_fix_runtime_home)/mcp_agent_mail/am" "$(doctor_fix_runtime_home)/.local/bin/am"
+            action="Link am into ~/.local/bin"
+            repair=(fix_symlink_create "$check_id" "$(doctor_fix_runtime_home)/mcp_agent_mail/am" "$(doctor_fix_runtime_home)/.local/bin/am")
             ;;
 
         # Zsh plugins
         shell.plugins.zsh_autosuggestions)
-            fix_plugin_clone "$check_id" "zsh-autosuggestions" \
-                "https://github.com/zsh-users/zsh-autosuggestions"
+            action="Install the zsh-autosuggestions zsh plugin"
+            repair=(fix_plugin_clone "$check_id" "zsh-autosuggestions" \
+                "https://github.com/zsh-users/zsh-autosuggestions")
             ;;
         shell.plugins.zsh_syntax_highlighting)
-            fix_plugin_clone "$check_id" "zsh-syntax-highlighting" \
-                "https://github.com/zsh-users/zsh-syntax-highlighting"
+            action="Install the zsh-syntax-highlighting zsh plugin"
+            repair=(fix_plugin_clone "$check_id" "zsh-syntax-highlighting" \
+                "https://github.com/zsh-users/zsh-syntax-highlighting")
             ;;
 
         # ACFS sourcing
         shell.acfs_sourced)
-            fix_acfs_sourcing "$check_id"
+            action="Add ACFS sourcing to .zshrc"
+            repair=(fix_acfs_sourcing "$check_id")
             ;;
 
         # SSH server (fixes #161/#162)
         network.ssh_server)
-            fix_ssh_server "$check_id"
+            action="Install or enable and start the SSH server"
+            repair=(fix_ssh_server "$check_id")
             ;;
 
         # SSH keepalive
         network.ssh_keepalive|network.ssh_keepalive.*)
-            fix_ssh_keepalive "$check_id"
+            action="Update SSH server keepalive settings and reload the service"
+            repair=(fix_ssh_keepalive "$check_id")
             ;;
 
         # Atuin daemon socket: pin socket_path and (re)start the daemon (#358, #404)
         shell.atuin_daemon)
-            fix_atuin_daemon_socket "$check_id"
+            action="Repair the Atuin socket configuration and restart its daemon"
+            repair=(fix_atuin_daemon_socket "$check_id")
             ;;
 
         # bun global installs stranded in the XDG cache fallback dir (#388)
         bun.global_bin_dir)
-            fix_bun_global_bin_dir "$check_id"
+            action="Reinstall affected global Bun packages into the target bin directory"
+            repair=(fix_bun_global_bin_dir "$check_id")
             ;;
 
         # Agent CLI tools (fixes #213)
         agent.claude)
-            fix_verified_install "$check_id" "claude" "claude"
+            action="Install claude"
+            repair=(fix_verified_install "$check_id" "claude" "claude")
             ;;
         agent.codex)
-            fix_stack_install "$check_id" "codex" \
-                "bun install -g --trust @openai/codex@latest"
+            action="Install codex"
+            repair=(fix_stack_install "$check_id" "codex" \
+                "bun install -g --trust @openai/codex@latest")
             ;;
         agent.antigravity)
-            fix_verified_install "$check_id" "agy" "antigravity"
+            action="Install agy"
+            repair=(fix_verified_install "$check_id" "agy" "antigravity")
             ;;
         agent.gemini)
-            fix_stack_install "$check_id" "gemini" \
-                "bun install -g --trust @google/gemini-cli@latest"
+            action="Install gemini"
+            repair=(fix_stack_install "$check_id" "gemini" \
+                "bun install -g --trust @google/gemini-cli@latest")
             ;;
 
         # Agent aliases/functions (fixes #163). The agent.alias.* checks grep
@@ -1989,6 +2043,16 @@ dispatch_fix() {
             return 0
             ;;
     esac
+
+    if [[ "$DOCTOR_FIX_PROMPT" == true && "$DOCTOR_FIX_DRY_RUN" != true ]]; then
+        if ! doctor_fix_confirm_repair "$check_id" "$action"; then
+            FIX_SKIPPED=$((FIX_SKIPPED + 1))
+            FIX_DECLINED=$((FIX_DECLINED + 1))
+            doctor_fix_log INFO "$check_id: repair declined"
+            return 0
+        fi
+    fi
+    "${repair[@]}"
 }
 
 # ============================================================
@@ -3722,6 +3786,9 @@ print_fix_summary() {
     else
         echo "  Applied: $FIX_APPLIED"
         echo "  Skipped: $FIX_SKIPPED"
+        if [[ "$DOCTOR_FIX_PROMPT" == true ]]; then
+            echo "  Declined: $FIX_DECLINED"
+        fi
         echo "  Failed:  $FIX_FAILED"
         echo "  Manual:  $FIX_MANUAL"
 
@@ -3769,9 +3836,10 @@ print_fix_summary() {
 # ============================================================
 
 # Run doctor --fix
-# Usage: run_doctor_fix [--dry-run] [--yes] [--only <category|check-id>[,...]]
+# Usage: run_doctor_fix [--dry-run] [--yes] [--prompt] [--only <category|check-id>[,...]]
 run_doctor_fix() {
     local dry_run=false
+    local prompt=false
     local yes_mode=false
     local selection_value=""
     local selector=""
@@ -3794,10 +3862,7 @@ run_doctor_fix() {
                 shift 2
                 ;;
             --only=*) selection_values+=("${1#*=}"); shift ;;
-            --prompt)
-                echo "Error: --prompt is not supported; use --dry-run to preview fixes first" >&2
-                return 2
-                ;;
+            --prompt) prompt=true; shift ;;
             *)
                 printf "Error: unknown doctor fix option '%s'\n" "$1" >&2
                 return 2
@@ -3832,9 +3897,15 @@ run_doctor_fix() {
             [[ "$duplicate" == true ]] || parsed_selectors+=("$selector")
         done
     done
+    if [[ "$prompt" == true && "$dry_run" != true ]] && ! { : <> /dev/tty; } 2>/dev/null; then
+        echo 'Error: --prompt requires a controlling terminal. Use --fix --dry-run to preview repairs.' >&2
+        return 2
+    fi
+
     DOCTOR_FIX_DRY_RUN="$dry_run"
     DOCTOR_FIX_YES="$yes_mode"
-    DOCTOR_FIX_PROMPT=false
+    DOCTOR_FIX_PROMPT="$prompt"
+    DOCTOR_FIX_INPUT_CLOSED=false
     DOCTOR_FIX_FINALIZED=false
     DOCTOR_FIX_ONLY_SELECTORS=("${parsed_selectors[@]}")
 
@@ -3876,6 +3947,7 @@ run_doctor_fix() {
     FIX_FAILED=0
     FIX_MANUAL=0
     FIX_FILTERED=0
+    FIX_DECLINED=0
     FIXES_APPLIED=()
     FIXES_DRY_RUN=()
     FIXES_MANUAL=()

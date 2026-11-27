@@ -5006,7 +5006,7 @@ test_run_doctor_fix_rejects_invalid_selection_before_side_effects() (
             return 1
         fi
     done
-    for invalid in --only --unknown --prompt; do
+    for invalid in --only --unknown --prompt=always; do
         result=0
         run_doctor_fix "$invalid" >/dev/null 2>&1 || result=$?
         if [[ "$result" -ne 2 || "$side_effects" -ne 0 ]]; then

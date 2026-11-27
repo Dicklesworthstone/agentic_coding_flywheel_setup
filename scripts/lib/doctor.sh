@@ -6595,7 +6595,7 @@ print_json() {
         local selection_valid=true
         [[ "${1:-0}" -eq 0 ]] || selection_valid=false
         fixes_json=",
-  \"fixes\": {\"dry_run\": $DRY_RUN_MODE, \"warning_fixes_enabled\": ${DOCTOR_FIX_YES:-false}, \"selectors\": [$selectors_json], \"selection_valid\": $selection_valid, \"applied\": ${FIX_APPLIED:-0}, \"planned\": ${#FIXES_DRY_RUN[@]}, \"filtered\": ${FIX_FILTERED:-0}, \"skipped\": ${FIX_SKIPPED:-0}, \"failed\": ${FIX_FAILED:-0}, \"manual\": ${FIX_MANUAL:-0}, \"finalized\": ${DOCTOR_FIX_FINALIZED:-false}}"
+  \"fixes\": {\"dry_run\": $DRY_RUN_MODE, \"warning_fixes_enabled\": ${DOCTOR_FIX_YES:-false}, \"selectors\": [$selectors_json], \"selection_valid\": $selection_valid, \"applied\": ${FIX_APPLIED:-0}, \"planned\": ${#FIXES_DRY_RUN[@]}, \"filtered\": ${FIX_FILTERED:-0}, \"declined\": ${FIX_DECLINED:-0}, \"skipped\": ${FIX_SKIPPED:-0}, \"failed\": ${FIX_FAILED:-0}, \"manual\": ${FIX_MANUAL:-0}, \"finalized\": ${DOCTOR_FIX_FINALIZED:-false}}"
     fi
 
     local json_output
@@ -7493,6 +7493,7 @@ main() {
 
     # Parse args
     local fix_scope_requested=false
+    local fix_prompt_requested=false
     while [[ $# -gt 0 ]]; do
         case $1 in
             --json)
@@ -7571,11 +7572,12 @@ main() {
                 shift
                 ;;
             --prompt)
-                echo "Error: acfs doctor ${1%%=*} is not supported yet; use --fix --dry-run to preview every fix first" >&2
-                return 2
+                FIX_ARGS+=("--prompt")
+                fix_prompt_requested=true
+                shift
                 ;;
             --help|-h)
-                echo "Usage: acfs doctor [--json] [--format <fmt>] [--stats] [--deep] [--no-cache] [--fix] [--dry-run] [--yes] [--only <selectors>]"
+                echo "Usage: acfs doctor [--json] [--format <fmt>] [--stats] [--deep] [--no-cache] [--fix] [--dry-run] [--yes] [--prompt] [--only <selectors>]"
                 echo ""
                 echo "Options:"
                 echo "  --json           Output results as JSON"
@@ -7587,6 +7589,7 @@ main() {
                 echo "  --fix       Automatically apply safe fixes for failed checks"
                 echo "  --dry-run   Preview fixes without applying (use with --fix)"
                 echo "  --yes, -y   Also apply fixes for warning-level checks (use with --fix)"
+                echo "  --prompt    Confirm each eligible repair at the terminal (requires --fix; add --yes for warnings)"
                 echo "  --only <selectors>  Repair only comma-separated categories or exact check IDs (requires --fix)"
                 echo "  --quiet, -q Exit code only (0=healthy, 1=issues); suppresses all output"
                 echo ""
@@ -7632,6 +7635,15 @@ main() {
         esac
     done
 
+    if [[ "$fix_prompt_requested" == true ]]; then
+        if [[ "$FIX_MODE" != true ]]; then
+            echo "Error: --prompt requires --fix" >&2
+            return 2
+        elif ! declare -F doctor_fix_confirm_repair >/dev/null; then
+            echo "Error: prompting is unavailable in this doctor_fix.sh; update the ACFS runtime" >&2
+            return 2
+        fi
+    fi
     if [[ "$fix_scope_requested" == "true" && "$FIX_MODE" != "true" ]]; then
         echo "Error: --only requires --fix; it selects repairs, not diagnostic checks" >&2
         return 2

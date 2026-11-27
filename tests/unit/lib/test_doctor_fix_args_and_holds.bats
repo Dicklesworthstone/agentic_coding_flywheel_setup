@@ -48,17 +48,17 @@ load_doctor_functions() {
     assert_output --partial "unknown option '--yess'"
 }
 
-@test "doctor still refuses unimplemented prompting" {
-    run bash "$DOCTOR_SH" --fix --dry-run --prompt
+@test "doctor requires --fix for per-repair confirmation" {
+    run bash "$DOCTOR_SH" --prompt
     assert_failure 2
-    assert_output --partial "is not supported yet"
+    assert_output --partial "--prompt requires --fix"
 }
 
 @test "doctor --help documents targeted repairs and warning opt-in" {
     run bash "$DOCTOR_SH" --help
     assert_success
     assert_output --partial "--yes, -y"
-    refute_output --partial "--prompt"
+    assert_output --partial "--prompt"
     assert_output --partial "--only <selectors>"
     assert_output --partial "dotted IDs match exactly"
     assert_output --partial "acfs doctor --fix --yes"
@@ -517,6 +517,13 @@ run_isolated_doctor_repair() {
         counted-repair-failure)
             fix_path_ordering() { FIX_FAILED=$((FIX_FAILED + 1)); return 75; }
             ;;
+        prompt-findings)
+            check_shell() {
+                check path.local_bin "Local PATH" warn "missing PATH entries"
+                check config.tmux "tmux configuration" warn "missing configuration"
+                check shell.ohmyzsh "Optional shell setup" warn "manual setup required" "manual instructions"
+            }
+            ;;
         scoped-findings)
             check_shell() {
                 check path.local_bin "Local PATH" warn "missing PATH entries"
@@ -566,6 +573,63 @@ run_isolated_doctor_repair() {
             ;;
     esac
     main doctor --fix "$@" > "$HOME/result.out" 2> "$HOME/result.err"
+}
+
+# script gives Doctor a real controlling terminal while the command's stdin
+# and machine-readable stdout are redirected. Bound regressions that wait for
+# extra responses. Each run uses only the temporary HOME configured by setup.
+run_prompted_fixture() {
+    local responses="$1"
+    shift
+    export -f run_isolated_doctor_repair load_doctor_functions
+    export DOCTOR_SH PROJECT_ROOT
+    local command
+    printf -v command '%q ' bash -c 'run_isolated_doctor_repair prompt-findings "$@" < /dev/null' _ --prompt --json "$@"
+    printf '%b' "$responses" | SHELL=/bin/bash timeout 20 script -q -e -c "$command" /dev/null
+}
+
+@test "doctor prompts separately for eligible repairs and journals only the accepted one" {
+    printf '# original shell configuration\n' > "$HOME/.zshrc"
+    run run_prompted_fixture 'YES\nn\n' --yes --only path,config,shell
+    assert_success
+    assert_output --partial 'Apply [path.local_bin]'
+    assert_output --partial 'Apply [config.tmux]'
+    refute_output --partial 'Apply [shell.ohmyzsh]'
+    grep -F '# ACFS PATH ordering (added by doctor --fix)' "$HOME/.zshrc"
+    [[ ! -e "$HOME/.acfs/tmux/tmux.conf" ]]
+    jq -e '.fixes | .applied == 1 and .declined == 1 and .skipped == 1 and .manual == 1 and .finalized' "$HOME/result.out"
+    jq -se 'length == 1' "$HOME/.acfs/autofix/changes.jsonl"
+}
+
+@test "doctor declines remaining repairs on terminal EOF" {
+    run run_prompted_fixture '\004' --yes
+    assert_success
+    assert_output --partial 'Apply [path.local_bin]'
+    refute_output --partial 'Apply [config.tmux]'
+    [[ ! -e "$HOME/.zshrc" && ! -e "$HOME/.acfs/tmux/tmux.conf" ]]
+    grep -F 'Confirmation input closed' "$HOME/result.err"
+    jq -e '.fixes | .applied == 0 and .declined == 2 and .finalized' "$HOME/result.out"
+}
+
+@test "doctor prompting preserves the warning policy and dry-run never reads the terminal" {
+    run run_prompted_fixture '' --only path
+    assert_success
+    grep -F 'acfs doctor --fix --yes --prompt --only path' "$HOME/doctor-fix.log"
+    refute_output --partial 'Apply ['
+    jq -e '.fixes | .applied == 0 and .declined == 0' "$HOME/result.out"
+    run run_isolated_doctor_repair prompt-findings --yes --prompt --dry-run --json
+    assert_success
+    jq -e '.fixes | .planned == 2 and .applied == 0 and .declined == 0' "$HOME/result.out"
+    [[ ! -e "$HOME/.zshrc" && ! -e "$HOME/.acfs/tmux/tmux.conf" ]]
+}
+
+@test "doctor refuses live prompt mode with only piped answers before starting an undo session" {
+    export -f run_isolated_doctor_repair load_doctor_functions
+    export DOCTOR_SH PROJECT_ROOT
+    run setsid --wait bash -c 'run_isolated_doctor_repair prompt-findings --yes --prompt --json <<< yes'
+    assert_failure 2
+    grep -F 'requires a controlling terminal' "$HOME/result.err"
+    [[ ! -e "$HOME/.acfs/autofix/changes.jsonl" && ! -e "$HOME/checks-ran" ]]
 }
 
 @test "doctor JSON repair applies the real PATH fix and records its undo" {

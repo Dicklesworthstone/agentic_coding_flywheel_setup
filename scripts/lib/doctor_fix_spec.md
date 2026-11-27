@@ -352,8 +352,11 @@ acfs doctor --fix
 # Preview fixes without applying
 acfs doctor --fix --dry-run
 
-# Auto-approve safe fixes
+# Include warning-level findings in automatic repair
 acfs doctor --fix --yes
+
+# Choose individual eligible repairs at the terminal, including warnings
+acfs doctor --fix --yes --prompt
 
 # JSON output for scripting
 acfs doctor --fix --json
@@ -364,6 +367,13 @@ acfs doctor --fix --only path,config
 # Preview warning-level repairs for one exact check
 acfs doctor --fix --yes --only path.ordering --dry-run --json
 ```
+
+`--prompt` asks for each eligible check's repair on the controlling terminal.
+Enter `y` or `yes` to apply it. An empty answer skips that repair, and end of
+input skips all remaining repairs. Add `--yes` to include warnings. Manual
+findings still require the suggested manual action. Live prompting requires
+a terminal even when the JSON report goes to a file. `--dry-run` works
+without a terminal. In JSON, `fixes.declined` counts the skipped confirmations.
 
 `--only` selects repairs, not diagnostics, and requires `--fix`. Comma-separated
 and repeated options form a deduplicated union. A bare category matches only
