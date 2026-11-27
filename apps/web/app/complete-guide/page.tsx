@@ -332,10 +332,10 @@ export default function CompleteGuidePage() {
           {/* ============================================================= */}
           <GuideSection id="philosophy">
             <P>
-              Most of your time goes into planning. In a September 2026 post I put my own share at
-              over 90% of my human time and energy: nearly all of it on the plan, and nearly as much
-              again turning the plan into beads and polishing them. The first time you try it, it
-              feels wrong: no code is being written, and every instinct tells you to start
+              Most of your time goes into planning. In a September 2026 post I put planning at over
+              90% of my human time and energy, and turning the finished plan into beads and
+              polishing them takes nearly as long as writing the plan did. The first time you try
+              it, it feels wrong: no code is being written, and every instinct tells you to start
               building. That discomfort is normal.
             </P>
 
@@ -698,13 +698,15 @@ export default function CompleteGuidePage() {
               <P>
                 The other planners are useful because they were trained differently, on different
                 pre-training data with different post-training. Three strong models trained that
-                differently give you a much richer dialogue than one, and four is better still.
-                That&apos;s why I don&apos;t count {COMPLETE_GUIDE_MODELS.claudeExecutor} as the
-                second opinion on a {COMPLETE_GUIDE_MODELS.leadPlanner} plan: it comes from the same
-                lab, with close to the same data and training, and it shares the lead&apos;s blind
-                spots. A cheaper model from another lab can serve as an extra voice, and I often ask
-                one for ideas, since bad ideas get rejected by the smarter models anyway. But it
-                helps much less as one of the three when the other two beat it at everything.
+                differently give you a much richer dialogue than one, and four is better still. So
+                count perspectives by lab, not by product. {COMPLETE_GUIDE_MODELS.gptPro} and{" "}
+                {COMPLETE_GUIDE_MODELS.openaiPlanner} are both OpenAI models and together give you
+                one of the three. {COMPLETE_GUIDE_MODELS.claudeExecutor} adds little to a{" "}
+                {COMPLETE_GUIDE_MODELS.leadPlanner} plan, because it comes from the same lab with
+                close to the same data and training, and shares the lead&apos;s blind spots. A
+                cheaper model from another lab is still worth asking for ideas, since the smarter
+                models reject the bad ones anyway, but it helps much less as one of the three when
+                the other two beat it at everything.
               </P>
 
               <P>
@@ -835,9 +837,10 @@ For each proposed change, give me your detailed analysis and rationale/justifica
                 {COMPLETE_GUIDE_MODELS.gptPro} conversation and do it again. Expect big changes in
                 the early rounds. A simple plan mostly converges after about five; I usually do at
                 least 8 to 10, and the more complex the plan or specification, the more it takes (a
-                frontier math research skill took me 26). {COMPLETE_GUIDE_MODELS.gptPro} in the
-                app has its own usage limits, separate from Codex, so the rounds don&apos;t eat
-                into your coding agents&apos; quota. If the page shows an error mid-answer, don&apos;t stop the
+                frontier math research skill took 26 rounds, a record for me).{" "}
+                {COMPLETE_GUIDE_MODELS.gptPro} in the app has its own usage limits, separate from
+                Codex, so the rounds don&apos;t eat into your Codex quota. If the page shows an
+                error mid-answer, don&apos;t stop the
                 response or try to steer it: close the tab and reopen it later, and it will usually
                 still be running. To automate the rounds,{" "}
                 <code>apr</code> (Automated Plan Reviser Pro, installed by ACFS) bundles your README
@@ -900,7 +903,7 @@ Ask yourself WHY you feel that way and meditate and ruminate on all of it deeply
 
 Important: don't disagree just to be disagreeable, it's OK to just agree if you think it's right!`}
                 where="Any model that didn't write the thing under review, on a plan, a skill, a design document, or code"
-                whyItWorks="A request to find problems invites the model to manufacture some. This one asks for disagreement and its reasons, makes the model state and then question its own confidence, and explicitly allows it to agree, so what comes back is what it actually thinks is wrong."
+                whyItWorks="Most review prompts ask for problems. This one asks whether the model disagrees and why, makes it state and then question its own confidence, and explicitly allows it to agree, so you also learn how much weight each objection deserves."
               />
 
               <P>
@@ -930,8 +933,8 @@ Important: don't disagree just to be disagreeable, it's OK to just agree if you 
                 prompt={`OK, now I want you to think deeply about how to make this entire system as agent-intuitive, agent-ergonomic, and agent-accretive as you can possibly imagine. Put yourself in the driver's seat and imagine that YOU are the one using this system and driving it. What would most enable you to do an awesome job understanding the situation accurately and optimally controlling everything to drive the best and most accurate results possible, with the least expenditure of resources?
 
 Then make all the requisite changes to the various design documents and plans accordingly. Don't just think of the project as an assemblage of various parts or components: really try to profoundly and deeply conceptualize it as a synthetic SYSTEM that is maximally coherent, cohesive, modular, and interconnected, forming a tower of linked abstractions that are maximally legible to you as an agent. Really ruminate and meditate on all of this incredibly deeply before responding or taking any actions.`}
-                where={`The lead planner or ${COMPLETE_GUIDE_MODELS.gptPro}, after the plan exists and before beads; highest effort setting`}
-                whyItWorks="Agents will operate most of what you build, so a system they can read and drive well is usually a better system for people too. Asking the model to imagine itself as the operator turns that into concrete design changes. Use it in planning: on an existing codebase it can make sweeping changes, so adapt it with care."
+                where={`The session that wrote the plan (the lead, or ${COMPLETE_GUIDE_MODELS.gptPro}), at its highest effort setting, before the plan becomes beads`}
+                whyItWorks="Agents will build, test, and often drive what you're designing, so a system they can read and control well is easier to get right, and the changes generally make the design better overall. Asking the model to imagine itself as the operator turns that into concrete design changes. Use it in planning: on an existing codebase it can make sweeping changes, so adapt it with care."
               />
 
               <SkillNote skills={["planning-workflow"]}>
@@ -1087,17 +1090,17 @@ Then make all the requisite changes to the various design documents and plans ac
             </P>
 
             <P>
-              Since August 2026 I&apos;ve had two models create the beads together. The lead writes
-              them while {COMPLETE_GUIDE_MODELS.openaiPlanner} in Codex reviews in real time, and
-              the two exchange Agent Mail the whole way through, sometimes using comments on beads
-              as a second channel. I tell both to collaborate and agree, and they usually settle on
-              the better version or a hybrid of the two. It works better than either model alone,
-              and I do the same for the planning steps.
+              Since August 2026 I&apos;ve sometimes had two models create the beads together. The
+              lead writes them while {COMPLETE_GUIDE_MODELS.openaiPlanner} in Codex reviews in real
+              time, and the two exchange Agent Mail the whole way through, sometimes using comments
+              on beads as a second channel. I ask them to agree with each other, and they tend to
+              defer to the better version or form a hybrid of the two. It works better than either
+              model alone, and the same pairing works for the planning steps.
             </P>
 
             <P>
-              Bead creation is also the best time to stop process porn: beads whose output is
-              acceptance certificates, gates, and status reports rather than features. The swarm
+              Bead creation is also the best time to stop process porn: beads whose only output is
+              acceptance certificates, sign-off gates, and status reports rather than features. The swarm
               will pick that work up eagerly, because closing it feels like progress. Cut those
               beads now, think through how a swarm could game this particular project, and forbid
               those moves by name in AGENTS.md. You still have to watch for it during execution.
@@ -1374,7 +1377,8 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
 
               <P>
                 On a typical project I polish the beads for at least 8 to 10 rounds. As with the
-                plan, stop when the changes devolve into minutiae, not when they stop altogether.
+                plan, stop when the changes devolve into minutiae, not when they stop altogether. A
+                very large bead set gets fewer, much bigger rounds.
               </P>
 
               <P>
@@ -1489,7 +1493,7 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
                 title="Rewire for Concurrency"
                 prompt={`Is there a better way to wire the beads dependencies using /beads-bv to implement the same work, but with greater opportunity for agent concurrency so as to enable faster overall development velocity using a larger swarm size?`}
                 where="Any strong agent, once the plan is fully converted to beads and polished"
-                whyItWorks="A wider graph lets you provision a larger swarm with ntm. The extra agents then have whole beads to work on, instead of trying to be useful by taking smaller slices of beads or inventing ceremony to look busy."
+                whyItWorks="A wider graph lets you provision a larger swarm with ntm. The extra agents then have whole beads to work on, instead of trying to be useful by taking smaller slices of beads or inventing ceremony to look busy. Recheck the rewired graph the same way: count the ready beads, find the longest chain, and run br dep cycles."
               />
             </SubSection>
           </GuideSection>
@@ -1530,8 +1534,9 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
                   descriptions, dependencies, and priority levels.
                 </Fragment>,
                 <Fragment key="refine-4-5-times">
-                  <strong>Refine 4-5 times.</strong> The same polishing loop as above. Single-pass
-                  beads are never optimal.
+                  <strong>Refine 4-5 times.</strong> The same polishing loop as above, with fewer
+                  rounds because there are only a handful of new beads. Single-pass beads are never
+                  optimal.
                 </Fragment>,
               ]}
             />
@@ -1879,8 +1884,8 @@ Remember: use your expert judgment on all decisions to make the optimal choice. 
               <P>
                 I run the reality check on all my projects a few times a week, and across all of
                 them again whenever a new frontier model comes out. There&apos;s no real downside to
-                running it often. Lately I end the opener with &quot;Be sure to fully apply ALL
-                phases of the skill.&quot;
+                running it often. Sometimes I add a last line to the opener: &quot;Be sure to fully
+                apply ALL phases of the skill.&quot;
               </P>
 
               <P>
@@ -2049,9 +2054,9 @@ Remember: use your expert judgment on all decisions to make the optimal choice. 
               </P>
 
               <P>
-                Messages don&apos;t interrupt a working agent, and I think that&apos;s better for
-                productivity. An agent pulled out of its task loses focus the way a person does.
-                Agents check their inboxes between tasks, the way you check email.
+                I don&apos;t have messages interrupt a working agent, because I think that&apos;s
+                worse for productivity: an agent pulled out of its task loses focus the way a person
+                does. Agents check their inboxes between tasks, the way you check email.
               </P>
 
               <AgentMailViz />
@@ -2784,24 +2789,6 @@ When a Rust build or test is needed, offload it with rch (for example, rch exec 
                 perspective.
               </P>
 
-              <P>
-                Every pane in these swarms is a full Claude Code, Codex, or Antigravity instance.
-                Subagents are strictly less capable, so I use them for fan-out jobs inside one
-                agent&apos;s task, like the bead drafting in Part 4, and not as swarm workers.
-              </P>
-
-              <P>
-                Implementation is where cheaper models can earn a place. If the beads are granular
-                and came from a good plan made by frontier models, flash-class models can implement
-                them; in September 2026 I built most of one project that way as an experiment. Keep
-                the frontier models on the plan and the beads, have them check the cheap
-                models&apos; work for bugs, and require lots of end-to-end tests. Don&apos;t use the
-                cheap models for planning. What you&apos;re optimizing is the total wall time to
-                finish your projects with everything working, relative to what you spend, so I
-                track tokens in tiers: the frontier models on top, then the next tier down, then
-                the flash models.
-              </P>
-
               <DataTable
                 headers={["Open Beads", "Claude (cc)", "Codex (cod)", "Antigravity (agy)"]}
                 rows={[
@@ -2818,6 +2805,24 @@ When a Rust build or test is needed, offload it with rch (for example, rch exec 
                 session of one agent type identical pane geometry. Use it when you want that control
                 without NTM; it also covers what to do when an agent type hits its usage limit.
               </SkillNote>
+
+              <P>
+                Every pane in these swarms is a full Claude Code, Codex, or Antigravity instance.
+                Subagents are strictly less capable, so I use them for fan-out jobs inside one
+                agent&apos;s task, like the bead drafting in Part 4, and not as swarm workers.
+              </P>
+
+              <P>
+                Implementation is where cheaper models can earn a place. If the beads are granular
+                and came from a good plan made by frontier models, flash-class models can implement
+                them; in September 2026 I had them do most of the implementation on one project as
+                an experiment. Keep the frontier models on the plan and the beads, have them check
+                the cheap models&apos; work for bugs, and require lots of end-to-end tests.
+                Don&apos;t use the cheap models for planning. What you&apos;re optimizing is the
+                total wall time to finish your projects with everything working, relative to what
+                you spend, so I track tokens in tiers: the frontier models on top, then the next
+                tier down, then the flash models.
+              </P>
             </SubSection>
 
             <SubSection title="The Thundering Herd">
@@ -2915,12 +2920,13 @@ When a Rust build or test is needed, offload it with rch (for example, rch exec 
                 marked in progress that have had no work for a long time, since their agents are
                 usually long dead. When no open beads remain, run rounds of the testing skills (
                 <code>/testing-conformance-harnesses</code> and the others whose names start with{" "}
-                <code>testing-</code>). When those rounds stop finding much for the tokens they
-                burn, apply <code>/mock-code-finder</code>, <code>/deadlock-finder-and-fixer</code>,{" "}
+                <code>testing-</code>). When the beads are done and review rounds stop finding many
+                bugs for the tokens they burn, apply <code>/mock-code-finder</code>,{" "}
+                <code>/deadlock-finder-and-fixer</code>,{" "}
                 <code>/reality-check-for-project</code>, <code>/profiling-software-performance</code>,{" "}
                 <code>/extreme-software-optimization</code>, and, for a port,{" "}
-                <code>/running-the-gauntlet-on-your-rust-port</code>, and turn what they find into
-                new beads for the same swarm.
+                <code>/running-the-gauntlet-on-your-rust-port</code>. What they find becomes new
+                beads for the same swarm.
               </P>
             </SubSection>
 
@@ -4825,18 +4831,16 @@ cass search "tool_name" --workspace /data/projects/PROJECT --json --limit 100`}
               </P>
 
               <P>
-                You can also send the agent to the literature directly. Most people wouldn&apos;t
-                think academic papers have anything to do with nice-looking documents, but if you
-                want your work to look special rather than like every other app, you have to reach
-                the frontier first; from there you can go further. Working on a markdown renderer in
-                August 2026, I sent:
+                You can also send the agent to the literature directly. In August 2026, looking for
+                features that would make my markdown renderer&apos;s PDF and HTML output look more
+                polished, I sent:
               </P>
 
               <PromptBlock
                 title="Research the Untapped Frontier"
                 prompt={`Think about any world-class, SOTA typography visual optimization research (stuff involving dynamic programming and things like that to get "NEXT LEVEL" quality) that exist but which remain untapped in this project. Do exhaustive research online looking through academic papers and the like.`}
                 where="Any agent with web access, on a working project; swap typography for your own domain and name a kind of technique you suspect applies"
-                whyItWorks="It asks for what the project doesn't use yet, not for generic improvements, and it sends the agent to papers rather than to blog posts and other apps. Naming one kind of technique (dynamic programming here) shows the depth you want without limiting the search to it."
+                whyItWorks="Most people wouldn't think academic papers have anything to do with nice-looking documents. But if you want your work to look special rather than like every other app, you have to reach the frontier first, and from there you can go further. The prompt asks for what the project doesn't use yet and sends the agent to papers rather than to other apps; naming one kind of technique (dynamic programming here) shows the depth you want."
               />
 
               <P>For speed, I chain the three optimization skills below in one prompt:</P>
@@ -4845,7 +4849,7 @@ cass search "tool_name" --workspace /data/projects/PROJECT --json --limit 100`}
                 title="Optimization Loop"
                 prompt={`First read ALL of the AGENTS.md file and README.md file super carefully and understand ALL of both! Then use your code investigation agent mode to fully understand the code and technical architecture and purpose of the project. Then use /profiling-software-performance and then use /repeatedly-apply-skill at least 30 times sequentially to apply /extreme-software-optimization`}
                 where="Any agent on a working codebase; even a cheap flash-class model does well with it"
-                whyItWorks="Profiling first points every pass at measured hotspots instead of guesses, and thirty sequential passes go much deeper than one. In August 2026 a nearly free flash model ran it for 20 minutes on a markdown renderer that frontier models had written, and found a couple of speedups above 5,000x and several of 2x or more."
+                whyItWorks="Profiling first points every pass at measured hotspots instead of guesses, and thirty sequential passes go much deeper than one. In August 2026 a nearly free flash model ran it for 20 minutes on that same markdown renderer, whose code frontier models had written, and found a couple of speedups above 5,000x and several of 2x or more."
               />
 
               <SkillNote

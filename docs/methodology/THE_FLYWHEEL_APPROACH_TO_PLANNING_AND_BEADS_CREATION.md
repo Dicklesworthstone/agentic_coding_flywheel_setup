@@ -731,11 +731,11 @@ to beads.
 
 The practical synthesis across the sessions is:
 
-- **minimum**: 3 passes if the project is small
-- **normal**: 4-6 passes for real projects
-- **heavyweight / high-stakes**: keep going past 6 if fresh passes are still finding meaningful issues
+- **small or simple**: about 5 passes usually converge
+- **normal**: at least 8-10 passes for real projects, for the plan and for the beads ("I usually do at least 8-10," August 2026)
+- **heavyweight / high-stakes**: keep going past 10 if fresh passes are still finding meaningful issues (a frontier math research skill took 26 review rounds)
 
-The stop rule matters more than the raw number. Do not stop because you hit an arbitrary pass count; stop when the improvements have become genuinely marginal and your explicit convergence checks come back clean.
+The stop rule matters more than the raw number. Do not stop because you hit an arbitrary pass count, and do not wait for a pass that changes nothing. Stop when the changes devolve into pointless minutiae, or when the plan starts looking too code-like, with detailed schemas and the like.
 
 In practice, session history suggests agents typically manage 2-3 polishing passes before running out of context window. Starting fresh sessions for additional passes matters. The apollobot project had 26 beads polished through 2-3 rounds in a single session; the mcp_agent_mail_rust session explicitly notes: "I just completed... Let me do one more pass as the skill instructions say to repeat Phase 6 4-5 times."
 
@@ -2545,7 +2545,7 @@ OK so please take ALL of that and elaborate on it and use it to create a compreh
 Check over each bead super carefully-- are you sure it makes sense? Is it optimal? Could we change anything to make the system work better for users? If so, revise the beads. It's a lot easier and faster to operate in "plan space" before we start implementing these things! DO NOT OVERSIMPLIFY THINGS! DO NOT LOSE ANY FEATURES OR FUNCTIONALITY! Also make sure that as part of the beads we include comprehensive unit tests and e2e test scripts with great, detailed logging so we can be sure that everything is working perfectly after implementation.  Make sure to ONLY use the `br` cli tool for all changes, and you can and should also use the `bv` tool to help diagnose potential problems with the beads.
 ```
 
-**Where:** Claude Code (Opus), usually 4-6 rounds across one or more fresh sessions
+**Where:** The lead planner in Claude Code, usually at least 8-10 rounds across one or more fresh sessions
 
 **Why it works:** This is the prompt that keeps the system from freezing beads too early. It tells the model to stay in plan space for as long as it is still finding meaningful improvements, which is exactly where the reasoning is cheapest and most global. The warnings against oversimplifying and losing functionality are crucial because models otherwise tend to "improve" artifacts by deleting complexity they do not fully understand.
 

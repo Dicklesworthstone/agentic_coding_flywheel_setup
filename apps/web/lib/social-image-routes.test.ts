@@ -11,6 +11,11 @@ import { fileURLToPath } from "node:url";
 
 import { TOOLS } from "../app/learn/tools/[tool]/tool-data";
 import cloudSocialImages from "./cloud-social-images.json";
+import {
+  COMPLETE_GUIDE_PHASE_COUNT,
+  COMPLETE_GUIDE_PROMPT_COUNT,
+  VALIDATION_GATES,
+} from "./complete-guide";
 import { LESSONS } from "./lessons";
 import { renderSocialImage, SOCIAL_CARD_DESIGN, type SocialImageData } from "./social-image";
 import {
@@ -63,6 +68,29 @@ describe("share card routes", () => {
     );
     expect(stale.map((file) => relative(APP_DIR, file))).toEqual([]);
     expect(files.length).toBeGreaterThan(50);
+  });
+
+  test("cards that show counts name them in their route files, so a new count gets a new URL", () => {
+    // Same rule as above: a count change (a guide gaining prompts) leaves the
+    // route file's bytes, and so the cached card URL, unchanged unless the
+    // file names the count too.
+    const core = getStaticRouteSocialData("/core-flywheel").stats ?? [];
+    const coreValue = (label: string) => core.find((stat) => stat.label === label)?.value;
+    const stamps: Record<string, string> = {
+      "/complete-guide": `${COMPLETE_GUIDE_PROMPT_COUNT} prompts, ${COMPLETE_GUIDE_PHASE_COUNT} phases, ${VALIDATION_GATES.length} gates`,
+      "/core-flywheel": `${coreValue("Parts")} parts, ${coreValue("Visualizations")} visualizations, ${coreValue("Copy-ready prompts")} prompts`,
+    };
+    const withStats = new Set([
+      ...STATIC_SOCIAL_ROUTES.filter((route) => (getStaticRouteSocialData(route).stats ?? []).length > 0),
+      ...files.filter((file) => readFileSync(file, "utf-8").includes("stats:")).map(routeOf),
+    ]);
+    expect([...withStats].sort()).toEqual(Object.keys(stamps).sort());
+    for (const [route, stamp] of Object.entries(stamps)) {
+      for (const name of ["opengraph-image.tsx", "twitter-image.tsx"]) {
+        const text = readFileSync(join(APP_DIR, route.slice(1), name), "utf-8");
+        expect(text).toContain(`// Card stats: ${stamp}. `);
+      }
+    }
   });
 
   test("static image routes and the copy table cover each other exactly", () => {
