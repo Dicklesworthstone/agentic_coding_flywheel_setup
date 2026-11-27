@@ -1,7 +1,7 @@
 "use client";
 
 import { LayoutGroup } from "framer-motion";
-import { AlertTriangle, CheckCircle2, FileText, GitBranch } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileText, GitBranch, XCircle } from "lucide-react";
 import { useRef, useState } from "react";
 import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
 import { cn } from "@/lib/utils";
@@ -113,36 +113,17 @@ function TerminalBlock({
   return (
     <div
       className={cn(
-        "rounded-2xl border p-5 sm:p-6 relative overflow-hidden group-scanline",
+        // Both cards stretch to the taller one on desktop, so the weak card's
+        // empty terminal fills the space instead of leaving a dead area.
+        "flex h-full flex-col rounded-2xl border p-5 sm:p-6 relative overflow-hidden group-scanline",
         isWeak
           ? "border-red-500/20 bg-red-950/[0.15]"
-          : "bg-emerald-950/[0.15] animate-border-rotate",
-        /* #11: strong side gets the rotating conic-gradient border; fallback for browsers without @property */
-        !isWeak && "border-emerald-500/20",
+          : "border-emerald-500/30 bg-emerald-950/[0.15] shadow-[0_0_0_1px_rgba(16,185,129,0.06),0_0_40px_-12px_rgba(16,185,129,0.35)]",
       )}
     >
       {/* Glow effect on strong side */}
       {!isWeak && (
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(16,185,129,0.08),transparent_70%)] pointer-events-none" />
-      )}
-
-      {/* #3 (weak watermark): "Missing context" watermark behind thin weak content */}
-      {isWeak && lines.length <= 2 && (
-        <div
-          className="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-0"
-          aria-hidden="true"
-        >
-          <span
-            className="text-red-400 text-4xl sm:text-5xl font-black uppercase tracking-widest"
-            style={{
-              opacity: 0.04,
-              transform: "rotate(-12deg)",
-              whiteSpace: "nowrap",
-            }}
-          >
-            Missing context
-          </span>
-        </div>
       )}
 
       {/* #3: macOS-style window dots */}
@@ -190,7 +171,7 @@ function TerminalBlock({
       {/* Terminal content — #4: leading-snug for tighter code display */}
       <div
         className={cn(
-          "rounded-xl border p-4 font-mono text-[13px] leading-snug relative z-10 overflow-x-auto",
+          "flex-1 rounded-xl border p-4 font-mono text-[13px] leading-snug relative z-10 overflow-x-auto",
           isWeak ? "border-red-500/10 bg-black/40" : "border-emerald-500/10 bg-black/40",
         )}
       >
@@ -242,15 +223,15 @@ function TerminalBlock({
             <span
               className={cn(
                 "select-none tabular-nums shrink-0 w-5 text-right",
-                isWeak ? "text-red-500/30" : "text-emerald-500/30",
+                isWeak ? "text-red-400/50" : "text-emerald-400/50",
               )}
             >
               {i + 1}
             </span>
             <span
               className={cn(
-                "whitespace-pre-wrap",
-                isWeak ? "text-red-200/70" : "text-emerald-200/80",
+                "min-w-0 whitespace-pre-wrap break-words",
+                isWeak ? "text-red-200/80" : "text-emerald-200/85",
               )}
             >
               {line || "\u00A0"}
@@ -264,12 +245,21 @@ function TerminalBlock({
 
       {/* Sparse/dense indicator for weak side */}
       {isWeak && lines.length <= 2 && (
-        <div className="mt-3 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-red-400/60 relative z-10">
+        <div className="mt-3 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-red-400/80 relative z-10">
           <span className="w-1.5 h-1.5 rounded-full bg-red-500/40" />
           Only names a topic
         </div>
       )}
     </div>
+  );
+}
+
+/** A check (present) or a cross (missing), colored by meaning, not by side. */
+function MetricMark({ present }: { present: boolean }) {
+  return present ? (
+    <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" aria-hidden="true" />
+  ) : (
+    <XCircle className="h-4 w-4 shrink-0 text-red-400" aria-hidden="true" />
   );
 }
 
@@ -285,22 +275,16 @@ function QualityMetrics({
   tabKey: string;
 }) {
   return (
-    <div className="flex flex-row flex-wrap lg:flex-col items-center justify-center gap-3 py-4 lg:py-0 lg:px-5 relative">
-      {/* #2 (connecting lines): subtle horizontal connector lines on desktop */}
-      <div className="hidden lg:block absolute top-1/2 -translate-y-1/2 -left-4 w-4 border-t border-dashed border-red-500/15 pointer-events-none" />
-      <div className="hidden lg:block absolute top-1/2 -translate-y-1/2 -right-4 w-4 border-t border-dashed border-emerald-500/15 pointer-events-none" />
-
-      {/* #6: Column headers on desktop */}
-      <div className="hidden lg:flex items-center gap-2 mb-1 w-full justify-center">
-        <span className="text-xs font-bold uppercase tracking-widest text-white/20 w-5 text-center">
-          Weak
-        </span>
-        <span className="text-xs font-bold uppercase tracking-widest text-white/30">
-          Quality
-        </span>
-        <span className="text-xs font-bold uppercase tracking-widest text-white/20 w-5 text-center">
-          Strong
-        </span>
+    <div className="relative flex flex-col items-center gap-3 py-2 lg:items-stretch lg:py-0">
+      {/* #6: Column headers on desktop. The chips below stretch to the same
+          width, so "Weak" sits over the left marks and "Strong" over the right. */}
+      <div
+        className="hidden lg:flex items-center justify-between gap-3 px-3 text-xs font-bold uppercase tracking-widest"
+        aria-hidden="true"
+      >
+        <span className="text-red-400/80">Weak</span>
+        <span className="text-zinc-400">Quality</span>
+        <span className="text-emerald-400/80">Strong</span>
       </div>
       {/* #7: AnimatePresence keyed on tabKey to pulse metrics on tab change */}
       <AnimatePresence mode="wait">
@@ -310,7 +294,7 @@ function QualityMetrics({
           animate={{ opacity: 1, scale: 1 }}
           exit={reducedMotion ? undefined : { opacity: 0, scale: 0.95 }}
           transition={{ type: "spring", stiffness: 300, damping: 25 }}
-          className="flex flex-row flex-wrap lg:flex-col items-center justify-center gap-3"
+          className="flex flex-row flex-wrap items-center justify-center gap-3 lg:flex-col lg:items-stretch lg:gap-2.5"
         >
           {metrics.map((metric, i) => (
             <motion.div
@@ -325,20 +309,16 @@ function QualityMetrics({
                 stiffness: 260,
                 damping: 22,
               }}
-              className="relative flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2 min-w-0"
+              className="relative flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 min-w-0"
             >
-              {/* Connecting dots on each metric row (desktop only) */}
-              <span className="hidden lg:block absolute -left-[18px] w-1.5 h-1.5 rounded-full bg-red-500/20" />
-              <span className="hidden lg:block absolute -right-[18px] w-1.5 h-1.5 rounded-full bg-emerald-500/20" />
-              <span className="text-red-400 text-sm shrink-0">
-                {metric.weak ? "\u2705" : "\u274C"}
-              </span>
-              <span className="text-xs font-bold text-white/50 tracking-wide whitespace-nowrap">
+              <MetricMark present={metric.weak} />
+              <span className="flex-1 text-center text-xs font-bold text-zinc-300 tracking-wide whitespace-nowrap">
                 {metric.label}
+                <span className="sr-only">
+                  {`: ${metric.weak ? "present" : "missing"} in the weak version, ${metric.strong ? "present" : "missing"} in the strong version`}
+                </span>
               </span>
-              <span className="text-emerald-400 text-sm shrink-0">
-                {metric.strong ? "\u2705" : "\u274C"}
-              </span>
+              <MetricMark present={metric.strong} />
             </motion.div>
           ))}
         </motion.div>
@@ -396,8 +376,8 @@ export function BeadComparisonViz() {
                 aria-pressed={activeTab === tab}
                 onClick={() => setActiveTab(tab)}
                 className={cn(
-                  "relative z-10 px-5 py-3 sm:py-2.5 rounded-xl text-sm sm:text-sm font-bold tracking-wide transition-colors duration-300 flex items-center gap-2 min-h-[48px] sm:min-h-[44px]",
-                  activeTab === tab ? "text-[#FF5500]" : "text-white/40 hover:text-white/80",
+                  "relative z-10 px-5 py-3 sm:py-2.5 rounded-xl text-sm sm:text-sm font-bold tracking-wide transition-colors duration-300 flex items-center gap-2 min-h-[48px] sm:min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/60",
+                  activeTab === tab ? "text-[#FF5500]" : "text-zinc-400 hover:text-white/80",
                 )}
               >
                 {/* #1: Sliding pill behind active tab */}
@@ -432,28 +412,35 @@ export function BeadComparisonViz() {
           transition={{ type: "spring", stiffness: 300, damping: 30 }}
           className="relative z-10 will-change-transform"
         >
-          {/* Split view: side-by-side on lg, stacked on mobile */}
-          {/* #8: On mobile, metrics appear as a horizontal row BETWEEN the stacked panels */}
-          <div className="grid gap-4 lg:gap-0 lg:grid-cols-[1fr_auto_1fr] lg:items-start">
-            {/* Weak side */}
-            <TerminalBlock
-              lines={example.weakContent}
-              variant="weak"
-              reducedMotion={reducedMotion}
-              isInView={isInView}
-              tabKey={activeTab}
-            />
+          {/* Split view. Stacked on mobile: weak, quality checklist, strong.
+              On lg the weak card and the checklist share the left column so
+              the strong card gets the wider right column (its lines wrap far
+              less), and both columns stretch to the same height, so there is
+              no dead area under the shorter side. */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-stretch lg:gap-6">
+            <div className="flex flex-col gap-4 lg:gap-6">
+              {/* Weak side */}
+              <div className="lg:flex-1">
+                <TerminalBlock
+                  lines={example.weakContent}
+                  variant="weak"
+                  reducedMotion={reducedMotion}
+                  isInView={isInView}
+                  tabKey={activeTab}
+                />
+              </div>
 
-            {/* Quality metrics — on mobile this sits between the two panels naturally via grid order */}
-            <QualityMetrics
-              metrics={example.metrics}
-              reducedMotion={reducedMotion}
-              isInView={isInView}
-              tabKey={activeTab}
-            />
+              {/* Quality metrics: between the panels on mobile, under the weak card on lg */}
+              <QualityMetrics
+                metrics={example.metrics}
+                reducedMotion={reducedMotion}
+                isInView={isInView}
+                tabKey={activeTab}
+              />
+            </div>
 
             {/* Strong side */}
-            <div className="relative">
+            <div className="relative h-full">
               {/* Glow behind the strong card */}
               <div className="absolute -inset-2 bg-[radial-gradient(ellipse_at_center,rgba(16,185,129,0.06),transparent_70%)] rounded-3xl pointer-events-none blur-xl" />
               <TerminalBlock

@@ -91,12 +91,20 @@ export function ConvergenceViz() {
 
   // Visual constants
   const center = 150;
-  const maxRadius = 120;
+  // Sized so the widest (score 0) cloud still fits the ~250px-tall canvas.
+  const maxRadius = 100;
 
   // Calculate dynamic radius based on convergence score.
   // High score (1.0) = tight radius (converged). Low score (0.0) = wide radius (chaotic).
-  const convergenceRadius = maxRadius * (1 - score * 0.85); // Never quite 0
-  const rotationSpeed = (1 - score) * 10 + 2; // Fast when chaotic, slow when converged
+  const radiusAt = (s: number) => maxRadius * (1 - s * 0.85); // Never quite 0
+  const convergenceRadius = radiusAt(score);
+  // Particles sit between 0.2R and ~1.18R, so this is the cloud's outer edge.
+  const spreadRadius = convergenceRadius * 1.18;
+  // The ring the cloud has to shrink inside before the plan counts as ready.
+  const readyRadius = radiusAt(READY_THRESHOLD) * 1.18 + 4;
+  const isReady = score >= READY_THRESHOLD;
+  // Seconds per revolution: a quick churn when chaotic, a slow settle when converged.
+  const rotationSpeed = 6 + score * 14;
 
   return (
     <div
@@ -106,9 +114,9 @@ export function ConvergenceViz() {
       <div className="absolute inset-0 noise-overlay opacity-[0.02] mix-blend-overlay pointer-events-none" />
 
       {/* HEADER */}
-      <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between p-6 sm:p-8 border-b border-white/[0.04] bg-white/[0.01] backdrop-blur-md">
-        <div>
-          <div className="text-xs font-bold text-white/30 uppercase tracking-widest mb-2 flex items-center gap-2">
+      <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 p-6 sm:p-8 border-b border-white/[0.04] bg-white/[0.01] backdrop-blur-md">
+        <div className="min-w-0">
+          <div className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2 flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-[#FFBD2E]" />
             Interactive Simulator
           </div>
@@ -127,32 +135,42 @@ export function ConvergenceViz() {
         </div>
 
         {/* PRESETS */}
-        <div className="mt-6 sm:mt-0 flex flex-wrap gap-2 p-1.5 bg-black/40 rounded-2xl border border-white/[0.05] shadow-inner">
-          <span className="text-xs text-white/30 self-center mx-2 uppercase tracking-widest font-bold">
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2 p-1.5 bg-black/40 rounded-2xl border border-white/[0.05] shadow-inner">
+          <span className="text-xs text-zinc-500 mx-1.5 sm:mx-2 uppercase tracking-wider sm:tracking-widest font-bold">
             Presets
           </span>
-          {CONVERGENCE_PRESETS.map((preset) => (
-            <button
-              key={preset.label}
-              onClick={() => setValues([...preset.vals])}
-              className="rounded-xl border border-transparent px-3 py-1.5 text-xs font-bold transition duration-300 hover:bg-white/[0.06] hover:text-white/90 text-white/50 active:scale-95 hover:border-white/10"
-            >
-              {preset.label}
-            </button>
-          ))}
+          {CONVERGENCE_PRESETS.map((preset) => {
+            const active = preset.vals.every((v, i) => v === values[i]);
+            return (
+              <button
+                key={preset.label}
+                type="button"
+                aria-pressed={active}
+                onClick={() => setValues([...preset.vals])}
+                className={cn(
+                  "whitespace-nowrap rounded-xl border px-2.5 sm:px-3 py-1.5 text-xs font-bold transition duration-300 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/60",
+                  active
+                    ? "border-white/10 bg-white/[0.08] text-white"
+                    : "border-transparent text-zinc-400 hover:border-white/10 hover:bg-white/[0.06] hover:text-zinc-100",
+                )}
+              >
+                {preset.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
       <div className="relative z-10 grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-8 p-6 sm:p-8">
         {/* Sliders Area */}
-        <div className="flex flex-col justify-center space-y-8 bg-[#0A0D14] p-6 sm:p-8 rounded-2xl border border-white/[0.04] shadow-inner relative overflow-hidden">
+        <div className="flex flex-col justify-center space-y-7 sm:space-y-8 bg-[#0A0D14] p-5 sm:p-8 rounded-2xl border border-white/[0.04] shadow-inner relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-white/[0.01] to-transparent pointer-events-none" />
 
           {CONVERGENCE_SIGNALS.map((signal, idx) => (
             <div key={signal.label} className="relative z-10">
-              <div className="flex items-baseline justify-between mb-3">
-                <span className="text-sm font-bold text-white/90">{signal.label}</span>
-                <span className="text-xs text-white/40 uppercase tracking-widest font-bold bg-white/[0.03] px-2 py-0.5 rounded-md border border-white/[0.05]">
+              <div className="flex items-baseline justify-between gap-3 mb-3">
+                <span className="min-w-0 text-sm font-bold text-white/90">{signal.label}</span>
+                <span className="shrink-0 whitespace-nowrap text-xs text-zinc-400 uppercase tracking-wider font-bold bg-white/[0.03] px-2 py-0.5 rounded-md border border-white/[0.05]">
                   Weight: {signal.weightLabel}
                 </span>
               </div>
@@ -207,12 +225,55 @@ export function ConvergenceViz() {
 
             <Target className="absolute h-10 w-10 text-white/5" />
 
-            {/* Particle System */}
-            {isInView && !reducedMotion && (
+            {/* Ready zone: the cloud has to shrink inside this ring before the
+                beads count as ready, so convergence reads as the cloud
+                tightening past a fixed line. */}
+            <div
+              className={cn(
+                "absolute rounded-full border border-dashed pointer-events-none transition-colors duration-500",
+                isReady ? "border-[#FFBD2E]/60" : "border-white/20",
+              )}
+              style={{ width: readyRadius * 2, height: readyRadius * 2 }}
+            >
+              <span
+                className={cn(
+                  "absolute left-1/2 -top-2.5 -translate-x-1/2 whitespace-nowrap rounded-full bg-[#020408] px-2 text-xs font-bold uppercase leading-5 tracking-widest transition-colors duration-500",
+                  isReady ? "text-[#FFBD2E]" : "text-zinc-400",
+                )}
+              >
+                Ready zone
+              </span>
+            </div>
+
+            {/* The cloud's current outer edge */}
+            <motion.div
+              className="absolute rounded-full border pointer-events-none"
+              initial={false}
+              animate={{
+                width: spreadRadius * 2,
+                height: spreadRadius * 2,
+                borderColor: isReady
+                  ? "rgba(255,189,46,0.35)"
+                  : score > 0.5
+                    ? "rgba(255,85,0,0.3)"
+                    : "rgba(161,161,170,0.25)",
+              }}
+              transition={
+                reducedMotion ? { duration: 0 } : { type: "spring", stiffness: 150, damping: 20 }
+              }
+            />
+
+            {/* Particle System. Reduced motion keeps the cloud, still and
+                without the orbit, so the size change is still visible. */}
+            {(isInView || reducedMotion) && (
               <motion.div
                 className="absolute inset-0 origin-center"
-                animate={{ rotate: 360 }}
-                transition={{ duration: rotationSpeed, ease: "linear", repeat: Infinity }}
+                animate={reducedMotion ? { rotate: 0 } : { rotate: 360 }}
+                transition={
+                  reducedMotion
+                    ? { duration: 0 }
+                    : { duration: rotationSpeed, ease: "linear", repeat: Infinity }
+                }
               >
                 {particles.map((p) => {
                   const signalScore = values[p.signalIdx];
@@ -243,32 +304,22 @@ export function ConvergenceViz() {
                         boxShadow: `0 0 ${p.size * 2}px ${color}`,
                         opacity: particleOpacity,
                       }}
-                      transition={{ type: "spring", stiffness: 150, damping: 20, mass: 0.8 }}
+                      transition={
+                        reducedMotion
+                          ? { duration: 0 }
+                          : { type: "spring", stiffness: 150, damping: 20, mass: 0.8 }
+                      }
                     />
                   );
                 })}
               </motion.div>
-            )}
-
-            {/* Fallback for reduced motion */}
-            {(reducedMotion || !isInView) && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div
-                  className="rounded-full border-2 border-[#FFBD2E]/30 flex items-center justify-center"
-                  style={{
-                    width: convergenceRadius * 2,
-                    height: convergenceRadius * 2,
-                    transition: "all 0.5s ease-out",
-                  }}
-                />
-              </div>
             )}
           </div>
 
           {/* Status HUD Footer */}
           <div className="p-5 sm:p-6 bg-white/[0.01] border-t border-white/[0.05] flex flex-col gap-4 backdrop-blur-md relative z-10">
             <div className="flex items-center justify-between">
-              <span className="text-xs uppercase tracking-widest text-white/40 font-bold">
+              <span className="text-xs uppercase tracking-widest text-zinc-400 font-bold">
                 Overall Convergence
               </span>
               <span
@@ -293,10 +344,10 @@ export function ConvergenceViz() {
               />
             </div>
 
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-x-4 gap-y-2 pt-2">
               <span
                 className={cn(
-                  "text-sm font-bold tracking-tight",
+                  "shrink-0 whitespace-nowrap text-sm font-bold tracking-tight",
                   score >= READY_THRESHOLD
                     ? "text-[#FFBD2E]"
                     : score > 0.5
@@ -306,7 +357,7 @@ export function ConvergenceViz() {
               >
                 {phase}
               </span>
-              <span className="text-xs text-white/50 font-light">{verdict}</span>
+              <span className="text-xs text-zinc-400 sm:text-right">{verdict}</span>
             </div>
           </div>
         </div>

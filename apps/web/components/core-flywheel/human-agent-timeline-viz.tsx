@@ -15,10 +15,25 @@ import {
   User,
   Wrench,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
 import { COMPLETE_GUIDE_MODELS } from "@/lib/complete-guide";
 import { isInteractiveKeyboardTarget } from "@/lib/utils";
+
+/** Wrap a tool list only at spaces, so names like `GPT-6.2` or flags like
+ *  `--robot-triage` never split at their hyphens. */
+function WordsKeptWhole({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(" ").map((word, i) => (
+        <Fragment key={i}>
+          {i > 0 && " "}
+          <span className="whitespace-nowrap">{word}</span>
+        </Fragment>
+      ))}
+    </>
+  );
+}
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                         */
@@ -260,7 +275,7 @@ function DetailCard({ stage, reducedMotion }: { stage: TimelineStage; reducedMot
             ) : stage.actor === "both" ? (
               <>
                 <User size={10} style={{ color: HUMAN_COLOR }} />
-                <span className="text-white/30">+</span>
+                <span className="text-zinc-500">+</span>
                 <Bot size={10} style={{ color: AGENT_COLOR }} />
               </>
             ) : (
@@ -279,21 +294,23 @@ function DetailCard({ stage, reducedMotion }: { stage: TimelineStage; reducedMot
         {/* Who */}
         <div className="flex flex-col gap-2 p-4 rounded-2xl bg-white/[0.03] border border-white/[0.05] relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-white/[0.015] to-transparent pointer-events-none" />
-          <span className="text-xs font-bold text-white/30 uppercase tracking-widest flex items-center gap-2">
-            <User size={10} className="opacity-50" />
+          <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+            <User size={10} className="opacity-70" aria-hidden="true" />
             Who
           </span>
           <p className="text-sm text-white/90 font-medium">{stage.who}</p>
         </div>
 
-        {/* Tools */}
+        {/* Tools: wrap between words; only a single over-long token may break */}
         <div className="flex flex-col gap-2 p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04] relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-white/[0.01] to-transparent pointer-events-none" />
-          <span className="text-xs font-bold text-white/30 uppercase tracking-widest flex items-center gap-2">
-            <Wrench size={10} className="opacity-50" />
+          <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+            <Wrench size={10} className="opacity-70" aria-hidden="true" />
             Tools
           </span>
-          <p className="text-sm text-white/90 font-mono font-medium break-all">{stage.tools}</p>
+          <p className="text-sm leading-relaxed text-white/90 font-mono font-medium break-words">
+            <WordsKeptWhole text={stage.tools} />
+          </p>
         </div>
       </div>
 
@@ -335,19 +352,8 @@ function DesktopTimeline({
   const dur = reducedMotion ? 0 : 0.3;
 
   return (
-    <div className="hidden md:block">
-      <div className="flex items-center justify-between relative">
-        {/* Connecting line behind nodes */}
-        <div className="absolute top-1/2 left-0 right-0 h-px -translate-y-1/2 pointer-events-none">
-          <div
-            className="w-full h-full"
-            style={{
-              background:
-                "linear-gradient(to right, transparent, rgba(255,255,255,0.08) 5%, rgba(255,255,255,0.08) 95%, transparent)",
-            }}
-          />
-        </div>
-
+    <div className="hidden lg:block">
+      <div className="flex items-start relative">
         {STAGES.map((stage, index) => {
           const isActive = index === activeIndex;
           const isPast = index < activeIndex;
@@ -360,20 +366,24 @@ function DesktopTimeline({
               key={stage.id}
               type="button"
               onClick={() => onSelect(index)}
-              className="relative z-10 flex flex-col items-center gap-2 group cursor-pointer"
+              className="relative z-10 flex flex-col items-center gap-2 group cursor-pointer rounded-xl pb-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a78bfa]/60"
               aria-label={`Select stage ${index + 1}: ${stage.label}`}
+              aria-pressed={isActive}
               style={{ flex: "1 1 0%" }}
             >
-              {/* Connecting segment to next node */}
+              {/* Connecting segment to the next node. Every button is the same
+                  width, so the next node's center sits at 150% of this one:
+                  the segment runs between the two circles, level with their
+                  centers, and never crosses the labels below. */}
               {index < STAGE_COUNT - 1 && (
                 <div
-                  className="absolute top-[22px] left-[calc(50%+22px)] right-0 h-[2px] pointer-events-none"
+                  className="absolute top-[21px] left-[calc(50%+28px)] w-[calc(100%-56px)] h-[2px] rounded-full pointer-events-none"
                   style={{
                     background:
                       isPast || isActive
                         ? `linear-gradient(to right, ${nodeColor}, ${stageNodeColor(STAGES[index + 1])})`
-                        : "rgba(255,255,255,0.05)",
-                    opacity: isPast || isActive ? 0.5 : 1,
+                        : "rgba(255,255,255,0.12)",
+                    opacity: isPast || isActive ? 0.6 : 1,
                   }}
                 >
                   {/* Animated flow dot */}
@@ -392,55 +402,56 @@ function DesktopTimeline({
                 </div>
               )}
 
-              {/* Pulse ring */}
-              {isActive && !reducedMotion && (
-                <motion.div
-                  className="absolute top-[6px] w-[36px] h-[36px] rounded-full"
-                  style={{ border: `2px solid ${nodeColor}` }}
-                  initial={{ scale: 1, opacity: 0.6 }}
-                  animate={{ scale: 1.8, opacity: 0 }}
-                  transition={{
-                    duration: 1.8,
-                    repeat: Infinity,
-                    ease: "easeOut",
-                  }}
-                />
-              )}
+              {/* Fixed 44px slot, so the circle's center (and the segments)
+                  stay level whether or not this stage is active. */}
+              <span className="relative flex h-11 w-11 items-center justify-center">
+                {/* Pulse ring */}
+                {isActive && !reducedMotion && (
+                  <motion.span
+                    className="absolute inset-1 rounded-full"
+                    style={{ border: `2px solid ${nodeColor}` }}
+                    initial={{ scale: 1, opacity: 0.6 }}
+                    animate={{ scale: 1.8, opacity: 0 }}
+                    transition={{
+                      duration: 1.8,
+                      repeat: Infinity,
+                      ease: "easeOut",
+                    }}
+                  />
+                )}
 
-              {/* Node circle */}
-              <motion.div
-                className="relative flex items-center justify-center rounded-full transition-shadow duration-300"
-                style={{
-                  width: isActive ? 44 : 36,
-                  height: isActive ? 44 : 36,
-                  background: gradient
-                    ? isActive
-                      ? gradient
-                      : `${nodeColor}22`
-                    : isActive
-                      ? nodeColor
-                      : `${nodeColor}22`,
-                  border: `2px solid ${isActive ? nodeColor : isPast ? `${nodeColor}66` : `${nodeColor}25`}`,
-                  boxShadow: isActive ? `0 0 20px ${nodeColor}40, 0 0 40px ${nodeColor}15` : "none",
-                }}
-                transition={{ duration: dur }}
-              >
-                <Icon
-                  size={isActive ? 20 : 16}
-                  color={isActive ? "#fff" : isPast ? nodeColor : `${nodeColor}88`}
-                  strokeWidth={isActive ? 2.5 : 2}
-                />
-              </motion.div>
+                {/* Node circle (opaque base so nothing shows through it) */}
+                <motion.span
+                  className="relative flex items-center justify-center rounded-full transition-shadow duration-300"
+                  style={{
+                    width: isActive ? 44 : 36,
+                    height: isActive ? 44 : 36,
+                    background: gradient
+                      ? isActive
+                        ? gradient
+                        : `linear-gradient(${nodeColor}22, ${nodeColor}22), #05070b`
+                      : isActive
+                        ? nodeColor
+                        : `linear-gradient(${nodeColor}22, ${nodeColor}22), #05070b`,
+                    border: `2px solid ${isActive ? nodeColor : isPast ? `${nodeColor}88` : `${nodeColor}55`}`,
+                    boxShadow: isActive ? `0 0 20px ${nodeColor}40, 0 0 40px ${nodeColor}15` : "none",
+                  }}
+                  transition={{ duration: dur }}
+                >
+                  <Icon
+                    size={isActive ? 20 : 16}
+                    color={isActive ? "#fff" : isPast ? nodeColor : `${nodeColor}bb`}
+                    strokeWidth={isActive ? 2.5 : 2}
+                    aria-hidden="true"
+                  />
+                </motion.span>
+              </span>
 
               {/* Label */}
               <span
                 className="text-xs font-bold uppercase tracking-wider text-center leading-tight max-w-[80px] transition-colors duration-300"
                 style={{
-                  color: isActive
-                    ? "#fff"
-                    : isPast
-                      ? "rgba(255,255,255,0.5)"
-                      : "rgba(255,255,255,0.25)",
+                  color: isActive ? "#fff" : isPast ? "#d4d4d8" : "#a1a1aa",
                 }}
               >
                 {stage.label}
@@ -450,7 +461,7 @@ function DesktopTimeline({
               <span
                 className="text-xs font-mono font-bold"
                 style={{
-                  color: isActive ? nodeColor : "rgba(255,255,255,0.15)",
+                  color: isActive ? nodeColor : "#71717a",
                 }}
               >
                 {index + 1}
@@ -477,13 +488,15 @@ function MobileTimeline({
   reducedMotion: boolean;
 }) {
   return (
-    <div className="md:hidden relative flex flex-col gap-2">
-      {/* Vertical connecting line */}
+    <div className="lg:hidden relative flex flex-col gap-2">
+      {/* Vertical connecting line, on the icon column (px-5 + half the
+          40px icon); the icon tiles are opaque, so it reads as a rail. */}
       <div
-        className="absolute left-[1.25rem] top-4 bottom-4 w-px pointer-events-none"
+        aria-hidden="true"
+        className="absolute left-[41px] top-6 bottom-6 w-px pointer-events-none"
         style={{
           background:
-            "linear-gradient(to bottom, transparent, rgba(255,255,255,0.06) 15%, rgba(255,255,255,0.06) 85%, transparent)",
+            "linear-gradient(to bottom, transparent, rgba(255,255,255,0.1) 10%, rgba(255,255,255,0.1) 90%, transparent)",
         }}
       />
 
@@ -498,13 +511,16 @@ function MobileTimeline({
             key={stage.id}
             type="button"
             onClick={() => onSelect(index)}
-            className={`relative flex items-center gap-4 px-5 py-3.5 rounded-2xl border transition-[border-left-width,border-color,background-color,box-shadow] duration-300 text-left ${
+            aria-pressed={isActive}
+            className={`relative flex items-center gap-4 px-5 py-3.5 rounded-2xl border transition-[border-left-width,border-color,background-color,box-shadow] duration-300 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a78bfa]/60 ${
               isActive
                 ? "border-white/[0.08] bg-white/[0.04]"
                 : "border-white/[0.03] bg-white/[0.01] hover:bg-white/[0.03]"
             }`}
             style={{
               borderLeftWidth: isActive ? 3 : 1,
+              // Absorb the thicker active border so the icon stays on the rail.
+              paddingLeft: isActive ? 18 : 20,
               borderLeftColor: isActive ? nodeColor : undefined,
               boxShadow: isActive
                 ? `0 4px 24px -4px ${nodeColor}30, 0 0 0 1px ${nodeColor}15`
@@ -523,21 +539,24 @@ function MobileTimeline({
                 : { duration: 0.3 }
             }
           >
-            {/* Node icon */}
+            {/* Node icon (opaque, so the rail behind it doesn't show through) */}
             <div
               className={`relative z-10 flex items-center justify-center w-10 h-10 rounded-xl shrink-0 transition duration-300 ${
                 isActive ? "shadow-lg" : ""
               }`}
               style={{
-                background: isActive ? gradient || `${nodeColor}20` : "rgba(255,255,255,0.02)",
+                background: isActive
+                  ? gradient || `linear-gradient(${nodeColor}20, ${nodeColor}20), #05070b`
+                  : "linear-gradient(rgba(255,255,255,0.03), rgba(255,255,255,0.03)), #05070b",
                 borderWidth: 1,
                 borderStyle: "solid",
-                borderColor: isActive ? `${nodeColor}50` : "rgba(255,255,255,0.04)",
+                borderColor: isActive ? `${nodeColor}50` : "rgba(255,255,255,0.08)",
               }}
             >
               <Icon
                 size={18}
-                color={isActive ? (gradient ? "#fff" : nodeColor) : "rgba(255,255,255,0.3)"}
+                aria-hidden="true"
+                color={isActive ? (gradient ? "#fff" : nodeColor) : "rgba(255,255,255,0.55)"}
               />
             </div>
 
@@ -545,14 +564,14 @@ function MobileTimeline({
             <div className="flex flex-col gap-0.5 min-w-0">
               <span
                 className={`text-xs font-black uppercase tracking-widest transition-colors duration-300 ${
-                  isActive ? "text-white" : "text-white/40"
+                  isActive ? "text-white" : "text-zinc-300"
                 }`}
               >
                 {stage.label}
               </span>
               <span
                 className={`text-xs transition-colors duration-300 ${
-                  isActive ? "text-white/40" : "text-white/20 truncate"
+                  isActive ? "text-zinc-300" : "text-zinc-400 truncate"
                 }`}
               >
                 {stage.who}
@@ -562,13 +581,10 @@ function MobileTimeline({
             {/* Actor badge + step number */}
             <div className="ml-auto flex flex-col items-end gap-1 shrink-0">
               <span
-                className="text-xs font-bold uppercase tracking-widest"
+                className="text-xs font-bold uppercase tracking-widest transition-opacity duration-300"
                 style={{
-                  color: isActive
-                    ? stage.actor === "agent"
-                      ? AGENT_COLOR
-                      : HUMAN_COLOR
-                    : "rgba(255,255,255,0.15)",
+                  color: stage.actor === "agent" ? AGENT_COLOR : HUMAN_COLOR,
+                  opacity: isActive ? 1 : 0.75,
                 }}
               >
                 {actorLabel(stage.actor)}
@@ -576,7 +592,7 @@ function MobileTimeline({
               <span
                 className="text-xs font-mono font-bold"
                 style={{
-                  color: isActive ? nodeColor : "rgba(255,255,255,0.12)",
+                  color: isActive ? nodeColor : "#71717a",
                 }}
               >
                 {index + 1}/{STAGE_COUNT}
@@ -644,7 +660,7 @@ export function HumanAgentTimelineViz() {
     <div ref={ref} className={EXHIBIT_PANEL_CLASS + " relative group/viz"}>
       {/* Background texture & ambient glow */}
       <div className="absolute inset-0 noise-overlay opacity-[0.02] mix-blend-overlay pointer-events-none" />
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[900px] bg-[radial-gradient(ellipse_at_center,rgba(167,139,250,0.02),transparent_60%)] pointer-events-none" />
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[min(900px,100%)] h-[900px] bg-[radial-gradient(ellipse_at_center,rgba(167,139,250,0.02),transparent_60%)] pointer-events-none" />
 
       {/* Header */}
       <div className="relative z-10 border-b border-white/[0.04] pb-10 flex flex-col gap-6">
@@ -665,13 +681,13 @@ export function HumanAgentTimelineViz() {
 
           {/* Proportion summary */}
           <div className="shrink-0 flex flex-col gap-2 px-5 py-4 rounded-2xl bg-white/[0.02] border border-white/[0.04]">
-            <span className="text-xs font-bold uppercase tracking-widest text-white/25">
+            <span className="text-xs font-bold uppercase tracking-widest text-zinc-400">
               Breakdown
             </span>
             <div className="flex items-center gap-4 text-sm font-mono">
               <span style={{ color: HUMAN_COLOR }}>{humanCount} you</span>
               <span style={{ color: AGENT_COLOR }}>{agentCount} agents</span>
-              <span className="text-white/50">{bothCount} both</span>
+              <span className="text-zinc-300">{bothCount} both</span>
             </div>
           </div>
         </div>
@@ -698,10 +714,12 @@ export function HumanAgentTimelineViz() {
         </div>
 
         {/* Controls */}
-        <div className="flex items-center justify-between pt-6 border-t border-white/[0.04]">
+        {/* Wraps on phones: the dots get their own row and the two buttons
+            share the row below, instead of squeezing into one line. */}
+        <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-4 pt-6 border-t border-white/[0.04] sm:justify-between">
           {/* Stage indicator dots */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold uppercase tracking-[0.3em] text-white/20 mr-2 hidden sm:inline">
+          <div className="flex items-center gap-1 sm:gap-2">
+            <span className="text-xs font-bold uppercase tracking-[0.3em] text-zinc-500 mr-2 hidden sm:inline">
               Stage
             </span>
             {STAGES.map((stage, index) => {
@@ -714,7 +732,8 @@ export function HumanAgentTimelineViz() {
                   onClick={() => handleSelect(index)}
                   aria-label={`Go to stage ${index + 1}: ${stage.label}`}
                   title={`${index + 1}. ${stage.label}`}
-                  className="inline-flex min-h-6 min-w-6 items-center justify-center p-2"
+                  aria-current={index === activeIndex ? "step" : undefined}
+                  className="inline-flex min-h-6 min-w-6 items-center justify-center rounded-full p-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a78bfa]/60"
                 >
                   <motion.div
                     className="rounded-full"
@@ -722,7 +741,7 @@ export function HumanAgentTimelineViz() {
                       width: index === activeIndex ? 20 : 8,
                       height: 8,
                       background:
-                        index === activeIndex ? gradient || dotColor : "rgba(255,255,255,0.1)",
+                        index === activeIndex ? gradient || dotColor : "rgba(255,255,255,0.22)",
                       boxShadow: index === activeIndex ? `0 0 10px ${dotColor}60` : "none",
                     }}
                     layout
@@ -736,13 +755,13 @@ export function HumanAgentTimelineViz() {
           </div>
 
           {/* Advance / Reset buttons */}
-          <div className="flex gap-3">
+          <div className="flex w-full gap-3 sm:w-auto">
             <button
               type="button"
               onClick={advance}
               disabled={activeIndex >= STAGE_COUNT - 1}
               // Dark text: white on #a78bfa / #FF5500 is only 2.7-3.3:1.
-              className="rounded-xl px-5 py-2.5 text-sm font-bold text-slate-950 transition hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex-1 whitespace-nowrap rounded-xl px-5 py-2.5 text-sm font-bold text-slate-950 transition hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#020408] sm:flex-none"
               style={{
                 background: currentStage.actor === "agent" ? AGENT_COLOR : HUMAN_COLOR,
               }}
@@ -752,8 +771,8 @@ export function HumanAgentTimelineViz() {
             <button
               type="button"
               onClick={reset}
-              className="rounded-xl border px-5 py-2.5 text-sm font-medium text-slate-300 transition hover:bg-white/5 hover:scale-[1.02] active:scale-[0.98]"
-              style={{ borderColor: "#1e293b" }}
+              className="flex-1 whitespace-nowrap rounded-xl border px-5 py-2.5 text-sm font-medium text-slate-300 transition hover:bg-white/5 hover:scale-[1.02] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a78bfa]/60 sm:flex-none"
+              style={{ borderColor: "#334155" }}
             >
               Reset
             </button>

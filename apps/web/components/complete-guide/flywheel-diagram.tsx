@@ -3,8 +3,19 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
 
+/** Where each stage's label sits around its node. "end" ends the label at the
+ *  node, so the rightmost stage's label stays inside a phone-width diagram. */
+const LABEL_PLACEMENT: Record<string, { side: "top" | "bottom"; align: "center" | "end" }> = {
+  human: { side: "top", align: "center" },
+  plan: { side: "top", align: "center" },
+  beads: { side: "top", align: "end" },
+  swarm: { side: "bottom", align: "center" },
+  review: { side: "bottom", align: "center" },
+};
+
 export function FlywheelDiagram() {
   const ref = useRef<HTMLDivElement>(null);
+  const isFinePointer = useRef(false);
   const isInView = useInView(ref, { once: true, margin: "-100px" });
   const prefersReducedMotion = useReducedMotion();
   const rm = prefersReducedMotion ?? false;
@@ -73,6 +84,15 @@ export function FlywheelDiagram() {
   ];
   const loopVelocity = [1, 1.8, 3.2][cycleDepth];
   const currentStage = stages[activeStage];
+
+  useEffect(() => {
+    isFinePointer.current = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+  }, []);
+
+  const selectStage = (index: number) => {
+    setActiveStage(index);
+    setAutoTour(false);
+  };
 
   useEffect(() => {
     if (!isInView || rm || !autoTour) return undefined;
@@ -170,15 +190,13 @@ export function FlywheelDiagram() {
       </div>
 
       <div className="relative z-10 mt-12 grid items-center gap-12">
-        <div
-          className="relative min-w-0 overflow-x-auto p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-          role="region"
-          tabIndex={0}
-          aria-label="Flywheel loop diagram (scrolls sideways when needed)"
-        >
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(var(--primary-rgb),0.03),transparent_60%)]" />
-
-          <svg viewBox="0 0 640 420" className="relative z-10 w-full min-w-[640px] h-auto">
+        {/* The SVG draws the orbit and scales to the column; the stage labels
+            and the readout are HTML on top, so they stay legible on a phone
+            instead of shrinking with the drawing or scrolling sideways. */}
+        <div className="relative mx-auto w-full max-w-[720px] py-6">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(var(--primary-rgb),0.05),transparent_60%)]" />
+          <div className="relative aspect-[640/420] w-full">
+          <svg viewBox="0 0 640 420" className="absolute inset-0 h-full w-full" aria-hidden="true">
             {/* Main structural orbits */}
             <ellipse
               cx="320"
@@ -207,7 +225,9 @@ export function FlywheelDiagram() {
                 <stop offset="50%" stopColor="#FFBD2E" stopOpacity="1" />
                 <stop offset="100%" stopColor="#FFFFFF" stopOpacity="1" />
               </linearGradient>
-              <filter id="nodeGlow">
+              {/* In drawing units: the default bounding-box region clips the
+                  blur into a square around a node. */}
+              <filter id="nodeGlow" filterUnits="userSpaceOnUse" x="0" y="0" width="640" height="420">
                 <feGaussianBlur stdDeviation="4" result="coloredBlur" />
                 <feMerge>
                   <feMergeNode in="coloredBlur" />
@@ -269,88 +289,95 @@ export function FlywheelDiagram() {
                 r="85"
                 fill="#020408"
                 stroke="#FF5500"
-                strokeOpacity="0.15"
+                strokeOpacity="0.25"
                 strokeWidth="2"
               />
-              <text
-                x="320"
-                y="190"
-                textAnchor="middle"
-                className="fill-white/30 text-xs font-bold uppercase tracking-[0.4em]"
-              >
-                System Output
-              </text>
-              <motion.text
-                x="320"
-                y="240"
-                textAnchor="middle"
-                className="fill-white text-[56px] font-black tracking-tighter"
-                animate={{ scale: [1, 1.05, 1] }}
-                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-              >
-                {loopVelocity.toFixed(1)}x
-              </motion.text>
             </g>
 
             {stages.map((stage, index) => {
               const isActive = index === activeStage;
               return (
-                <motion.g
-                  key={stage.id}
-                  onMouseEnter={() => {
-                    setActiveStage(index);
-                    setAutoTour(false);
-                  }}
-                  className="cursor-pointer"
-                >
-                  <circle cx={stage.x} cy={stage.y} r="50" fill="transparent" />
-
+                <g key={stage.id}>
                   {/* Point core */}
                   <motion.circle
                     cx={stage.x}
                     cy={stage.y}
-                    r={isActive ? 10 : 5}
+                    r={isActive ? 10 : 6}
                     fill={isActive ? stage.color : "white"}
-                    fillOpacity={isActive ? 1 : 0.15}
-                    animate={{ scale: isActive ? [1, 1.4, 1] : 1 }}
+                    fillOpacity={isActive ? 1 : 0.45}
+                    animate={{ scale: isActive && !rm ? [1, 1.4, 1] : 1 }}
                     transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
                     filter={isActive ? "url(#nodeGlow)" : undefined}
                   />
 
                   {/* Outer rings */}
-                  <motion.circle
+                  <circle
                     cx={stage.x}
                     cy={stage.y}
-                    r={isActive ? 28 : 14}
+                    r={isActive ? 28 : 15}
                     fill="none"
                     stroke={stage.color}
-                    strokeOpacity={isActive ? 0.4 : 0}
+                    strokeOpacity={isActive ? 0.5 : 0.3}
                     strokeWidth="1.5"
                   />
-
-                  {/* Label */}
-                  <text
-                    x={stage.x}
-                    y={stage.y - 24}
-                    textAnchor="middle"
-                    className={`text-[12px] font-black uppercase tracking-widest transition duration-500 ${isActive ? "fill-white" : "fill-white/30"}`}
-                  >
-                    {stage.label}
-                  </text>
-                </motion.g>
+                </g>
               );
             })}
           </svg>
+
+          <div className="pointer-events-none absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center">
+            <span className="text-xs font-bold uppercase tracking-[0.12em] text-zinc-400 sm:tracking-[0.35em]">
+              <span className="hidden sm:inline">System </span>Output
+            </span>
+            <motion.span
+              className="mt-0.5 text-[1.75rem] font-black leading-none tracking-tighter text-white tabular-nums sm:mt-2 sm:text-[3.5rem]"
+              animate={rm ? undefined : { scale: [1, 1.05, 1] }}
+              transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+            >
+              {loopVelocity.toFixed(1)}x
+            </motion.span>
+          </div>
+
+          {stages.map((stage, index) => {
+            const isActive = index === activeStage;
+            const place = LABEL_PLACEMENT[stage.id];
+            return (
+              <button
+                key={stage.id}
+                type="button"
+                aria-pressed={isActive}
+                onClick={() => selectStage(index)}
+                onMouseEnter={() => {
+                  if (isFinePointer.current) selectStage(index);
+                }}
+                className="group absolute flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70"
+                style={{ left: `${(stage.x / 640) * 100}%`, top: `${(stage.y / 420) * 100}%` }}
+              >
+                <span
+                  className={`pointer-events-none absolute whitespace-nowrap text-xs font-bold uppercase tracking-[0.08em] transition-colors duration-300 sm:tracking-[0.2em] ${
+                    isActive ? "text-white" : "text-zinc-400 group-hover:text-zinc-200"
+                  } ${place.side === "top" ? "bottom-full mb-0.5 sm:mb-2.5" : "top-full mt-0.5 sm:mt-2.5"} ${
+                    place.align === "end" ? "right-2" : "left-1/2 -translate-x-1/2"
+                  }`}
+                >
+                  {stage.label}
+                </span>
+              </button>
+            );
+          })}
+          </div>
         </div>
 
         <div className="flex flex-col gap-10">
           <AnimatePresence mode="wait">
             <motion.div
               key={currentStage.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+              // A short fade: the tour changes stage every 2.6s, and a longer
+              // exit-then-enter left the panel blank for much of each step.
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
               className="flex flex-col gap-8"
             >
               <div className="flex flex-col gap-3">

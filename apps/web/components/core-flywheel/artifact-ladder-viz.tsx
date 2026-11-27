@@ -143,13 +143,14 @@ function StageNode({
         damping: 22,
         delay: reducedMotion ? 0 : index * 0.1,
       }}
+      aria-pressed={isActive}
       className={cn(
-        "group/node relative flex items-center gap-4 rounded-2xl border p-4 text-left transition duration-500 w-full min-h-[56px] hover:scale-[1.02]",
+        "group/node relative flex items-center gap-4 rounded-2xl border p-4 text-left transition duration-500 w-full min-h-[56px] hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/50",
         isActive
-          ? "border-white/[0.08] bg-white/[0.03] shadow-[0_0_30px_var(--node-glow)]"
+          ? "border-white/[0.1] bg-white/[0.03] shadow-[0_0_30px_var(--node-glow)]"
           : isPast
-            ? "border-white/[0.04] bg-white/[0.01]"
-            : "border-white/[0.03] bg-white/[0.005] hover:border-white/[0.06] hover:bg-white/[0.02]",
+            ? "border-white/[0.07] bg-white/[0.015]"
+            : "border-white/[0.06] bg-white/[0.01] hover:border-white/[0.1] hover:bg-white/[0.025]",
       )}
       style={
         {
@@ -162,7 +163,7 @@ function StageNode({
         <motion.div
           className={cn(
             "flex h-11 w-11 items-center justify-center rounded-xl border transition duration-500",
-            isActive ? "border-transparent" : "border-white/[0.06] bg-white/[0.02]",
+            isActive ? "border-transparent" : "border-white/[0.1] bg-white/[0.03]",
           )}
           style={{
             backgroundColor: isActive ? `${stage.color}18` : undefined,
@@ -177,12 +178,13 @@ function StageNode({
         >
           <Icon
             className="h-5 w-5 transition-colors duration-500"
+            aria-hidden="true"
             style={{
               color: isActive
                 ? stage.color
                 : isPast
-                  ? `${stage.color}99`
-                  : "rgba(255,255,255,0.25)",
+                  ? `${stage.color}b3`
+                  : "rgba(255,255,255,0.55)",
             }}
           />
         </motion.div>
@@ -203,7 +205,9 @@ function StageNode({
         <span
           className="text-xs font-black uppercase tracking-[0.2em]"
           style={{
-            color: isActive ? stage.color : isPast ? `${stage.color}80` : "rgba(255,255,255,0.2)",
+            // Inactive rows stay readable: past stages keep a tint of their
+            // color, upcoming ones use zinc-400.
+            color: isActive ? stage.color : isPast ? `${stage.color}b3` : "#a1a1aa",
             transition: "color 700ms cubic-bezier(0.4, 0, 0.2, 1)",
           }}
         >
@@ -212,7 +216,7 @@ function StageNode({
         <span
           className={cn(
             "text-sm font-bold tracking-tight transition-colors duration-500 truncate",
-            isActive ? "text-white" : isPast ? "text-white/60" : "text-white/30",
+            isActive ? "text-white" : "text-zinc-300",
           )}
         >
           {stage.label}
@@ -221,11 +225,12 @@ function StageNode({
 
       {/* Arrow indicator */}
       <ChevronRight
+        aria-hidden="true"
         className={cn(
           "ml-auto h-4 w-4 shrink-0 transition duration-500",
           isActive
             ? "text-white/60 translate-x-0 opacity-100"
-            : "text-white/10 -translate-x-1 opacity-0 group-hover/node:translate-x-0 group-hover/node:opacity-100",
+            : "text-white/40 -translate-x-1 opacity-0 group-hover/node:translate-x-0 group-hover/node:opacity-100",
         )}
       />
     </motion.button>
@@ -261,7 +266,7 @@ function ConnectorLine({
             background:
               isActive || isPast
                 ? `linear-gradient(to bottom, ${fromColor}80, ${toColor}80)`
-                : "rgba(255,255,255,0.08)",
+                : "rgba(255,255,255,0.14)",
           }}
         />
         {isActive && !reducedMotion && (
@@ -343,7 +348,7 @@ function DetailPanel({ stage, reducedMotion }: { stage: Stage; reducedMotion: bo
           {
             label: "What It Means",
             value: stage.meaning,
-            accent: "rgba(255,255,255,0.4)",
+            accent: "#a1a1aa",
           },
           {
             label: "What You Do Next",
@@ -379,7 +384,7 @@ function DetailPanel({ stage, reducedMotion }: { stage: Stage; reducedMotion: bo
 
       {/* Progression indicator */}
       <div className="mt-auto rounded-2xl border border-white/[0.04] bg-white/[0.01] p-5">
-        <span className="text-xs font-black uppercase tracking-[0.3em] text-white/20 block mb-4">
+        <span className="text-xs font-black uppercase tracking-[0.3em] text-zinc-400 block mb-4">
           Progression
         </span>
         <div className="flex gap-1.5">
@@ -421,7 +426,7 @@ function DetailPanel({ stage, reducedMotion }: { stage: Stage; reducedMotion: bo
                     ? s.color
                     : isPast
                       ? `${s.color}60`
-                      : "rgba(255,255,255,0.06)",
+                      : "rgba(255,255,255,0.12)",
                   boxShadow: isCurrent ? `0 0 12px ${s.glowColor}` : "none",
                 }}
               />
@@ -430,72 +435,6 @@ function DetailPanel({ stage, reducedMotion }: { stage: Stage; reducedMotion: bo
         </div>
       </div>
     </motion.div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Diagonal SVG connector for desktop                                */
-/* ------------------------------------------------------------------ */
-
-function DiagonalTrail({
-  activeIndex,
-  reducedMotion,
-}: {
-  activeIndex: number;
-  reducedMotion: boolean;
-}) {
-  const nodeCount = STAGES.length;
-  const height = nodeCount * 80;
-
-  return (
-    <svg
-      viewBox={`0 0 40 ${height}`}
-      className="absolute left-5 top-0 h-full w-10 pointer-events-none hidden lg:block"
-      preserveAspectRatio="none"
-    >
-      <defs>
-        <linearGradient id="trailGradient" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.3" />
-          <stop offset="40%" stopColor="#FF5500" stopOpacity="0.5" />
-          <stop offset="100%" stopColor="#22c55e" stopOpacity="0.3" />
-        </linearGradient>
-      </defs>
-
-      {/* Background trail */}
-      <line x1="20" y1="0" x2="20" y2={height} stroke="rgba(255,255,255,0.04)" strokeWidth="2" />
-
-      {/* Active trail */}
-      <motion.line
-        x1="20"
-        y1="0"
-        x2="20"
-        y2={height}
-        stroke="url(#trailGradient)"
-        strokeWidth="2"
-        strokeLinecap="round"
-        initial={{ pathLength: 0 }}
-        animate={{
-          pathLength: (activeIndex + 1) / nodeCount,
-        }}
-        transition={reducedMotion ? { duration: 0 } : { duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-      />
-
-      {/* Dot markers at each node position */}
-      {STAGES.map((s, i) => {
-        const cy = (i / (nodeCount - 1)) * height;
-        const isAtOrBefore = i <= activeIndex;
-        return (
-          <circle
-            key={s.id}
-            cx="20"
-            cy={cy}
-            r={i === activeIndex ? 4 : 3}
-            fill={isAtOrBefore ? s.color : "rgba(255,255,255,0.1)"}
-            opacity={isAtOrBefore ? 0.9 : 0.4}
-          />
-        );
-      })}
-    </svg>
   );
 }
 
@@ -565,8 +504,8 @@ export function ArtifactLadderViz() {
       <div className="absolute inset-0 noise-overlay opacity-[0.02] mix-blend-overlay pointer-events-none" />
 
       {/* Ambient glow */}
-      <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-[radial-gradient(ellipse_at_top_right,rgba(167,139,250,0.03),transparent_60%)] pointer-events-none" />
-      <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-[radial-gradient(ellipse_at_bottom_left,rgba(34,197,94,0.02),transparent_60%)] pointer-events-none" />
+      <div className="absolute top-0 right-0 w-[min(600px,100%)] h-[600px] bg-[radial-gradient(ellipse_at_top_right,rgba(167,139,250,0.03),transparent_60%)] pointer-events-none" />
+      <div className="absolute bottom-0 left-0 w-[min(400px,100%)] h-[400px] bg-[radial-gradient(ellipse_at_bottom_left,rgba(34,197,94,0.02),transparent_60%)] pointer-events-none" />
 
       {/* Header */}
       <div className="relative z-10 flex flex-col gap-8 border-b border-white/[0.03] pb-12 lg:flex-row lg:items-start lg:justify-between">
@@ -584,15 +523,16 @@ export function ArtifactLadderViz() {
           </p>
         </div>
 
-        <div className="flex flex-col items-start lg:items-end gap-4">
+        <div className="flex shrink-0 flex-col items-start lg:items-end gap-4">
           <button
             type="button"
             onClick={toggleAutoPlay}
+            aria-pressed={autoPlay}
             className={cn(
-              "group flex items-center gap-3 px-6 py-3 rounded-2xl border transition duration-500",
+              "group flex items-center gap-3 whitespace-nowrap px-6 py-3 rounded-2xl border transition duration-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/50",
               autoPlay
                 ? "border-[#FF5500]/30 bg-[#FF5500]/10 text-[#FF5500] shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]"
-                : "border-white/10 bg-white/[0.02] text-white/40 hover:bg-white/[0.04] hover:text-white/60",
+                : "border-white/10 bg-white/[0.02] text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200",
             )}
           >
             <div
@@ -603,7 +543,11 @@ export function ArtifactLadderViz() {
                   : "bg-white/20",
               )}
             />
-            {autoPlay ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+            {autoPlay ? (
+              <Pause className="h-3.5 w-3.5" aria-hidden="true" />
+            ) : (
+              <Play className="h-3.5 w-3.5" aria-hidden="true" />
+            )}
             <span className="text-xs font-black uppercase tracking-[0.2em]">
               {autoPlay ? "Auto-Play Active" : "Auto-Play"}
             </span>
@@ -614,9 +558,10 @@ export function ArtifactLadderViz() {
       {/* Main content: ladder + detail panel */}
       <div className="relative z-10 mt-16 grid gap-12 lg:grid-cols-[0.9fr_1.1fr] items-start">
         {/* Left: Ladder */}
+        {/* The connectors between rows carry the progress colors at every
+            width (a stretched desktop-only SVG rail used to run through the
+            icons with its dots off the row centers). */}
         <div className="relative flex flex-col">
-          <DiagonalTrail activeIndex={activeIndex} reducedMotion={reducedMotion} />
-
           <div className="flex flex-col">
             {STAGES.map((stage, index) => {
               const isActive = index === activeIndex;
@@ -660,7 +605,9 @@ export function ArtifactLadderViz() {
           }}
           animate={{
             top: `${(activeIndex / (STAGES.length - 1)) * 60 + 10}%`,
-            background: `radial-gradient(ellipse at 50% 0%, ${activeStage.color}12, ${activeStage.color}06 40%, transparent 70%)`,
+            // closest-side fades to transparent before every edge of the box;
+            // centered on the top edge it left a hard horizontal line.
+            background: `radial-gradient(closest-side, ${activeStage.color}12, ${activeStage.color}06 50%, transparent)`,
           }}
           transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
         />
@@ -713,7 +660,7 @@ export function ArtifactLadderViz() {
         <div className="rounded-2xl border border-white/[0.04] bg-white/[0.01] p-5 group hover:-translate-y-1 transition-transform duration-500 relative overflow-hidden">
           {/* White gradient top border */}
           <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-white/0 via-white/40 to-white/0 pointer-events-none" />
-          <div className="text-xs font-black uppercase tracking-[0.3em] text-white/20 group-hover:text-white/40 transition-colors">
+          <div className="text-xs font-black uppercase tracking-[0.3em] text-zinc-400 group-hover:text-zinc-300 transition-colors">
             Total Stages
           </div>
           <div className="mt-3 text-4xl font-black tracking-tighter text-white">
@@ -727,7 +674,7 @@ export function ArtifactLadderViz() {
         <div className="rounded-2xl border border-white/[0.04] bg-white/[0.01] p-5 group hover:-translate-y-1 transition-transform duration-500 relative overflow-hidden">
           {/* Orange gradient top border */}
           <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-[#FF5500]/0 via-[#FF5500] to-[#FFBD2E]/0 pointer-events-none" />
-          <div className="text-xs font-black uppercase tracking-[0.3em] text-white/20 group-hover:text-white/40 transition-colors">
+          <div className="text-xs font-black uppercase tracking-[0.3em] text-zinc-400 group-hover:text-zinc-300 transition-colors">
             Key Transition
           </div>
           <div className="mt-3 text-4xl font-black tracking-tighter bg-gradient-to-r from-[#FF5500] to-[#FFBD2E] bg-clip-text text-transparent">

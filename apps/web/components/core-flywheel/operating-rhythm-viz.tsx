@@ -133,7 +133,9 @@ function StepNode({
       <motion.div
         className={cn(
           "relative z-10 flex h-12 w-12 items-center justify-center rounded-full border-2 transition-colors duration-300",
-          isActive ? "bg-black/60" : "bg-black/30 border-white/[0.08] hover:border-white/[0.15]",
+          isActive
+            ? "bg-[#05070b]"
+            : "bg-[#05070b] border-white/[0.14] group-hover:border-white/[0.28]",
         )}
         style={{
           borderColor: isActive ? step.color : undefined,
@@ -145,25 +147,26 @@ function StepNode({
             : { duration: 0.2 }
         }
       >
-        <div className="flex items-center gap-0.5" aria-hidden="true">
+        <div className="flex select-none items-center gap-0.5" aria-hidden="true">
           <Icon
-            className="h-5 w-5 transition-colors duration-300"
-            style={{ color: isActive ? step.color : "rgba(255,255,255,0.35)" }}
+            // Two icons share the "Execute & Close" circle, so each is smaller there.
+            className={cn("transition-colors duration-300", IconAlt ? "h-4 w-4" : "h-5 w-5")}
+            style={{ color: isActive ? step.color : "rgba(255,255,255,0.55)" }}
           />
           {IconAlt && (
             <>
               <span
-                className="text-xs font-bold transition-colors duration-300"
+                className="text-[10px] font-bold transition-colors duration-300"
                 style={{
-                  color: isActive ? step.color : "rgba(255,255,255,0.2)",
+                  color: isActive ? step.color : "rgba(255,255,255,0.4)",
                 }}
               >
                 /
               </span>
               <IconAlt
-                className="h-4 w-4 transition-colors duration-300"
+                className="h-3.5 w-3.5 transition-colors duration-300"
                 style={{
-                  color: isActive ? step.color : "rgba(255,255,255,0.35)",
+                  color: isActive ? step.color : "rgba(255,255,255,0.55)",
                 }}
               />
             </>
@@ -186,7 +189,7 @@ function StepNode({
         <span
           className="text-xs font-bold tracking-wide transition-colors duration-300 whitespace-nowrap"
           style={{
-            color: isActive ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.6)",
+            color: isActive ? "rgba(255,255,255,0.95)" : "#d4d4d8",
           }}
         >
           {step.label}
@@ -249,7 +252,7 @@ function DetailCard({
       <div className="relative z-10 grid gap-4 sm:grid-cols-3">
         {/* Action */}
         <div className="space-y-1.5">
-          <div className="text-xs font-bold uppercase tracking-widest text-white/30">
+          <div className="text-xs font-bold uppercase tracking-widest text-zinc-400">
             Action
           </div>
           <p className="text-sm leading-relaxed text-zinc-300 font-light">{step.action}</p>
@@ -257,7 +260,7 @@ function DetailCard({
 
         {/* Output */}
         <div className="space-y-1.5">
-          <div className="text-xs font-bold uppercase tracking-widest text-white/30">
+          <div className="text-xs font-bold uppercase tracking-widest text-zinc-400">
             Output
           </div>
           <p className="text-sm leading-relaxed text-zinc-300 font-light">{step.output}</p>
@@ -265,7 +268,7 @@ function DetailCard({
 
         {/* Timing */}
         <div className="space-y-1.5">
-          <div className="text-xs font-bold uppercase tracking-widest text-white/30">
+          <div className="text-xs font-bold uppercase tracking-widest text-zinc-400">
             Timing
           </div>
           <div className="flex items-center gap-2">
@@ -290,6 +293,13 @@ function DetailCard({
 /*  Connector line between two step nodes                             */
 /* ------------------------------------------------------------------ */
 
+/** Desktop geometry: five equal columns, nodes centered in each, and the
+ *  node row starts `NODE_ROW_TOP_PX` below the top of the loop bracket so the
+ *  bracket's label has room above the nodes. */
+const NODE_ROW_TOP_PX = 44;
+const NODE_SIZE_PX = 48;
+const COLUMN_PCT = 100 / STEP_COUNT;
+
 function Connector({
   fromIndex,
   activeIndex,
@@ -305,22 +315,26 @@ function Connector({
 
   return (
     <div
-      className={cn(
-        "relative flex items-center justify-center",
-        vertical ? "h-8 w-0.5 mx-auto" : "w-full h-0.5 flex-1",
-      )}
+      aria-hidden="true"
+      className={cn(vertical ? "relative h-8 w-0.5" : "absolute h-0.5")}
+      style={
+        vertical
+          ? // Under the node column: button p-2 + half of the 40px node.
+            { marginLeft: 27 }
+          : {
+              // From just right of this node's circle to just left of the next one.
+              top: NODE_ROW_TOP_PX + NODE_SIZE_PX / 2 - 1,
+              left: `calc(${(fromIndex + 0.5) * COLUMN_PCT}% + ${NODE_SIZE_PX / 2 + 8}px)`,
+              width: `calc(${COLUMN_PCT}% - ${NODE_SIZE_PX + 16}px)`,
+            }
+      }
     >
       <motion.div
-        className={cn(
-          "absolute",
-          vertical
-            ? "inset-y-0 left-1/2 -translate-x-1/2 w-0.5"
-            : "inset-x-0 top-1/2 -translate-y-1/2 h-0.5",
-        )}
+        className="absolute inset-0 rounded-full"
         style={{
           background: isCrossing
-            ? `linear-gradient(${vertical ? "to bottom" : "to right"}, ${STEPS[fromIndex].color}60, ${STEPS[fromIndex + 1].color}60)`
-            : "rgba(255,255,255,0.06)",
+            ? `linear-gradient(${vertical ? "to bottom" : "to right"}, ${STEPS[fromIndex].color}90, ${STEPS[fromIndex + 1].color}90)`
+            : "rgba(255,255,255,0.12)",
         }}
         animate={isCrossing && !reducedMotion ? { opacity: [0.5, 1, 0.5] } : { opacity: 1 }}
         transition={
@@ -345,66 +359,68 @@ function LoopArrow({
   vertical: boolean;
 }) {
   const isHighlighted = activeIndex >= 2; // highlight when any loop step is active
+  const color = isHighlighted ? "#FFBD2E" : "#a1a1aa"; // amber when live, zinc-400 at rest
+  const pulse = isHighlighted && !reducedMotion;
+
+  const label = (
+    <span className="flex items-center gap-2">
+      <RotateCcw className="h-3.5 w-3.5 shrink-0" style={{ color }} aria-hidden="true" />
+      <span className="text-xs font-bold uppercase tracking-widest" style={{ color }}>
+        Repeat from Route
+      </span>
+    </span>
+  );
 
   if (vertical) {
     return (
       <motion.div
-        className="flex items-center justify-center gap-2 py-2"
-        animate={isHighlighted && !reducedMotion ? { opacity: [0.6, 1, 0.6] } : { opacity: 0.5 }}
-        transition={
-          isHighlighted && !reducedMotion
-            ? { duration: 2, repeat: Infinity, ease: "easeInOut" }
-            : {}
-        }
+        className="flex items-center justify-center py-2"
+        animate={pulse ? { opacity: [0.7, 1, 0.7] } : { opacity: 1 }}
+        transition={pulse ? { duration: 2, repeat: Infinity, ease: "easeInOut" } : {}}
       >
-        <RotateCcw
-          className="h-4 w-4"
-          style={{ color: isHighlighted ? "#FFBD2E" : "rgba(255,255,255,0.15)" }}
-        />
-        <span
-          className="text-xs font-bold uppercase tracking-widest"
-          style={{ color: isHighlighted ? "#FFBD2E" : "rgba(255,255,255,0.15)" }}
-        >
-          Repeat from Route
-        </span>
+        {label}
       </motion.div>
     );
   }
 
+  /* Desktop: a dashed return path that drops from step 5, runs back under
+     step 4, and rises into step 3 (column centers at 50% and 90%). */
+  const left = `${2.5 * COLUMN_PCT}%`;
+  const right = `${0.5 * COLUMN_PCT}%`;
   return (
     <motion.div
-      className="absolute -bottom-10 right-0 flex items-center gap-1.5"
-      style={{
-        /* Position the loop arrow under the last three steps */
-        left: "40%",
-      }}
-      animate={isHighlighted && !reducedMotion ? { opacity: [0.5, 1, 0.5] } : { opacity: 0.4 }}
-      transition={
-        isHighlighted && !reducedMotion ? { duration: 2, repeat: Infinity, ease: "easeInOut" } : {}
-      }
+      className="relative h-14"
+      aria-hidden="true"
+      animate={pulse ? { opacity: [0.7, 1, 0.7] } : { opacity: 1 }}
+      transition={pulse ? { duration: 2, repeat: Infinity, ease: "easeInOut" } : {}}
     >
-      {/* Curved line using SVG */}
+      <div
+        className="absolute top-1 h-5 rounded-b-2xl border-x-[1.5px] border-b-[1.5px] border-dashed transition-colors duration-300"
+        style={{ left, right, borderColor: isHighlighted ? "#FFBD2E99" : "rgba(161,161,170,0.45)" }}
+      />
+      {/* Arrowhead pointing up into step 3 */}
       <svg
-        width="100%"
-        height="28"
-        viewBox="0 0 300 28"
+        className="absolute -top-1 -translate-x-1/2"
+        style={{ left }}
+        width="12"
+        height="8"
+        viewBox="0 0 12 8"
         fill="none"
-        className="overflow-visible"
-        aria-hidden="true"
       >
         <path
-          d="M290 2 C290 20, 150 26, 10 20"
-          stroke={isHighlighted ? "#FFBD2E" : "rgba(255,255,255,0.1)"}
+          d="M1 7L6 2L11 7"
+          stroke={isHighlighted ? "#FFBD2E" : "rgba(161,161,170,0.7)"}
           strokeWidth="1.5"
-          strokeDasharray="4 4"
-          fill="none"
-        />
-        {/* Arrowhead */}
-        <polygon
-          points="6,16 14,20 10,24"
-          fill={isHighlighted ? "#FFBD2E" : "rgba(255,255,255,0.1)"}
+          strokeLinecap="round"
+          strokeLinejoin="round"
         />
       </svg>
+      <div
+        className="absolute top-8 -translate-x-1/2 whitespace-nowrap"
+        style={{ left: `${3.5 * COLUMN_PCT}%` }}
+      >
+        {label}
+      </div>
     </motion.div>
   );
 }
@@ -463,6 +479,122 @@ export function OperatingRhythmViz() {
   }, [autoPlay, isInView, reducedMotion]);
 
   const activeStep = STEPS[activeIndex];
+  const loopActive = activeStep.inLoop;
+
+  /* One row of the mobile timeline: node + header button, the expandable
+     detail, and the connector down to the next step. */
+  const renderMobileStep = (step: Step, i: number) => {
+    const isActive = activeIndex === i;
+    return (
+      <div key={step.id}>
+        {/* A disclosure: the button holds only the node + header (its
+            visible name); the expanded detail is rendered after it. */}
+        <button
+          type="button"
+          onClick={() => handleSelect(i)}
+          aria-expanded={isActive}
+          aria-controls={isActive ? `rhythm-detail-${step.id}` : undefined}
+          className="w-full flex items-center gap-4 text-left rounded-xl p-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/50"
+        >
+          <motion.div
+            className={cn(
+              "flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 transition-colors duration-300",
+              isActive ? "bg-black/60" : "bg-black/30 border-white/[0.14]",
+            )}
+            style={{
+              borderColor: isActive ? step.color : undefined,
+              boxShadow: isActive ? `0 0 16px ${step.color}40` : "none",
+            }}
+            animate={isActive && !reducedMotion ? { scale: [1, 1.06, 1] } : { scale: 1 }}
+            transition={
+              isActive && !reducedMotion
+                ? { duration: 2, repeat: Infinity, ease: "easeInOut" }
+                : { duration: 0.2 }
+            }
+          >
+            <step.icon
+              className="h-4 w-4"
+              aria-hidden="true"
+              style={{ color: isActive ? step.color : "rgba(255,255,255,0.55)" }}
+            />
+          </motion.div>
+
+          <div className="flex min-w-0 flex-1 items-baseline gap-2">
+            <span
+              className="shrink-0 text-xs font-bold uppercase tracking-widest"
+              style={{ color: isActive ? step.color : "#a1a1aa" }}
+            >
+              Step {i + 1}
+            </span>
+            <span
+              className="text-sm font-bold tracking-tight transition-colors duration-300"
+              style={{ color: isActive ? "rgba(255,255,255,0.95)" : "#d4d4d8" }}
+            >
+              {step.label}
+            </span>
+          </div>
+        </button>
+
+        {/* Expandable detail (indented to the content column:
+            button p-2 + 40px node + gap-4) */}
+        <AnimatePresence>
+          {isActive && (
+            <motion.div
+              id={`rhythm-detail-${step.id}`}
+              initial={reducedMotion ? false : { height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={reducedMotion ? undefined : { height: 0, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 28 }}
+              className="overflow-hidden pl-[4.5rem] pr-2 pb-2"
+            >
+              <div
+                className="mt-1 rounded-xl border p-4 space-y-3"
+                style={{ borderColor: `${step.color}25`, background: `${step.color}08` }}
+              >
+                <div className="space-y-1">
+                  <div className="text-xs font-bold uppercase tracking-widest text-zinc-400">
+                    Action
+                  </div>
+                  <p className="text-sm leading-relaxed text-zinc-300 font-light">{step.action}</p>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-xs font-bold uppercase tracking-widest text-zinc-400">
+                    Output
+                  </div>
+                  <p className="text-sm leading-relaxed text-zinc-300 font-light">{step.output}</p>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-xs font-bold uppercase tracking-widest text-zinc-400">
+                    Timing
+                  </div>
+                  <span
+                    className="inline-flex rounded-full px-2.5 py-0.5 text-xs font-bold border"
+                    style={{
+                      borderColor: `${step.color}30`,
+                      background: `${step.color}10`,
+                      color: step.color,
+                    }}
+                  >
+                    {step.timing}
+                  </span>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Vertical connector down to the next step (none after step 5) */}
+        {i < STEP_COUNT - 1 && (
+          <Connector
+            fromIndex={i}
+            activeIndex={activeIndex}
+            reducedMotion={reducedMotion}
+            vertical
+          />
+        )}
+      </div>
+    );
+  };
 
   return (
     <div ref={containerRef} className={cn(EXHIBIT_PANEL_CLASS, "relative group/viz")}>
@@ -485,49 +617,63 @@ export function OperatingRhythmViz() {
 
       {/* ---- DESKTOP HORIZONTAL TIMELINE (lg+) ---- */}
       <div className="relative z-10 hidden lg:block">
-        {/* Loop background: subtle pill behind steps 3-5 */}
-        <div
-          className="absolute top-0 -bottom-12 rounded-2xl border border-dashed border-white/[0.04] bg-white/[0.015]"
-          style={{ left: "38%", right: "0%" }}
-        />
-        <div
-          className="absolute top-1 flex items-center gap-1 text-xs font-bold uppercase tracking-widest"
-          style={{ left: "40%", color: "rgba(255,255,255,0.12)" }}
-        >
-          <RotateCcw className="h-3 w-3" />
-          Repeating loop
-        </div>
+        <div className="relative">
+          {/* Loop bracket: exactly columns 3-5 (40%-100%), and only as tall
+              as the timeline, so it never reaches the detail card. */}
+          <div
+            aria-hidden="true"
+            className={cn(
+              "pointer-events-none absolute inset-y-0 right-0 rounded-2xl border border-dashed transition-colors duration-300",
+              loopActive
+                ? "border-[#FFBD2E]/35 bg-[#FFBD2E]/[0.025]"
+                : "border-white/[0.14] bg-white/[0.015]",
+            )}
+            style={{ left: `calc(${2 * COLUMN_PCT}% + 8px)` }}
+          />
+          <div
+            className="pointer-events-none absolute top-3.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest transition-colors duration-300"
+            style={{
+              left: `calc(${2 * COLUMN_PCT}% + 24px)`,
+              color: loopActive ? "#FFBD2E" : "#a1a1aa",
+            }}
+          >
+            <RotateCcw className="h-3 w-3" aria-hidden="true" />
+            Repeating loop
+            <span className="font-medium normal-case tracking-normal text-zinc-500">
+              · steps 3-5
+            </span>
+          </div>
 
-        {/* Timeline row */}
-        <div className="relative flex items-start pt-8 pb-4">
-          {STEPS.map((step, i) => (
-            <div key={step.id} className="flex items-center flex-1 min-w-0">
-              <StepNode
-                step={step}
-                index={i}
-                isActive={activeIndex === i}
-                onClick={() => handleSelect(i)}
+          {/* Timeline row: five equal columns, a node centered in each */}
+          <div className="relative grid grid-cols-5 pb-3" style={{ paddingTop: NODE_ROW_TOP_PX }}>
+            {STEPS.slice(0, -1).map((step, i) => (
+              <Connector
+                key={`conn-${step.id}`}
+                fromIndex={i}
+                activeIndex={activeIndex}
                 reducedMotion={reducedMotion}
+                vertical={false}
               />
-              {i < STEP_COUNT - 1 && (
-                <Connector
-                  fromIndex={i}
-                  activeIndex={activeIndex}
+            ))}
+            {STEPS.map((step, i) => (
+              <div key={step.id} className="flex min-w-0 justify-center">
+                <StepNode
+                  step={step}
+                  index={i}
+                  isActive={activeIndex === i}
+                  onClick={() => handleSelect(i)}
                   reducedMotion={reducedMotion}
-                  vertical={false}
                 />
-              )}
-            </div>
-          ))}
-        </div>
+              </div>
+            ))}
+          </div>
 
-        {/* Loop arrow from step 5 back to step 3 */}
-        <div className="relative h-10">
+          {/* Return path from step 5 back to step 3, inside the bracket */}
           <LoopArrow activeIndex={activeIndex} reducedMotion={reducedMotion} vertical={false} />
         </div>
 
         {/* Detail card below the timeline */}
-        <div className="mt-4">
+        <div className="mt-6">
           <AnimatePresence mode="wait">
             <DetailCard
               key={activeStep.id}
@@ -541,163 +687,33 @@ export function OperatingRhythmViz() {
 
       {/* ---- MOBILE VERTICAL TIMELINE ---- */}
       <div className="relative z-10 lg:hidden">
-        {/* Loop background behind steps 3-5 */}
-        <div
-          className="absolute rounded-2xl border border-dashed border-white/[0.04] bg-white/[0.015]"
-          style={{ top: "55%", bottom: "0%", left: "-4px", right: "-4px" }}
-        >
-          <div
-            className="flex items-center gap-1 px-3 pt-2 text-xs font-bold uppercase tracking-widest"
-            style={{ color: "rgba(255,255,255,0.12)" }}
-          >
-            <RotateCcw className="h-3 w-3" />
-            Repeating loop
-          </div>
-        </div>
-
         <div className="relative flex flex-col gap-0">
-          {STEPS.map((step, i) => (
-            <div key={step.id}>
-              {/* Step node + card combined as a clickable row */}
-              {/* A disclosure: the button holds only the node + header (its
-                  visible name); the expanded detail is rendered after it. */}
-              <button
-                type="button"
-                onClick={() => handleSelect(i)}
-                aria-expanded={activeIndex === i}
-                aria-controls={activeIndex === i ? `rhythm-detail-${step.id}` : undefined}
-                className="w-full flex items-start gap-4 text-left rounded-xl p-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/50"
-              >
-                {/* Vertical connector + node */}
-                <div className="flex flex-col items-center shrink-0">
-                  <motion.div
-                    className={cn(
-                      "flex h-10 w-10 items-center justify-center rounded-full border-2 transition-colors duration-300",
-                      activeIndex === i ? "bg-black/60" : "bg-black/30 border-white/[0.08]",
-                    )}
-                    style={{
-                      borderColor: activeIndex === i ? step.color : undefined,
-                      boxShadow: activeIndex === i ? `0 0 16px ${step.color}40` : "none",
-                    }}
-                    animate={
-                      activeIndex === i && !reducedMotion ? { scale: [1, 1.06, 1] } : { scale: 1 }
-                    }
-                    transition={
-                      activeIndex === i && !reducedMotion
-                        ? {
-                            duration: 2,
-                            repeat: Infinity,
-                            ease: "easeInOut",
-                          }
-                        : { duration: 0.2 }
-                    }
-                  >
-                    <step.icon
-                      className="h-4 w-4"
-                      style={{
-                        color: activeIndex === i ? step.color : "rgba(255,255,255,0.35)",
-                      }}
-                    />
-                  </motion.div>
-                </div>
+          {/* Steps 1-2 */}
+          {STEPS.slice(0, 2).map((step, i) => renderMobileStep(step, i))}
 
-                {/* Content */}
-                <div className="flex-1 min-w-0 pb-2">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span
-                      className="text-xs font-bold uppercase tracking-widest"
-                      style={{
-                        color: activeIndex === i ? step.color : "rgba(255,255,255,0.6)",
-                      }}
-                    >
-                      Step {i + 1}
-                    </span>
-                    <span
-                      className="text-sm font-bold tracking-tight transition-colors duration-300"
-                      style={{
-                        color:
-                          activeIndex === i ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.6)",
-                      }}
-                    >
-                      {step.label}
-                    </span>
-                  </div>
-                </div>
-              </button>
-
-                  {/* Expandable detail (indented to the content column:
-                      button p-2 + 40px node + gap-4) */}
-                  <AnimatePresence>
-                    {activeIndex === i && (
-                      <motion.div
-                        id={`rhythm-detail-${step.id}`}
-                        initial={reducedMotion ? false : { height: 0, opacity: 0 }}
-                        animate={{ height: "auto", opacity: 1 }}
-                        exit={reducedMotion ? undefined : { height: 0, opacity: 0 }}
-                        transition={{
-                          type: "spring",
-                          stiffness: 300,
-                          damping: 28,
-                        }}
-                        className="overflow-hidden pl-[4.5rem] pr-2 pb-2"
-                      >
-                        <div
-                          className="mt-2 rounded-xl border p-4 space-y-3"
-                          style={{
-                            borderColor: `${step.color}20`,
-                            background: `${step.color}08`,
-                          }}
-                        >
-                          <div className="space-y-1">
-                            <div className="text-xs font-bold uppercase tracking-widest text-white/30">
-                              Action
-                            </div>
-                            <p className="text-sm leading-relaxed text-zinc-300 font-light">
-                              {step.action}
-                            </p>
-                          </div>
-                          <div className="space-y-1">
-                            <div className="text-xs font-bold uppercase tracking-widest text-white/30">
-                              Output
-                            </div>
-                            <p className="text-sm leading-relaxed text-zinc-300 font-light">
-                              {step.output}
-                            </p>
-                          </div>
-                          <div className="space-y-1">
-                            <div className="text-xs font-bold uppercase tracking-widest text-white/30">
-                              Timing
-                            </div>
-                            <span
-                              className="inline-flex rounded-full px-2.5 py-0.5 text-xs font-bold border"
-                              style={{
-                                borderColor: `${step.color}30`,
-                                background: `${step.color}10`,
-                                color: step.color,
-                              }}
-                            >
-                              {step.timing}
-                            </span>
-                          </div>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-              {/* Vertical connector line */}
-              {i < STEP_COUNT - 1 && (
-                <Connector
-                  fromIndex={i}
-                  activeIndex={activeIndex}
-                  reducedMotion={reducedMotion}
-                  vertical
-                />
-              )}
+          {/* Steps 3-5 live inside the loop bracket. It bleeds 8px past the
+              column (-mx-2) so the nodes stay on the same rail as steps 1-2. */}
+          <div
+            className={cn(
+              "relative -mx-2 rounded-2xl border border-dashed px-[7px] pt-1 transition-colors duration-300",
+              loopActive
+                ? "border-[#FFBD2E]/35 bg-[#FFBD2E]/[0.025]"
+                : "border-white/[0.14] bg-white/[0.015]",
+            )}
+          >
+            {/* Legend sits on the bracket's top border */}
+            <div
+              className="absolute -top-2.5 left-[60px] flex items-center gap-1.5 bg-[#020408] px-2 text-xs font-bold uppercase leading-5 tracking-widest transition-colors duration-300"
+              style={{ color: loopActive ? "#FFBD2E" : "#a1a1aa" }}
+            >
+              <RotateCcw className="h-3 w-3" aria-hidden="true" />
+              Repeating loop
             </div>
-          ))}
+            {STEPS.slice(2).map((step, j) => renderMobileStep(step, j + 2))}
 
-          {/* Loop indicator at the bottom on mobile */}
-          <LoopArrow activeIndex={activeIndex} reducedMotion={reducedMotion} vertical />
+            {/* Loop indicator at the bottom of the bracket */}
+            <LoopArrow activeIndex={activeIndex} reducedMotion={reducedMotion} vertical />
+          </div>
         </div>
       </div>
 
@@ -707,10 +723,10 @@ export function OperatingRhythmViz() {
           type="button"
           onClick={() => setAutoPlay((prev) => !prev)}
           className={cn(
-            "text-xs font-bold uppercase tracking-widest px-3 py-1.5 rounded-full border transition-colors duration-300",
+            "text-xs font-bold uppercase tracking-widest px-3 py-1.5 rounded-full border transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/50",
             autoPlay
               ? "border-[#FF5500]/20 text-[#FF5500] bg-[#FF5500]/[0.05] hover:bg-[#FF5500]/[0.1]"
-              : "border-white/[0.06] text-white/20 bg-white/[0.02] hover:bg-white/[0.04]",
+              : "border-white/[0.1] text-zinc-400 bg-white/[0.02] hover:bg-white/[0.04] hover:text-zinc-200",
           )}
         >
           {autoPlay ? "Auto-playing" : "Paused"} &middot; {activeIndex + 1}/{STEP_COUNT}

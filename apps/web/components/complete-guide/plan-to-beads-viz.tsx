@@ -242,8 +242,8 @@ export function PlanToBeadsViz() {
     <div ref={ref} className={EXHIBIT_PANEL_CLASS}>
       <div className="absolute inset-0 noise-overlay opacity-[0.02] mix-blend-overlay pointer-events-none" />
 
-      <div className="relative z-10 flex flex-col gap-6 border-b border-white/[0.04] bg-white/[0.01] p-6 sm:p-8 backdrop-blur-md lg:flex-row lg:items-center lg:justify-between">
-        <div>
+      <div className="relative z-10 flex flex-col gap-6 border-b border-white/[0.04] bg-white/[0.01] p-5 sm:p-8 backdrop-blur-md lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
           <div className="text-xs font-bold uppercase tracking-widest text-primary mb-2 flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-primary" />
             Interactive Exhibit
@@ -257,7 +257,7 @@ export function PlanToBeadsViz() {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/[0.05] bg-black/40 p-1.5 shadow-inner">
+        <div className="flex shrink-0 items-center gap-1.5 self-start rounded-2xl border border-white/[0.05] bg-black/40 p-1.5 shadow-inner lg:self-auto">
           {(["thin", "rich"] as const).map((nextMode) => (
             <button
               key={nextMode}
@@ -265,10 +265,10 @@ export function PlanToBeadsViz() {
               aria-pressed={mode === nextMode}
               onClick={() => setMode(nextMode)}
               className={cn(
-                "min-h-[44px] rounded-xl px-5 py-2 text-xs font-bold transition duration-500",
+                "min-h-[44px] whitespace-nowrap rounded-xl px-4 py-2 text-xs font-bold transition duration-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#05070a] sm:px-5",
                 mode === nextMode
                   ? "bg-primary text-black shadow-[0_0_20px_rgba(var(--primary-rgb),0.3)]"
-                  : "text-white/40 hover:bg-white/[0.03] hover:text-white/80",
+                  : "text-zinc-400 hover:bg-white/[0.03] hover:text-zinc-100",
               )}
             >
               {MODE_COPY[nextMode].label}
@@ -277,7 +277,7 @@ export function PlanToBeadsViz() {
         </div>
       </div>
 
-      <div className="relative z-10 mt-2 grid gap-6 p-6 sm:p-8 xl:grid-cols-[0.95fr_1.05fr]">
+      <div className="relative z-10 mt-2 grid gap-6 p-5 sm:p-8 xl:grid-cols-[0.95fr_1.05fr]">
         <div className="space-y-6">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-sm font-semibold text-zinc-300">
@@ -285,7 +285,11 @@ export function PlanToBeadsViz() {
               Human Plan
             </div>
 
-            <div className="relative z-10 mt-6 space-y-3">
+            {/* Below xl the exhibit is one column, so the eight concepts become
+                a compact picker and the selected concept's plan line moves
+                into the card underneath. That keeps every line one tap away
+                without eight full cards to scroll past on a phone. */}
+            <div className="relative z-10 mt-4 grid grid-cols-2 gap-2 sm:mt-6 sm:grid-cols-4 sm:gap-3 xl:grid-cols-1">
               {PLAN_TO_BEAD_CONCEPTS.map((concept, index) => {
                 const isSelected = concept.id === selectedConceptId;
                 return (
@@ -303,30 +307,30 @@ export function PlanToBeadsViz() {
                       delay: reducedMotion ? 0 : index * 0.06,
                     }}
                     className={cn(
-                      "w-full rounded-xl border p-4 text-left transition duration-300 relative overflow-hidden group/btn",
+                      "w-full rounded-xl border p-3 text-left transition duration-300 relative overflow-hidden group/btn focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/60 xl:p-4",
                       isSelected
                         ? "border-primary/30 bg-primary/5 shadow-[0_0_20px_rgba(var(--primary-rgb),0.1)]"
                         : "border-white/[0.04] bg-white/[0.01] hover:border-white/[0.1] hover:bg-white/[0.03]",
                     )}
                   >
-                    <div className="flex items-start justify-between gap-4 relative z-10">
-                      <div>
+                    <div className="relative z-10 flex flex-col items-start gap-2 xl:flex-row xl:justify-between xl:gap-4">
+                      <div className="min-w-0">
                         <div
-                          className="text-xs font-bold uppercase tracking-widest flex items-center gap-2"
+                          className="text-xs font-bold uppercase tracking-wider xl:tracking-widest flex items-center gap-2"
                           style={{ color: concept.color }}
                         >
                           <span
-                            className="w-1 h-1 rounded-full"
+                            className="w-1 h-1 shrink-0 rounded-full"
                             style={{ backgroundColor: concept.color }}
                           />
                           Concept {index + 1}
                         </div>
-                        <div className="mt-1.5 text-base font-bold tracking-tight text-white group-hover/btn:text-primary transition-colors">
+                        <div className="mt-1 text-sm font-bold leading-snug tracking-tight text-white group-hover/btn:text-primary transition-colors xl:mt-1.5 xl:text-base">
                           {concept.label}
                         </div>
                       </div>
                       <div
-                        className="rounded-full px-3 py-1 text-xs font-bold uppercase tracking-widest flex items-center gap-1"
+                        className="shrink-0 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider flex items-center gap-1 xl:px-3 xl:py-1 xl:tracking-widest"
                         style={{
                           color: concept.color,
                           backgroundColor: `${concept.color}15`,
@@ -336,7 +340,7 @@ export function PlanToBeadsViz() {
                         {concept.mapsTo.length} bead{concept.mapsTo.length > 1 ? "s" : ""}
                       </div>
                     </div>
-                    <p className="mt-3 text-sm leading-relaxed text-zinc-400 font-light relative z-10">
+                    <p className="mt-3 hidden text-sm leading-relaxed text-zinc-400 font-light relative z-10 xl:block">
                       {concept.planLine}
                     </p>
                   </motion.button>
@@ -354,7 +358,7 @@ export function PlanToBeadsViz() {
               damping: 24,
               delay: reducedMotion ? 0 : 0.18,
             }}
-            className="rounded-2xl border p-6 relative overflow-hidden shadow-xl"
+            className="rounded-2xl border p-5 sm:p-6 relative overflow-hidden shadow-xl"
             style={{
               borderColor: `${selectedConcept.color}30`,
               backgroundColor: `${selectedConcept.color}0A`,
@@ -373,6 +377,14 @@ export function PlanToBeadsViz() {
             <div className="relative z-10 mt-3 text-xl font-black tracking-tight text-white">
               {selectedConcept.label}
             </div>
+            {/* The compact picker above hides plan lines below xl; show the
+                selected one here instead. */}
+            <p
+              className="relative z-10 mt-3 border-l-2 pl-3 font-mono text-xs leading-relaxed text-zinc-300 xl:hidden"
+              style={{ borderColor: `${selectedConcept.color}66` }}
+            >
+              {selectedConcept.planLine}
+            </p>
             <p className="relative z-10 mt-3 text-sm leading-relaxed text-zinc-300 font-light">
               {selectedConcept.insight}
             </p>
@@ -389,7 +401,7 @@ export function PlanToBeadsViz() {
         <div className="min-w-0 border-t border-white/10 pt-5 xl:border-t-0 xl:border-l xl:pl-6 xl:pt-0">
           <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
             <div>
-              <div className="text-xs font-bold uppercase tracking-widest text-white/40">
+              <div className="text-xs font-bold uppercase tracking-widest text-zinc-400">
                 Translation Output
               </div>
               <div className="mt-1 text-lg font-black tracking-tight text-white">
@@ -413,7 +425,7 @@ export function PlanToBeadsViz() {
             </div>
           </div>
 
-          <div className="relative z-10 mt-8 space-y-4">
+          <div className="relative z-10 mt-6 sm:mt-8">
             {TRANSLATED_BEADS.map((bead, index) => {
               const isHighlighted = highlightedBeads.has(bead.id);
               return (
@@ -428,27 +440,25 @@ export function PlanToBeadsViz() {
                       delay: reducedMotion ? 0 : index * 0.08,
                     }}
                     className={cn(
-                      "rounded-xl border p-5 transition duration-500",
+                      "rounded-xl border p-4 transition duration-500 sm:p-5",
                       isHighlighted
                         ? "border-primary/30 bg-primary/5 shadow-[0_0_20px_rgba(var(--primary-rgb),0.1)]"
                         : "border-white/[0.04] bg-white/[0.01]",
                     )}
                   >
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                      <div>
-                        <div
-                          className="text-xs font-bold uppercase tracking-widest flex items-center gap-2"
-                          style={{ color: bead.color }}
-                        >
-                          <span
-                            className="w-1.5 h-1.5 rounded-full"
-                            style={{ backgroundColor: bead.color }}
-                          />
-                          {bead.id}
-                        </div>
-                        <div className="mt-1.5 text-lg font-bold tracking-tight text-white">
-                          {bead.title}
-                        </div>
+                    {/* The id shares a row with the status pills so the title
+                        below gets the full card width instead of wrapping
+                        beside them. */}
+                    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                      <div
+                        className="text-xs font-bold uppercase tracking-widest flex items-center gap-2"
+                        style={{ color: bead.color }}
+                      >
+                        <span
+                          className="w-1.5 h-1.5 rounded-full"
+                          style={{ backgroundColor: bead.color }}
+                        />
+                        {bead.id}
                       </div>
 
                       <div className="flex flex-wrap gap-2">
@@ -456,19 +466,19 @@ export function PlanToBeadsViz() {
                           bead.dependsOn.map((dependency: TranslationBeadId) => (
                             <span
                               key={dependency}
-                              className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-xs font-bold uppercase tracking-widest text-white/50"
+                              className="whitespace-nowrap rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider text-zinc-300"
                             >
                               deps: {dependency}
                             </span>
                           ))
                         ) : (
-                          <span className="rounded-full border border-[#FFBD2E]/20 bg-[#FFBD2E]/10 px-3 py-1 text-xs font-bold uppercase tracking-widest text-[#FFBD2E]">
+                          <span className="whitespace-nowrap rounded-full border border-[#FFBD2E]/20 bg-[#FFBD2E]/10 px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider text-[#FFBD2E]">
                             root bead
                           </span>
                         )}
                         {isHighlighted && (
                           <span
-                            className="rounded-full px-3 py-1 text-xs font-bold uppercase tracking-widest"
+                            className="whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider"
                             style={{
                               color: bead.color,
                               backgroundColor: `${bead.color}15`,
@@ -480,6 +490,9 @@ export function PlanToBeadsViz() {
                         )}
                       </div>
                     </div>
+                    <div className="mt-2 text-lg font-bold tracking-tight text-white">
+                      {bead.title}
+                    </div>
 
                     <AnimatePresence mode="wait">
                       {mode === "thin" ? (
@@ -488,12 +501,12 @@ export function PlanToBeadsViz() {
                           initial={{ opacity: 0, y: 8 }}
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -8 }}
-                          className="mt-5 space-y-3"
+                          className="mt-4 space-y-2.5 sm:mt-5 sm:space-y-3"
                         >
-                          <div className="rounded-lg border border-white/[0.05] bg-white/[0.02] px-4 py-3 text-sm text-zinc-400 font-light">
+                          <div className="rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-3 text-sm text-zinc-400 font-light sm:px-4">
                             {bead.thinSummary}
                           </div>
-                          <div className="rounded-lg border border-[#FF5500]/20 bg-[#FF5500]/10 px-4 py-3 text-sm leading-relaxed text-[#FF5500] font-medium flex items-start gap-3">
+                          <div className="rounded-lg border border-[#FF5500]/20 bg-[#FF5500]/10 px-3 py-3 text-sm leading-relaxed text-[#FF5500] font-medium flex items-start gap-2.5 sm:px-4 sm:gap-3">
                             <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                             {bead.thinRisk}
                           </div>
@@ -504,7 +517,7 @@ export function PlanToBeadsViz() {
                           initial={{ opacity: 0, y: 8 }}
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -8 }}
-                          className="mt-5 space-y-3"
+                          className="mt-4 space-y-2.5 sm:mt-5 sm:space-y-3"
                         >
                           {bead.richDetails.map(
                             (detail: { label: string; value: string; concepts: ConceptId[] }) => {
@@ -513,13 +526,13 @@ export function PlanToBeadsViz() {
                                 <div
                                   key={`${bead.id}-${detail.label}`}
                                   className={cn(
-                                    "rounded-lg border px-4 py-3 transition-colors duration-300",
+                                    "rounded-lg border px-3 py-3 transition-colors duration-300 sm:px-4",
                                     detailHighlighted
                                       ? "border-primary/30 bg-primary/5"
                                       : "border-white/[0.04] bg-white/[0.01]",
                                   )}
                                 >
-                                  <div className="flex items-start gap-3">
+                                  <div className="flex items-start gap-2.5 sm:gap-3">
                                     <div
                                       className="mt-1 h-2 w-2 shrink-0 rounded-full"
                                       style={{
@@ -528,8 +541,8 @@ export function PlanToBeadsViz() {
                                           : "rgba(255,255,255,0.2)",
                                       }}
                                     />
-                                    <div>
-                                      <div className="text-xs font-bold uppercase tracking-widest text-white/40 mb-1">
+                                    <div className="min-w-0">
+                                      <div className="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-1">
                                         {detail.label}
                                       </div>
                                       <div className="text-sm leading-relaxed text-zinc-300 font-light">
@@ -547,8 +560,8 @@ export function PlanToBeadsViz() {
                   </motion.article>
 
                   {index < TRANSLATED_BEADS.length - 1 && (
-                    <div className="flex items-center justify-center py-3">
-                      <div className="h-6 w-px bg-white/[0.08]" />
+                    <div className="flex items-center justify-center py-2 sm:py-3">
+                      <div className="h-5 w-px bg-white/[0.12] sm:h-6" />
                     </div>
                   )}
                 </div>
@@ -558,7 +571,7 @@ export function PlanToBeadsViz() {
         </div>
       </div>
 
-      <div className="relative z-10 px-6 pb-6 sm:px-8 sm:pb-8">
+      <div className="relative z-10 px-5 pb-5 sm:px-8 sm:pb-8">
         <dl className="grid divide-y divide-white/10 border-t border-white/10 md:grid-cols-2 md:divide-x md:divide-y-0">
           <div className="py-5 md:pr-6">
             <dt className="text-sm font-medium text-zinc-400">Execution Readiness</dt>

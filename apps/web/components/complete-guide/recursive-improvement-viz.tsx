@@ -34,7 +34,7 @@ const LAYERS: Layer[] = [
     skillQuality: 35,
     exampleInsight:
       '"The --format flag is confusing. 8 out of 10 agents passed json when they meant jsonl."',
-    color: "#3b82f6",
+    color: "#FF5500",
   },
   {
     id: 2,
@@ -49,7 +49,7 @@ const LAYERS: Layer[] = [
     skillQuality: 62,
     exampleInsight:
       "\"Agents asked 'do you mean X or Y?' 23 times across 47 sessions. The skill's Step 3 is ambiguous.\"",
-    color: "#f59e0b",
+    color: "#FFBD2E",
   },
   {
     id: 3,
@@ -79,7 +79,7 @@ const LAYERS: Layer[] = [
     skillQuality: 96,
     exampleInsight:
       '"Zero clarifying questions in 50 sessions run from a fresh install. Every agent used --format correctly because the skill now has an explicit example."',
-    color: "#8b5cf6",
+    color: "#a78bfa",
   },
 ];
 
@@ -136,9 +136,14 @@ export function RecursiveImprovementViz() {
         </p>
       </div>
 
-      {/* Desktop tabs */}
+      {/* Desktop tabs: a grid, so all four stay visible (2x2 on narrow
+          tablets, one row from lg up) instead of running off the right edge. */}
       <div className="relative z-10 border-b border-white/[0.04] px-5 sm:px-8 hidden sm:block">
-        <div className="flex gap-1 -mb-px" role="tablist" aria-label="Improvement layers">
+        <div
+          className="grid grid-cols-2 gap-x-1 -mb-px lg:grid-cols-4"
+          role="tablist"
+          aria-label="Improvement layers"
+        >
           {LAYERS.map((l, i) => (
             <button
               key={l.id}
@@ -150,13 +155,13 @@ export function RecursiveImprovementViz() {
               // in view), so only that tab may reference it.
               aria-controls={i === activeLayer && isInView ? `layer-panel-${l.id}` : undefined}
               onClick={() => setActiveLayer(i)}
-              className={`relative shrink-0 px-4 py-3 text-xs font-semibold transition-colors ${
-                i === activeLayer ? "text-white" : "text-zinc-500 hover:text-zinc-300"
+              className={`relative min-w-0 rounded-t-lg px-3 py-3 text-left text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FF5500]/60 ${
+                i === activeLayer ? "text-white" : "text-zinc-400 hover:text-zinc-200"
               }`}
             >
-              <span className="relative z-10 flex items-center gap-2">
+              <span className="relative z-10 flex h-full items-center gap-2">
                 <span
-                  className="flex h-5 w-5 items-center justify-center rounded-md text-xs font-black transition"
+                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-xs font-black transition"
                   style={{
                     backgroundColor: i === activeLayer ? `${l.color}20` : "transparent",
                     color: i === activeLayer ? l.color : "inherit",
@@ -165,7 +170,7 @@ export function RecursiveImprovementViz() {
                 >
                   {i + 1}
                 </span>
-                {l.title}
+                <span className="min-w-0 leading-snug">{l.title}</span>
               </span>
               {i === activeLayer && (
                 <motion.div
@@ -187,10 +192,11 @@ export function RecursiveImprovementViz() {
       <div className="relative z-10 border-b border-white/[0.04] px-5 py-3 sm:hidden">
         <div className="flex items-center justify-between gap-3">
           <button
+            type="button"
             onClick={goPrev}
             disabled={activeLayer === 0}
             aria-label="Previous layer"
-            className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-zinc-400 disabled:opacity-30 active:scale-95 transition min-h-[44px] min-w-[44px]"
+            className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-zinc-300 disabled:opacity-30 active:scale-95 transition min-h-[44px] min-w-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/60"
           >
             &larr;
           </button>
@@ -201,10 +207,11 @@ export function RecursiveImprovementViz() {
             <div className="text-xs text-zinc-400 truncate mt-0.5">{layer.title}</div>
           </div>
           <button
+            type="button"
             onClick={goNext}
             disabled={activeLayer === LAYERS.length - 1}
             aria-label="Next layer"
-            className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-zinc-400 disabled:opacity-30 active:scale-95 transition min-h-[44px] min-w-[44px]"
+            className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-zinc-300 disabled:opacity-30 active:scale-95 transition min-h-[44px] min-w-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/60"
           >
             &rarr;
           </button>
@@ -214,9 +221,11 @@ export function RecursiveImprovementViz() {
           {LAYERS.map((l, i) => (
             <button
               key={l.id}
+              type="button"
               onClick={() => setActiveLayer(i)}
               aria-label={`Go to layer ${i + 1}`}
-              className="p-2 -m-1"
+              aria-current={i === activeLayer ? "step" : undefined}
+              className="p-2 -m-1 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/60"
             >
               <div
                 className="h-2.5 w-2.5 rounded-full transition"
@@ -240,11 +249,13 @@ export function RecursiveImprovementViz() {
           aria-labelledby={`layer-tab-${layer.id}`}
         >
           <AnimatePresence mode="wait">
+            {/* Fixed `initial` values throughout; reduced motion only zeroes
+                the durations (springTransition), so nothing can stay hidden. */}
             <motion.div
               key={layer.id}
-              initial={rm ? {} : { opacity: 0, y: 12 }}
+              initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={rm ? {} : { opacity: 0, y: -12 }}
+              exit={{ opacity: 0, y: -12 }}
               transition={springTransition}
             >
               {/* Title + tagline */}
@@ -276,9 +287,9 @@ export function RecursiveImprovementViz() {
               {/* Input, Mechanism, Output flow */}
               <div className="grid gap-3 sm:grid-cols-3 mb-6">
                 {[
-                  { label: "Input", text: layer.input, labelColor: "text-zinc-500" },
+                  { label: "Input", text: layer.input, labelColor: "text-zinc-400" },
                   { label: "Mechanism", text: layer.mechanism, labelColor: "" },
-                  { label: "Output", text: layer.output, labelColor: "text-emerald-500/60" },
+                  { label: "Output", text: layer.output, labelColor: "text-emerald-400" },
                 ].map((card, ci) => (
                   <div
                     key={card.label}
@@ -287,7 +298,7 @@ export function RecursiveImprovementViz() {
                   >
                     <div
                       className={`text-xs font-bold uppercase tracking-[0.15em] mb-2 ${card.labelColor}`}
-                      style={ci === 1 ? { color: `${layer.color}80` } : undefined}
+                      style={ci === 1 ? { color: layer.color } : undefined}
                     >
                       {card.label}
                     </div>
@@ -295,10 +306,10 @@ export function RecursiveImprovementViz() {
                     {/* Desktop arrows between cards */}
                     {ci === 1 && (
                       <>
-                        <div className="hidden sm:flex absolute -left-3 top-1/2 -translate-y-1/2 h-5 w-5 items-center justify-center rounded-full bg-[#0A0D14] border border-white/10 text-zinc-600 text-xs">
+                        <div className="hidden sm:flex absolute -left-3 top-1/2 -translate-y-1/2 h-5 w-5 items-center justify-center rounded-full bg-[#0A0D14] border border-white/10 text-zinc-400 text-xs">
                           &rarr;
                         </div>
-                        <div className="hidden sm:flex absolute -right-3 top-1/2 -translate-y-1/2 h-5 w-5 items-center justify-center rounded-full bg-[#0A0D14] border border-white/10 text-zinc-600 text-xs">
+                        <div className="hidden sm:flex absolute -right-3 top-1/2 -translate-y-1/2 h-5 w-5 items-center justify-center rounded-full bg-[#0A0D14] border border-white/10 text-zinc-400 text-xs">
                           &rarr;
                         </div>
                       </>
@@ -317,7 +328,7 @@ export function RecursiveImprovementViz() {
                     className="text-sm font-black tabular-nums"
                     style={{ color: layer.color }}
                     key={`quality-${layer.id}`}
-                    initial={rm ? {} : { scale: 1.3, opacity: 0 }}
+                    initial={{ scale: 1.3, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
                     transition={springTransition}
                   >
@@ -331,7 +342,7 @@ export function RecursiveImprovementViz() {
                       backgroundColor: layer.color,
                       boxShadow: `0 0 12px ${layer.color}40`,
                     }}
-                    initial={rm ? { width: `${layer.skillQuality}%` } : { width: 0 }}
+                    initial={{ width: 0 }}
                     animate={{ width: `${layer.skillQuality}%` }}
                     transition={
                       rm
@@ -340,7 +351,7 @@ export function RecursiveImprovementViz() {
                     }
                   />
                 </div>
-                <div className="flex justify-between mt-1.5 text-xs text-zinc-600">
+                <div className="flex justify-between mt-1.5 text-xs text-zinc-500">
                   <span>Unrefined skill</span>
                   <span>Production-grade</span>
                 </div>
@@ -351,7 +362,7 @@ export function RecursiveImprovementViz() {
                 className="rounded-xl border border-white/[0.06] p-4 backdrop-blur-sm"
                 style={{ backgroundColor: "rgba(0,0,0,0.3)" }}
               >
-                <div className="text-xs font-bold text-zinc-500 uppercase tracking-[0.15em] mb-2">
+                <div className="text-xs font-bold text-zinc-400 uppercase tracking-[0.15em] mb-2">
                   Example Finding
                 </div>
                 <p className="text-xs text-zinc-300 italic leading-relaxed">

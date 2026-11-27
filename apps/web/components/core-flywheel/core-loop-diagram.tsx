@@ -12,9 +12,24 @@ import {
   Package,
   Terminal,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
-import { handleHorizontalScrollKeyDown, isInteractiveKeyboardTarget } from "@/lib/utils";
+import { isInteractiveKeyboardTarget } from "@/lib/utils";
+
+/** Wrap a command only at spaces, so flags like `--title` or IDs like
+ *  `br-123` never split at their hyphens. */
+function WordsKeptWhole({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(" ").map((word, i) => (
+        <Fragment key={i}>
+          {i > 0 && " "}
+          <span className="whitespace-nowrap">{word}</span>
+        </Fragment>
+      ))}
+    </>
+  );
+}
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                         */
@@ -329,13 +344,13 @@ function StageNode({
         fill={isActive ? stage.color : "#020408"}
         fillOpacity={isActive ? 0.15 : 1}
         stroke={stage.color}
-        strokeOpacity={isActive ? 0.6 : 0.15}
+        strokeOpacity={isActive ? 0.6 : 0.3}
         strokeWidth={isActive ? 2 : 1}
         initial={false}
         animate={{
           r: isActive ? 28 : 22,
           fillOpacity: isActive ? 0.15 : 1,
-          strokeOpacity: isActive ? 0.6 : 0.15,
+          strokeOpacity: isActive ? 0.6 : 0.3,
         }}
         transition={{ type: "spring", stiffness: 200, damping: 25 }}
       />
@@ -366,18 +381,20 @@ function StageNode({
         <Icon
           size={iconSize}
           strokeWidth={isActive ? 2.5 : 2}
-          color={isActive ? stage.color : "rgba(255,255,255,0.45)"}
+          color={isActive ? stage.color : "rgba(255,255,255,0.62)"}
           style={{ transition: "color 0.3s" }}
         />
       </foreignObject>
 
-      {/* Label */}
+      {/* Label (inactive in zinc-400 so every stage name stays readable).
+          14 viewBox units, not text-xs: the ring renders as narrow as 367px
+          for its 400-unit viewBox, and 12 units would draw at 11px there. */}
       <text
         x={pos.x}
         y={pos.y + (isActive ? 50 : 40)}
         textAnchor="middle"
-        className={`text-xs font-black uppercase tracking-[0.15em] transition duration-300 ${
-          isActive ? "fill-white" : "fill-white/30"
+        className={`text-[14px] font-black uppercase tracking-[0.15em] transition duration-300 ${
+          isActive ? "fill-white" : "fill-zinc-400"
         }`}
       >
         {stage.label}
@@ -431,21 +448,23 @@ function DetailCard({ stage }: { stage: Stage }) {
         {/* Artifact */}
         <div className="flex flex-col gap-2 p-5 rounded-2xl bg-white/[0.03] border border-white/[0.05] shadow-sm relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-white/[0.015] to-transparent pointer-events-none" />
-          <span className="text-xs font-bold text-white/30 uppercase tracking-widest flex items-center gap-2">
-            <Package size={10} className="opacity-50" />
+          <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+            <Package size={10} className="opacity-70" aria-hidden="true" />
             Artifact
           </span>
           <p className="text-sm sm:text-base text-white/90 font-medium">{stage.artifact}</p>
         </div>
 
-        {/* Command */}
+        {/* Command: wrap between words; only a single over-long token may break */}
         <div className="flex flex-col gap-2 p-5 rounded-2xl bg-white/[0.02] border border-white/[0.04] shadow-sm relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-white/[0.01] to-transparent pointer-events-none" />
-          <span className="text-xs font-bold text-white/30 uppercase tracking-widest flex items-center gap-2">
-            <Terminal size={10} className="opacity-50" />
+          <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+            <Terminal size={10} className="opacity-70" aria-hidden="true" />
             Command
           </span>
-          <p className="text-sm text-white/90 font-mono font-medium break-all">{stage.command}</p>
+          <p className="text-sm leading-relaxed text-white/90 font-mono font-medium break-words">
+            <WordsKeptWhole text={stage.command} />
+          </p>
         </div>
       </div>
 
@@ -474,12 +493,14 @@ function MobileStageList({
 }) {
   return (
     <div className="relative flex flex-col gap-3">
-      {/* Connecting vertical line between cards */}
+      {/* Connecting vertical line, on the icon column (px-5 + half the 40px
+          icon); the icon tiles are opaque, so it reads as a rail. */}
       <div
-        className="absolute left-[1.25rem] top-4 bottom-4 w-px pointer-events-none"
+        aria-hidden="true"
+        className="absolute left-[41px] top-6 bottom-6 w-px pointer-events-none"
         style={{
           background:
-            "linear-gradient(to bottom, transparent, rgba(255,255,255,0.06) 15%, rgba(255,255,255,0.06) 85%, transparent)",
+            "linear-gradient(to bottom, transparent, rgba(255,255,255,0.1) 10%, rgba(255,255,255,0.1) 90%, transparent)",
         }}
       />
 
@@ -492,13 +513,16 @@ function MobileStageList({
             key={stage.id}
             type="button"
             onClick={() => onSelect(index)}
-            className={`relative flex items-center gap-4 px-5 py-4 rounded-2xl border transition-[border-left-width,border-color,background-color,box-shadow] duration-300 text-left ${
+            aria-pressed={isActive}
+            className={`relative flex items-center gap-4 px-5 py-4 rounded-2xl border transition-[border-left-width,border-color,background-color,box-shadow] duration-300 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/50 ${
               isActive
                 ? "border-white/[0.08] bg-white/[0.04]"
-                : "border-white/[0.03] bg-white/[0.01] hover:bg-white/[0.03]"
+                : "border-white/[0.05] bg-white/[0.015] hover:bg-white/[0.03]"
             }`}
             style={{
               borderLeftWidth: isActive ? 3 : 1,
+              // Absorb the thicker active border so the icon stays on the rail.
+              paddingLeft: isActive ? 18 : 20,
               borderLeftColor: isActive ? stage.color : undefined,
               boxShadow: isActive
                 ? `0 4px 24px -4px ${stage.color}30, 0 0 0 1px ${stage.color}15`
@@ -518,28 +542,36 @@ function MobileStageList({
             }
           >
             <div
-              className={`relative z-10 flex items-center justify-center w-10 h-10 rounded-xl transition duration-300 ${
+              className={`relative z-10 flex shrink-0 items-center justify-center w-10 h-10 rounded-xl transition duration-300 ${
                 isActive ? "shadow-lg" : ""
               }`}
               style={{
-                backgroundColor: isActive ? `${stage.color}15` : "rgba(255,255,255,0.02)",
+                background: isActive
+                  ? `linear-gradient(${stage.color}15, ${stage.color}15), #05070b`
+                  : "linear-gradient(rgba(255,255,255,0.03), rgba(255,255,255,0.03)), #05070b",
                 borderWidth: 1,
                 borderStyle: "solid",
-                borderColor: isActive ? `${stage.color}40` : "rgba(255,255,255,0.04)",
+                borderColor: isActive ? `${stage.color}40` : "rgba(255,255,255,0.08)",
               }}
             >
-              <Icon size={18} color={isActive ? stage.color : "rgba(255,255,255,0.3)"} />
+              <Icon
+                size={18}
+                aria-hidden="true"
+                color={isActive ? stage.color : "rgba(255,255,255,0.55)"}
+              />
             </div>
 
             <div className="flex flex-col gap-0.5 min-w-0">
               <span
                 className={`text-xs font-black uppercase tracking-widest transition-colors duration-300 ${
-                  isActive ? "text-white" : "text-white/40"
+                  isActive ? "text-white" : "text-zinc-300"
                 }`}
               >
                 {stage.label}
               </span>
-              <span className={`text-xs text-white/25 ${isActive ? "" : "truncate"}`}>
+              <span
+                className={`text-xs leading-relaxed ${isActive ? "text-zinc-300" : "text-zinc-400 truncate"}`}
+              >
                 {stage.description}
               </span>
             </div>
@@ -547,7 +579,7 @@ function MobileStageList({
             {/* Step indicator */}
             <span
               className="ml-auto text-xs font-mono font-bold shrink-0"
-              style={{ color: isActive ? stage.color : "rgba(255,255,255,0.15)" }}
+              style={{ color: isActive ? stage.color : "#71717a" }}
             >
               {index + 1}/{STAGE_COUNT}
             </span>
@@ -707,7 +739,7 @@ export function CoreLoopDiagram() {
     <div ref={ref} className={EXHIBIT_PANEL_CLASS + " relative group/viz"}>
       {/* Background texture & ambient glow */}
       <div className="absolute inset-0 noise-overlay opacity-[0.02] mix-blend-overlay pointer-events-none" />
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[900px] bg-[radial-gradient(ellipse_at_center,rgba(255,85,0,0.02),transparent_60%)] pointer-events-none" />
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[min(900px,100%)] h-[900px] bg-[radial-gradient(ellipse_at_center,rgba(255,85,0,0.02),transparent_60%)] pointer-events-none" />
 
       {/* Header */}
       <div className="relative z-10 border-b border-white/[0.04] pb-10 flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
@@ -729,36 +761,34 @@ export function CoreLoopDiagram() {
         <button
           type="button"
           onClick={() => setAutoTour((cur) => !cur)}
-          className={`group shrink-0 flex items-center gap-3 px-5 py-2.5 rounded-xl border transition duration-500 ease-out hover:scale-[1.02] active:scale-[0.98] ${
+          aria-pressed={autoTour}
+          className={`group shrink-0 self-start flex items-center gap-3 px-5 py-2.5 rounded-xl border transition duration-500 ease-out hover:scale-[1.02] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/50 ${
             autoTour
               ? "border-[#FF5500]/30 bg-[#FF5500]/10 text-[#FF5500] shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] hover:border-[#FF5500]/50 hover:bg-[#FF5500]/15"
-              : "border-white/10 bg-white/[0.02] text-white/40 hover:bg-white/[0.05] hover:border-white/15 hover:text-white/60"
+              : "border-white/10 bg-white/[0.02] text-zinc-400 hover:bg-white/[0.05] hover:border-white/15 hover:text-zinc-200"
           }`}
         >
           <div
             className={`w-2 h-2 rounded-full ${
               autoTour
                 ? "bg-[#FF5500] shadow-[0_0_8px_rgba(255,85,0,0.8)] animate-pulse"
-                : "bg-white/20"
+                : "bg-white/30"
             }`}
           />
-          <span className="text-xs font-bold uppercase tracking-widest">
+          <span className="whitespace-nowrap text-xs font-bold uppercase tracking-widest">
             {autoTour ? "Auto-Tour Active" : "Tour Paused"}
           </span>
         </button>
       </div>
 
       {/* Body grid */}
-      <div className="relative z-10 mt-12 grid gap-12 lg:grid-cols-[1fr_1fr] items-start">
-        {/* ---- SVG diagram (hidden on mobile, shown md+) ---- */}
-        <div
-          className="hidden md:block min-w-0 overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-          role="region"
-          tabIndex={0}
-          aria-label="Core loop diagram (scrolls sideways when needed)"
-          onKeyDown={handleHorizontalScrollKeyDown}
-        >
-          <div className="relative w-full min-w-[400px] max-w-[480px] aspect-square mx-auto">
+      {/* minmax(0, 1fr) tracks: a nowrap/truncated line inside a column must
+          not widen the column past the panel (it did on phones). */}
+      <div className="relative z-10 mt-12 grid grid-cols-1 gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-start">
+        {/* ---- SVG diagram (hidden on mobile, shown md+). It scales with its
+            viewBox, so it fits the column instead of scrolling sideways. ---- */}
+        <div className="hidden md:block min-w-0">
+          <div className="relative w-full max-w-[480px] aspect-square mx-auto">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,85,0,0.025),transparent_60%)]" />
             <svg
               viewBox={viewBox}
@@ -880,12 +910,14 @@ export function CoreLoopDiagram() {
                 );
               })}
 
-              {/* Center label with glow */}
+              {/* Center watermark with glow: decorative at 25% opacity, the
+                  SVG's own label already names the diagram. */}
               <text
                 x={svgCx}
                 y={svgCy + 4}
                 textAnchor="middle"
-                className="text-[13px] font-black uppercase tracking-[0.25em]"
+                aria-hidden="true"
+                className="select-none text-[13px] font-black uppercase tracking-[0.25em]"
                 fill="#FF5500"
                 fillOpacity={0.25}
                 filter="url(#clCenterLabelGlow)"
@@ -912,8 +944,8 @@ export function CoreLoopDiagram() {
           </AnimatePresence>
 
           {/* Stage indicator dots */}
-          <div className="flex items-center gap-2 pt-6 border-t border-white/[0.04]">
-            <span className="text-xs font-bold uppercase tracking-[0.3em] text-white/20 mr-2">
+          <div className="flex items-center gap-1 pt-6 border-t border-white/[0.04] sm:gap-2">
+            <span className="text-xs font-bold uppercase tracking-[0.3em] text-zinc-500 mr-2">
               Stage
             </span>
             {STAGES.map((stage, index) => (
@@ -922,15 +954,16 @@ export function CoreLoopDiagram() {
                 type="button"
                 onClick={() => handleStageSelect(index)}
                 aria-label={`Go to stage: ${stage.label}`}
+                aria-current={index === activeIndex ? "step" : undefined}
                 title={`${index + 1}. ${stage.label}`}
-                className="inline-flex min-h-6 min-w-6 items-center justify-center p-2 group/dot"
+                className="inline-flex min-h-6 min-w-6 items-center justify-center rounded-full p-2 group/dot focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/50"
               >
                 <motion.div
                   className="rounded-full transition-[width,background-color,box-shadow] duration-300"
                   style={{
                     width: index === activeIndex ? 20 : 8,
                     height: 8,
-                    backgroundColor: index === activeIndex ? stage.color : "rgba(255,255,255,0.1)",
+                    backgroundColor: index === activeIndex ? stage.color : "rgba(255,255,255,0.22)",
                     boxShadow: index === activeIndex ? `0 0 10px ${stage.color}60` : "none",
                   }}
                   layout

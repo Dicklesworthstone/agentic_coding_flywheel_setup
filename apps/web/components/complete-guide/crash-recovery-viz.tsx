@@ -350,7 +350,9 @@ export function CrashRecoveryViz() {
       {/* Agent grid + log */}
       <div className="relative z-10 grid gap-0 lg:grid-cols-[1fr_280px]">
         {/* Agents */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 p-5 sm:p-8">
+        {/* Two columns even on a phone: six full-width cards made a long
+            scroll for a grid that reads better at a glance. */}
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5 sm:gap-3 p-5 sm:p-8">
           {agents.map((agent) => {
             const isSelected = selectedAgent === agent.id;
             const showKillOverlay = agent.alive && isSelected;
@@ -364,7 +366,9 @@ export function CrashRecoveryViz() {
                 aria-label={
                   agent.alive ? `Kill agent ${agent.name}` : `Agent ${agent.name} is crashed`
                 }
-                className={`relative rounded-xl border p-4 text-left transition-colors min-h-[44px] ${
+                // flex-col + justify-start: a button centres its content
+                // vertically, which misaligned cards sharing a grid row.
+                className={`relative flex min-w-0 flex-col justify-start rounded-xl border p-3 sm:p-4 text-left transition-colors min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/60 ${
                   agent.alive
                     ? agent.justCompleted > 0
                       ? "border-emerald-500/30 bg-emerald-500/[0.05] cursor-pointer group"
@@ -389,7 +393,7 @@ export function CrashRecoveryViz() {
                 {/* Current work */}
                 {agent.alive && agent.currentBead !== null ? (
                   <div>
-                    <div className="text-xs text-zinc-500 mb-1.5 truncate">
+                    <div className="text-xs leading-snug text-zinc-400 mb-1.5">
                       {BEAD_TITLES[agent.currentBead]}
                     </div>
                     <div
@@ -407,12 +411,12 @@ export function CrashRecoveryViz() {
                         transition={springTransition}
                       />
                     </div>
-                    <div className="text-xs text-zinc-500 mt-1 text-right">
+                    <div className="text-xs text-zinc-400 mt-1 text-right tabular-nums">
                       {Math.floor(agent.progress)}%
                     </div>
                   </div>
                 ) : agent.alive ? (
-                  <div className="text-xs text-zinc-500 italic">Idle, scanning for work...</div>
+                  <div className="text-xs text-zinc-400 italic">Idle, scanning for work...</div>
                 ) : (
                   <div className="text-xs text-red-400 font-medium">CRASHED</div>
                 )}
@@ -444,9 +448,11 @@ export function CrashRecoveryViz() {
               {log.map((entry, i) => (
                 <motion.div
                   key={`${entry}-${log.length}-${i}`}
-                  initial={rm ? {} : { opacity: 0, x: 10 }}
-                  animate={{ opacity: Math.max(0.3, 1 - Math.log(i + 1) * 0.25), x: 0 }}
-                  exit={rm ? {} : { opacity: 0, x: -10 }}
+                  // A fixed `initial`; under reduced motion springTransition
+                  // has zero duration, so entries simply appear.
+                  initial={{ opacity: 0, x: 10 }}
+                  animate={{ opacity: Math.max(0.45, 1 - Math.log(i + 1) * 0.25), x: 0 }}
+                  exit={{ opacity: 0, x: -10 }}
                   transition={springTransition}
                   className={`text-xs leading-relaxed ${
                     entry.includes("crashed")

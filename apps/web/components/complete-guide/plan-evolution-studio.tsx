@@ -113,7 +113,7 @@ export function PlanEvolutionStudio() {
   return (
     <div ref={ref} className={EXHIBIT_PANEL_CLASS}>
       <div className="absolute inset-0 noise-overlay opacity-[0.02] mix-blend-overlay pointer-events-none" />
-      <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.03),transparent_70%)] pointer-events-none" />
+      <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-[radial-gradient(circle_at_top_right,rgba(255,85,0,0.04),transparent_70%)] pointer-events-none" />
 
       <div className="relative z-10 flex flex-col gap-6 border-b border-white/[0.04] bg-white/[0.01] p-6 sm:p-8 backdrop-blur-md lg:flex-row lg:items-end lg:justify-between">
         <div>
@@ -133,11 +133,16 @@ export function PlanEvolutionStudio() {
 
         <label
           htmlFor="plan-refinement-round"
-          className="block rounded-2xl border border-white/[0.05] bg-[#0A0D14] px-5 py-4 shadow-inner min-w-[280px]"
+          className="block shrink-0 rounded-2xl border border-white/[0.05] bg-[#0A0D14] px-5 py-4 shadow-inner sm:min-w-[280px]"
         >
-          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 text-xs font-bold uppercase tracking-widest text-white/40">
-            <span>Refinement round</span>
-            <span className="text-white/80">{PLAN_REFINEMENT_LABELS[refinementRound]}</span>
+          {/* Five stages of refinement, not five rounds: a real plan gets at
+              least 8-10 review rounds, several per stage. */}
+          <div className="text-xs font-bold uppercase tracking-widest text-zinc-400">
+            Refinement stage{" "}
+            <span className="font-mono text-sm text-white tabular-nums">
+              {refinementRound + 1}
+            </span>{" "}
+            of {PLAN_REFINEMENT_LABELS.length}
           </div>
           <div className="relative mt-4 group/slider">
             <input
@@ -148,103 +153,136 @@ export function PlanEvolutionStudio() {
               step={1}
               value={refinementRound}
               onChange={(event) => setRefinementRound(Number(event.target.value))}
-              aria-label="Refinement round"
+              aria-label="Refinement stage"
+              aria-valuetext={`Stage ${refinementRound + 1} of ${PLAN_REFINEMENT_LABELS.length}: ${PLAN_REFINEMENT_LABELS[refinementRound]}`}
               className="h-2 w-full cursor-ew-resize appearance-none rounded-full bg-white/10 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:w-6 [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:w-6 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-[#0A0D14] [&::-webkit-slider-thumb]:bg-[#FF5500] [&::-webkit-slider-thumb]:shadow-[0_0_15px_rgba(255,85,0,0.6)] hover:[&::-webkit-slider-thumb]:scale-110 [&::-webkit-slider-thumb]:transition-transform relative z-10"
               style={{
                 background: `linear-gradient(to right, rgba(255,85,0,0.5) ${(refinementRound / 4) * 100}%, rgba(255,255,255,0.05) ${(refinementRound / 4) * 100}%)`,
               }}
             />
           </div>
+          {/* What this round is doing: a readout of the slider's value, set
+              apart from the label above by case and weight. */}
+          <div className="mt-2 text-xs text-zinc-400">
+            {PLAN_REFINEMENT_LABELS[refinementRound]}
+          </div>
         </label>
       </div>
 
       <div className="relative z-10 mt-2 grid gap-6 p-6 sm:p-8 xl:grid-cols-[1.05fr_0.95fr]">
-        <div className="grid content-start gap-5 sm:grid-cols-2">
-          {PLAN_MODEL_DATA.map((model, index) => {
-            const enabled = enabledModels[model.id];
-            return (
-              <motion.button
-                key={model.id}
-                type="button"
-                aria-pressed={enabled}
-                onClick={() => toggleModel(model.id)}
-                initial={false}
-                animate={reducedMotion || isInView ? { opacity: 1, y: 0 } : undefined}
-                transition={{
-                  type: "spring",
-                  stiffness: 220,
-                  damping: 22,
-                  delay: reducedMotion ? 0 : index * 0.06,
-                }}
-                className={cn(
-                  "min-w-0 rounded-2xl border p-5 text-left transition duration-300 relative overflow-hidden group/model",
-                  enabled
-                    ? "border-white/[0.08] bg-white/[0.02] shadow-lg"
-                    : "border-white/[0.03] bg-transparent opacity-50 hover:opacity-80",
-                )}
-                style={{
-                  boxShadow: enabled
-                    ? `inset 0 1px 1px rgba(255,255,255,0.05), 0 0 30px ${model.color}0A`
-                    : undefined,
-                }}
-              >
-                {enabled && (
-                  <div
-                    className="absolute inset-0 bg-gradient-to-br opacity-10 pointer-events-none transition-opacity duration-500 group-hover/model:opacity-20"
-                    style={{
-                      backgroundImage: `linear-gradient(to bottom right, ${model.color}40, transparent)`,
-                    }}
-                  />
-                )}
-                <div className="relative z-10 flex flex-col items-start gap-3">
-                  <div className="min-w-0">
+        {/* Left: the proposals and what muting one costs, which sits under
+            the toggles it explains and keeps this column about as tall as the
+            score column beside it. */}
+        <div className="min-w-0 space-y-5">
+          <div className="grid content-start gap-5 sm:grid-cols-2">
+            {PLAN_MODEL_DATA.map((model, index) => {
+              const enabled = enabledModels[model.id];
+              return (
+                <motion.button
+                  key={model.id}
+                  type="button"
+                  aria-pressed={enabled}
+                  onClick={() => toggleModel(model.id)}
+                  initial={false}
+                  animate={reducedMotion || isInView ? { opacity: 1, y: 0 } : undefined}
+                  transition={{
+                    type: "spring",
+                    stiffness: 220,
+                    damping: 22,
+                    delay: reducedMotion ? 0 : index * 0.06,
+                  }}
+                  className={cn(
+                    "min-w-0 rounded-2xl border p-5 text-left transition duration-300 relative overflow-hidden group/model focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/60",
+                    enabled
+                      ? "border-white/[0.08] bg-white/[0.02] shadow-lg"
+                      : "border-white/[0.03] bg-transparent opacity-50 hover:opacity-80",
+                  )}
+                  style={{
+                    boxShadow: enabled
+                      ? `inset 0 1px 1px rgba(255,255,255,0.05), 0 0 30px ${model.color}0A`
+                      : undefined,
+                  }}
+                >
+                  {enabled && (
                     <div
-                      className="text-xs font-bold uppercase tracking-widest flex items-center gap-2"
-                      style={{ color: model.color }}
-                    >
-                      {enabled && (
-                        <span
-                          className="w-1.5 h-1.5 rounded-full"
-                          style={{ backgroundColor: model.color }}
-                        />
-                      )}
-                      {model.role}
-                    </div>
-                    <div className="mt-1.5 text-lg font-black tracking-tight text-white group-hover/model:text-white transition-colors">
-                      {model.label}
-                    </div>
-                  </div>
-                  <div
-                    className={cn(
-                      "rounded-full px-3 py-1 text-xs font-bold uppercase tracking-widest transition-colors",
-                      enabled ? "text-white" : "text-white/40",
-                    )}
-                    style={{
-                      backgroundColor: enabled ? `${model.color}15` : "rgba(255,255,255,0.02)",
-                      border: `1px solid ${enabled ? `${model.color}30` : "rgba(255,255,255,0.05)"}`,
-                    }}
-                  >
-                    {enabled ? "Included" : "Muted"}
-                  </div>
-                </div>
-
-                <div className="mt-5 flex flex-wrap gap-2 relative z-10">
-                  {model.strengths.map((strength) => (
-                    <span
-                      key={strength}
-                      className="rounded-lg border px-3 py-1.5 text-xs font-medium text-white/70"
+                      className="absolute inset-0 bg-gradient-to-br opacity-10 pointer-events-none transition-opacity duration-500 group-hover/model:opacity-20"
                       style={{
-                        borderColor: enabled ? `${model.color}20` : "rgba(255,255,255,0.05)",
-                        backgroundColor: enabled ? `${model.color}0A` : "transparent",
+                        backgroundImage: `linear-gradient(to bottom right, ${model.color}40, transparent)`,
+                      }}
+                    />
+                  )}
+                  <div className="relative z-10 flex flex-col items-start gap-3">
+                    <div className="min-w-0">
+                      <div
+                        className="text-xs font-bold uppercase tracking-widest flex items-start gap-2"
+                        style={{ color: model.color }}
+                      >
+                        {enabled && (
+                          <span
+                            // Pinned to the first line, so a role that wraps
+                            // keeps its dot beside the first word.
+                            className="mt-[0.4em] w-1.5 h-1.5 shrink-0 rounded-full"
+                            style={{ backgroundColor: model.color }}
+                          />
+                        )}
+                        {model.role}
+                      </div>
+                      <div className="mt-1.5 text-lg font-black tracking-tight text-white group-hover/model:text-white transition-colors">
+                        {model.label}
+                      </div>
+                    </div>
+                    <div
+                      className={cn(
+                        "rounded-full px-3 py-1 text-xs font-bold uppercase tracking-widest transition-colors",
+                        enabled ? "text-white" : "text-zinc-400",
+                      )}
+                      style={{
+                        backgroundColor: enabled ? `${model.color}15` : "rgba(255,255,255,0.02)",
+                        border: `1px solid ${enabled ? `${model.color}30` : "rgba(255,255,255,0.05)"}`,
                       }}
                     >
-                      {strength}
-                    </span>
-                  ))}
-                </div>
-              </motion.button>
-            );
-          })}
+                      {enabled ? "Included" : "Muted"}
+                    </div>
+                  </div>
+
+                  <div className="mt-5 flex flex-wrap gap-2 relative z-10">
+                    {model.strengths.map((strength) => (
+                      <span
+                        key={strength}
+                        className="rounded-lg border px-3 py-1.5 text-xs font-medium text-white/70"
+                        style={{
+                          borderColor: enabled ? `${model.color}20` : "rgba(255,255,255,0.05)",
+                          backgroundColor: enabled ? `${model.color}0A` : "transparent",
+                        }}
+                      >
+                        {strength}
+                      </span>
+                    ))}
+                  </div>
+                </motion.button>
+              );
+            })}
+          </div>
+
+          <div className="rounded-xl border border-white/[0.05] bg-[#020408] p-5 shadow-inner">
+            <div className="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-3">
+              If you mute a proposal
+            </div>
+            <div className="space-y-2 text-sm leading-relaxed text-zinc-400 font-light">
+              {missingNotes.length > 0 ? (
+                missingNotes.map((note) => (
+                  <p key={note} className="flex items-start gap-2">
+                    <span className="text-[#FF5F56] mt-0.5">•</span>
+                    {note}
+                  </p>
+                ))
+              ) : (
+                <p className="flex items-center gap-2 text-[#27C93F] font-medium">
+                  <CheckCircle2 className="h-4 w-4" /> All four proposals are included.
+                </p>
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="space-y-5">
@@ -269,7 +307,7 @@ export function PlanEvolutionStudio() {
             </div>
 
             <div className="relative mt-8 min-h-56 overflow-hidden rounded-2xl border border-white/[0.04] bg-[#020408] p-5 pb-8 shadow-inner">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.1),transparent_60%)] pointer-events-none" />
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,85,0,0.07),transparent_60%)] pointer-events-none" />
 
               {[0, 1, 2].map((sheetLayer) => (
                 <motion.div
@@ -324,7 +362,7 @@ export function PlanEvolutionStudio() {
                 </div>
 
                 <div className="mt-6 rounded-xl border border-[#FF5500]/20 bg-[#FF5500]/10 px-4 py-3 text-sm leading-relaxed text-[#FF5500] font-medium">
-                  Round {refinementRound + 1}:{" "}
+                  {PLAN_REFINEMENT_LABELS[refinementRound]}:{" "}
                   <span className="font-light text-[#FF5500]">
                     {refinementRound < 2
                       ? "The plan is still taking in the best ideas from each proposal and closing obvious gaps."
@@ -351,33 +389,18 @@ export function PlanEvolutionStudio() {
                   <div className="h-2 rounded-full bg-[#020408] border border-white/[0.04] shadow-inner overflow-hidden">
                     <motion.div
                       className="h-full bg-gradient-to-r from-[#FF5500] via-zinc-400 to-[#FFBD2E] shadow-[0_0_10px_rgba(255,85,0,0.5)]"
-                      initial={reducedMotion ? { width: `${dimension.value}%` } : { width: 0 }}
+                      // A fixed `initial`; reduced motion only drops the duration.
+                      initial={{ width: 0 }}
                       animate={{ width: `${dimension.value}%` }}
-                      transition={{ duration: 0.75, type: "spring", bounce: 0 }}
+                      transition={
+                        reducedMotion
+                          ? { duration: 0 }
+                          : { duration: 0.75, type: "spring", bounce: 0 }
+                      }
                     />
                   </div>
                 </div>
               ))}
-            </div>
-
-            <div className="mt-6 rounded-xl border border-white/[0.05] bg-[#020408] p-5 shadow-inner">
-              <div className="text-xs font-bold uppercase tracking-widest text-white/30 mb-3">
-                If you mute a proposal
-              </div>
-              <div className="space-y-2 text-sm leading-relaxed text-zinc-400 font-light">
-                {missingNotes.length > 0 ? (
-                  missingNotes.map((note) => (
-                    <p key={note} className="flex items-start gap-2">
-                      <span className="text-[#FF5F56] mt-0.5">•</span>
-                      {note}
-                    </p>
-                  ))
-                ) : (
-                  <p className="flex items-center gap-2 text-[#27C93F] font-medium">
-                    <CheckCircle2 className="h-4 w-4" /> All four proposals are included.
-                  </p>
-                )}
-              </div>
             </div>
           </div>
         </div>

@@ -463,28 +463,16 @@ test.describe("Instructional text readability (bd-64cg3)", () => {
     await expect(page).toHaveURL(/\/learn\/ntm-palette$/);
   });
 
-  test("core diagram arrow keys preserve native panning and unrelated controls", async ({ page }) => {
+  test("core diagram stage buttons and arrow keys drive only their own controls", async ({ page }) => {
     await page.goto("/core-flywheel");
     await settle(page);
-    const scroller = page.locator('[role="region"][aria-label="Core loop diagram (scrolls sideways when needed)"]');
-    const exhibit = scroller.locator("../..");
-    // The phone layout uses stage controls instead of this desktop SVG.
-    if (await scroller.isVisible()) {
-      await scroller.evaluate((element) => {
-        element.style.maxWidth = "250px";
-        element.scrollLeft = 0;
-        element.scrollIntoView({ block: "center", behavior: "instant" });
-      });
-      await expect.poll(() => scroller.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeGreaterThan(0);
-      await expect(exhibit.getByRole("heading", { name: "Plan", exact: true })).toBeVisible();
-      await scroller.focus();
-      await expect(scroller).toBeFocused();
-      await page.waitForTimeout(250);
-      await scroller.press("ArrowRight");
-      await expect.poll(() => scroller.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
-      await page.waitForTimeout(500);
-      await expect(exhibit.getByRole("heading", { name: "Plan", exact: true })).toBeVisible();
-    }
+    // The ring scales to its column, so there is no sideways scroller to pan
+    // any more. The SVG is hidden on phones but stays in the DOM, so this
+    // finds the exhibit (the diagram grid's parent) at every width.
+    const exhibit = page
+      .locator('svg[aria-label="Core loop diagram with six stages arranged in a circle"]')
+      .locator("xpath=ancestor::div[contains(@class, 'grid')][1]/..");
+    await expect(exhibit.getByRole("heading", { name: "Plan", exact: true })).toBeVisible();
     // Space must activate the real stage button, not the window's auto-tour.
     const stageButton = page.getByRole("button", { name: "Go to stage: Encode" });
     await stageButton.focus();

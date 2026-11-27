@@ -1,16 +1,32 @@
 "use client";
 
 import { CheckCircle2, Mail, XOctagon, Zap } from "lucide-react";
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { AnimatePresence, motion, useInView } from "@/components/motion";
 import { cn } from "@/lib/utils";
 
 type Mode = "broadcast" | "agentmail";
 
+const MODE_BADGES: Record<Mode, { label: string; color: string; rgb: string }[]> = {
+  broadcast: [
+    { label: "O(N²) Messages", color: "#FF5F56", rgb: "255,95,86" },
+    { label: "High Token Burn", color: "#FF5F56", rgb: "255,95,86" },
+    { label: "Context Dilution", color: "#FF5F56", rgb: "255,95,86" },
+  ],
+  agentmail: [
+    { label: "O(1) Messages", color: "#FF5500", rgb: "255,85,0" },
+    { label: "Advisory Locks", color: "#FFBD2E", rgb: "255,189,46" },
+    { label: "High SNR", color: "#FF5500", rgb: "255,85,0" },
+  ],
+};
+
 export function AgentMailViz() {
   const [mode, setMode] = useState<Mode>("agentmail");
   const ref = useRef<HTMLDivElement>(null);
   const isInView = useInView(ref, { once: true, margin: "-100px" });
+  // A page-unique filter id: a bare id="glow" would resolve to whichever
+  // element with that id comes first in the document.
+  const glowId = `agent-mail-glow-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
 
   const agents = [
     { id: 1, x: 20, y: 20, color: "#FF5500", name: "A1 (UI)" },
@@ -29,10 +45,12 @@ export function AgentMailViz() {
     }
   }
 
-  // Targeted lines for Agent Mail
+  // Targeted lines for Agent Mail. `at` is how far along the path (0 = sender,
+  // 1 = recipient) the message pill sits; the two values keep the pills on
+  // their own lines without overlapping each other on a phone.
   const directLines = [
-    { from: agents[0], to: agents[2], active: true, msg: "Need /api/users" },
-    { from: agents[1], to: agents[2], active: true, msg: "Schema updated" },
+    { from: agents[0], to: agents[2], msg: "Need /api/users", at: 0.56 },
+    { from: agents[1], to: agents[2], msg: "Schema updated", at: 0.38 },
   ];
 
   return (
@@ -43,9 +61,9 @@ export function AgentMailViz() {
       <div className="absolute inset-0 noise-overlay opacity-[0.02] mix-blend-overlay pointer-events-none" />
 
       {/* HEADER */}
-      <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between p-6 sm:p-8 border-b border-white/[0.04] bg-white/[0.01] backdrop-blur-md">
-        <div>
-          <div className="text-xs font-bold text-white/30 uppercase tracking-widest mb-2 flex items-center gap-2">
+      <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 p-6 sm:p-8 border-b border-white/[0.04] bg-white/[0.01] backdrop-blur-md">
+        <div className="min-w-0">
+          <div className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2 flex items-center gap-2">
             <span
               className={cn(
                 "w-1.5 h-1.5 rounded-full",
@@ -77,36 +95,40 @@ export function AgentMailViz() {
         </div>
 
         {/* CONTROLS */}
-        <div className="mt-6 sm:mt-0 flex p-1 bg-black/40 rounded-2xl border border-white/[0.05] shadow-inner">
+        <div className="flex shrink-0 p-1 bg-black/40 rounded-2xl border border-white/[0.05] shadow-inner">
           <button
+            type="button"
+            aria-pressed={mode === "broadcast"}
             onClick={() => setMode("broadcast")}
             className={cn(
-              "px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold tracking-wide transition duration-500 flex items-center gap-2",
+              "px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold tracking-wide whitespace-nowrap transition duration-500 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/60",
               mode === "broadcast"
                 ? "bg-[#FF5F56]/10 text-[#FF5F56] shadow-sm border border-[#FF5F56]/20"
-                : "text-white/40 hover:text-white/80 border border-transparent",
+                : "text-zinc-400 hover:text-zinc-100 border border-transparent",
             )}
           >
-            <XOctagon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+            <XOctagon className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
             Broadcast
           </button>
           <button
+            type="button"
+            aria-pressed={mode === "agentmail"}
             onClick={() => setMode("agentmail")}
             className={cn(
-              "px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold tracking-wide transition duration-500 flex items-center gap-2",
+              "px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold tracking-wide whitespace-nowrap transition duration-500 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/60",
               mode === "agentmail"
                 ? "bg-[#FF5500]/10 text-[#FF5500] shadow-sm border border-[#FF5500]/20"
-                : "text-white/40 hover:text-white/80 border border-transparent",
+                : "text-zinc-400 hover:text-zinc-100 border border-transparent",
             )}
           >
-            <CheckCircle2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+            <CheckCircle2 className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
             Agent Mail
           </button>
         </div>
       </div>
 
       {/* CANVAS */}
-      <div className="relative flex-1 min-h-[450px] bg-[#020408] flex items-center justify-center p-8 overflow-hidden">
+      <div className="@container relative flex-1 min-h-[450px] bg-[#020408] flex flex-col items-center justify-center p-6 sm:p-8 overflow-hidden">
         <div
           className={cn(
             "absolute inset-0 transition-opacity duration-1000 opacity-20",
@@ -116,54 +138,57 @@ export function AgentMailViz() {
           )}
         />
 
-        {/* State Indicators */}
-        <div className="absolute top-6 left-6 z-20 pointer-events-none">
-          <AnimatePresence mode="wait">
-            {mode === "broadcast" ? (
+        {/* State Indicators. In a narrow canvas they sit in a row above the
+            diagram; only a wide canvas has room beside agent A1 for the
+            stacked corner column. Both sets share one grid cell and cross-fade,
+            so switching modes never shifts the diagram. */}
+        <div className="relative z-20 mb-6 grid w-full pointer-events-none @min-[50rem]:absolute @min-[50rem]:top-6 @min-[50rem]:left-6 @min-[50rem]:mb-0 @min-[50rem]:w-auto">
+          {(Object.keys(MODE_BADGES) as Mode[]).map((badgeMode) => {
+            const active = mode === badgeMode;
+            const Icon = badgeMode === "broadcast" ? Zap : CheckCircle2;
+            return (
               <motion.div
-                key="broadcast"
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 10 }}
-                className="flex flex-col gap-2"
+                key={badgeMode}
+                aria-hidden={!active}
+                initial={false}
+                animate={{ opacity: active ? 1 : 0, y: active ? 0 : -8 }}
+                transition={{ duration: 0.3 }}
+                className="[grid-area:1/1] flex flex-wrap content-start items-start gap-1.5 @min-[50rem]:flex-col @min-[50rem]:gap-2"
               >
-                <span className="text-xs font-bold uppercase tracking-widest text-[#FF5F56] bg-[#FF5F56]/10 px-3 py-1.5 rounded-lg border border-[#FF5F56]/20 shadow-[0_0_15px_rgba(255,95,86,0.15)] flex items-center gap-2">
-                  <Zap className="h-3 w-3" /> O(N²) Messages
-                </span>
-                <span className="text-xs font-bold uppercase tracking-widest text-[#FF5F56] bg-[#FF5F56]/10 px-3 py-1.5 rounded-lg border border-[#FF5F56]/20 shadow-[0_0_15px_rgba(255,95,86,0.15)] flex items-center gap-2">
-                  <Zap className="h-3 w-3" /> High Token Burn
-                </span>
-                <span className="text-xs font-bold uppercase tracking-widest text-[#FF5F56] bg-[#FF5F56]/10 px-3 py-1.5 rounded-lg border border-[#FF5F56]/20 shadow-[0_0_15px_rgba(255,95,86,0.15)] flex items-center gap-2">
-                  <Zap className="h-3 w-3" /> Context Dilution
-                </span>
+                {MODE_BADGES[badgeMode].map((badge) => (
+                  <span
+                    key={badge.label}
+                    className="text-xs font-bold uppercase tracking-wide px-2.5 py-1 rounded-lg border flex items-center gap-1.5 whitespace-nowrap @min-[50rem]:tracking-widest @min-[50rem]:px-3 @min-[50rem]:py-1.5 @min-[50rem]:gap-2"
+                    style={{
+                      color: badge.color,
+                      backgroundColor: `rgba(${badge.rgb},0.1)`,
+                      borderColor: `rgba(${badge.rgb},0.2)`,
+                      boxShadow: `0 0 15px rgba(${badge.rgb},0.15)`,
+                    }}
+                  >
+                    <Icon className="h-3 w-3 shrink-0" /> {badge.label}
+                  </span>
+                ))}
               </motion.div>
-            ) : (
-              <motion.div
-                key="agentmail"
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 10 }}
-                className="flex flex-col gap-2"
-              >
-                <span className="text-xs font-bold uppercase tracking-widest text-[#FF5500] bg-[#FF5500]/10 px-3 py-1.5 rounded-lg border border-[#FF5500]/20 shadow-[0_0_15px_rgba(255,85,0,0.15)] flex items-center gap-2">
-                  <CheckCircle2 className="h-3 w-3" /> O(1) Messages
-                </span>
-                <span className="text-xs font-bold uppercase tracking-widest text-[#FFBD2E] bg-[#FFBD2E]/10 px-3 py-1.5 rounded-lg border border-[#FFBD2E]/20 shadow-[0_0_15px_rgba(255,189,46,0.15)] flex items-center gap-2">
-                  <CheckCircle2 className="h-3 w-3" /> Advisory Locks
-                </span>
-                <span className="text-xs font-bold uppercase tracking-widest text-[#FF5500] bg-[#FF5500]/10 px-3 py-1.5 rounded-lg border border-[#FF5500]/20 shadow-[0_0_15px_rgba(255,85,0,0.15)] flex items-center gap-2">
-                  <CheckCircle2 className="h-3 w-3" /> High SNR
-                </span>
-              </motion.div>
-            )}
-          </AnimatePresence>
+            );
+          })}
         </div>
 
         <div className="relative w-full max-w-lg aspect-square">
           {/* SVG Connection Lines */}
           <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible">
             <defs>
-              <filter id="glow">
+              {/* userSpaceOnUse: with the default objectBoundingBox units a
+                  vertical or horizontal line has a zero-width box, so the
+                  filter region collapses and the line is not drawn at all. */}
+              <filter
+                id={glowId}
+                filterUnits="userSpaceOnUse"
+                x="-10%"
+                y="-10%"
+                width="120%"
+                height="120%"
+              >
                 <feGaussianBlur stdDeviation="3" result="coloredBlur" />
                 <feMerge>
                   <feMergeNode in="coloredBlur" />
@@ -192,7 +217,7 @@ export function AgentMailViz() {
                         opacity: { duration: 0.5 },
                         strokeDashoffset: { duration: 0.8, repeat: Infinity, ease: "linear" },
                       }}
-                      filter="url(#glow)"
+                      filter={`url(#${glowId})`}
                     />
                   ))
                 : // Targeted Lines
@@ -213,7 +238,7 @@ export function AgentMailViz() {
                           opacity: { duration: 0.5 },
                           strokeDashoffset: { duration: 1.5, repeat: Infinity, ease: "linear" },
                         }}
-                        filter="url(#glow)"
+                        filter={`url(#${glowId})`}
                       />
                       <motion.circle
                         cx={`${line.to.x}%`}
@@ -265,11 +290,16 @@ export function AgentMailViz() {
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.5 }}
                   transition={{ delay: 0.3 + i * 0.2, type: "spring", stiffness: 300, damping: 20 }}
-                  className="absolute z-20 bg-[#FF5500]/10 border border-[#FF5500]/30 text-[#FF5500] text-xs px-3 py-1.5 rounded-full font-medium whitespace-nowrap shadow-[0_0_15px_rgba(255,85,0,0.2)] backdrop-blur-md"
+                  className="absolute z-20 bg-[#140a05] border border-[#FF5500]/40 text-[#FF7A33] text-xs px-3 py-1.5 rounded-full font-medium whitespace-nowrap shadow-[0_0_15px_rgba(255,85,0,0.2)]"
+                  // Centre the pill on its point of the path. The offset goes
+                  // through motion's x/y: a CSS `transform` here would be
+                  // overwritten by the scale animation, which is what left the
+                  // pills hanging off to the right of their lines.
                   style={{
-                    left: `${(line.from.x + line.to.x) / 2}%`,
-                    top: `${(line.from.y + line.to.y) / 2}%`,
-                    transform: "translate(-50%, -50%)",
+                    left: `${line.from.x + (line.to.x - line.from.x) * line.at}%`,
+                    top: `${line.from.y + (line.to.y - line.from.y) * line.at}%`,
+                    x: "-50%",
+                    y: "-50%",
                   }}
                 >
                   {line.msg}

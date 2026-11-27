@@ -30,25 +30,25 @@ export function ContextHorizonViz() {
       className="my-10 rounded-2xl border border-white/[0.08] bg-[#0a0a0c] shadow-2xl glass-subtle overflow-hidden flex flex-col"
     >
       {/* HEADER */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-5 border-b border-white/[0.05] bg-white/[0.01]">
-        <div>
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 border-b border-white/[0.05] bg-white/[0.01]">
+        <div className="min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <span className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-500/20 text-amber-400">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#FFBD2E]/15 text-[#FFBD2E]">
               <BrainCircuit className="h-3.5 w-3.5" />
             </span>
             <h3 className="text-sm font-semibold text-white/90">
               Interactive: The Context Horizon
             </h3>
           </div>
-          <p className="text-xs text-white/50">
+          <p className="text-xs text-zinc-400">
             As a project grows from prototype to production, its plan still fits in the context
             window and its code does not.
           </p>
         </div>
 
         {/* SLIDER CONTROL */}
-        <div className="mt-4 sm:mt-0 flex flex-col gap-2 bg-[#020408] p-4 rounded-xl border border-white/[0.05] min-w-[200px] sm:min-w-[240px] shadow-inner">
-          <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-white/40">
+        <div className="flex w-full shrink-0 flex-col gap-2 bg-[#020408] p-4 rounded-xl border border-white/[0.05] shadow-inner sm:w-auto sm:min-w-[240px]">
+          <div className="flex justify-between gap-4 text-xs font-bold uppercase tracking-widest text-zinc-400">
             <span>Prototype</span>
             <span>Production</span>
           </div>
@@ -100,8 +100,8 @@ export function ContextHorizonViz() {
             <div className="text-xs sm:text-sm font-black text-white tracking-widest uppercase">
               Plan Space
             </div>
-            <div className="text-xs text-[#27C93F] font-mono mt-1.5 flex items-center justify-center gap-1.5 bg-[#27C93F]/10 rounded-full px-2 py-0.5 border border-[#27C93F]/20">
-              <CheckCircle2 className="h-3 w-3" /> Context Safe
+            <div className="text-xs text-[#27C93F] font-mono mt-1.5 flex items-center justify-center gap-1.5 whitespace-nowrap bg-[#27C93F]/10 rounded-full px-2 py-0.5 border border-[#27C93F]/20">
+              <CheckCircle2 className="h-3 w-3 shrink-0" /> Context Safe
             </div>
           </div>
         </div>
@@ -113,7 +113,7 @@ export function ContextHorizonViz() {
               "w-full rounded-t-2xl relative overflow-hidden flex items-end justify-center pb-6 transition duration-500 border-t border-l border-r backdrop-blur-sm",
               isCodeBlowingHorizon
                 ? "bg-gradient-to-t from-[#FF5F56]/10 to-[#FF5F56]/5 border-[#FF5F56]/40 shadow-[0_0_50px_rgba(255,95,86,0.25)]"
-                : "bg-gradient-to-t from-[#FF5500]/10 to-[#FF5500]/5 border-[#FF5500]/30 shadow-[0_0_40px_rgba(34,211,238,0.15)]",
+                : "bg-gradient-to-t from-[#FF5500]/10 to-[#FF5500]/5 border-[#FF5500]/30 shadow-[0_0_40px_rgba(255,85,0,0.15)]",
             )}
             animate={isInView ? { height: codeSize } : undefined}
             transition={
@@ -146,7 +146,7 @@ export function ContextHorizonViz() {
                 "h-10 w-10 relative z-10 transition duration-500 opacity-90",
                 isCodeBlowingHorizon
                   ? "text-[#FF5F56] drop-shadow-[0_0_10px_rgba(255,95,86,0.5)]"
-                  : "text-[#FF5500] drop-shadow-[0_0_10px_rgba(34,211,238,0.5)]",
+                  : "text-[#FF5500] drop-shadow-[0_0_10px_rgba(255,85,0,0.5)]",
               )}
             />
           </motion.div>
@@ -157,7 +157,7 @@ export function ContextHorizonViz() {
             </div>
             <div
               className={cn(
-                "text-xs font-mono mt-1.5 flex items-center justify-center gap-1.5 rounded-full px-2 py-0.5 border transition-colors duration-500",
+                "text-xs font-mono mt-1.5 flex items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 border transition-colors duration-500",
                 isCodeBlowingHorizon
                   ? "text-[#FF5F56] bg-[#FF5F56]/10 border-[#FF5F56]/20"
                   : "text-[#FF5500] bg-[#FF5500]/10 border-[#FF5500]/20",

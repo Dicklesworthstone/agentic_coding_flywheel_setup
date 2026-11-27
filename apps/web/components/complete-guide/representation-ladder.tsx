@@ -6,7 +6,7 @@ import { Hl } from "@/components/complete-guide/guide-components";
 import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
 
 const EXHIBIT_PANEL_CLASS =
-  "my-16 overflow-hidden rounded-[3rem] border border-white/[0.03] bg-[#020408] p-8 sm:p-12 lg:p-16 shadow-[0_50px_100px_-20px_rgba(0,0,0,0.9)]";
+  "my-16 overflow-hidden rounded-[2rem] sm:rounded-[3rem] border border-white/[0.03] bg-[#020408] p-6 sm:p-12 lg:p-16 shadow-[0_50px_100px_-20px_rgba(0,0,0,0.9)]";
 
 const LADDER_LAYERS = [
   {
@@ -44,7 +44,7 @@ export function RepresentationLadder() {
 
   return (
     <div ref={ref} className={EXHIBIT_PANEL_CLASS}>
-      <div className="flex flex-col gap-10 border-b border-white/[0.03] pb-12 lg:flex-row lg:items-start lg:justify-between">
+      <div className="flex flex-col gap-8 border-b border-white/[0.05] pb-10 sm:gap-10 sm:pb-12 lg:flex-row lg:items-start lg:justify-between">
         <div className="max-w-2xl">
           <div className="text-xs font-black uppercase tracking-[0.4em] text-[#FF5500] opacity-90 flex items-center gap-3">
             <div className="w-8 h-px bg-[#FF5500]/30" />
@@ -53,7 +53,7 @@ export function RepresentationLadder() {
           <h4 className="mt-6 font-serif text-[1.5rem] font-normal leading-[1.12] tracking-[-0.008em] text-white sm:text-[1.875rem]">
             Where you catch the bug determines the rework bill
           </h4>
-          <p className="mt-8 text-[1.1rem] leading-relaxed text-zinc-400 font-extralight opacity-80">
+          <p className="mt-6 text-[1.1rem] leading-relaxed text-zinc-400 font-light sm:mt-8">
             Inject the same mistake at each layer in turn. The later the layer, the more work has
             already been built on the mistake, and <Hl>the more of it you have to redo</Hl>.
           </p>
@@ -62,10 +62,11 @@ export function RepresentationLadder() {
         <div className="flex flex-col items-start lg:items-end gap-6">
           {bugLevel !== null && (
             <motion.button
+              type="button"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               onClick={handleReset}
-              className="flex items-center gap-3 px-6 py-3 rounded-2xl border border-white/10 bg-white/[0.02] text-xs font-black uppercase tracking-[0.2em] text-white/60 hover:text-white transition duration-500"
+              className="flex items-center gap-3 px-6 py-3 rounded-2xl border border-white/10 bg-white/[0.02] text-xs font-black uppercase tracking-[0.2em] text-zinc-300 hover:text-white transition duration-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/60"
             >
               <Repeat className="h-3 w-3" />
               Reset Simulation
@@ -74,8 +75,11 @@ export function RepresentationLadder() {
         </div>
       </div>
 
-      <div className="mt-16 grid gap-12 lg:grid-cols-[1.2fr_0.8fr] items-center">
-        <div className="flex flex-col gap-6">
+      {/* The ladder takes the full width so each layer's name and price sit
+          on one line (side by side with the notes, the cards were too narrow
+          and "Plan Space" broke over two lines); the notes follow below. */}
+      <div className="mt-10 flex flex-col gap-10 sm:mt-14 sm:gap-12">
+        <div className="flex flex-col gap-5 sm:gap-6">
           {LADDER_LAYERS.map((layer, index) => {
             const isBugSource = bugLevel === index;
             // Catching the mistake at a layer means every earlier layer already
@@ -97,17 +101,17 @@ export function RepresentationLadder() {
                   damping: 25,
                   delay: reducedMotion ? 0 : index * 0.15,
                 }}
-                className="group/layer flex flex-col sm:flex-row gap-4 sm:gap-6 items-stretch sm:items-center"
+                className="group/layer flex flex-col sm:flex-row gap-3 sm:gap-6 items-stretch sm:items-center"
               >
-                <div className="flex-1 w-full">
+                <div className="flex-1 min-w-0 w-full">
                   <div
-                    className="relative rounded-3xl border transition duration-700 overflow-hidden h-full min-h-[90px]"
+                    className="relative rounded-3xl border transition duration-700 overflow-hidden h-full"
                     style={{
                       borderColor: isBugSource
                         ? "#FF5500"
                         : isCascade
                           ? "#FFBD2E"
-                          : "rgba(255,255,255,0.03)",
+                          : "rgba(255,255,255,0.06)",
                       background: isBugSource
                         ? "rgba(255, 85, 0, 0.05)"
                         : isCascade
@@ -117,30 +121,23 @@ export function RepresentationLadder() {
                   >
                     <div className="absolute inset-0 noise-overlay opacity-[0.02] mix-blend-overlay pointer-events-none" />
 
-                    <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between p-6 gap-4 h-full">
-                      <div>
-                        <div className="flex items-center gap-3 mb-1">
-                          <span
-                            className={`text-xs font-black uppercase tracking-[0.2em] transition-colors ${isBugSource ? "text-[#FF5500]" : isCascade ? "text-[#FFBD2E]" : "text-white/30"}`}
-                          >
-                            {layer.id} layer
-                          </span>
-                          {isBugSource && (
-                            <div className="w-1.5 h-1.5 rounded-full bg-[#FF5500] animate-ping" />
-                          )}
-                        </div>
+                    <div className="relative z-10 flex flex-row items-center justify-between px-5 py-4 gap-4 h-full sm:px-6 sm:py-5">
+                      <div className="flex min-w-0 items-center gap-3">
                         <span
-                          className={`text-xl font-bold tracking-tight transition-colors ${isBugSource ? "text-[#FF5500]" : isCascade ? "text-[#FFBD2E]" : "text-white"}`}
+                          className={`whitespace-nowrap text-xl font-bold tracking-tight transition-colors ${isBugSource ? "text-[#FF5500]" : isCascade ? "text-[#FFBD2E]" : "text-white"}`}
                         >
                           {layer.label}
                         </span>
+                        {isBugSource && (
+                          <div className="w-1.5 h-1.5 shrink-0 rounded-full bg-[#FF5500] animate-ping" />
+                        )}
                       </div>
-                      <div className="text-left sm:text-right shrink-0">
-                        <span className="text-xs font-black uppercase tracking-[0.3em] text-white/20 block mb-1">
+                      <div className="shrink-0 text-right">
+                        <span className="text-xs font-black uppercase tracking-[0.3em] text-zinc-500 block mb-1">
                           Price
                         </span>
                         <div
-                          className={`text-3xl font-black tracking-tighter transition-colors ${isBugSource ? "text-[#FF5500]" : isCascade ? "text-[#FFBD2E]" : "text-white/40"}`}
+                          className={`text-3xl font-black tracking-tighter tabular-nums transition-colors ${isBugSource ? "text-[#FF5500]" : isCascade ? "text-[#FFBD2E]" : "text-zinc-400"}`}
                         >
                           {layer.cost}
                         </div>
@@ -154,11 +151,13 @@ export function RepresentationLadder() {
                     {bugLevel === null ? (
                       <motion.button
                         key="inject"
+                        type="button"
+                        aria-label={`Inject bug in ${layer.label}`}
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         onClick={() => handleBugClick(index)}
-                        className="w-full flex items-center justify-center gap-3 px-5 py-3 rounded-2xl border border-white/5 bg-white/[0.02] text-xs font-black uppercase tracking-[0.1em] text-white/40 hover:bg-[#FF5500]/10 hover:border-[#FF5500]/20 hover:text-[#FF5500] transition duration-500"
+                        className="w-full flex items-center justify-center gap-3 px-5 py-3 rounded-2xl border border-white/10 bg-white/[0.02] text-xs font-black uppercase tracking-[0.1em] text-zinc-300 hover:bg-[#FF5500]/10 hover:border-[#FF5500]/20 hover:text-[#FF5500] transition duration-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/60"
                       >
                         <Bug className="h-3.5 w-3.5" />
                         Inject Bug
@@ -189,22 +188,22 @@ export function RepresentationLadder() {
           })}
         </div>
 
-        <div className="flex flex-col gap-8">
-          <div className="p-8 rounded-[2.5rem] bg-white/[0.01] border border-white/[0.03]">
-            <span className="text-xs font-black text-white/20 uppercase tracking-[0.4em]">
+        <div className="grid gap-6 sm:gap-8 lg:grid-cols-2">
+          <div className="p-6 sm:p-8 rounded-[2rem] sm:rounded-[2.5rem] bg-white/[0.01] border border-white/[0.05]">
+            <span className="text-xs font-black text-zinc-400 uppercase tracking-[0.4em]">
               Cost of a Fix
             </span>
-            <div className="mt-8 flex flex-col gap-6">
+            <div className="mt-6 flex flex-col gap-5 sm:mt-8 sm:gap-6">
               {[
                 { l: "Plan Space", t: "A fix is an edit to the plan. No code changes." },
                 { l: "Bead Space", t: "A fix means rewriting beads and their dependencies, which costs coordination time." },
                 { l: "Code Space", t: "A fix costs twice: you write the new code and clean up the old." },
               ].map((item, i) => (
                 <div key={i} className="flex flex-col gap-1">
-                  <span className="text-xs font-bold text-white/40 tracking-wide">
+                  <span className="text-xs font-bold text-zinc-300 tracking-wide">
                     {item.l}
                   </span>
-                  <p className="text-sm text-zinc-400 font-extralight leading-relaxed">{item.t}</p>
+                  <p className="text-sm text-zinc-400 font-light leading-relaxed">{item.t}</p>
                 </div>
               ))}
             </div>
@@ -217,12 +216,12 @@ export function RepresentationLadder() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-              className="p-10 rounded-[2.5rem] bg-white/[0.01] border border-white/[0.03] shadow-inner"
+              className="p-6 sm:p-10 rounded-[2rem] sm:rounded-[2.5rem] bg-white/[0.01] border border-white/[0.05] shadow-inner"
             >
               <span className="text-xs font-black text-[#FF5500] uppercase tracking-[0.5em] block mb-6">
                 Takeaway
               </span>
-              <p className="text-[1.1rem] leading-relaxed text-zinc-300 font-extralight italic">
+              <p className="text-[1.1rem] leading-relaxed text-zinc-300 font-light italic">
                 {bugLevel === null &&
                   "The plan is the cheapest place to reason about the whole system. Press Inject Bug on any layer to see what a fix there costs."}
                 {bugLevel === 0 &&

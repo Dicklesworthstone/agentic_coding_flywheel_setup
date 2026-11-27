@@ -297,7 +297,9 @@ function ScenarioPanel({ scenarioId, phaseIndex }: { scenarioId: ScenarioId; pha
 
   return (
     <div
-      className="rounded-[28px] border p-4 sm:p-5"
+      // min-w-0: as a grid item it otherwise keeps its content's min-content
+      // width and clipped 9px off the right edge on 360px phones.
+      className="min-w-0 rounded-[28px] border p-4 sm:p-5"
       style={{
         borderColor: `${accent}33`,
         background:
@@ -334,7 +336,11 @@ function ScenarioPanel({ scenarioId, phaseIndex }: { scenarioId: ScenarioId; pha
               key={label}
               className="flex flex-col items-center justify-center rounded-xl border border-white/10 bg-slate-950/60 px-2 py-2"
             >
-              <dt className="order-2 mt-1 text-xs uppercase tracking-[0.12em] text-white/50">{label}</dt>
+              {/* Sentence case on phones, where three tiles share ~300px and
+                  uppercase "completed" fills its tile edge to edge. */}
+              <dt className="order-2 mt-1 whitespace-nowrap text-xs text-white/60 sm:uppercase sm:tracking-[0.12em]">
+                {label}
+              </dt>
               <dd className="order-1 font-mono text-base font-semibold tabular-nums leading-none text-white">
                 {value}
               </dd>
@@ -547,7 +553,11 @@ export function SwarmExecutionViz() {
         </div>
       </div>
 
-      <div className="mt-5 grid gap-3 md:grid-cols-5">
+      {/* One row of five at every width. On phones the cards shrink to
+          numbered steps (names stay in the accessible label), and the current
+          phase's name and detail show below the row, instead of five
+          full-width cards stacking ~500px tall. */}
+      <div className="mt-5 grid grid-cols-5 gap-1.5 md:gap-3">
         {PHASES.map((phase, index) => (
           <button
             key={phase.label}
@@ -558,20 +568,33 @@ export function SwarmExecutionViz() {
               setPhaseIndex(index);
             }}
             className={cn(
-              "rounded-[22px] border px-4 py-3 text-left transition-colors",
+              "min-w-0 rounded-xl border py-2.5 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFBD2E]/60 md:rounded-[22px] md:px-4 md:py-3 md:text-left",
               phaseIndex === index
                 ? "border-white/18 bg-white/[0.09]"
                 : "border-white/8 bg-white/[0.03] hover:border-white/14 hover:bg-white/[0.05]",
             )}
           >
-            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-white/35">
+            <div
+              className={cn(
+                "font-mono text-sm font-semibold tabular-nums md:font-sans md:text-xs md:uppercase md:tracking-[0.22em]",
+                phaseIndex === index ? "text-white md:text-white/45" : "text-white/55 md:text-white/45",
+              )}
+            >
               {index + 1}
             </div>
-            <div className="mt-2 text-sm font-bold text-white">{phase.label}</div>
-            <div className="mt-1 text-xs text-white/58">{phase.detail}</div>
+            <div className="sr-only md:not-sr-only md:mt-2 md:text-sm md:font-bold md:text-white">
+              {phase.label}
+            </div>
+            <div className="mt-1 hidden text-xs text-white/60 md:block">{phase.detail}</div>
           </button>
         ))}
       </div>
+      <p className="mt-3 text-sm text-white/60 md:hidden">
+        <span className="font-semibold text-white">
+          {phaseIndex + 1}. {PHASES[phaseIndex].label}:
+        </span>{" "}
+        {PHASES[phaseIndex].detail}
+      </p>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-2">
         <ScenarioPanel scenarioId="herd" phaseIndex={phaseIndex} />
