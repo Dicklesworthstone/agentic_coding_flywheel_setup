@@ -840,7 +840,7 @@ For each proposed change, give me your detailed analysis and rationale/justifica
                 {COMPLETE_GUIDE_MODELS.gptPro} conversation and do it again. Expect big changes in
                 the early rounds. A simple plan mostly converges after about five; I usually do at
                 least 8 to 10, and the more complex the plan or specification, the more it takes (a
-                frontier math research skill took 26 rounds, a record for me).{" "}
+                frontier math research skill took 26 rounds, probably a record for me).{" "}
                 {COMPLETE_GUIDE_MODELS.gptPro} in the app has its own usage limits, separate from
                 Codex, so the rounds don&apos;t eat into your Codex quota. If the page shows an
                 error mid-answer, don&apos;t stop the
@@ -1874,7 +1874,7 @@ Remember: use your expert judgment on all decisions to make the optimal choice. 
 
               <P>
                 Since September 2026 the snippet has its own button on my Stream Deck, with a crown
-                icon and the label &quot;Use Your Judgment.&quot; I press it after every reality
+                icon and the label &quot;Use Your Judgment.&quot; I press it after a reality
                 check, and whenever a model finishes a long task and comes back with a report and
                 decisions it wants me to make. With a thorough plan and granular beads behind them,
                 I almost always want the agents to do what they think is best within those
@@ -4854,7 +4854,7 @@ cass search "tool_name" --workspace /data/projects/PROJECT --json --limit 100`}
                 title="Optimization Loop"
                 prompt={`First read ALL of the AGENTS.md file and README.md file super carefully and understand ALL of both! Then use your code investigation agent mode to fully understand the code and technical architecture and purpose of the project. Then use /profiling-software-performance and then use /repeatedly-apply-skill at least 30 times sequentially to apply /extreme-software-optimization`}
                 where="Any agent on a working codebase; even a cheap flash-class model does well with it"
-                whyItWorks="Profiling first points every pass at measured hotspots instead of guesses, and thirty sequential passes go much deeper than one. In August 2026 a nearly free flash model ran it for 20 minutes on that same markdown renderer, whose code frontier models had written, and found a couple of speedups above 5,000x and several of 2x or more."
+                whyItWorks="Profiling first points every pass at measured hotspots instead of guesses, and thirty sequential passes go much deeper than one. In August 2026 a nearly free flash model ran it for 20 minutes on that same markdown renderer, whose code frontier models had written, and found a couple of speedups above 5,000x and a few of 2x or more."
               />
 
               <SkillNote

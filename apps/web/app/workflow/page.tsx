@@ -802,8 +802,8 @@ export default function WorkflowPage() {
               The Complete Development Lifecycle
             </h2>
             <p className="text-muted-foreground mb-5">
-              A full development lifecycle encompassing ideation, planning, task breakdown,
-              implementation, review, testing, deployment, and ongoing maintenance. The workflows
+              A full development lifecycle encompassing ideation, planning (the markdown plan,
+              then the beads), implementation, review, testing, deployment, and ongoing maintenance. The workflows
               are highly iterative, with agents communicating via an &quot;email-like&quot; system,
               managing tasks through a dependency-aware graph, and forming a self-reinforcing
               ecosystem where agents improve each other&apos;s outputs.
