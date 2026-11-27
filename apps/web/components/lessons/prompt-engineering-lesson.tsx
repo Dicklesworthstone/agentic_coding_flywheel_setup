@@ -377,9 +377,7 @@ Use /effort max."`}
         <div className="mt-6">
           <CodeBlock
             code={`# Grounding Throughout Work
-"Be sure to comply with ALL rules in AGENTS.md and
-ensure that any code you write or revise conforms to
-the best practice guides referenced in the AGENTS.md file."
+"Be sure to comply with ALL rules in AGENTS.md."
 
 # Making Rules Explicit
 "You may NOT delete any file or directory unless I
@@ -454,9 +452,7 @@ any obvious bugs, problems, errors, issues, silly mistakes,
 etc. and then systematically and meticulously and
 intelligently correct them.
 
-Be sure to comply with ALL rules in AGENTS.md and ensure
-that any code you write or revise conforms to the best
-practice guides referenced in the AGENTS.md file."`}
+Be sure to comply with ALL rules in AGENTS.md."`}
             language="markdown"
           />
         </div>

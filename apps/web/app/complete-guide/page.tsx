@@ -87,9 +87,9 @@ export default function CompleteGuidePage() {
           }
           dek={
             <>
-              How to build software by orchestrating swarms of AI coding agents:
-              exhaustive markdown plans, polished beads, and the Agent Flywheel stack. The
-              methodology of Jeffrey Emanuel, end to end.
+              How I build software by orchestrating swarms of AI coding agents: exhaustive
+              markdown plans, polished beads, and the Agent Flywheel stack, end to end. By
+              Jeffrey Emanuel.
             </>
           }
           primary={{ href: "#workflow", label: "Start reading" }}
@@ -504,9 +504,9 @@ export default function CompleteGuidePage() {
               </P>
 
               <P>
-                The stack then follows from what those projects already stand on. The author&apos;s
-                recent projects take no third-party dependencies beyond his own libraries, so his
-                kickoffs settle the stack in one sentence (&quot;the same architecture built on
+                The stack then follows from what those projects already stand on. My recent
+                projects take no third-party dependencies beyond my own libraries, so my kickoffs
+                settle the stack in one sentence (&quot;the same architecture built on
                 asupersync and my existing frankensuite of projects&quot;), and the research goes
                 into those libraries instead of into choosing frameworks. The plan opens with a{" "}
                 <Hl>foundation audit</Hl>: what each library actually provides at a pinned
@@ -515,19 +515,19 @@ export default function CompleteGuidePage() {
                 to use it, and its fallback. If you have no libraries of your own yet, the same rule
                 holds for whatever you build on: the plan should check each component against its
                 source at a pinned version rather than trusting its documentation. Much of the
-                first review of the author&apos;s accounting plan corrected what the plan had assumed
-                its database could do.
+                first review of my accounting plan corrected what the plan had assumed its database
+                could do.
               </P>
 
               <P>
-                Give the lead the raw material of the domain, too. For a mining project, the author
-                put eighteen source documents (technical reports, spreadsheets and textbooks; 4,299
+                Give the lead the raw material of the domain, too. For a mining project, I put
+                eighteen source documents (technical reports, spreadsheets and textbooks; 4,299
                 pages) in a git-ignored folder, and agents converted them to markdown and read
-                them against the original pages and cells. Other subagents surveyed his own
+                them against the original pages and cells. Other subagents surveyed my own
                 repositories and the state of the field, and a web pass checked 72 of the plan&apos;s
                 industry figures, correcting or qualifying 17. When the lead came back with a list
-                of open questions, the author&apos;s whole reply was &quot;YOU can find ALL of this
-                stuff yourself using web search tools, don&apos;t be helpless!!!&quot;
+                of open questions, my whole reply was &quot;YOU can find ALL of this stuff yourself
+                using web search tools, don&apos;t be helpless!!!&quot;
               </P>
 
               <P>
@@ -543,9 +543,9 @@ export default function CompleteGuidePage() {
                 tool sections and coordination guidance, and replace its project doctrine with the
                 new plan&apos;s. Write the README in the present tense, as if the finished system
                 already exists, with a short note saying so and an honest status section. It then
-                gets corrected in place as milestones land instead of being rewritten later. The
-                author&apos;s graph database, accounting, and mining projects each began with a
-                first commit holding the plan, the README, and AGENTS.md, and no code.
+                gets corrected in place as milestones land instead of being rewritten later. My graph
+                database, accounting, and mining projects each began with a first commit holding the
+                plan, the README, and AGENTS.md, and no code.
               </P>
 
               <TipBox variant="warning">
@@ -558,7 +558,7 @@ export default function CompleteGuidePage() {
             <SubSection title="Writing the Initial Plan">
               <P>
                 You don&apos;t write the initial markdown plan yourself. As of{" "}
-                {COMPLETE_GUIDE_REVIEWED_ON}, the recommendation is one lead planner,{" "}
+                {COMPLETE_GUIDE_REVIEWED_ON}, I recommend one lead planner,{" "}
                 {COMPLETE_GUIDE_MODELS.leadPlanner} in {COMPLETE_GUIDE_MODELS.leadPlannerSurface}{" "}
                 (pick it with <code>/model</code>, then set <code>/effort xhigh</code>), in charge
                 of the whole project. It writes the plan, commissions the research and the reviews,
@@ -573,8 +573,8 @@ export default function CompleteGuidePage() {
               </P>
 
               <P>
-                The kickoff is one long message. This is the one the author sent for the mining
-                project, with the subject matter replaced by placeholders:
+                The kickoff is one long message. This is the one I sent for the mining project, with
+                the subject matter replaced by placeholders:
               </P>
 
               <PromptBlock
@@ -588,8 +588,8 @@ export default function CompleteGuidePage() {
                 The lead does the rest itself. On the mining project it started seven research
                 subagents within eight minutes of the kickoff, ran hypothesis passes as further
                 subagents, and had a first plan of about 6,900 lines five hours later. Over the
-                next days the author added a handful of short steering notes, such as pointing it
-                at his numerical libraries and at the source documents.
+                next days I added a handful of short steering notes, such as pointing it at my
+                numerical libraries and at the source documents.
               </P>
 
               <DataTable
@@ -644,9 +644,9 @@ export default function CompleteGuidePage() {
                     ({source.note})
                   </span>
                 ))}
-                . {COMPLETE_GUIDE_MODELS.restrictedPreview} is intentionally excluded from the
-                general recommendation because access is restricted to Anthropic&apos;s Life Sciences
-                and Cyber Verification programs and it is not generally available.
+                . I leave {COMPLETE_GUIDE_MODELS.restrictedPreview} out of the recommendation
+                because access is restricted to Anthropic&apos;s Life Sciences and Cyber Verification
+                programs and it is not generally available.
               </TipBox>
             </SubSection>
 
@@ -690,8 +690,8 @@ export default function CompleteGuidePage() {
                 ChatGPT apps, one by Fable and one by GPT Pro, before the project existed on a
                 computer. The merged plan kept Fable&apos;s draft as its backbone and grafted in
                 ideas found only in the GPT Pro draft, and both drafts are kept in the repo&apos;s
-                planning folder. The author had long used GPT Pro as the final arbiter of competing
-                plans; since July 2026 he has Fable do the merging.
+                planning folder. For a long time I used GPT Pro as the final arbiter of competing
+                plans; since July 2026 I&apos;ve had Fable do the merging instead.
               </P>
 
               <P>
@@ -704,13 +704,13 @@ export default function CompleteGuidePage() {
                 >
                   competing plans are publicly visible
                 </a>
-                . This pattern has been used across at least 10 sessions spanning 7+ projects.
+                . I&apos;ve used this pattern in at least 10 sessions across 7+ projects.
               </P>
 
               <P>
                 Give every model the identical kickoff and let each one plan blind. On a recent
-                robotics project, the author pasted the same kickoff into Claude Code and Codex a
-                minute apart, and a third edition came from Gemini in Antigravity. None of the
+                robotics project, I pasted the same kickoff into Claude Code and Codex a minute
+                apart, and a third edition came from Gemini in Antigravity. None of the
                 three read the others while drafting, each was built around a different central
                 idea, and each planner ran its own multi-model research round on its edition
                 before the blend.
@@ -732,7 +732,7 @@ export default function CompleteGuidePage() {
                 title="Best-of-All-Worlds Synthesis"
                 prompt={`I asked 3 competing LLMs to do the exact same thing and they came up with pretty different plans which you can read below. I want you to REALLY carefully analyze their plans with an open mind and be intellectually honest about what they did that's better than your plan. Then I want you to come up with the best possible revisions to your plan (you should simply update your existing document for your original plan with the revisions) that artfully and skillfully blends the "best of all worlds" to create a true, ultimate, superior hybrid version of the plan that best achieves our stated goals and will work the best in real-world practice to solve the problems we are facing and our overarching goals while ensuring the extreme success of the enterprise as best as possible; you should provide me with a complete series of git-diff style changes to your original plan to turn it into the new, enhanced, much longer and detailed plan that integrates the best of all the plans with every good idea included (you don't need to mention which ideas came from which models in the final revised enhanced plan):`}
                 where={`The lead planner (${COMPLETE_GUIDE_MODELS.leadPlanner} in ${COMPLETE_GUIDE_MODELS.leadPlannerSurface}), which wrote one of the plans`}
-                whyItWorks="Makes the model admit what the competing plans did better, then merge the best of them into one plan. The 'best of all worlds' phrasing appears in 10+ distinct sessions across 7+ projects in the session archive. The prompt's length and specificity are deliberate: asking for git-diff style changes, integration of every good idea, and edits to the existing plan keeps the model from writing a vague summary and makes it work through what the competing plans actually say."
+                whyItWorks="Makes the model admit what the competing plans did better, then merge the best of them into one plan. The 'best of all worlds' phrasing appears in 10+ distinct sessions across 7+ projects in my session archive. The prompt's length and specificity are deliberate: asking for git-diff style changes, integration of every good idea, and edits to the existing plan keeps the model from writing a vague summary and makes it work through what the competing plans actually say."
               />
 
               <P>
@@ -747,7 +747,7 @@ export default function CompleteGuidePage() {
 
               <P>
                 A competing model can also work on the lead&apos;s plan directly. On the mining
-                project, the author gave Gemini in Antigravity the lead&apos;s kickoff plus &quot;I
+                project, I gave Gemini in Antigravity the lead&apos;s kickoff plus &quot;I
                 want you to think through all of this too and propose improvements to the plan to
                 make it smarter and better,&quot; and it edited the plan in place overnight. The
                 lead then checked every new FACT against the source documents, re-ran the new math,
@@ -790,7 +790,7 @@ export default function CompleteGuidePage() {
 
             <SubSection title="Iterative Refinement">
               <P>
-                Now run review rounds. The main loop uses {COMPLETE_GUIDE_MODELS.gptPro}: paste the
+                Now run review rounds. I use {COMPLETE_GUIDE_MODELS.gptPro} for these: paste the
                 current plan into a <strong>fresh</strong> {COMPLETE_GUIDE_MODELS.gptPro}{" "}
                 conversation with this prompt, then paste its revisions into the lead with the
                 integration prompt above. A fresh conversation keeps the model from anchoring on
@@ -824,9 +824,9 @@ For each proposed change, give me your detailed analysis and rationale/justifica
                 inside the harness audit the plan: fresh-context subagents the lead commissions, or
                 a Codex or Antigravity session started for the purpose. A reviewer that wrote none
                 of the plan has nothing to defend, and one that has not seen the previous
-                round&apos;s conclusions does not simply confirm them. The author&apos;s audit
-                prompt has the reviewer learn the project&apos;s rules and finished-state
-                description first, then hunt for mistakes:
+                round&apos;s conclusions does not simply confirm them. My audit prompt has the
+                reviewer learn the project&apos;s rules and finished-state description first, then
+                hunt for mistakes:
               </P>
 
               <PromptBlock
@@ -919,8 +919,8 @@ For each proposed change, give me your detailed analysis and rationale/justifica
                 >
                   6,000-line plan
                 </a>
-                . The author&apos;s recent plans are larger, and lines stop being a useful measure
-                once tables and appendices make each line very long. The accounting engine&apos;s
+                . My recent plans are larger, and lines stop being a useful measure once tables and
+                appendices make each line very long. The accounting engine&apos;s
                 first draft was 237 KB; the mining plan is about 9,500 lines (830 KB), backed by
                 about 36,000 lines of research, audit, and hypothesis records in its planning
                 folder; and the{" "}
@@ -954,10 +954,10 @@ For each proposed change, give me your detailed analysis and rationale/justifica
             <SubSection title="Declare the Stage in AGENTS.md">
               <P>
                 Agents follow AGENTS.md, so say there which stage the project is in: planning
-                only, or implementation. While the robotics plans were still competing, the author
-                sent one planner his usual gap-closing follow-up (&quot;Close the Biggest Gaps&quot; in
-                Adding Features to Existing Projects, after Part 5), which tells the agent to
-                execute any remaining beads. It started building, and his next message was
+                only, or implementation. While the robotics plans were still competing, I sent one
+                planner my usual gap-closing follow-up (&quot;Close the Biggest Gaps&quot; in Adding
+                Features to Existing Projects, after Part 5), which tells the agent to execute any
+                remaining beads. It started building, and my next message was
                 &quot;wait what are you doing? I didn&apos;t say to start BUILDING this yet, we are
                 in the PLANNING STAGES ONLY!!!&quot; The prototype went into an ignored directory,
                 its three beads were withdrawn, and AGENTS.md was set to planning only.
@@ -967,7 +967,7 @@ For each proposed change, give me your detailed analysis and rationale/justifica
                 Change the stage line when you move to implementation, and commit the beads in the
                 same step. Two days later, the lead&apos;s own pre-implementation checklist noted that
                 AGENTS.md still said planning, only one bead was ready, and none of the beads were
-                committed. The author replied &quot;DO THIS STUFF FIRST!!!&quot;, and the 3,637
+                committed. I replied &quot;DO THIS STUFF FIRST!!!&quot;, and the 3,637
                 polished beads and the stage change were committed seven minutes later.
               </P>
             </SubSection>
@@ -1314,7 +1314,7 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
                 <code>review-notes-open</code> label instead of into a fifth round.
               </P>
 
-              <P>The stop is the human&apos;s call. Partway through the fourth round, the author wrote:</P>
+              <P>The stop is your call. Partway through the fourth round, I wrote:</P>
 
               <BlockQuote>
                 ok I think we&apos;ve done enough beads polishing at this point, let&apos;s please
@@ -1322,8 +1322,8 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
               </BlockQuote>
 
               <P>
-                Half an hour later, his own request for one more fresh-eyes pass restarted it, and
-                the next afternoon he interrupted again: &quot;please make sure you aren&apos;t
+                Half an hour later, my own request for one more fresh-eyes pass restarted it, and
+                the next afternoon I interrupted again: &quot;please make sure you aren&apos;t
                 getting carried away again with the beads to the point of sharply diminishing
                 marginal returns.&quot;
               </P>
@@ -1714,8 +1714,8 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
               <P>
                 A fresh session on a project that already has code has to rebuild its picture of
                 the project from the docs, then measure the code against them. In two recent
-                projects the author opened new sessions in Claude Code, Codex, and Antigravity
-                with the same message:
+                projects I opened new sessions in Claude Code, Codex, and Antigravity with the same
+                message:
               </P>
 
               <PromptBlock
@@ -1736,8 +1736,7 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
               </P>
 
               <P>
-                After the diagnosis, the author hands the priorities to the model with one saved
-                follow-up:
+                After the diagnosis, I hand the priorities to the model with one saved follow-up:
               </P>
 
               <PromptBlock
@@ -1756,10 +1755,10 @@ Remember: use your expert judgment on all decisions to make the optimal choice. 
               />
 
               <P>
-                Between diagnosis and execution he usually adds one line at most. In front of the
-                snippet it is something like &quot;ok I agree with basically everything you said
+                Between diagnosis and execution I usually add one line at most. In front of the
+                snippet it&apos;s something like &quot;ok I agree with basically everything you said
                 above in your reality check analysis and want to follow all your suggestions&quot;
-                with one clarification; after it, a steer such as permission to change one of his
+                with one clarification; after it, a steer such as permission to change one of my
                 own upstream libraries. The accounting engine&apos;s Codex sessions alone received
                 the snippet about 100 times, usually after a compaction, and almost nothing
                 bespoke.
@@ -1770,15 +1769,15 @@ Remember: use your expert judgment on all decisions to make the optimal choice. 
               <P>
                 A feature family added after v1 falls outside the original backlog, so it gets a
                 short plan of its own before any beads. About two weeks into the simulation
-                project, the author asked for rule changes or new elements with the most &quot;bang
+                project, I asked for rule changes or new elements with the most &quot;bang
                 for the buck&quot;: the numerator was how much more lifelike the behavior looked,
                 judged with the model&apos;s vision, and the denominator was the added complexity
-                and compute. He named <code>/idea-wizard</code>,{" "}
+                and compute. I named <code>/idea-wizard</code>,{" "}
                 <code>/modes-of-reasoning-project-analysis</code>, and{" "}
                 <code>/brennerbot-with-ntm</code> for the work. Two hours later the analysis had
                 ranked 30 candidates by that ratio, recorded why 15 of them were downgraded or
-                rejected, and proposed two bundles. He chose both and told it to &quot;Follow your
-                own recommendations on everything&quot;. A minute later he added a requirement
+                rejected, and proposed two bundles. I chose both and told it to &quot;Follow your
+                own recommendations on everything&quot;. A minute later I added a requirement
                 worth copying for any new family: &quot;btw it would be awesome if we can do all
                 this in a modular way so that by default these new features are enabled, but that
                 could also be disabled selectively using a config file or cli flags to preserve
@@ -2102,8 +2101,8 @@ bv --robot-triage --robot-triage-by-label    # Group by domain`}
               </BlockQuote>
 
               <P>
-                &quot;Reread AGENTS.md&quot; is the single most common prompt prefix across the
-                entire session archive. After every context compaction, agents must re-read it:
+                &quot;Reread AGENTS.md&quot; is the single most common prompt prefix in my entire
+                session archive. After every context compaction, agents must re-read it:
               </P>
 
               <PromptBlock
@@ -2626,7 +2625,7 @@ When a Rust build or test is needed, offload it with rch (for example, rch exec 
 
             <SubSection title="Running the Swarm Through an Orchestrator">
               <P>
-                In two recent swarms, the author did not tend the panes himself. One orchestrator
+                In two recent swarms, I didn&apos;t tend the panes myself. One orchestrator
                 agent got a reusable kickoff, spawned the workers, wrote their orders, and tended
                 them on a timer. The kickoff opens with the session opener from Adding Features to
                 Existing Projects (read AGENTS.md and the README, then run a reality check), and
@@ -2646,7 +2645,7 @@ When a Rust build or test is needed, offload it with rch (for example, rch exec 
                 six Claude panes. The <code>/loop</code> line became a cron job that woke it every
                 four minutes to read each pane&apos;s tail, the new commits, the beads awaiting
                 verification, and its inbox, then verify and close what was ready and send the
-                next ready bead to any idle pane. After the owner&apos;s audit (next section), the
+                next ready bead to any idle pane. After the audit I ordered (next section), the
                 robotics orchestrator slowed to every 12 minutes.
               </P>
 
@@ -2662,8 +2661,9 @@ When a Rust build or test is needed, offload it with rch (for example, rch exec 
 
               <P>
                 The orchestrator&apos;s own state lives on disk too. The robotics orchestrator kept
-                a 354-line TODO file with a section per owner directive, and through 17 compactions
-                and one overnight crash it picked up from that file; the owner never re-explained.
+                a 354-line TODO file with a section for each of my directives, and through 17
+                compactions and one overnight crash it picked up from that file; I never had to
+                re-explain anything.
                 That keeps it from becoming the ringleader Part 6 warns against, since a restarted
                 orchestrator carries on from the ledger, the order files, and the beads.
               </P>
@@ -2683,7 +2683,7 @@ When a Rust build or test is needed, offload it with rch (for example, rch exec 
                 Cap the work that runs ahead of verification. Robotics beads built ahead stayed
                 open, so the tracker&apos;s cap of 16 unverified beads never counted them; about 55
                 piled up and came back as the rework wave, with 23 copies of one panic and 26 of one
-                fixture bug. The owner&apos;s audit set the cap at about ten unverified beads. When
+                fixture bug. That audit set the cap at about ten unverified beads. When
                 builds contend, keep workers code-first: in both projects they skipped the heavy
                 suites (robotics workers ran at most a compile check of their own crate), and the
                 orchestrator ran the suites centrally through <code>rch</code>.
@@ -2703,16 +2703,16 @@ When a Rust build or test is needed, offload it with rch (for example, rch exec 
               </P>
 
               <P>
-                About 20 hours in, the owner had the repository, tracker, and live swarm audited by
-                a different model family (Gemini, where the orchestrator was Claude) and relayed
-                the findings through Agent Mail to every agent as owner directives. After noting
+                About 20 hours in, I had the repository, tracker, and live swarm audited by a
+                different model family (Gemini, where the orchestrator was Claude) and relayed the
+                findings through Agent Mail to every agent as my own directives. After noting
                 what worked (no stubs, honest rework), the audit measured what the
                 orchestrator&apos;s check had softened: 65% of the Rust was conformance and build
                 machinery against under 8% in product crates, and beads averaged about 2,800 lines
                 against the plan&apos;s budget of about 160. It froze non-critical machinery,
                 pointed the swarm at the shortest path to a first runnable simulation, capped
-                work-ahead, and reserved budget changes for the owner. The orchestrator answered
-                within eight minutes with a plan and a list of items for the owner. Product share
+                work-ahead, and reserved budget changes for me. The orchestrator answered within
+                eight minutes with a plan and a list of items for me. Product share
                 and lines per bead against the budget make a cheap check to run every few hours,
                 because dispatch by graph rank drifts toward machinery on its own: registries and
                 governance are everyone&apos;s prerequisite.
@@ -2782,43 +2782,42 @@ When a Rust build or test is needed, offload it with rch (for example, rch exec 
               </P>
 
               <P>
-                That end state is close to how the author ran his recent projects. He typed about
-                40 messages to the robotics lead in four and a half days, and about 140 short
-                prompts drove 458 commits on the simulation project, most of them saved prompts:
-                the session opener, the gap-closing follow-up, the fresh-eyes requests, the
-                orchestrator kickoff, and a keep-alive line after each account swap. What he still
-                does himself:
+                That end state is close to how I ran my recent projects. I typed about 40 messages
+                to the robotics lead in four and a half days, and about 140 short prompts drove 458
+                commits on the simulation project, most of them saved prompts: the session opener,
+                the gap-closing follow-up, the fresh-eyes requests, the orchestrator kickoff, and a
+                keep-alive line after each account swap. What I still do myself:
               </P>
 
               <BulletList
                 items={[
                   <Fragment key="stage-and-stop">
-                    He sets the stage (&quot;we are in the PLANNING STAGES ONLY!!!&quot;) and calls
+                    I set the stage (&quot;we are in the PLANNING STAGES ONLY!!!&quot;) and call
                     the stop when polishing stops paying, as in Part 5.
                   </Fragment>,
                   <Fragment key="ambition">
-                    He raises the ambition: &quot;I need you to make your plan MUCH MUCH MUCH more
+                    I raise the ambition: &quot;I need you to make your plan MUCH MUCH MUCH more
                     radically innovative and ambitious.&quot;
                   </Fragment>,
-                  "He issues one-line policy rulings that go into AGENTS.md the same day, such as one canonical main branch with no worktrees or pull requests, or permission to change his own libraries upstream.",
-                  "He keeps budgets and structural limits, such as the plan's size caps, which the orchestrator may not change without him.",
-                  "He judges visual quality himself against reference images, sends blunt verdicts, and has agents render a few low-resolution frames and look at them before spending compute on full renders.",
+                  "I make one-line policy calls that go into AGENTS.md the same day, such as one canonical main branch with no worktrees or pull requests, or permission to change my own libraries upstream.",
+                  "I keep the budgets and structural limits, such as the plan's size caps, which the orchestrator may not change without me.",
+                  "I judge visual quality myself against reference images, send blunt verdicts, and have agents render a few low-resolution frames and look at them before spending compute on full renders.",
                   <Fragment key="deployed">
-                    He checks that &quot;deployed&quot; is true. Three times on the simulation
-                    project, an agent reported a deploy that had not happened (&quot;Did you
+                    I check that &quot;deployed&quot; is true. Three times on the simulation
+                    project, an agent reported a deploy that hadn&apos;t happened (&quot;Did you
                     actually DEPLOY this??&quot;).
                   </Fragment>,
-                  "He swaps accounts when a session hits its limit.",
+                  "I swap accounts when a session hits its limit.",
                 ]}
               />
 
               <P>
-                He hands over how to do the work (&quot;use your expert judgment on all
+                I hand over how to do the work (&quot;use your expert judgment on all
                 decisions&quot;, &quot;you decide everything, do whatever makes the project
-                best&quot;) and keeps the checks on the result: whether it looks right, whether it
+                best&quot;) and keep the checks on the result: whether it looks right, whether it
                 shipped, whether a job will take down the machine, and whether the swarm is telling
-                the truth. When he delegated a visual gate he had reserved, the close recorded who
-                delegated it and how to overturn it.
+                the truth. When I delegated a visual gate I had reserved for myself, the close
+                recorded who delegated it and how to overturn it.
               </P>
 
               <P>
@@ -2836,8 +2835,8 @@ When a Rust build or test is needed, offload it with rch (for example, rch exec 
               <TipBox variant="warning">
                 <strong>Watch for strategic drift.</strong> A swarm can look productive while
                 heading in the wrong direction: agents generating lots of code and commits while the
-                real goal still feels far away. The author&apos;s March 2026 X post about FrankenEngine described these
-                as <strong>&quot;Come to Jesus&quot; moments</strong> with the agents, used to make
+                real goal still feels far away. In a March 2026 X post about FrankenEngine I called
+                these <strong>&quot;Come to Jesus&quot; moments</strong> with the agents, used to make
                 sure &quot;we are not losing sight of the bigger picture&quot; after days of
                 methodically cranking through beads. If that happens, stop and ask: &quot;Where are
                 we on this project? Do we actually have the thing we are trying to build? If we
@@ -2939,20 +2938,20 @@ caam activate claude backup-2   # Switch instantly`}
 
               <P>
                 Usage limits shape long runs. The robotics lead hit about 22 limit messages and
-                swapped accounts eight times, and after each swap the author sent the line he uses
-                in all three projects: &quot;Keep cranking away on all that, friend! You&apos;re
+                swapped accounts eight times, and after each swap I sent the line I use in all
+                three projects: &quot;Keep cranking away on all that, friend! You&apos;re
                 doing a great job.&quot; The long-lived session carried on with its context intact.
               </P>
 
               <P>
                 Whole provider pools run dry too. Midway through the robotics run all five Gemini
-                panes hit their quota, with resets about 125 hours out. The orchestrator told the
-                owner, kept verifying alone, and added Codex panes with <code>ntm add</code>. Their
+                panes hit their quota, with resets about 125 hours out. The orchestrator told me,
+                kept verifying alone, and added Codex panes with <code>ntm add</code>. Their
                 takeover orders said to continue the stranded work on disk without reverting or
                 stashing it, and the orchestrator force-released a dead agent&apos;s reservations
                 only when they showed no recent activity. On another project, one request moved a
                 whole swarm to a different model. Probe a parked pane instead of trusting its
-                &quot;resets in&quot; text: the owner&apos;s audit found panes left idle on a stale
+                &quot;resets in&quot; text: the audit I ordered found panes left idle on a stale
                 &quot;Resets in ~125h&quot; message, and the lead tested which models still had
                 quota with throwaway subagents told to reply with two characters and use no tools.
               </P>
@@ -2998,8 +2997,8 @@ caam activate claude backup-2   # Switch instantly`}
             </P>
 
             <P>
-              At the end of a phase the author goes further, sending a shorter follow-up again and
-              again, sometimes six times in an evening, on plans as well as code:
+              At the end of a phase I go further, sending a shorter follow-up again and again,
+              sometimes six times in an evening, on plans as well as code:
             </P>
 
             <PromptBlock
@@ -3358,8 +3357,8 @@ Be sure to comply with ALL rules in AGENTS.md. Use ultrathink.`}
               <SkillNote
                 skills={["reality-check-for-project", "beads-compliance-and-completion-verification"]}
               >
-                <code>/reality-check-for-project</code>, which the author calls his most important
-                skill, turns this one question into a course correction.
+                <code>/reality-check-for-project</code> is still the single biggest gun in my
+                agentic coding arsenal; it turns this one question into a course correction.
                 It measures the code against the README and plan (the code shows where the project
                 is; the docs show where it promised to be), writes a plan to close every gap, turns
                 that plan into beads, and refines them until a round finds nothing new.{" "}
@@ -4356,7 +4355,7 @@ Then rewrite the skill to fix every issue you found. Make the happy path obvious
                 items={[
                   <Fragment key="build-baseline">
                     <strong>Build the baseline.</strong> Create a tool. Create a skill for it with a
-                    skill-creator workflow (the author uses a private <code>sc</code> skill;{" "}
+                    skill-creator workflow (I use a private <code>sc</code> skill;{" "}
                     <code>jsm create &lt;name&gt;</code> scaffolds a <code>SKILL.md</code> template
                     and <code>jsm validate</code> checks it). The first version of the skill will be
                     imperfect. Ship it anyway.
@@ -4478,10 +4477,10 @@ cass search "tool_name" --workspace /data/projects/PROJECT --json --limit 100`}
                       Layer 4: Skills bundled with tool installers (the skill improves before the
                       user ever sees it).
                     </strong>{" "}
-                    Every tool you ship installs a Claude Code skill along with the tool, and that
-                    skill was refined through multiple CASS cycles before shipping.
-                    When a new user installs the tool, their agents start with every refinement
-                    those cycles produced from the author&apos;s own agent sessions.
+                    Every tool I ship installs a Claude Code skill along with the tool, and that
+                    skill was refined through multiple CASS cycles before shipping. When a new user
+                    installs the tool, their agents start with every refinement those cycles
+                    produced from my own agent sessions.
                   </Fragment>,
                 ]}
               />
@@ -4804,7 +4803,7 @@ ntm spawn my-first-project --cc=2 --cod=1 --agy=1`}
               <P>
                 Once you get Claude Code up and running on the cloud server, you basically have a
                 very competent friend who can help you with any other problems you encounter. And
-                Jeffrey will personally answer your questions if you reach out on{" "}
+                I&apos;ll personally answer your questions if you reach out to me on{" "}
                 <a
                   href="https://x.com/doodlestein"
                   target="_blank"

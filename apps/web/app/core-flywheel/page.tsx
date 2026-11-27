@@ -744,9 +744,8 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
               />
 
               <P>
-                One pass is rarely enough. On one project the Flywheel&apos;s author sent the
-                follow-up below six times to a single plan, which was rewritten five times along
-                the way:
+                One pass is rarely enough. On one project I sent the follow-up below six times to a
+                single plan, and it got rewritten five times along the way:
               </P>
 
               <PromptBlock
@@ -776,10 +775,9 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
                 With one or two agents, each can close its own beads. Once several share a repo,
                 have them stop short of <code>br close</code>: the agent posts its commit and tests
                 in the bead&apos;s thread, and one agent you choose (or you) reruns those tests and
-                closes the bead. Write that rule into AGENTS.md. An agent&apos;s report that its
-                work is done is sometimes wrong: in one of the author&apos;s swarms, the first
-                central rerun of work the agents had reported finished sent 93 tests back for
-                rework.
+                closes the bead. Write that rule into AGENTS.md. Agents sometimes report work as
+                done when it isn&apos;t: in one of my swarms, the first central rerun of work the
+                agents had reported finished sent 93 tests back for rework.
               </P>
 
               <P>
@@ -799,28 +797,28 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
 
             <SubSection title="Starting a Session on an Existing Project">
               <P>
-                Steps 1-5 start a project. When the author opens a new session on a project that
-                already has code, his first prompt asks for a full read and a diagnosis. It begins
-                with the first sentence of the marching orders above (read all of AGENTS.md and the
-                README) and then asks for a reality check. He runs it with{" "}
+                Steps 1-5 start a project. When I open a new session on a project that already has
+                code, my first prompt asks for a full read and a diagnosis. It begins with the first
+                sentence of the marching orders above (read all of AGENTS.md and the README) and
+                then asks for a reality check. I run that with{" "}
                 <code>/reality-check-for-project</code>; without the skill, ask the question in Part
                 8.
               </P>
               <P>
-                He reads the report, adds a one-line clarification if something needs it, and sends
-                one follow-up that hands the prioritizing to the model. It opens, &quot;OK, so please do
+                I read the report, add a one-line clarification if something needs it, and send one
+                follow-up that hands the prioritizing to the model. It opens, &quot;OK, so please do
                 everything you think is advisable based on all of that, and start trying to close
                 the biggest gaps yourself, especially the ones with the most &apos;bang for the
-                buck&apos;.&quot; The rest asks the agent to wire in finished code that is not yet
-                connected, work through the remaining beads in a sensible order, keep a detailed
+                buck&apos;.&quot; The rest asks the agent to wire in finished code that isn&apos;t
+                connected yet, work through the remaining beads in a sensible order, keep a detailed
                 TODO list, and use its own judgment. The session&apos;s work comes from that
-                diagnosis, and he writes no task list of his own.
+                diagnosis; I don&apos;t write a task list of my own.
               </P>
               <P>
-                After a context compaction or a finished turn, he sends the same follow-up again
+                After a context compaction or a finished turn, I send the same follow-up again
                 instead of new instructions, since the plan, the beads, and AGENTS.md already hold
                 the state. Reality checks also find work the plan never covered: on one long
-                project, about 300 of its 521 beads were filed by them.
+                project, they filed about 300 of its 521 beads.
               </P>
             </SubSection>
           </GuideSection>
@@ -888,10 +886,10 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
 
             <SubSection title="A Few Prompts Do Most of the Work">
               <P>
-                The author types little. On one recent project he sent his main agent session about
-                40 messages over four and a half days, most of them saved prompts pasted again and
-                again. On another, the same follow-up went out more than a hundred times. These
-                few carry most of the work:
+                I don&apos;t type much. On one recent project I sent my main agent session about 40
+                messages over four and a half days, most of them saved prompts pasted again and
+                again. On another, I sent the same follow-up more than a hundred times. These few
+                prompts carry most of the work:
               </P>
               <BulletList
                 items={[
@@ -915,40 +913,40 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
             </SubSection>
 
             <SubSection title="Decisions That Stay With You">
-              <P>A handful of decisions stay with the human. In the author&apos;s projects:</P>
+              <P>A handful of decisions stay with you. These are the ones I keep for myself:</P>
               <BulletList
                 items={[
                   <Fragment key="stage">
-                    He decides when planning ends and building starts, and AGENTS.md says which
-                    stage the project is in. During one planning stage, the follow-up from Part 7,
-                    with its line about working through the beads, led an agent to start writing
-                    code. He stopped it (&quot;we are in the PLANNING STAGES ONLY!!!&quot;) and had
-                    the code moved into a folder git ignores.
+                    I decide when planning ends and building starts, and AGENTS.md says which stage
+                    the project is in. During one planning stage, the follow-up from Part 7, with its
+                    line about working through the beads, led an agent to start writing code. I
+                    stopped it (&quot;we are in the PLANNING STAGES ONLY!!!&quot;) and had the code
+                    moved into a folder git ignores.
                   </Fragment>,
                   <Fragment key="polish">
-                    He decides when polishing stops, with a plain message: &quot;ok I think
+                    I decide when polishing stops, with a plain message: &quot;ok I think
                     we&apos;ve done enough beads polishing at this point, let&apos;s please wrap it
                     up and finalize the beads so we can begin implementation work!&quot; To decide
                     when, look at how small the edits have become. On one project every round still
-                    edited most of the beads, while the typical edit had shrunk to about 12 of a
+                    edited most of the beads, but the typical edit had shrunk to about 12 of a
                     bead&apos;s 160 lines.
                   </Fragment>,
-                  "He rules when agents apply a rule too broadly. When agents treated a ban on third-party code as covering his own libraries too, his one-line ruling that his own projects were allowed went into AGENTS.md the same day.",
-                  "He sets the budgets, such as how much code a bead should take and how much of the machine a job may use. In one swarm the coordinating agent raised a size cap to fit the code already written; after that, changing a cap needed his approval.",
+                  "I make the call when agents apply a rule too broadly. When agents treated a ban on third-party code as covering my own libraries too, my one-line ruling that my own projects were allowed went into AGENTS.md the same day.",
+                  "I set the budgets, such as how much code a bead should take and how much of the machine a job may use. In one swarm the coordinating agent raised a size cap to fit the code it had already written; after that, changing a cap needed my approval.",
                   <Fragment key="result">
-                    He decides whether the result is right, and he looks at it himself. On a project
-                    with visual output, he compared the renders against reference images and sent
-                    blunt verdicts, because the agents&apos; own judgments of how it looked were
-                    repeatedly wrong. He also checks that &quot;deployed&quot; is true: three times,
-                    work an agent reported as deployed had not reached the live site (&quot;Did you
-                    actually DEPLOY this??&quot;).
+                    I decide whether the result is right, and I look at it myself. On a project with
+                    visual output, I compared the renders against reference images and sent blunt
+                    verdicts, because the agents&apos; own judgments of how it looked were
+                    repeatedly wrong. I also check that &quot;deployed&quot; is true: three times,
+                    work an agent reported as deployed hadn&apos;t reached the live site (&quot;Did
+                    you actually DEPLOY this??&quot;).
                   </Fragment>,
                 ]}
               />
               <P>
-                He leaves the how to the agents, and the follow-up prompt says so: &quot;use your
-                expert judgment on all decisions to make the optimal choice.&quot; When he handed
-                one of his own calls, a visual review, to an agent, it recorded in the bead that the
+                I leave the how to the agents, and the follow-up prompt says so: &quot;use your
+                expert judgment on all decisions to make the optimal choice.&quot; When I handed one
+                of my own calls, a visual review, to an agent, it recorded in the bead that the
                 decision was delegated and how to overturn it.
               </P>
             </SubSection>
@@ -1076,14 +1074,14 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
 
             <SubSection title="Measuring Progress Against the Plan">
               <P>
-                The last two rows come from the author&apos;s own projects. On one, a reality check
-                found 17 of 76 beads closed but only 13 of the plan&apos;s 58 goals met, and a
-                later audit reopened seven closures whose evidence did not hold up. On another, a
-                reality check six hours into a swarm found that nearly two-thirds of the new code
-                was verification and governance machinery. The coordinating agent noted that
-                sending agents first to the beads most others waited on had pushed the swarm that
-                way. An audit the author commissioned the next day paused the machinery and put the
-                swarm on the shortest path to a first working version.
+                The last two rows come from my own projects. On one, a reality check found 17 of 76
+                beads closed but only 13 of the plan&apos;s 58 goals met, and a later audit reopened
+                seven closures whose evidence didn&apos;t hold up. On another, a reality check six
+                hours into a swarm found that nearly two-thirds of the new code was verification and
+                governance machinery. The coordinating agent noted that sending agents first to the
+                beads most others waited on had pushed the swarm that way. I had an audit done the
+                next day; it paused the machinery and put the swarm on the shortest path to a first
+                working version.
               </P>
             </SubSection>
 
