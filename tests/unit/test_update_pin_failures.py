@@ -1638,6 +1638,41 @@ grok_recovery_source="$(declare -f update_snapshot_tool_binary update_verify_too
         self.assertEqual(link.readlink(), self.decoy)
         self.assertEqual(self.events(), [])
 
+    def self_update_payload(self, directory=None, name=None):
+        directory = directory or self.payload.parent
+        path = directory / (name or self.payload.name.replace("grok-linux-", "grok-1.0.92-linux-"))
+        self.program(path, "self-update-payload")
+        return path
+
+    def test_grok_self_update_layout_is_owned_and_ready(self):
+        # `grok update` leaves grok-<version>-linux-<arch> beside the installer
+        # payload and repoints ~/.grok/bin; the fleet ran this layout nightly.
+        self.install_payload(bind=False)
+        release = self.self_update_payload()
+        grok_bin = self.home / ".grok/bin"
+        self.bind(release, directory=grok_bin, relative=True)
+        self.bind(release, directory=grok_bin, name="agent", relative=True)
+        self.bind(release)
+        self.shell("acfs_grok_check preflight; acfs_grok_check ready")
+        self.assertEqual(self.events(), [])
+
+    def test_self_update_name_outside_grok_downloads_is_a_conflict(self):
+        self.install_payload(bind=False)
+        release = self.self_update_payload(directory=self.base / "elsewhere")
+        link = self.bind(release)
+        self.shell("acfs_grok_check preflight", code=1)
+        self.shell("acfs_grok_check ready", code=1)
+        self.assertEqual(link.readlink(), release)
+        self.assertEqual(self.events(), [])
+
+    def test_foreign_program_inside_grok_downloads_is_a_conflict(self):
+        self.install_payload(bind=False)
+        foreign = self.self_update_payload(name="cursor-agent")
+        link = self.bind(foreign, name="agent")
+        self.shell("acfs_grok_check preflight", code=1)
+        self.assertEqual(link.readlink(), foreign)
+        self.assertEqual(self.events(), [])
+
     def test_dangling_grok_link_is_not_treated_as_an_empty_slot(self):
         link = self.bind(self.base / "missing-cursor-shim")
         self.shell("acfs_grok_check preflight", code=1)

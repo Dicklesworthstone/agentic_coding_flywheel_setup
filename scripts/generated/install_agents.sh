@@ -2179,6 +2179,21 @@ acfs_grok_payload_path() {
     printf '%s/.grok/downloads/grok-linux-%s\n' "${HOME%/}" "$arch"
 }
 
+# Grok's own self-updater keeps each release beside the installer's payload as
+# grok-<version>-linux-<arch> and repoints ~/.grok/bin to it. A command bound to
+# one of those regular files is still Grok's: it neither conflicts with the
+# installer nor stops Grok from being ready. Nothing here executes the file.
+acfs_grok_is_self_update_payload() {
+    local candidate="${1:-}" payload="" resolved="" dir="" arch=""
+    [[ -n "$candidate" ]] || return 1
+    payload="$(acfs_grok_payload_path)" || return 1
+    arch="${payload##*/grok-linux-}"
+    resolved="$(/usr/bin/readlink -e -- "$candidate")" || return 1
+    dir="$(/usr/bin/readlink -m -- "${payload%/*}")" || return 1
+    [[ "${resolved%/*}" == "$dir" && -f "$resolved" && -x "$resolved" ]] || return 1
+    [[ "${resolved##*/}" =~ ^grok-[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9._]+)?-linux-${arch}$ ]]
+}
+
 acfs_grok_check() {
     local mode="${1:-ready}" payload="" primary_bin="" record="" record_size=""
     local cursor_dir="" candidate="" name="" resolved="" expected=""
@@ -2245,16 +2260,18 @@ acfs_grok_check() {
                 expected="$(/usr/bin/readlink -m -- "$payload")" || return 1
                 [[ "$resolved" != "$expected" ]] || continue
             fi
-            if [[ ! -f "$candidate" || ! "$candidate" -ef "$payload" ]]; then
-                printf 'Grok CLI: command conflict at %s; ACFS will not run or replace it. Switch back to Grok in Cursor or resolve the command ownership first.\n' "$candidate" >&2
-                return 1
+            if [[ -f "$candidate" && "$candidate" -ef "$payload" ]] \
+                || acfs_grok_is_self_update_payload "$candidate"; then
+                continue
             fi
+            printf 'Grok CLI: command conflict at %s; ACFS will not run or replace it. Switch back to Grok in Cursor or resolve the command ownership first.\n' "$candidate" >&2
+            return 1
         done
     done
     [[ "$mode" == ready ]] || return 0
     resolved="$(builtin command -v grok 2>/dev/null)" || resolved=""
-    if [[ ! -f "$payload" || ! -x "$payload" || "$resolved" != /* \
-        || ! -f "$resolved" || ! "$resolved" -ef "$payload" ]]; then
+    if [[ ! -f "$payload" || ! -x "$payload" || "$resolved" != /* || ! -f "$resolved" ]] \
+        || { [[ ! "$resolved" -ef "$payload" ]] && ! acfs_grok_is_self_update_payload "$resolved"; }; then
         printf 'Grok CLI: grok does not resolve to the installed Grok payload; installation is not ready.\n' >&2
         return 1
     fi
@@ -2557,6 +2574,21 @@ acfs_grok_payload_path() {
     printf '%s/.grok/downloads/grok-linux-%s\n' "${HOME%/}" "$arch"
 }
 
+# Grok's own self-updater keeps each release beside the installer's payload as
+# grok-<version>-linux-<arch> and repoints ~/.grok/bin to it. A command bound to
+# one of those regular files is still Grok's: it neither conflicts with the
+# installer nor stops Grok from being ready. Nothing here executes the file.
+acfs_grok_is_self_update_payload() {
+    local candidate="${1:-}" payload="" resolved="" dir="" arch=""
+    [[ -n "$candidate" ]] || return 1
+    payload="$(acfs_grok_payload_path)" || return 1
+    arch="${payload##*/grok-linux-}"
+    resolved="$(/usr/bin/readlink -e -- "$candidate")" || return 1
+    dir="$(/usr/bin/readlink -m -- "${payload%/*}")" || return 1
+    [[ "${resolved%/*}" == "$dir" && -f "$resolved" && -x "$resolved" ]] || return 1
+    [[ "${resolved##*/}" =~ ^grok-[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9._]+)?-linux-${arch}$ ]]
+}
+
 acfs_grok_check() {
     local mode="${1:-ready}" payload="" primary_bin="" record="" record_size=""
     local cursor_dir="" candidate="" name="" resolved="" expected=""
@@ -2623,16 +2655,18 @@ acfs_grok_check() {
                 expected="$(/usr/bin/readlink -m -- "$payload")" || return 1
                 [[ "$resolved" != "$expected" ]] || continue
             fi
-            if [[ ! -f "$candidate" || ! "$candidate" -ef "$payload" ]]; then
-                printf 'Grok CLI: command conflict at %s; ACFS will not run or replace it. Switch back to Grok in Cursor or resolve the command ownership first.\n' "$candidate" >&2
-                return 1
+            if [[ -f "$candidate" && "$candidate" -ef "$payload" ]] \
+                || acfs_grok_is_self_update_payload "$candidate"; then
+                continue
             fi
+            printf 'Grok CLI: command conflict at %s; ACFS will not run or replace it. Switch back to Grok in Cursor or resolve the command ownership first.\n' "$candidate" >&2
+            return 1
         done
     done
     [[ "$mode" == ready ]] || return 0
     resolved="$(builtin command -v grok 2>/dev/null)" || resolved=""
-    if [[ ! -f "$payload" || ! -x "$payload" || "$resolved" != /* \
-        || ! -f "$resolved" || ! "$resolved" -ef "$payload" ]]; then
+    if [[ ! -f "$payload" || ! -x "$payload" || "$resolved" != /* || ! -f "$resolved" ]] \
+        || { [[ ! "$resolved" -ef "$payload" ]] && ! acfs_grok_is_self_update_payload "$resolved"; }; then
         printf 'Grok CLI: grok does not resolve to the installed Grok payload; installation is not ready.\n' >&2
         return 1
     fi
@@ -2699,6 +2733,21 @@ acfs_grok_payload_path() {
     printf '%s/.grok/downloads/grok-linux-%s\n' "${HOME%/}" "$arch"
 }
 
+# Grok's own self-updater keeps each release beside the installer's payload as
+# grok-<version>-linux-<arch> and repoints ~/.grok/bin to it. A command bound to
+# one of those regular files is still Grok's: it neither conflicts with the
+# installer nor stops Grok from being ready. Nothing here executes the file.
+acfs_grok_is_self_update_payload() {
+    local candidate="${1:-}" payload="" resolved="" dir="" arch=""
+    [[ -n "$candidate" ]] || return 1
+    payload="$(acfs_grok_payload_path)" || return 1
+    arch="${payload##*/grok-linux-}"
+    resolved="$(/usr/bin/readlink -e -- "$candidate")" || return 1
+    dir="$(/usr/bin/readlink -m -- "${payload%/*}")" || return 1
+    [[ "${resolved%/*}" == "$dir" && -f "$resolved" && -x "$resolved" ]] || return 1
+    [[ "${resolved##*/}" =~ ^grok-[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9._]+)?-linux-${arch}$ ]]
+}
+
 acfs_grok_check() {
     local mode="${1:-ready}" payload="" primary_bin="" record="" record_size=""
     local cursor_dir="" candidate="" name="" resolved="" expected=""
@@ -2765,16 +2814,18 @@ acfs_grok_check() {
                 expected="$(/usr/bin/readlink -m -- "$payload")" || return 1
                 [[ "$resolved" != "$expected" ]] || continue
             fi
-            if [[ ! -f "$candidate" || ! "$candidate" -ef "$payload" ]]; then
-                printf 'Grok CLI: command conflict at %s; ACFS will not run or replace it. Switch back to Grok in Cursor or resolve the command ownership first.\n' "$candidate" >&2
-                return 1
+            if [[ -f "$candidate" && "$candidate" -ef "$payload" ]] \
+                || acfs_grok_is_self_update_payload "$candidate"; then
+                continue
             fi
+            printf 'Grok CLI: command conflict at %s; ACFS will not run or replace it. Switch back to Grok in Cursor or resolve the command ownership first.\n' "$candidate" >&2
+            return 1
         done
     done
     [[ "$mode" == ready ]] || return 0
     resolved="$(builtin command -v grok 2>/dev/null)" || resolved=""
-    if [[ ! -f "$payload" || ! -x "$payload" || "$resolved" != /* \
-        || ! -f "$resolved" || ! "$resolved" -ef "$payload" ]]; then
+    if [[ ! -f "$payload" || ! -x "$payload" || "$resolved" != /* || ! -f "$resolved" ]] \
+        || { [[ ! "$resolved" -ef "$payload" ]] && ! acfs_grok_is_self_update_payload "$resolved"; }; then
         printf 'Grok CLI: grok does not resolve to the installed Grok payload; installation is not ready.\n' >&2
         return 1
     fi
