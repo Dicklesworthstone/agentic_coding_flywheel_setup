@@ -426,7 +426,7 @@ EOF
     local result=0
     confirm_resume || result=$?
     [[ "$result" -eq 1 ]]
-    [[ ! -f "$ACFS_STATE_FILE" ]]
+    [[ -f "$ACFS_STATE_FILE" ]]
     state_init
     state_load_module_selection "$ACFS_STATE_FILE"
     state_module_is_selected agents.claude

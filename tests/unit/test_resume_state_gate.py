@@ -139,12 +139,12 @@ gum() {
 ''' if gum else "",
             WRITE_FAILURE if write_failure else "",
             r'''
-mv() {
-    if [[ "${1:-}" == "$ACFS_STATE_FILE" ]]; then
+ln() {
+    if [[ "${3:-}" == "$ACFS_STATE_FILE" ]]; then
         : > "$ACFS_HOME/backup-failed"
         return 74
     fi
-    command mv "$@"
+    command ln "$@"
 }
 ''' if backup_failure else "",
             extra,
@@ -152,6 +152,8 @@ mv() {
             # main() also calls this with ||; tests must preserve Bash's
             # conditional-call errexit semantics that exposed the defect.
             "confirm_resume || status=$?",
+            # For archive-failure cases, model main after the operator approves.
+            'if [[ "$status" == 1 ]]; then state_init || status=3; fi' if backup_failure else "",
             'printf "%s\\n" "$status" > "$ACFS_HOME/resume-status"',
             'exit "$status"',
         ])
@@ -234,12 +236,8 @@ mv() {
                 status, output = self.run_resume(
                     folder, "tty-read", choice=choice, extra=replay, version="old-version")
                 self.assertEqual(status, expected_status, output)
-                if choice == "fresh":
-                    self.assertFalse((folder / "state.json").exists())
-                    [backup] = folder.glob("state.json.backup.*")
-                    self.assertEqual(backup.read_bytes(), original)
-                else:
-                    self.assertEqual((folder / "state.json").read_bytes(), original)
+                self.assertEqual((folder / "state.json").read_bytes(), original)
+                self.assertEqual(list(folder.glob("state.json.backup.*")), [])
 
     def test_default_resume_preserves_work_before_first_completed_phase(self):
         # Use the real state writers. SIGKILL leaves the active cursor, while
@@ -339,12 +337,8 @@ mv() {
                         choice=choice, write_failure=True)
                     self.assertEqual(status, 2 if choice == "abort" else 1, output)
                     self.assertFalse((folder / "write-failed").exists())
-                    if choice == "abort":
-                        self.assertEqual((folder / "state.json").read_bytes(), before)
-                    else:
-                        backups = list(folder.glob("state.json.backup.*"))
-                        self.assertEqual(len(backups), 1)
-                        self.assertEqual(backups[0].read_bytes(), before)
+                    self.assertEqual((folder / "state.json").read_bytes(), before)
+                    self.assertEqual(list(folder.glob("state.json.backup.*")), [])
 
     def test_malformed_checkpoint_identity_is_not_treated_as_current(self):
         for source in ("", "main", "a" * 40, "A" * 64, [], {"sha": SOURCE_A}, 7):
@@ -486,7 +480,7 @@ state_update_with_args '
                 self.assertEqual((folder / "state.json").read_bytes(), before)
                 self.assertFalse((folder / "write-failed").exists())
 
-    def test_fresh_choices_archive_original_checkpoint_without_version_write(self):
+    def test_fresh_choices_keep_active_checkpoint_pending_final_approval(self):
         for path, forced in (("tty-read", False), ("tty-gum", False), ("default", True)):
             with self.subTest(path=path, forced=forced):
                 folder = self.fixture(path)
@@ -494,10 +488,8 @@ state_update_with_args '
                 status, output = self.run_resume(
                     folder, path, choice="fresh", force_reinstall=forced, write_failure=True)
                 self.assertEqual(status, 1, output)
-                self.assertFalse((folder / "state.json").exists())
-                backups = list(folder.glob("state.json.backup.*"))
-                self.assertEqual(len(backups), 1)
-                self.assertEqual(backups[0].read_bytes(), before)
+                self.assertEqual((folder / "state.json").read_bytes(), before)
+                self.assertEqual(list(folder.glob("state.json.backup.*")), [])
                 self.assertFalse((folder / "write-failed").exists())
 
     def test_backup_failures_are_technical_errors_and_preserve_checkpoint(self):
@@ -1173,6 +1165,63 @@ trap cleanup EXIT
                     selection = json.loads((folder / "home/.acfs/state.json").read_text())["module_selection"]
                     self.assertEqual(selection["selected_modules"], list(self.BASE_SCOPE))
                     self.assertEqual(selection["requested_modules"], ["lang.bun"])
+
+    def test_force_reinstall_decline_or_interruption_retains_checkpoint(self):
+        for custom in (False, True):
+            for signal_name in ("", "HUP", "INT"):
+                with self.subTest(custom=custom, signal=signal_name):
+                    execution = 'confirm_or_exit() { trace declined; '
+                    if signal_name:
+                        execution += f'_ACFS_SIGNAL_RECEIVED={signal_name}; '
+                    execution += 'exit 1; }'
+                    result, events, folder = self.run_scoped(
+                        ("--force-reinstall",), custom=custom, execution=execution, with_cleanup=True)
+                    self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertIn("declined", events)
+                    self.assertNotIn("mut:base", events)
+                    self.assertFalse(any(event.startswith("failure_") for event in events), events)
+                    self.assert_unchanged(folder, custom=custom)
+                    self.assertEqual(list(folder.rglob("*.backup.*")), [])
+
+    def test_approved_reinstall_archives_latest_custom_checkpoint_before_replacement(self):
+        result, events, folder = self.run_scoped(
+            ("--force-reinstall",), custom=True, execution=r'''
+confirm_or_exit() {
+    state_update '.operator_note = "updated while prompting"'
+    cp "$ACFS_STATE_FILE" "$TEST_ROOT/approved.json"
+}
+''')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("mut:base", events)
+        [backup] = folder.glob("custom-state.json.backup.*")
+        self.assertEqual(backup.read_bytes(), (folder / "approved.json").read_bytes())
+        current = json.loads((folder / "custom-state.json").read_text())
+        self.assertNotIn("operator_note", current)
+        self.assertEqual(current["completed_phases"], [])
+        self.assertEqual(current["module_selection"]["selected_modules"], list(self.BASE_SCOPE))
+
+    def test_reinstall_refuses_custom_checkpoint_reassigned_while_prompting(self):
+        result, events, folder = self.run_scoped(
+            ("--force-reinstall",), custom=True, with_cleanup=True, execution=r'''
+confirm_or_exit() {
+    state_update '.target_user = "different-account"'
+    cp "$ACFS_STATE_FILE" "$TEST_ROOT/after-prompt.json"
+}
+''')
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn("mut:base", events)
+        self.assertEqual((folder / "custom-state.json").read_bytes(),
+                         (folder / "after-prompt.json").read_bytes())
+        self.assertEqual(list(folder.glob("custom-state.json.backup.*")), [])
+
+    def test_failed_fresh_replacement_leaves_original_checkpoint_live(self):
+        result, events, folder = self.run_scoped(
+            ("--force-reinstall",), execution=WRITE_FAILURE, with_cleanup=True)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn("mut:base", events)
+        self.assert_unchanged(folder)
+        [backup] = (folder / "home/.acfs").glob("state.json.backup.*")
+        self.assertEqual(backup.read_bytes(), (folder / "checkpoint-before.json").read_bytes())
 
     def test_saved_no_deps_scope_survives_retry_force_and_readonly_preview(self):
         for arguments in ((), ("--resume",), ("--force-reinstall",),

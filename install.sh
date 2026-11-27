@@ -2388,7 +2388,7 @@ cleanup() {
     # else's checkpoint or while its writer holds the lock. Their EXIT trap
     # must still release resources, but has no installation to report.
     local report_install=true
-    if [[ "${ACFS_INSTALL_OWNS_CHECKPOINT:-false}" != true \
+    if [[ "${ACFS_INSTALL_OWNS_CHECKPOINT:-false}" != true || -n "${_ACFS_PENDING_REINSTALL_FILE:-}" \
         || "${RESET_STATE_ONLY:-false}" == true || "${DRY_RUN:-false}" == true \
         || "${PRINT_MODE:-false}" == true || "${PRINT_PLAN_MODE:-false}" == true \
         || "${LIST_MODULES:-false}" == true || "${PIN_REF_MODE:-false}" == true ]]; then
@@ -13399,7 +13399,7 @@ main() {
             1) # Fresh install - confirm before proceeding, then initialize state
                 confirm_or_exit
                 if type -t state_init &>/dev/null; then
-                    state_init
+                    state_init || return 1
                 fi
                 ;;
             2) # Abort

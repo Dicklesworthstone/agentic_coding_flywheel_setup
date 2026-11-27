@@ -40,13 +40,14 @@ _ACFS_STATE_REINSTALL_SELECTION_MODE=""
 _ACFS_STATE_REINSTALL_SELECTION_FILE=""
 declare -ga _ACFS_STATE_REINSTALL_MODULES=()
 declare -ga _ACFS_STATE_REINSTALL_REQUESTED_MODULES=()
+_ACFS_PENDING_REINSTALL_FILE=""
 ACFS_STATE_SELECTION_MODE=invalid
 ACFS_STATE_INSTALL_MODE=""
 declare -ga ACFS_STATE_SELECTED_MODULES=()
 declare -ga ACFS_STATE_REQUESTED_MODULES=()
 export -n _ACFS_STATE_SH_LOADED _ACFS_STATE_LOCKED _ACFS_STATE_LOCK_DEPTH \
     _ACFS_STATE_LOCK_FILE _ACFS_STATE_LOCK_OWNER_PID _ACFS_STATE_SOURCE_LEDGER_SHA256 \
-    _ACFS_STATE_REINSTALL_SELECTION_MODE _ACFS_STATE_REINSTALL_SELECTION_FILE \
+    _ACFS_STATE_REINSTALL_SELECTION_MODE _ACFS_STATE_REINSTALL_SELECTION_FILE _ACFS_PENDING_REINSTALL_FILE \
     ACFS_STATE_SELECTION_MODE ACFS_STATE_INSTALL_MODE
 
 _ACFS_STATE_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -838,6 +839,60 @@ state_record_module_selection() {
 # Usage: state_init
 # Returns: 0 on success, 1 on failure
 state_init() {
+    # A fresh choice is provisional until the install confirmation succeeds.
+    # Hold the usual writer lock from validation through archive and replacement.
+    if [[ -z "${_ACFS_PENDING_REINSTALL_FILE:-}" ]]; then
+        _state_init_checkpoint
+        return $?
+    fi
+
+    local state_file="" status=0
+    state_file=$(state_get_file) || return 1
+    [[ "$state_file" == "$_ACFS_PENDING_REINSTALL_FILE" ]] || return 1
+    _state_acquire_lock || return 1
+    if _state_archive_reinstall_checkpoint "$state_file"; then
+        _state_init_checkpoint || status=$?
+    else
+        status=1
+    fi
+    _state_release_lock
+    if [[ "$status" -eq 0 ]]; then
+        _ACFS_PENDING_REINSTALL_FILE=""
+    fi
+    return "$status"
+}
+
+_state_archive_reinstall_checkpoint() {
+    local state_file="$1" backup_file=""
+    if [[ ! -f "$state_file" || -L "$state_file" || "$state_file" -ef /var/lib/acfs/state.json ]]; then
+        printf 'Cannot archive the installation checkpoint: %s\n' "$state_file" >&2
+        return 1
+    fi
+    # Recheck identity after the prompt. Only the default per-user checkpoint
+    # may predate the target account fields.
+    if [[ -n "${TARGET_HOME:-}" && -n "${TARGET_USER:-}" ]]; then
+        if [[ "$state_file" == "$TARGET_HOME/.acfs/state.json" ]]; then
+            state_load_module_selection "$state_file" "$TARGET_HOME" "$TARGET_USER" allow-legacy-identity || return 1
+        else
+            state_load_module_selection "$state_file" "$TARGET_HOME" "$TARGET_USER" || return 1
+        fi
+    elif [[ "$state_file" != "${ACFS_HOME:-$HOME/.acfs}/state.json" ]]; then
+        printf 'Cannot validate the target for custom checkpoint %s\n' "$state_file" >&2
+        return 1
+    fi
+    backup_file=$(mktemp "${state_file}.backup.$(date +%Y%m%d_%H%M%S).XXXXXX") || return 1
+    # Checkpoint writers publish by rename. Archiving the old inode keeps
+    # the previous bytes and ownership even if replacement fails or is interrupted.
+    if ! ln -fT -- "$state_file" "$backup_file"; then
+        rm -f -- "$backup_file"
+        printf 'Could not archive the installation checkpoint: %s\n' "$state_file" >&2
+        return 1
+    fi
+    state_sync_path_if_enabled "$(dirname "$state_file")"
+    printf 'Archived previous installation checkpoint: %s\n' "$backup_file" >&2
+}
+
+_state_init_checkpoint() {
     local state_file
     state_file="$(state_get_file 2>/dev/null || true)"
     if [[ -z "$state_file" ]]; then
@@ -1613,11 +1668,12 @@ get_next_pending_phase() {
 #   3 - State preparation failed (stop installation with an error)
 #
 # Side effects:
-#   - May move state file to a timestamped backup if fresh install chosen
+#   - Queues a valid checkpoint for archive by state_init after installation confirmation
 #   - Prints status messages to stderr
 #
 # Related: agentic_coding_flywheel_setup-4xi
 confirm_resume() {
+    _ACFS_PENDING_REINSTALL_FILE=""
     local state_file
     if ! state_file="$(state_get_file)"; then
         _confirm_resume_log_warn "Cannot resolve the installation checkpoint. Refusing to resume."
@@ -1688,11 +1744,8 @@ confirm_resume() {
 
     # Handle explicit CLI flags first (these override everything)
     if [[ "${ACFS_FORCE_REINSTALL:-}" == "true" ]]; then
-        _confirm_resume_log_info "Force reinstall requested. Wiping state..."
-        if ! state_backup_and_remove; then
-            _confirm_resume_log_warn "Failed to move state file out of the way. Aborting."
-            return 3
-        fi
+        _confirm_resume_log_info "Force reinstall requested."
+        _ACFS_PENDING_REINSTALL_FILE="$state_file"
         return 1
     fi
 
@@ -1823,10 +1876,7 @@ confirm_resume() {
             case "$choice" in
                 "Fresh install")
                     _confirm_resume_log_info "Starting fresh install..."
-                    if ! state_backup_and_remove; then
-                        _confirm_resume_log_warn "Failed to move state file out of the way. Aborting."
-                        return 3
-                    fi
+                    _ACFS_PENDING_REINSTALL_FILE="$state_file"
                     return 1
                     ;;
                 "Abort")
@@ -1845,10 +1895,7 @@ confirm_resume() {
             case "${choice,,}" in
                 f|fresh)
                     _confirm_resume_log_info "Starting fresh install..."
-                    if ! state_backup_and_remove; then
-                        _confirm_resume_log_warn "Failed to move state file out of the way. Aborting."
-                        return 3
-                    fi
+                    _ACFS_PENDING_REINSTALL_FILE="$state_file"
                     return 1
                     ;;
                 a|abort)
