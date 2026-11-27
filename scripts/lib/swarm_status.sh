@@ -125,8 +125,17 @@ swarm_status_binary_path() {
         .|..|*/*) return 1 ;;
     esac
 
+    # Ubuntu 26.04 ships a uutils timeout that leaves descendants running.
+    if [[ "$name" == timeout && -x /usr/bin/gnutimeout ]]; then
+        printf '%s\n' /usr/bin/gnutimeout
+        return 0
+    fi
+
     path_value="$(command -v "$name" 2>/dev/null || true)"
     [[ -n "$path_value" && -x "$path_value" ]] || return 1
+    if [[ "$name" == timeout && "$(LC_ALL=C "$path_value" --version 2>/dev/null)" != 'timeout (GNU coreutils) '* ]]; then
+        return 1
+    fi
     printf '%s\n' "$path_value"
 }
 

@@ -60,6 +60,12 @@ support_system_binary_path() {
             ;;
     esac
 
+    # Ubuntu 26.04 ships a uutils timeout that leaves descendants running.
+    if [[ "$name" == timeout && -x /usr/bin/gnutimeout ]]; then
+        printf '%s\n' /usr/bin/gnutimeout
+        return 0
+    fi
+
     for candidate in \
         "/usr/bin/$name" \
         "/bin/$name" \
@@ -69,6 +75,9 @@ support_system_binary_path() {
         "/sbin/$name"
     do
         [[ -x "$candidate" ]] || continue
+        if [[ "$name" == timeout && "$(LC_ALL=C "$candidate" --version 2>/dev/null)" != 'timeout (GNU coreutils) '* ]]; then
+            continue
+        fi
         printf '%s\n' "$candidate"
         return 0
     done
@@ -1845,29 +1854,26 @@ support_run_with_timeout() {
     local timeout_secs="$1"
     shift
 
+    [[ "$timeout_secs" =~ ^([0-9]+([.][0-9]*)?|[.][0-9]+)[smhd]?$ && -n "${timeout_secs//[.0smhd]/}" ]] || return 2
     local timeout_bin="" bash_bin="" sleep_bin=""
-    timeout_bin="$(support_system_binary_path timeout 2>/dev/null || command -v timeout 2>/dev/null || true)"
-    if [[ -n "$timeout_bin" ]]; then
-        bash_bin="$(support_system_binary_path bash 2>/dev/null)" || return 127
-        sleep_bin="$(support_system_binary_path sleep 2>/dev/null)" || return 127
-        # A wrapper exiting on TERM must not cancel escalation while its
-        # descendants still hold captured output open. Keep the guardian in
-        # timeout's process group until KILL, with startup hooks disabled.
-        "$timeout_bin" -k 5 "$timeout_secs" "$bash_bin" --noprofile --norc -p -c '
-            set +e
-            set +m
-            guardian_sleep=$1
-            shift
-            trap '\''trap "" HUP INT QUIT TERM; while :; do "$guardian_sleep" 1; done'\'' HUP INT QUIT TERM
-            "$@" &
-            probe_pid=$!
-            probe_status=0
-            wait "$probe_pid" || probe_status=$?
-            exit "$probe_status"
-        ' _ "$sleep_bin" "$@" </dev/null 2>/dev/null
-    else
-        "$@" </dev/null 2>/dev/null
-    fi
+    timeout_bin="$(support_system_binary_path timeout 2>/dev/null)" || return 127
+    bash_bin="$(support_system_binary_path bash 2>/dev/null)" || return 127
+    sleep_bin="$(support_system_binary_path sleep 2>/dev/null)" || return 127
+    # A wrapper exiting on TERM must not cancel escalation while its
+    # descendants still hold captured output open. Keep the guardian in
+    # timeout's process group until KILL, with startup hooks disabled.
+    "$timeout_bin" -k 5 "$timeout_secs" "$bash_bin" --noprofile --norc -p -c '
+        set +e
+        set +m
+        guardian_sleep=$1
+        shift
+        trap '\''trap "" HUP INT QUIT TERM; while :; do "$guardian_sleep" 1; done'\'' HUP INT QUIT TERM
+        "$@" &
+        probe_pid=$!
+        probe_status=0
+        wait "$probe_pid" || probe_status=$?
+        exit "$probe_status"
+    ' _ "$sleep_bin" "$@" </dev/null 2>/dev/null
 }
 
 support_swarm_inventory_file() {

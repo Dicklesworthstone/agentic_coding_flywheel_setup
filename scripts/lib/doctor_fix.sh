@@ -108,6 +108,12 @@ doctor_fix_system_binary_path() {
             ;;
     esac
 
+    # Ubuntu 26.04 ships a uutils timeout that leaves descendants running.
+    if [[ "$name" == timeout && -x /usr/bin/gnutimeout ]]; then
+        printf '%s\n' /usr/bin/gnutimeout
+        return 0
+    fi
+
     for candidate in \
         "/usr/bin/$name" \
         "/bin/$name" \
@@ -115,6 +121,9 @@ doctor_fix_system_binary_path() {
         "/sbin/$name"
     do
         [[ -x "$candidate" ]] || continue
+        if [[ "$name" == timeout && "$(LC_ALL=C "$candidate" --version 2>/dev/null)" != 'timeout (GNU coreutils) '* ]]; then
+            continue
+        fi
         printf '%s\n' "$candidate"
         return 0
     done
@@ -1358,7 +1367,6 @@ doctor_fix_build_dcg_hook_command() {
     shift 2
     local dcg_bin="" runtime_home="" runtime_user="" current_user=""
     local config_dir="" extra_env="" timeout_bin=""
-    local -a bounded=()
     dcg_bin="$(doctor_fix_binary_path dcg 2>/dev/null || true)"
     runtime_home="$(doctor_fix_runtime_home 2>/dev/null || true)"
     runtime_user="$(doctor_fix_runtime_user 2>/dev/null || true)"
@@ -1376,9 +1384,9 @@ doctor_fix_build_dcg_hook_command() {
         [[ "$config_dir" != *$'\n'* && "$config_dir" != *$'\r'* ]] || return 1
         extra_env="CLAUDE_CONFIG_DIR=$config_dir"
     fi
-    timeout_bin="$(doctor_fix_system_binary_path timeout 2>/dev/null || true)"
-    [[ -z "$timeout_bin" ]] || bounded=("$timeout_bin" --kill-after=5s "$duration")
-    doctor_fix_build_runtime_command "$result_name" "$extra_env" "${bounded[@]}" "$dcg_bin" "$@"
+    timeout_bin="$(doctor_fix_system_binary_path timeout 2>/dev/null)" || return 1
+    doctor_fix_build_runtime_command "$result_name" "$extra_env" \
+        "$timeout_bin" --kill-after=5s "$duration" "$dcg_bin" "$@"
 }
 
 dcg_hook_already_installed() {

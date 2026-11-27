@@ -82,6 +82,12 @@ _status_system_binary_path() {
             ;;
     esac
 
+    # Ubuntu 26.04 ships a uutils timeout that leaves descendants running.
+    if [[ "$name" == timeout && -x /usr/bin/gnutimeout ]]; then
+        printf '%s\n' /usr/bin/gnutimeout
+        return 0
+    fi
+
     for candidate in \
         "/usr/bin/$name" \
         "/bin/$name" \
@@ -93,6 +99,9 @@ _status_system_binary_path() {
         "/opt/homebrew/sbin/$name"
     do
         [[ -x "$candidate" ]] || continue
+        if [[ "$name" == timeout && "$(LC_ALL=C "$candidate" --version 2>/dev/null)" != 'timeout (GNU coreutils) '* ]]; then
+            continue
+        fi
         printf '%s\n' "$candidate"
         return 0
     done

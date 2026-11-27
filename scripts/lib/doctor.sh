@@ -69,6 +69,12 @@ _acfs_doctor_system_binary_path() {
             ;;
     esac
 
+    # Ubuntu 26.04 ships a uutils timeout that leaves descendants running.
+    if [[ "$name" == timeout && -x /usr/bin/gnutimeout ]]; then
+        printf '%s\n' /usr/bin/gnutimeout
+        return 0
+    fi
+
     for candidate in \
         "/usr/bin/$name" \
         "/bin/$name" \
@@ -76,6 +82,9 @@ _acfs_doctor_system_binary_path() {
         "/sbin/$name"
     do
         [[ -x "$candidate" ]] || continue
+        if [[ "$name" == timeout && "$(LC_ALL=C "$candidate" --version 2>/dev/null)" != 'timeout (GNU coreutils) '* ]]; then
+            continue
+        fi
         printf '%s\n' "$candidate"
         return 0
     done
@@ -2949,8 +2958,8 @@ _acfs_doctor_read_managed_sudo_policy() {
     stat_bin="$(_acfs_doctor_system_binary_path stat 2>/dev/null || true)"
     cat_bin="$(_acfs_doctor_system_binary_path cat 2>/dev/null || true)"
     [[ -n "$bash_bin" && -n "$env_bin" && -n "$stat_bin" && -n "$cat_bin" ]] || return 2
-    timeout_bin="$(_acfs_doctor_system_binary_path timeout 2>/dev/null || true)"
-    [[ -z "$timeout_bin" ]] || reader+=("$timeout_bin" --kill-after=1s 5s)
+    timeout_bin="$(_acfs_doctor_system_binary_path timeout 2>/dev/null)" || return 2
+    reader+=("$timeout_bin" --kill-after=1s 5s)
     reader+=("$env_bin" -i PATH=/usr/sbin:/usr/bin:/sbin:/bin "$bash_bin" --noprofile --norc -p -c '
         policy_file=$1 target_user=$2 stat_bin=$3 cat_bin=$4
         # An inaccessible directory is unknown, not evidence of absence.

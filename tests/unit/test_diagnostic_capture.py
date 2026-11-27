@@ -117,7 +117,7 @@ class DiagnosticCaptureTests(unittest.TestCase):
         probe = doctor_definitions("doctor_version_probe")
         for mode, expected in (("merge", "fixture version"), ("discard", "")):
             with self.subTest(mode=mode):
-                code = probe + "\ndoctor_version_probe /usr/bin/timeout 1 " + mode + \
+                code = probe + '\ndoctor_version_probe "$(_acfs_doctor_system_binary_path timeout)" 1 ' + mode + \
                     " /bin/bash -c 'printf \"fixture version\\nsecond line\\n\" >&2'"
                 # Repository helper and literal fixture, no external input. ubs:ignore[py.security.command-injection]
                 result = subprocess.run(["/bin/bash", "-c", code], capture_output=True,
@@ -127,7 +127,7 @@ class DiagnosticCaptureTests(unittest.TestCase):
 
     def test_version_probe_preserves_failure_without_caller_pipefail(self):
         code = doctor_definitions("doctor_version_probe") + \
-            "\ndoctor_version_probe /usr/bin/timeout 1 merge /bin/bash -c " + \
+            '\ndoctor_version_probe "$(_acfs_doctor_system_binary_path timeout)" 1 merge /bin/bash -c ' + \
             shlex.quote("printf 'credible version 1.0\\n'; exit 42")
         result = subprocess.run(["/bin/bash", "-c", code], capture_output=True,
                                 text=True, timeout=3)
@@ -423,7 +423,7 @@ class DiagnosticCaptureTests(unittest.TestCase):
                            f"Path({str(group)!r}).write_text(str(os.getpgrp()))\n"
                            "time.sleep(30)\n")
         code = "set -o pipefail\n" + probe + \
-            "\ndoctor_version_probe /usr/bin/timeout 0.1 discard /usr/bin/python3 " + shlex.quote(str(fixture))
+            '\ndoctor_version_probe "$(_acfs_doctor_system_binary_path timeout)" 0.1 discard /usr/bin/python3 ' + shlex.quote(str(fixture))
         # Repository helper and shell-quoted fixture path. ubs:ignore[py.security.command-injection]
         process = subprocess.Popen(["/bin/bash", "-c", code], stdout=subprocess.PIPE,
                                    stderr=subprocess.PIPE, text=True, start_new_session=True)
@@ -501,7 +501,7 @@ class DiagnosticCaptureTests(unittest.TestCase):
             ])
         if kind == "version":
             return "set -o pipefail\n" + doctor_definitions("doctor_version_probe") + \
-                f"\ndoctor_version_probe /usr/bin/timeout {deadline} discard {argv}"
+                f'\ndoctor_version_probe "$(_acfs_doctor_system_binary_path timeout)" {deadline} discard {argv}'
         if kind == "deep":
             return "\n".join([
                 doctor_definitions("run_with_timeout"),
@@ -608,6 +608,39 @@ class DiagnosticCaptureTests(unittest.TestCase):
                                 text=True, timeout=3)
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(marker.exists(), "Missing timeout ran an unbounded probe")
+
+    def test_diagnostic_commands_select_a_process_group_timeout(self):
+        consumers = {
+            "scripts/lib/doctor.sh": "_acfs_doctor_system_binary_path",
+            "scripts/lib/doctor_fix.sh": "doctor_fix_system_binary_path",
+            "scripts/lib/info.sh": "info_system_binary_path",
+            "scripts/lib/status.sh": "_status_system_binary_path",
+            "scripts/lib/support.sh": "support_system_binary_path",
+            "scripts/lib/swarm_status.sh": "swarm_status_binary_path",
+            "packages/onboard/onboard.sh": "onboard_system_binary_path",
+        }
+        system_gnu = Path("/usr/bin/gnutimeout")
+        for source, resolver in consumers.items():
+            with self.subTest(source=source):
+                code = definition(ROOT / source, resolver) + f"\n{resolver} timeout"
+                selected = subprocess.check_output(["/bin/bash", "-c", code], text=True).strip()
+                if os.access(system_gnu, os.X_OK):
+                    self.assertTrue(system_gnu.samefile(selected))
+                version = subprocess.check_output([selected, "--version"], text=True,
+                                                  env={**os.environ, "LC_ALL": "C"})
+                self.assertIn("(GNU coreutils)", version.splitlines()[0])
+
+    def test_support_refuses_an_unbounded_probe(self):
+        marker = self.root / "unbounded-support-probe"
+        for deadline in ("0", "0.0s", "--help", "5s"):
+            with self.subTest(deadline=deadline):
+                code = self.bounded_probe("support", ["/usr/bin/touch", str(marker)], deadline=deadline)
+                if deadline == "5s":
+                    before, call = code.rsplit("\n", 1)
+                    code = before + "\nsupport_system_binary_path() { return 1; }\n" + call
+                result = subprocess.run(["/bin/bash", "-c", code], capture_output=True, timeout=3)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse(marker.exists())
 
     def test_swarm_rejects_deadlines_that_disable_or_reinterpret_timeout(self):
         for index, deadline in enumerate(("0", "0.000", "-1", "--help", "NaN", "1h")):

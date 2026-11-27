@@ -1597,8 +1597,12 @@ doctor_tailscale_fixture() {
     ACFS_DOCTOR_CI=false
     # This fixture exercises only Tailscale; keep SSH service discovery local
     # and avoid querying the runner's service manager.
+    DOCTOR_TEST_DEADLINE_BIN="$(_acfs_doctor_system_binary_path timeout)" || return 1
     _acfs_doctor_system_binary_path() {
-        case "$1" in sshd|systemctl) return 1 ;; esac
+        case "$1" in
+            sshd|systemctl) return 1 ;;
+            timeout) printf '%s\n' "$DOCTOR_TEST_DEADLINE_BIN"; return ;;
+        esac
         [[ -x "/usr/bin/$1" ]] || return 1
         printf '/usr/bin/%s\n' "$1"
     }
@@ -2224,8 +2228,12 @@ sleep 7
 exit 1
 EOF
     chmod +x "$DOCTOR_TEST_BIN/sudo"
+    local doctor_test_deadline_bin
+    doctor_test_deadline_bin="$(_acfs_doctor_system_binary_path timeout)"
     _acfs_doctor_system_binary_path() {
-        if [[ "$1" == sudo ]]; then
+        if [[ "$1" == timeout ]]; then
+            printf '%s\n' "$doctor_test_deadline_bin"
+        elif [[ "$1" == sudo ]]; then
             printf '%s/sudo\n' "$DOCTOR_TEST_BIN"
         elif [[ -x "/usr/bin/$1" ]]; then
             printf '/usr/bin/%s\n' "$1"
