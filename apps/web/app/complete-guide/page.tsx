@@ -3129,14 +3129,18 @@ When a Rust build or test is needed, offload it with rch (for example, rch exec 
               </P>
 
               <P>
-                People ask whether I still read every line of code. I don&apos;t read every line of
-                the plan. I use the product early and often, feed what I find back in, and spot-check
-                the places where a mistake is most likely. In the hedge fund business, where I come
-                from, a portfolio manager doesn&apos;t check every cell of an analyst&apos;s model;
-                they probe the one most likely to be wrong. Joel Spolsky&apos;s account of a spec
-                review with Bill Gates, from the years when Spolsky worked on Excel, makes the same
-                point: one detailed question about how the date functions handled leap years told
-                Gates whether the whole spec had been thought through.
+                People ask whether I still read every line of code. I don&apos;t even read every
+                line of the plan. I use the product early and often, feed what I find back in, and
+                spot-check the places where a mistake is most likely. In the hedge fund business,
+                where I come from, a portfolio manager doesn&apos;t check every cell of an
+                analyst&apos;s model; they probe the one most likely to be wrong. Joel Spolsky&apos;s
+                essay &quot;My First BillG Review&quot;, about Spolsky&apos;s time as a program
+                manager on Excel, makes the same point. The questions from Bill Gates got harder and
+                more detailed until they reached whether the date functions in the new macro
+                language would work exactly like Excel&apos;s. Spolsky answered &quot;Yes, except
+                for January and February, 1900&quot;: Excel counts 1900 as a leap year, so it
+                numbers the days before March 1900 differently. That answer told Gates the spec had
+                been thought through.
               </P>
 
               <P>
