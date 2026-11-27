@@ -250,10 +250,13 @@ teardown() {
     load_screens
 
     local default_dir
-    default_dir=$(get_default_projects_dir)
+    default_dir=$(ACFS_PROJECTS_DIR="$BATS_TEST_TMPDIR" get_default_projects_dir)
+    [[ "$default_dir" == "$BATS_TEST_TMPDIR" ]]
 
-    # Should return a valid directory
-    [[ -d "$default_dir" ]] || [[ "$default_dir" == "$HOME" ]]
+    # Without an override: an existing candidate, or the canonical
+    # /data/projects, which the installer creates when none exists yet.
+    default_dir=$(ACFS_PROJECTS_DIR="" get_default_projects_dir)
+    [[ -d "$default_dir" ]] || [[ "$default_dir" == "/data/projects" ]]
 }
 
 @test "check_directory_status returns OK for new path" {

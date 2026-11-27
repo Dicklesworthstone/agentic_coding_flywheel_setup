@@ -371,8 +371,18 @@ teardown() {
     assert_success
 }
 
+# newproj commits only when git has an identity; without one it warns and
+# leaves the files staged. Give the commit tests their own identity instead of
+# depending on the machine's global git config.
+use_test_git_identity() {
+    export GIT_CONFIG_GLOBAL="$TEST_DIR/gitconfig" GIT_CONFIG_NOSYSTEM=1
+    git config --global user.name "ACFS Test"
+    git config --global user.email "acfs-test@example.invalid"
+}
+
 @test "main CLI commits AGENTS.md when br is skipped" {
     local project_dir="$TEST_DIR/cli-agents-project"
+    use_test_git_identity
 
     run bash -c '
         source '"$ACFS_LIB_DIR"'/newproj.sh
@@ -394,6 +404,7 @@ teardown() {
     fi
 
     local project_dir="$TEST_DIR/cli-default-project"
+    use_test_git_identity
 
     run bash -c '
         source '"$ACFS_LIB_DIR"'/newproj.sh
