@@ -578,7 +578,9 @@ exit 99'
                 esac
             }
             _STATUS_LIVE=true
-            _status_editor_json "$2" 25 OK "$3"
+            # Same contract as acfs status --ide: the parsed state JSON and the
+            # install status it classified ({"completed_phases":["finalize"]}).
+            _status_editor_json "$(< "$2")" 25 OK "$3" complete
         ' _ "$EDITOR_STATUS_SH" "$stub_dir/state.json" "$jq_bin" "$timeout_bin" "$stub_dir/older-bash")"
 
     [[ "$(cat "$ARTIFACT_DIR/editor_interpreter.exit")" == 0 ]] || return 1
