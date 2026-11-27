@@ -1973,15 +1973,211 @@ printf 'COUNTS:%s:%s\n' "$SUCCESS_COUNT" "$FAIL_COUNT"
         self.write(self.bin, "flywheel-update-agents-md", "#!/bin/sh\nexit 0\n", 0o755)
         return contents
 
+    def write_guard_doctor(self):
+        self.write(self.bin, "dcg", r'''#!/bin/sh
+case "$1" in
+    doctor)
+        printf 'dcg-doctor:%s:%s\n' "$CLAUDE_CONFIG_DIR" "$*" >> "$TEST_EVENTS"
+        printf '%s\n' "$TEST_DCG_REPORT"
+        exit "${TEST_DCG_STATUS:-0}"
+        ;;
+    --robot)
+        printf 'dcg-hook:%s:%s:%s\n' "$CLAUDE_CONFIG_DIR" "${DCG_NO_SELF_HEAL:-}" "$*" >> "$TEST_EVENTS"
+        [ "$(cat)" = '{"tool_name":"Bash","tool_input":{"command":"git reset --hard"}}' ] || exit 64
+        if [ "${TEST_DCG_HOOK_REPORT+x}" = x ]; then
+            printf '%s\n' "$TEST_DCG_HOOK_REPORT"
+        else
+            printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","ruleId":"core.git:reset-hard","packId":"core.git"}}'
+        fi
+        exit "${TEST_DCG_HOOK_STATUS:-0}"
+        ;;
+    *) exit 64 ;;
+esac
+''', 0o755)
+
+    def migrate_legacy_guard(self, **env):
+        return self.shell(r'''
+# Never discover or execute the caller's real DCG.
+update_binary_path() {
+    [[ "$1" == dcg && -x "$TEST_BIN/dcg" ]] || return 1
+    printf '%s/dcg\n' "$TEST_BIN"
+}
+cleanup_legacy_git_safety_guard
+''', dispatch=False, **env)
+
+    def test_claude_only_update_preserves_guard_without_selected_replacement(self):
+        self.selection("agents.claude")
+        before = self.maintenance_files()
+        self.shell("main --yes --agents-only --no-self-update\n")
+        self.assertEqual((self.home / ".claude/settings.json").read_text(),
+                         before[".claude/settings.json"])
+        self.assertFalse(any(event.startswith("maintenance:hook ") for event in self.events()))
+
+    def test_legacy_guard_migration_requires_verified_replacement(self):
+        self.selection("agents.claude", "stack.dcg")
+        healthy = json.dumps({"ok": True, "checks": [
+            {"id": "hook_wiring", "status": "ok"},
+            {"id": "observe_mode", "status": "ok"},
+        ]})
+        unhealthy = json.dumps({"ok": False, "checks": [
+            {"id": "hook_wiring", "status": "error"},
+            {"id": "observe_mode", "status": "ok"},
+        ]})
+        broken_evaluator = json.dumps({"ok": False, "checks": [
+            {"id": "hook_wiring", "status": "ok"},
+            {"id": "observe_mode", "status": "ok"},
+            {"id": "smoke_test", "status": "error"},
+        ]})
+        observe_mode = json.dumps({"ok": True, "checks": [
+            {"id": "hook_wiring", "status": "ok"},
+            {"id": "observe_mode", "status": "warning"},
+        ]})
+        contradictory = json.dumps({"ok": True, "hook_installed": True, "checks": [
+            {"id": "hook_wiring", "status": "error"},
+            {"id": "observe_mode", "status": "ok"},
+        ]})
+        wiring_only = json.dumps({"ok": True, "checks": [
+            {"id": "hook_wiring", "status": "ok"},
+        ]})
+        for name, report, status, present, migrated in (
+            ("missing", healthy, "0", False, False),
+            ("invalid-json", "not-json", "0", True, False),
+            ("unhealthy", unhealthy, "0", True, False),
+            ("broken-evaluator", broken_evaluator, "0", True, False),
+            ("observe-mode", observe_mode, "0", True, False),
+            ("contradictory", contradictory, "0", True, False),
+            ("wiring-only", wiring_only, "0", True, False),
+            ("failed-doctor", healthy, "17", True, False),
+            ("multiple-documents", healthy + "\n" + healthy, "0", True, False),
+            ("healthy", healthy, "0", True, True),
+        ):
+            with self.subTest(name=name):
+                before = self.maintenance_files()
+                settings = self.home / ".claude/settings.json"
+                settings.chmod(0o640)
+                legacy = self.write(self.home, ".claude/hooks/git_safety_guard.py",
+                                    "# inactive profiles still use this\n")
+                self.events_file.write_text("")
+                if present:
+                    self.write_guard_doctor()
+                self.migrate_legacy_guard(TEST_DCG_REPORT=report, TEST_DCG_STATUS=status)
+                if migrated:
+                    document = json.loads(settings.read_text())
+                    commands = [hook["command"]
+                                for entry in document["hooks"]["PreToolUse"]
+                                for hook in entry["hooks"]]
+                    self.assertEqual(commands, ["keep-review-marker"])
+                else:
+                    self.assertEqual(settings.read_text(), before[".claude/settings.json"])
+                self.assertEqual(settings.stat().st_mode & 0o777, 0o640)
+                self.assertEqual(legacy.read_text(), "# inactive profiles still use this\n")
+                expected = [f"dcg-doctor:{self.home / '.claude'}:doctor --format json"] if present else []
+                if migrated:
+                    expected.append(f"dcg-hook:{self.home / '.claude'}:1:--robot --agent claude-code")
+                self.assertEqual(self.events(), expected)
+
+    def test_legacy_guard_migration_checks_effective_hook_policy(self):
+        self.selection("agents.claude", "stack.dcg")
+        self.write_guard_doctor()
+        healthy = json.dumps({"ok": True, "checks": [
+            {"id": "hook_wiring", "status": "ok"},
+            {"id": "observe_mode", "status": "ok"},
+        ]})
+        denial = {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "ruleId": "core.git:reset-hard",
+            "packId": "core.git",
+        }
+        def report(**fields):
+            return json.dumps({"hookSpecificOutput": {**denial, **fields}})
+
+        for name, hook_report, status, migrated in (
+            ("allowlist-or-bypass", "", "0", False),
+            ("allow-policy", report(permissionDecision="allow"), "0", False),
+            ("ask-policy", report(permissionDecision="ask"), "0", False),
+            ("wrong-rule", report(ruleId="core.git:clean-force"), "0", False),
+            ("wrong-event", report(hookEventName="PostToolUse"), "0", False),
+            ("wrong-pack", report(packId="other"), "0", False),
+            ("invalid-json", "not-json", "0", False),
+            ("failed-hook", report(), "2", False),
+            ("multiple-documents", report() + "\n" + report(), "0", False),
+            ("enforcing", report(), "0", True),
+        ):
+            with self.subTest(name=name):
+                before = self.maintenance_files()
+                self.events_file.write_text("")
+                self.migrate_legacy_guard(
+                    TEST_DCG_REPORT=healthy,
+                    TEST_DCG_HOOK_REPORT=hook_report,
+                    TEST_DCG_HOOK_STATUS=status,
+                )
+                settings = self.home / ".claude/settings.json"
+                if migrated:
+                    commands = [hook["command"]
+                                for entry in json.loads(settings.read_text())["hooks"]["PreToolUse"]
+                                for hook in entry["hooks"]]
+                    self.assertEqual(commands, ["keep-review-marker"])
+                else:
+                    self.assertEqual(settings.read_text(), before[".claude/settings.json"])
+                self.assertEqual(self.events(), [
+                    f"dcg-doctor:{self.home / '.claude'}:doctor --format json",
+                    f"dcg-hook:{self.home / '.claude'}:1:--robot --agent claude-code",
+                ])
+
+    def test_legacy_guard_migration_preserves_custom_profiles_and_holds(self):
+        self.selection("agents.claude", "stack.dcg")
+        self.write_guard_doctor()
+        healthy = json.dumps({"ok": True, "checks": [
+            {"id": "hook_wiring", "status": "ok"},
+            {"id": "observe_mode", "status": "ok"},
+        ]})
+        for case in ("custom-profile", "dcg", "claude", "cross-account"):
+            with self.subTest(case=case):
+                before = self.maintenance_files()
+                custom = self.write(self.home, "custom-profile/settings.json",
+                                    before[".claude/settings.json"])
+                hold_content = (
+                    f'holds:\n  {case}:\n    held_version: "current"\n    owner: "operator"\n'
+                    '    reason: "maintenance freeze"\n    expiry: "2999-12-31"\n'
+                    if case in ("dcg", "claude") else "holds: {}\n")
+                holds = self.write(self.base, "guard-holds.yaml", hold_content)
+                self.events_file.write_text("")
+                self.migrate_legacy_guard(
+                    TEST_DCG_REPORT=healthy,
+                    ACFS_HOLDS_FILE=str(holds),
+                    CLAUDE_CONFIG_DIR=str(custom.parent) if case == "custom-profile" else "",
+                    TEST_CURRENT_USER="other" if case == "cross-account" else "fixture",
+                )
+                self.assertEqual((self.home / ".claude/settings.json").read_text(),
+                                 before[".claude/settings.json"])
+                self.assertEqual(custom.read_text(), before[".claude/settings.json"])
+                self.assertEqual(self.events(), [])
+
+    def test_dcg_hook_registration_respects_dcg_and_claude_holds(self):
+        self.selection("agents.claude", "stack.dcg")
+        for held in (None, "dcg", "claude"):
+            with self.subTest(held=held):
+                hold_content = (
+                    f'holds:\n  {held}:\n    held_version: "current"\n    owner: "operator"\n'
+                    '    reason: "maintenance freeze"\n    expiry: "2999-12-31"\n'
+                    if held else "holds: {}\n")
+                holds = self.write(self.base, "hook-holds.yaml", hold_content)
+                self.events_file.write_text("")
+                self.shell("update_stack\n", ACFS_HOLDS_FILE=str(holds), TEST_PRESENT="dcg,claude")
+                hooks = [event for event in self.events() if event.startswith("maintenance:hook ")]
+                expected = [f"maintenance:hook {self.bin / 'dcg'} install --force"] if held is None else []
+                self.assertEqual(hooks, expected)
+
     def test_category_flags_also_limit_real_config_cleanup_and_guide_generation(self):
         self.selection("agents.claude", "shell.omz", "tools.atuin", "stack.beads_rust",
                        "stack.beads_viewer", "cloud.vercel", "lang.uv")
-        all_paths = {".claude/settings.json", ".acfs/zsh/acfs.zshrc", ".zshrc.local", ".zshrc"}
+        all_paths = {".acfs/zsh/acfs.zshrc", ".zshrc.local", ".zshrc"}
         for flags, changed_paths, guide in (
             ("--cloud-only", set(), False),
             ("--runtime-only", set(), False),
             ("--apt-only", set(), False),
-            ("--agents-only", {".claude/settings.json"}, True),
+            ("--agents-only", set(), True),
             ("--stack-only", {".acfs/zsh/acfs.zshrc", ".zshrc.local"}, True),
             ("--shell-only", {".zshrc"}, False),
             ("--no-agents --no-stack --no-shell", set(), False),
@@ -1995,6 +2191,8 @@ printf 'COUNTS:%s:%s\n' "$SUCCESS_COUNT" "$FAIL_COUNT"
                 changed = {path for path, content in before.items()
                            if (self.home / path).read_text() != content}
                 self.assertEqual(changed, changed_paths)
+                self.assertEqual((self.home / ".claude/settings.json").read_text(),
+                                 before[".claude/settings.json"])
                 self.assertEqual(any(event.startswith("maintenance:guide ")
                                      for event in self.events()), guide)
                 settings = json.loads((self.home / ".claude/settings.json").read_text())

@@ -3599,73 +3599,92 @@ update_claude_settings_has_legacy_git_safety_guard_hook() {
     ' "$settings_file" >/dev/null 2>&1
 }
 
-# Clean up legacy git_safety_guard artifacts from pre-DCG installations
-# This accompanies coding-agent updates, not unrelated category-only runs.
+# A legacy guard may be retired only when DCG protects the same Claude
+# profile. Keep this migration limited to the owning account's default profile;
+# custom profiles and cross-account library calls retain their current hooks.
+update_legacy_git_safety_guard_replacement_ready() {
+    local runtime_home="$1"
+    local target_user="" current_user="" dcg_bin="" env_bin="" timeout_bin="" jq_bin="" bash_bin=""
+    local settings_file="$runtime_home/.claude/settings.json"
+
+    target_user="$(update_target_user)" || return 1
+    current_user="$(update_current_user)" || return 1
+    [[ "$target_user" == "$current_user" && -z "${CLAUDE_CONFIG_DIR:-}" ]] || return 1
+    [[ -f "$settings_file" && ! -L "$settings_file" && -O "$settings_file" ]] || return 1
+    update_claude_settings_has_legacy_git_safety_guard_hook "$settings_file" || return 1
+
+    dcg_bin="$(update_binary_path dcg 2>/dev/null || true)"
+    [[ -n "$dcg_bin" && -f "$dcg_bin" && -x "$dcg_bin" ]] || return 1
+    env_bin="$(update_system_binary_path env)" || return 1
+    timeout_bin="$(update_system_binary_path timeout)" || return 1
+    jq_bin="$(update_system_binary_path jq)" || return 1
+    bash_bin="$(update_system_binary_path bash)" || return 1
+
+    # Inspect the exact default profile being migrated, under its owner.
+    # File capture avoids waiting for inherited pipe writers; KILL bounds a
+    # broken health probe even when it ignores TERM. Do not request --fix.
+    local UPDATE_LAST_COMMAND_OUTPUT=""
+    update_capture_command update_run_maintenance_in_target_context hook \
+        "$env_bin" "CLAUDE_CONFIG_DIR=$runtime_home/.claude" \
+        "$timeout_bin" --signal=KILL 15 "$dcg_bin" doctor --format json || return 1
+    printf '%s' "$UPDATE_LAST_COMMAND_OUTPUT" | "$jq_bin" -es '
+        length == 1 and (
+            .[0] |
+            (.ok == true) and
+            any(.checks[]?; .id == "hook_wiring" and .status == "ok") and
+            any(.checks[]?; .id == "observe_mode" and .status == "ok")
+        )
+    ' >/dev/null 2>&1 || return 1
+
+    # Doctor's pattern smoke test does not resolve every effective policy or
+    # Claude allowlist. Feed inert JSON through the real hook before retiring
+    # the old guard. The payload is printf data, never a shell command.
+    # The inner pipe supplies stdin after the maintenance runner detaches it.
+    # Positional parameters expand in the inner Bash, after target handoff.
+    # shellcheck disable=SC2016
+    update_capture_command update_run_maintenance_in_target_context hook \
+        "$env_bin" -u BASH_ENV -u ENV "CLAUDE_CONFIG_DIR=$runtime_home/.claude" \
+        DCG_NO_SELF_HEAL=1 "$timeout_bin" --signal=KILL 15 \
+        "$bash_bin" --noprofile --norc -o pipefail -c \
+        'printf "%s\n" "$1" | "$2" --robot --agent claude-code' \
+        acfs-dcg-probe '{"tool_name":"Bash","tool_input":{"command":"git reset --hard"}}' \
+        "$dcg_bin" || return 1
+    printf '%s' "$UPDATE_LAST_COMMAND_OUTPUT" | "$jq_bin" -es '
+        length == 1 and (
+            .[0].hookSpecificOutput |
+            .hookEventName == "PreToolUse" and
+            .permissionDecision == "deny" and
+            .ruleId == "core.git:reset-hard" and
+            .packId == "core.git"
+        )
+    ' >/dev/null 2>&1
+}
+
+# Migrate only selected, unheld guards after stack maintenance has completed.
+# Missing or unhealthy replacements leave the existing hook intact.
 cleanup_legacy_git_safety_guard() {
-    [[ "$UPDATE_AGENTS" == true ]] || return 0
+    [[ "$UPDATE_STACK" == true ]] || return 0
     update_load_module_selection || return 1
     update_module_is_selected agents.claude || return 0
+    update_module_is_selected stack.dcg || return 0
+    update_tool_hold_details dcg && return 0
+    update_tool_hold_details claude && return 0
     local runtime_home=""
     runtime_home="$(update_runtime_shell_home 2>/dev/null || true)"
     [[ -n "$runtime_home" ]] || return 0
 
     if update_is_read_only_mode; then
-        local would_clean=false
-        local hooks_dir=""
-        local legacy_file=""
-
-        for hooks_dir in "$runtime_home/.acfs/claude/hooks" "$runtime_home/.claude/hooks"; do
-            for legacy_file in git_safety_guard.py git_safety_guard.sh; do
-                if [[ -f "$hooks_dir/$legacy_file" ]]; then
-                    would_clean=true
-                fi
-            done
-        done
-
         if update_claude_settings_has_legacy_git_safety_guard_hook "$runtime_home/.claude/settings.json"; then
-            would_clean=true
-        fi
-
-        if [[ "$would_clean" == "true" ]]; then
-            log_item "skip" "legacy cleanup" "dry-run: would remove git_safety_guard artifacts"
+            log_item "skip" "legacy cleanup" "dry-run: would verify DCG before migrating git_safety_guard registrations"
         fi
         return 0
     fi
 
+    update_legacy_git_safety_guard_replacement_ready "$runtime_home" || return 0
+
+    # Other, inactive profiles may still reference the old script files. Only
+    # remove registrations from the profile whose replacement was verified.
     local cleaned=false
-    local hooks_dirs=(
-        "$runtime_home/.acfs/claude/hooks"
-        "$runtime_home/.claude/hooks"
-    )
-    local legacy_files=(
-        "git_safety_guard.py"
-        "git_safety_guard.sh"
-    )
-
-    # Remove legacy hook files
-    for dir in "${hooks_dirs[@]}"; do
-        for file in "${legacy_files[@]}"; do
-            if [[ -f "$dir/$file" ]]; then
-                rm -f "$dir/$file" 2>/dev/null && cleaned=true
-                log_to_file "Removed legacy file: $dir/$file"
-            fi
-        done
-        # Remove empty hooks directory
-        if [[ -d "$dir" ]] && [[ -z "$(ls -A "$dir" 2>/dev/null)" ]]; then
-            rmdir "$dir" 2>/dev/null && cleaned=true
-            log_to_file "Removed empty directory: $dir"
-        fi
-    done
-
-    # Clean parent directories if empty
-    for parent in "$runtime_home/.acfs/claude" "$runtime_home/.claude"; do
-        if [[ -d "$parent" ]] && [[ -z "$(ls -A "$parent" 2>/dev/null)" ]]; then
-            rmdir "$parent" 2>/dev/null || true
-            log_to_file "Removed empty directory: $parent"
-        fi
-    done
-
-    # Clean git_safety_guard from Claude settings.json if present
     local settings_file="$runtime_home/.claude/settings.json"
     if update_claude_settings_has_legacy_git_safety_guard_hook "$settings_file"; then
         local tmp_settings
@@ -3697,20 +3716,17 @@ cleanup_legacy_git_safety_guard() {
                 .
               end
             ' "$settings_file" > "$tmp_settings" 2>/dev/null; then
-                if mv "$tmp_settings" "$settings_file"; then
+                if update_atomic_deploy_file "$tmp_settings" "$settings_file" "" "$settings_file"; then
                     cleaned=true
                     log_to_file "Cleaned git_safety_guard references from $settings_file"
-                else
-                    rm -f "$tmp_settings"
                 fi
-            else
-                rm -f "$tmp_settings"
             fi
+            rm -f "$tmp_settings"
         fi
     fi
 
     if [[ "$cleaned" == "true" ]]; then
-        log_item "ok" "legacy cleanup" "removed git_safety_guard artifacts"
+        log_item "ok" "legacy cleanup" "retired git_safety_guard registrations; script files preserved"
     fi
 }
 
@@ -11330,8 +11346,10 @@ update_stack() {
     # report a transient installer/network failure when an existing dcg remains
     # usable and versionable.
     update_run_selected_module stack.dcg update_run_verified_installer_or_existing_on_transient "DCG" dcg dcg dcg --easy-mode || true
-    # Re-register hook after install/update to ensure latest version is active
+    # A hold protects configuration as well as the installed binary.
     if update_module_is_selected stack.dcg && update_module_is_selected agents.claude \
+        && ! update_tool_hold_details dcg \
+        && ! update_skip_held_tool claude "DCG Hook (Claude configuration)" \
         && update_binary_exists dcg && update_binary_exists claude; then
         local dcg_bin=""
         dcg_bin="$(update_binary_path dcg 2>/dev/null || true)"
@@ -13063,7 +13081,6 @@ main() {
     update_ensure_jq_available
 
     # Clean up legacy artifacts from previous versions
-    cleanup_legacy_git_safety_guard
     cleanup_legacy_br_alias
     cleanup_legacy_bv_alias
     cleanup_unmanaged_atuin_init
@@ -13080,6 +13097,7 @@ main() {
     update_go
     update_shell
     update_stack
+    cleanup_legacy_git_safety_guard
     update_root_agents_md
 
     # Report managed services still running a replaced binary (#381)

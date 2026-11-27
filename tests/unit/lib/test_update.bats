@@ -3974,7 +3974,7 @@ EOF
     assert_output --partial '[ -f "$HOME/.zshrc.local" ] && source "$HOME/.zshrc.local"'
 }
 
-@test "cleanup_legacy_git_safety_guard: respects TARGET_HOME when HOME differs" {
+@test "cleanup_legacy_git_safety_guard: preserves scripts referenced by other profiles" {
     local current_home
     local target_home
     current_home="$(create_temp_dir)"
@@ -3988,11 +3988,14 @@ EOF
     printf 'current\n' > "$current_home/.claude/hooks/git_safety_guard.sh"
     printf 'target\n' > "$target_home/.claude/hooks/git_safety_guard.sh"
 
+    # Admission is exercised through the real gate in test_update_deployment.py.
+    # Even an admitted migration must preserve scripts used by other profiles.
+    update_legacy_git_safety_guard_replacement_ready() { return 0; }
     run cleanup_legacy_git_safety_guard
     assert_success
 
     [[ -f "$current_home/.claude/hooks/git_safety_guard.sh" ]]
-    [[ ! -e "$target_home/.claude/hooks/git_safety_guard.sh" ]]
+    [[ -f "$target_home/.claude/hooks/git_safety_guard.sh" ]]
 }
 
 @test "cleanup_legacy_git_safety_guard: detects only real Claude hook commands" {
@@ -4070,6 +4073,9 @@ EOF
 }
 EOF
 
+    # This case isolates JSON migration after replacement admission succeeds;
+    # the real health probe and refusal paths are exercised in the Python suite.
+    update_legacy_git_safety_guard_replacement_ready() { return 0; }
     run cleanup_legacy_git_safety_guard
     assert_success
 
