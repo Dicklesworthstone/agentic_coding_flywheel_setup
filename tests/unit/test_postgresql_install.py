@@ -338,6 +338,11 @@ class PostgresRecoveryTests(unittest.TestCase):
             functions.append(source[start:end])
         self.authored = '\n'.join(functions).replace('/var/lib/postgres/data', str(self.data))
         self.authored = self.authored.replace('/run/systemd/system', str(self.root / 'systemd'))
+        # The root and sudo branches depend on $EUID, which bash will not let a
+        # test set. Pin it so results don't depend on who runs the suite: the
+        # root branch by default, the sudo branch with TEST_EUID=1000.
+        self.assertIn('$EUID', self.authored)
+        self.authored = self.authored.replace('$EUID', '${TEST_EUID:-0}')
 
     def shell(self, command, code=0, **env):
         fixtures = r'''set -euo pipefail
@@ -358,8 +363,14 @@ acfs_early_system_binary_path() {
 acfs_early_sudo_binary_path() { printf '%s\n' fixture_owner; }
 fixture_owner() {
     printf 'owner %s\n' "$*" >> "$TEST_LOG"
-    while [[ "$1" != -- ]]; do shift; done
-    shift
+    # runuser and sudo -u calls end their options with --; a bare
+    # "sudo test -f ..." has none and runs its arguments as given.
+    local arg has_separator=0
+    for arg in "$@"; do [[ "$arg" != -- ]] || has_separator=1; done
+    if [[ "$has_separator" == 1 ]]; then
+        while [[ "$1" != -- ]]; do shift; done
+        shift
+    fi
     "$@"
 }
 fixture_env() {
@@ -461,11 +472,28 @@ log_warn() { :; }
         self.assertTrue(any('-u postgres -- fixture_pg_ctl' in c for c in calls))
         self.assertEqual((self.data / 'PG_VERSION').read_text(), '18\n')
 
+    def test_stopped_arch_server_recovers_through_sudo_when_not_root(self):
+        self.initialized()
+        self.shell('acfs_arch_install_postgres; acfs_postgres_start_existing', TEST_EUID='1000')
+        calls = self.calls()
+        self.assertEqual(sum(c.startswith('server-start ') for c in calls), 1)
+        self.assertFalse(any(c.startswith(('package-install ', 'initdb ')) for c in calls))
+        self.assertTrue(any('-n -u postgres -H -- fixture_pg_ctl' in c for c in calls))
+        self.assertEqual((self.data / 'PG_VERSION').read_text(), '18\n')
+
     def test_failed_initdb_stops_before_service_start(self):
         self.shell('acfs_arch_install_postgres', code=1, INITDB_EXIT='1')
         self.assertTrue(any(c.startswith('initdb ') for c in self.calls()))
         self.assertFalse(any(c.startswith(('server-start ', 'bootstrap-role')) for c in self.calls()))
         self.assertFalse((self.data / 'PG_VERSION').exists())
+
+    def test_initdb_runs_as_postgres_through_sudo_when_not_root(self):
+        self.shell('acfs_arch_install_postgres', TEST_EUID='1000')
+        calls = self.calls()
+        self.assertTrue(any(c.startswith('owner -u postgres -H -- initdb ') for c in calls))
+        self.assertEqual(sum(c.startswith('server-start ') for c in calls), 1)
+        self.assertIn('bootstrap-role', calls)
+        self.assertEqual((self.data / 'PG_VERSION').read_text(), '18\n')
 
     def test_start_failure_cannot_be_overwritten_by_later_success(self):
         self.initialized()
