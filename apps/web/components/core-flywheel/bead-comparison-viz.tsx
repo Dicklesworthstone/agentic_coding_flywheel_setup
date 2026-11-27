@@ -107,8 +107,9 @@ function TerminalBlock({
 }) {
   const isWeak = variant === "weak";
 
-  /* Line count display */
-  const displayCount = isWeak ? lines.length : lines.filter((l) => l.trim()).length;
+  /* Line count: every line, blanks included, so the badge matches the
+     last number in the gutter (it said 17 while the gutter ran to 22). */
+  const displayCount = lines.length;
 
   return (
     <div
@@ -162,9 +163,7 @@ function TerminalBlock({
               : "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
           )}
         >
-          {isWeak
-            ? `${lines.length} line${lines.length > 1 ? "s" : ""}`
-            : `${displayCount} line${displayCount !== 1 ? "s" : ""}`}
+          {`${displayCount} line${displayCount !== 1 ? "s" : ""}`}
         </span>
       </div>
 
