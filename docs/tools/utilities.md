@@ -347,7 +347,7 @@ caut history export --format csv
 All utilities are optional ACFS modules. toon_rust, pt, mdwb and s2p are on by default;
 xf, rano, rust_proxy, aadc and caut are opt-in. ACFS installs toon_rust, rano, xf, pt, mdwb
 and s2p with each project's checksum-verified `install.sh` (see `checksums.yaml`), and builds
-rust_proxy, aadc and caut from a source checkout with `cargo build --release`.
+rust_proxy, aadc and caut from a source checkout as Cargo release builds.
 
 Do not guess crate names for `cargo install`: only toon_rust is on crates.io (as `tru`), and
 the crates named `rano`, `xf` and `rust-proxy` there are unrelated projects by other authors.
