@@ -149,7 +149,7 @@ export function PromptLibrary({
               type="button"
               onClick={() => dialogRef.current?.close()}
               aria-label="Close prompt library"
-              className="-mr-2 -mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/70"
+              className="-mr-2 -mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-white/[0.07] hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/70"
             >
               <X aria-hidden="true" className="h-5 w-5" />
             </button>
@@ -165,7 +165,7 @@ export function PromptLibrary({
               placeholder="Search titles and prompt text"
               autoComplete="off"
               spellCheck={false}
-              className="h-full min-w-0 flex-1 bg-transparent text-base text-zinc-100 outline-none placeholder:text-zinc-500 sm:text-[0.9375rem]"
+              className="h-full min-w-0 flex-1 bg-transparent text-base text-zinc-100 outline-hidden placeholder:text-zinc-500 sm:text-[0.9375rem]"
             />
             {query && (
               <span className="shrink-0 font-mono text-xs tabular-nums text-zinc-500">
@@ -192,7 +192,7 @@ export function PromptLibrary({
                       <button
                         type="button"
                         onClick={() => onJump(prompt.id)}
-                        className="min-w-0 flex-1 rounded-xl px-3 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FF5500]/60 sm:px-4"
+                        className="min-w-0 flex-1 rounded-xl px-3 py-3 text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FF5500]/60 sm:px-4"
                       >
                         <span className="flex items-center gap-2 text-[0.9375rem] font-semibold leading-snug text-zinc-100">
                           <span className="min-w-0">{prompt.title}</span>
@@ -209,7 +209,7 @@ export function PromptLibrary({
                         type="button"
                         onClick={() => void copyPrompt(prompt)}
                         aria-label={`Copy ${prompt.title}`}
-                        className="flex w-12 shrink-0 items-center justify-center rounded-xl text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FF5500]/60"
+                        className="flex w-12 shrink-0 items-center justify-center rounded-xl text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FF5500]/60"
                       >
                         {state === "copied" ? (
                           <Check aria-hidden="true" className="h-4 w-4 text-[#FF7A33]" />
@@ -234,7 +234,7 @@ export function PromptLibrary({
                   setQuery("");
                   searchRef.current?.focus();
                 }}
-                className="mt-5 inline-flex min-h-11 items-center rounded-full border border-white/15 px-5 text-sm font-medium text-zinc-200 transition-colors hover:border-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/70"
+                className="mt-5 inline-flex min-h-11 items-center rounded-full border border-white/15 px-5 text-sm font-medium text-zinc-200 transition-colors hover:border-white/30 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/70"
               >
                 Clear search
               </button>

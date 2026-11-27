@@ -469,10 +469,16 @@ test.describe("Instructional text readability (bd-64cg3)", () => {
     // The ring scales to its column, so there is no sideways scroller to pan
     // any more. The SVG is hidden on phones but stays in the DOM, so this
     // finds the exhibit (the diagram grid's parent) at every width.
-    const exhibit = page
-      .locator('svg[aria-label="Core loop diagram with six stages arranged in a circle"]')
-      .locator("xpath=ancestor::div[contains(@class, 'grid')][1]/..");
+    const ring = page.locator('svg[aria-label="Core loop diagram with six stages arranged in a circle"]');
+    const exhibit = ring.locator("xpath=ancestor::div[contains(@class, 'grid')][1]/..");
     await expect(exhibit.getByRole("heading", { name: "Plan", exact: true })).toBeVisible();
+    if (await ring.isVisible()) {
+      // Where the ring shows (md and up), it fits its grid column.
+      expect(await ring.evaluate((svg) => {
+        const column = svg.closest("div.grid > div");
+        return column ? svg.getBoundingClientRect().width - column.getBoundingClientRect().width : Infinity;
+      })).toBeLessThanOrEqual(1);
+    }
     // Space must activate the real stage button, not the window's auto-tour.
     const stageButton = page.getByRole("button", { name: "Go to stage: Encode" });
     await stageButton.focus();
@@ -485,6 +491,44 @@ test.describe("Instructional text readability (bd-64cg3)", () => {
     await page.keyboard.press("ArrowRight");
     await page.waitForTimeout(500);
     await expect(exhibit.getByRole("heading", { name: "Plan", exact: true })).toBeVisible();
+  });
+});
+
+test.describe("Guide exhibit auto-play toggles", () => {
+  test.use({ contextOptions: { reducedMotion: "no-preference" } });
+
+  test("keep a fixed name, report state, leave Space to the page, and drop out with reduced motion", async ({ page }) => {
+    await page.goto("/complete-guide");
+    // The visible On/Paused suffix is aria-hidden, so the name never changes.
+    const flywheelTour = page.getByRole("button", { name: "Auto-Tour", exact: true });
+    await expect(flywheelTour).toHaveAttribute("aria-pressed", "true");
+
+    await page.goto("/core-flywheel");
+    // Core loop, artifact ladder, operating rhythm.
+    const toggles = page.getByRole("button", { name: /^Auto-(Tour|Play)$/ });
+    await expect(toggles).toHaveCount(3);
+    const ladder = toggles.nth(1);
+    await ladder.scrollIntoViewIfNeeded();
+    await expect(ladder).toHaveAttribute("aria-pressed", "false");
+    await ladder.click();
+    await expect(ladder).toHaveAttribute("aria-pressed", "true");
+    await expect(ladder).toHaveAccessibleName("Auto-Play");
+    // With the exhibit on screen and nothing focused, Space belongs to the
+    // page (it scrolls): no exhibit's window handler may claim it.
+    await page.evaluate(() => {
+      (document.activeElement as HTMLElement | null)?.blur();
+      // Added after the exhibits' window listeners, so it runs after them and
+      // sees whether any of them called preventDefault.
+      window.addEventListener("keydown", (event) => {
+        document.body.dataset.spaceClaimed = String(event.defaultPrevented);
+      }, { once: true });
+    });
+    await page.keyboard.press("Space");
+    await expect(page.locator("body")).toHaveAttribute("data-space-claimed", "false");
+    await expect(ladder).toHaveAttribute("aria-pressed", "true");
+    // Auto-play never runs with Reduce Motion, so its toggles are not offered.
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await expect(toggles).toHaveCount(0);
   });
 });
 

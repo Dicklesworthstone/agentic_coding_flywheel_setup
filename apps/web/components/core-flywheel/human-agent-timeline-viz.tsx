@@ -20,7 +20,7 @@ import { AnimatePresence, motion, useInView, useReducedMotion } from "@/componen
 import { COMPLETE_GUIDE_MODELS } from "@/lib/complete-guide";
 import { isInteractiveKeyboardTarget } from "@/lib/utils";
 
-/** Wrap a tool list only at spaces, so names like `GPT-6.2` or flags like
+/** Wrap a tool list only at spaces, so hyphenated model names or flags like
  *  `--robot-triage` never split at their hyphens. */
 function WordsKeptWhole({ text }: { text: string }) {
   return (
@@ -301,7 +301,8 @@ function DetailCard({ stage, reducedMotion }: { stage: TimelineStage; reducedMot
           <p className="text-sm text-white/90 font-medium">{stage.who}</p>
         </div>
 
-        {/* Tools: wrap between words; only a single over-long token may break */}
+        {/* Tools: wrap only between words (each word is nowrap), so a single
+            token longer than the card would be clipped, not broken. */}
         <div className="flex flex-col gap-2 p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04] relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-white/[0.01] to-transparent pointer-events-none" />
           <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
@@ -366,7 +367,7 @@ function DesktopTimeline({
               key={stage.id}
               type="button"
               onClick={() => onSelect(index)}
-              className="relative z-10 flex flex-col items-center gap-2 group cursor-pointer rounded-xl pb-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a78bfa]/60"
+              className="relative z-10 flex flex-col items-center gap-2 group cursor-pointer rounded-xl pb-1 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#a78bfa]/60"
               aria-label={`Select stage ${index + 1}: ${stage.label}`}
               aria-pressed={isActive}
               style={{ flex: "1 1 0%" }}
@@ -457,11 +458,11 @@ function DesktopTimeline({
                 {stage.label}
               </span>
 
-              {/* Step number */}
+              {/* Step number (zinc-400 when inactive: zinc-500 is 4.2:1 here) */}
               <span
                 className="text-xs font-mono font-bold"
                 style={{
-                  color: isActive ? nodeColor : "#71717a",
+                  color: isActive ? nodeColor : "#a1a1aa",
                 }}
               >
                 {index + 1}
@@ -512,7 +513,7 @@ function MobileTimeline({
             type="button"
             onClick={() => onSelect(index)}
             aria-pressed={isActive}
-            className={`relative flex items-center gap-4 px-5 py-3.5 rounded-2xl border transition-[border-left-width,border-color,background-color,box-shadow] duration-300 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a78bfa]/60 ${
+            className={`relative flex items-center gap-4 px-5 py-3.5 rounded-2xl border transition-[border-left-width,border-color,background-color,box-shadow] duration-300 text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#a78bfa]/60 ${
               isActive
                 ? "border-white/[0.08] bg-white/[0.04]"
                 : "border-white/[0.03] bg-white/[0.01] hover:bg-white/[0.03]"
@@ -580,19 +581,18 @@ function MobileTimeline({
 
             {/* Actor badge + step number */}
             <div className="ml-auto flex flex-col items-end gap-1 shrink-0">
+              {/* Full strength even when inactive: at 75% opacity the orange
+                  "Agents" badge fell to 3.9:1. */}
               <span
-                className="text-xs font-bold uppercase tracking-widest transition-opacity duration-300"
-                style={{
-                  color: stage.actor === "agent" ? AGENT_COLOR : HUMAN_COLOR,
-                  opacity: isActive ? 1 : 0.75,
-                }}
+                className="text-xs font-bold uppercase tracking-widest"
+                style={{ color: stage.actor === "agent" ? AGENT_COLOR : HUMAN_COLOR }}
               >
                 {actorLabel(stage.actor)}
               </span>
               <span
                 className="text-xs font-mono font-bold"
                 style={{
-                  color: isActive ? nodeColor : "#71717a",
+                  color: isActive ? nodeColor : "#a1a1aa",
                 }}
               >
                 {index + 1}/{STAGE_COUNT}
@@ -733,7 +733,7 @@ export function HumanAgentTimelineViz() {
                   aria-label={`Go to stage ${index + 1}: ${stage.label}`}
                   title={`${index + 1}. ${stage.label}`}
                   aria-current={index === activeIndex ? "step" : undefined}
-                  className="inline-flex min-h-6 min-w-6 items-center justify-center rounded-full p-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a78bfa]/60"
+                  className="inline-flex min-h-6 min-w-6 items-center justify-center rounded-full p-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#a78bfa]/60"
                 >
                   <motion.div
                     className="rounded-full"
@@ -761,7 +761,7 @@ export function HumanAgentTimelineViz() {
               onClick={advance}
               disabled={activeIndex >= STAGE_COUNT - 1}
               // Dark text: white on #a78bfa / #FF5500 is only 2.7-3.3:1.
-              className="flex-1 whitespace-nowrap rounded-xl px-5 py-2.5 text-sm font-bold text-slate-950 transition hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#020408] sm:flex-none"
+              className="flex-1 whitespace-nowrap rounded-xl px-5 py-2.5 text-sm font-bold text-slate-950 transition hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#020408] sm:flex-none"
               style={{
                 background: currentStage.actor === "agent" ? AGENT_COLOR : HUMAN_COLOR,
               }}
@@ -771,7 +771,7 @@ export function HumanAgentTimelineViz() {
             <button
               type="button"
               onClick={reset}
-              className="flex-1 whitespace-nowrap rounded-xl border px-5 py-2.5 text-sm font-medium text-slate-300 transition hover:bg-white/5 hover:scale-[1.02] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a78bfa]/60 sm:flex-none"
+              className="flex-1 whitespace-nowrap rounded-xl border px-5 py-2.5 text-sm font-medium text-slate-300 transition hover:bg-white/5 hover:scale-[1.02] active:scale-[0.98] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#a78bfa]/60 sm:flex-none"
               style={{ borderColor: "#334155" }}
             >
               Reset

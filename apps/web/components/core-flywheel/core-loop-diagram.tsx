@@ -455,7 +455,9 @@ function DetailCard({ stage }: { stage: Stage }) {
           <p className="text-sm sm:text-base text-white/90 font-medium">{stage.artifact}</p>
         </div>
 
-        {/* Command: wrap between words; only a single over-long token may break */}
+        {/* Command: wraps only between words (each word is nowrap), so a
+            single token longer than the card would be clipped, not broken.
+            The longest today, --robot-triage, fits at every width. */}
         <div className="flex flex-col gap-2 p-5 rounded-2xl bg-white/[0.02] border border-white/[0.04] shadow-sm relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-white/[0.01] to-transparent pointer-events-none" />
           <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
@@ -514,7 +516,7 @@ function MobileStageList({
             type="button"
             onClick={() => onSelect(index)}
             aria-pressed={isActive}
-            className={`relative flex items-center gap-4 px-5 py-4 rounded-2xl border transition-[border-left-width,border-color,background-color,box-shadow] duration-300 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/50 ${
+            className={`relative flex items-center gap-4 px-5 py-4 rounded-2xl border transition-[border-left-width,border-color,background-color,box-shadow] duration-300 text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/50 ${
               isActive
                 ? "border-white/[0.08] bg-white/[0.04]"
                 : "border-white/[0.05] bg-white/[0.015] hover:bg-white/[0.03]"
@@ -579,7 +581,8 @@ function MobileStageList({
             {/* Step indicator */}
             <span
               className="ml-auto text-xs font-mono font-bold shrink-0"
-              style={{ color: isActive ? stage.color : "#71717a" }}
+              // zinc-400 when inactive: zinc-500 is only 4.2:1 on this panel.
+              style={{ color: isActive ? stage.color : "#a1a1aa" }}
             >
               {index + 1}/{STAGE_COUNT}
             </span>
@@ -697,7 +700,9 @@ export function CoreLoopDiagram() {
     return () => window.clearInterval(id);
   }, [autoTour, isInView, rm]);
 
-  /* Keyboard navigation — only when this viz is in the viewport */
+  /* Keyboard navigation — only when this viz is in the viewport. Left/Right
+     only: Space and Up/Down scroll the page, so the tour toggle stays on its
+     button. */
   useEffect(() => {
     if (!isInView) return;
     function handleKeyDown(e: KeyboardEvent) {
@@ -715,9 +720,6 @@ export function CoreLoopDiagram() {
         e.preventDefault();
         setActiveIndex((cur) => (cur - 1 + STAGE_COUNT) % STAGE_COUNT);
         setAutoTour(false);
-      } else if (e.key === " ") {
-        e.preventDefault();
-        setAutoTour((cur) => !cur);
       }
     }
     window.addEventListener("keydown", handleKeyDown);
@@ -757,28 +759,33 @@ export function CoreLoopDiagram() {
           </p>
         </div>
 
-        {/* Auto-tour toggle */}
-        <button
-          type="button"
-          onClick={() => setAutoTour((cur) => !cur)}
-          aria-pressed={autoTour}
-          className={`group shrink-0 self-start flex items-center gap-3 px-5 py-2.5 rounded-xl border transition duration-500 ease-out hover:scale-[1.02] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/50 ${
-            autoTour
-              ? "border-[#FF5500]/30 bg-[#FF5500]/10 text-[#FF5500] shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] hover:border-[#FF5500]/50 hover:bg-[#FF5500]/15"
-              : "border-white/10 bg-white/[0.02] text-zinc-400 hover:bg-white/[0.05] hover:border-white/15 hover:text-zinc-200"
-          }`}
-        >
-          <div
-            className={`w-2 h-2 rounded-full ${
+        {/* Auto-tour toggle. Not offered with Reduce Motion, where the tour
+            never runs (as in the crash-recovery exhibit); the stage buttons
+            step through by hand. Its name stays "Auto-Tour" and aria-pressed
+            carries the state; the visible On/Paused suffix is aria-hidden. */}
+        {!rm && (
+          <button
+            type="button"
+            onClick={() => setAutoTour((cur) => !cur)}
+            aria-pressed={autoTour}
+            className={`group shrink-0 self-start flex items-center gap-3 px-5 py-2.5 rounded-xl border transition duration-500 ease-out hover:scale-[1.02] active:scale-[0.98] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/50 ${
               autoTour
-                ? "bg-[#FF5500] shadow-[0_0_8px_rgba(255,85,0,0.8)] animate-pulse"
-                : "bg-white/30"
+                ? "border-[#FF5500]/30 bg-[#FF5500]/10 text-[#FF5500] shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] hover:border-[#FF5500]/50 hover:bg-[#FF5500]/15"
+                : "border-white/10 bg-white/[0.02] text-zinc-400 hover:bg-white/[0.05] hover:border-white/15 hover:text-zinc-200"
             }`}
-          />
-          <span className="whitespace-nowrap text-xs font-bold uppercase tracking-widest">
-            {autoTour ? "Auto-Tour Active" : "Tour Paused"}
-          </span>
-        </button>
+          >
+            <div
+              className={`w-2 h-2 rounded-full ${
+                autoTour
+                  ? "bg-[#FF5500] shadow-[0_0_8px_rgba(255,85,0,0.8)] animate-pulse"
+                  : "bg-white/30"
+              }`}
+            />
+            <span className="whitespace-nowrap text-xs font-bold uppercase tracking-widest">
+              Auto-Tour<span aria-hidden="true">{autoTour ? " On" : " Paused"}</span>
+            </span>
+          </button>
+        )}
       </div>
 
       {/* Body grid */}
@@ -956,7 +963,7 @@ export function CoreLoopDiagram() {
                 aria-label={`Go to stage: ${stage.label}`}
                 aria-current={index === activeIndex ? "step" : undefined}
                 title={`${index + 1}. ${stage.label}`}
-                className="inline-flex min-h-6 min-w-6 items-center justify-center rounded-full p-2 group/dot focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/50"
+                className="inline-flex min-h-6 min-w-6 items-center justify-center rounded-full p-2 group/dot focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/50"
               >
                 <motion.div
                   className="rounded-full transition-[width,background-color,box-shadow] duration-300"

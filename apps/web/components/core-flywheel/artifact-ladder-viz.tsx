@@ -145,7 +145,7 @@ function StageNode({
       }}
       aria-pressed={isActive}
       className={cn(
-        "group/node relative flex items-center gap-4 rounded-2xl border p-4 text-left transition duration-500 w-full min-h-[56px] hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/50",
+        "group/node relative flex items-center gap-4 rounded-2xl border p-4 text-left transition duration-500 w-full min-h-[56px] hover:scale-[1.02] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/50",
         isActive
           ? "border-white/[0.1] bg-white/[0.03] shadow-[0_0_30px_var(--node-glow)]"
           : isPast
@@ -170,11 +170,13 @@ function StageNode({
             borderColor: isActive ? `${stage.color}30` : undefined,
           }}
           animate={isActive && !reducedMotion ? { scale: [1, 1.08, 1] } : { scale: 1 }}
-          transition={{
-            duration: 2,
-            repeat: Infinity,
-            ease: "easeInOut",
-          }}
+          // Repeat only while pulsing: an infinite settle-to-1 animation
+          // restarts from mid-pulse every 2s after the stage moves on.
+          transition={
+            isActive && !reducedMotion
+              ? { duration: 2, repeat: Infinity, ease: "easeInOut" }
+              : { duration: 0.3, ease: "easeOut" }
+          }
         >
           <Icon
             className="h-5 w-5 transition-colors duration-500"
@@ -206,8 +208,14 @@ function StageNode({
           className="text-xs font-black uppercase tracking-[0.2em]"
           style={{
             // Inactive rows stay readable: past stages keep a tint of their
-            // color, upcoming ones use zinc-400.
-            color: isActive ? stage.color : isPast ? `${stage.color}b3` : "#a1a1aa",
+            // color, mixed toward zinc-400 rather than made translucent (70%
+            // alpha put the orange "Stage 3" at 3.5:1); upcoming ones use
+            // zinc-400.
+            color: isActive
+              ? stage.color
+              : isPast
+                ? `color-mix(in srgb, ${stage.color} 60%, #a1a1aa)`
+                : "#a1a1aa",
             transition: "color 700ms cubic-bezier(0.4, 0, 0.2, 1)",
           }}
         >
@@ -460,7 +468,8 @@ export function ArtifactLadderViz() {
     setAutoPlay((prev) => !prev);
   }, []);
 
-  /* Keyboard navigation — only when this viz is in the viewport */
+  /* Keyboard navigation — only when this viz is in the viewport. Left/Right
+     only, like the other exhibits: Up/Down and Space scroll the page. */
   useEffect(() => {
     if (!isInView) return;
     function handleKeyDown(e: KeyboardEvent) {
@@ -468,17 +477,14 @@ export function ArtifactLadderViz() {
         || isInteractiveKeyboardTarget(e.target)) return;
       const bounds = ref.current?.getBoundingClientRect();
       if (!bounds || bounds.bottom <= 0 || bounds.top >= window.innerHeight) return;
-      if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+      if (e.key === "ArrowRight") {
         e.preventDefault();
         setActiveIndex((cur) => (cur + 1) % STAGES.length);
         setAutoPlay(false);
-      } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+      } else if (e.key === "ArrowLeft") {
         e.preventDefault();
         setActiveIndex((cur) => (cur - 1 + STAGES.length) % STAGES.length);
         setAutoPlay(false);
-      } else if (e.key === " ") {
-        e.preventDefault();
-        setAutoPlay((cur) => !cur);
       }
     }
     window.addEventListener("keydown", handleKeyDown);
@@ -510,7 +516,9 @@ export function ArtifactLadderViz() {
       {/* Header */}
       <div className="relative z-10 flex flex-col gap-8 border-b border-white/[0.03] pb-12 lg:flex-row lg:items-start lg:justify-between">
         <div className="max-w-2xl">
-          <div className="text-xs font-black uppercase tracking-[0.4em] text-[#FF5500] opacity-60 flex items-center gap-3">
+          {/* Full-strength orange like the other exhibit eyebrows: at
+              opacity-60 it was 2.8:1. */}
+          <div className="text-xs font-black uppercase tracking-[0.4em] text-[#FF5500] flex items-center gap-3">
             <div className="w-8 h-px bg-[#FF5500]/30" />
             Artifact Progression
           </div>
@@ -523,35 +531,40 @@ export function ArtifactLadderViz() {
           </p>
         </div>
 
+        {/* Not offered with Reduce Motion, where auto-play never runs; the
+            stage rows step through by hand. The name stays "Auto-Play" and
+            aria-pressed carries the state; the visible "On" is aria-hidden. */}
         <div className="flex shrink-0 flex-col items-start lg:items-end gap-4">
-          <button
-            type="button"
-            onClick={toggleAutoPlay}
-            aria-pressed={autoPlay}
-            className={cn(
-              "group flex items-center gap-3 whitespace-nowrap px-6 py-3 rounded-2xl border transition duration-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/50",
-              autoPlay
-                ? "border-[#FF5500]/30 bg-[#FF5500]/10 text-[#FF5500] shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]"
-                : "border-white/10 bg-white/[0.02] text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200",
-            )}
-          >
-            <div
+          {!reducedMotion && (
+            <button
+              type="button"
+              onClick={toggleAutoPlay}
+              aria-pressed={autoPlay}
               className={cn(
-                "w-2 h-2 rounded-full transition duration-500",
+                "group flex items-center gap-3 whitespace-nowrap px-6 py-3 rounded-2xl border transition duration-500 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/50",
                 autoPlay
-                  ? "bg-[#FF5500] shadow-[0_0_8px_rgba(255,85,0,0.8)] animate-pulse"
-                  : "bg-white/20",
+                  ? "border-[#FF5500]/30 bg-[#FF5500]/10 text-[#FF5500] shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]"
+                  : "border-white/10 bg-white/[0.02] text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200",
               )}
-            />
-            {autoPlay ? (
-              <Pause className="h-3.5 w-3.5" aria-hidden="true" />
-            ) : (
-              <Play className="h-3.5 w-3.5" aria-hidden="true" />
-            )}
-            <span className="text-xs font-black uppercase tracking-[0.2em]">
-              {autoPlay ? "Auto-Play Active" : "Auto-Play"}
-            </span>
-          </button>
+            >
+              <div
+                className={cn(
+                  "w-2 h-2 rounded-full transition duration-500",
+                  autoPlay
+                    ? "bg-[#FF5500] shadow-[0_0_8px_rgba(255,85,0,0.8)] animate-pulse"
+                    : "bg-white/20",
+                )}
+              />
+              {autoPlay ? (
+                <Pause className="h-3.5 w-3.5" aria-hidden="true" />
+              ) : (
+                <Play className="h-3.5 w-3.5" aria-hidden="true" />
+              )}
+              <span className="text-xs font-black uppercase tracking-[0.2em]">
+                Auto-Play{autoPlay && <span aria-hidden="true"> On</span>}
+              </span>
+            </button>
+          )}
         </div>
       </div>
 

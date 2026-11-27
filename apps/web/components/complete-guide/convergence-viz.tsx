@@ -134,8 +134,9 @@ export function ConvergenceViz() {
           </p>
         </div>
 
-        {/* PRESETS */}
-        <div className="flex shrink-0 items-center gap-1 sm:gap-2 p-1.5 bg-black/40 rounded-2xl border border-white/[0.05] shadow-inner">
+        {/* PRESETS: one row on phones 360px and up; on narrower screens the
+            row wraps instead of clipping "Ship" (it lost 38px at 320px). */}
+        <div className="flex max-w-full shrink-0 flex-wrap items-center gap-1 sm:gap-2 p-1.5 bg-black/40 rounded-2xl border border-white/[0.05] shadow-inner">
           <span className="text-xs text-zinc-500 mx-1.5 sm:mx-2 uppercase tracking-wider sm:tracking-widest font-bold">
             Presets
           </span>
@@ -148,7 +149,7 @@ export function ConvergenceViz() {
                 aria-pressed={active}
                 onClick={() => setValues([...preset.vals])}
                 className={cn(
-                  "whitespace-nowrap rounded-xl border px-2.5 sm:px-3 py-1.5 text-xs font-bold transition duration-300 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/60",
+                  "whitespace-nowrap rounded-xl border px-2.5 sm:px-3 py-1.5 text-xs font-bold transition duration-300 active:scale-95 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/60",
                   active
                     ? "border-white/10 bg-white/[0.08] text-white"
                     : "border-transparent text-zinc-400 hover:border-white/10 hover:bg-white/[0.06] hover:text-zinc-100",

@@ -114,7 +114,7 @@ function StepNode({
       type="button"
       onClick={onClick}
       aria-pressed={isActive}
-      className="group relative flex flex-col items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/50 rounded-xl"
+      className="group relative flex flex-col items-center gap-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/50 rounded-xl"
     >
       {/* Glow ring behind active node */}
       {isActive && (
@@ -443,7 +443,8 @@ export function OperatingRhythmViz() {
     setAutoPlay(false);
   }, []);
 
-  /* Keyboard navigation — only when this viz is in the viewport */
+  /* Keyboard navigation — only when this viz is in the viewport. Left/Right
+     only: Space and Up/Down scroll the page. */
   useEffect(() => {
     if (!isInView) return;
     function handleKeyDown(e: KeyboardEvent) {
@@ -459,9 +460,6 @@ export function OperatingRhythmViz() {
         e.preventDefault();
         setActiveIndex((cur) => (cur - 1 + STEP_COUNT) % STEP_COUNT);
         setAutoPlay(false);
-      } else if (e.key === " ") {
-        e.preventDefault();
-        setAutoPlay((cur) => !cur);
       }
     }
     window.addEventListener("keydown", handleKeyDown);
@@ -494,7 +492,7 @@ export function OperatingRhythmViz() {
           onClick={() => handleSelect(i)}
           aria-expanded={isActive}
           aria-controls={isActive ? `rhythm-detail-${step.id}` : undefined}
-          className="w-full flex items-center gap-4 text-left rounded-xl p-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/50"
+          className="w-full flex items-center gap-4 text-left rounded-xl p-2 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/50"
         >
           <motion.div
             className={cn(
@@ -717,20 +715,33 @@ export function OperatingRhythmViz() {
         </div>
       </div>
 
-      {/* ---- AUTO-PLAY INDICATOR ---- */}
+      {/* ---- AUTO-PLAY TOGGLE ----
+          A toggle with a fixed name ("Auto-Play"; aria-pressed carries the
+          state, the visible state and step count are aria-hidden). With
+          Reduce Motion auto-play never runs, so only the step count shows. */}
       <div className="relative z-10 mt-6 flex items-center justify-center">
-        <button
-          type="button"
-          onClick={() => setAutoPlay((prev) => !prev)}
-          className={cn(
-            "text-xs font-bold uppercase tracking-widest px-3 py-1.5 rounded-full border transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/50",
-            autoPlay
-              ? "border-[#FF5500]/20 text-[#FF5500] bg-[#FF5500]/[0.05] hover:bg-[#FF5500]/[0.1]"
-              : "border-white/[0.1] text-zinc-400 bg-white/[0.02] hover:bg-white/[0.04] hover:text-zinc-200",
-          )}
-        >
-          {autoPlay ? "Auto-playing" : "Paused"} &middot; {activeIndex + 1}/{STEP_COUNT}
-        </button>
+        {reducedMotion ? (
+          <span className="rounded-full border border-white/[0.1] bg-white/[0.02] px-3 py-1.5 text-xs font-bold uppercase tracking-widest text-zinc-400">
+            Step {activeIndex + 1}/{STEP_COUNT}
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setAutoPlay((prev) => !prev)}
+            aria-pressed={autoPlay}
+            className={cn(
+              "text-xs font-bold uppercase tracking-widest px-3 py-1.5 rounded-full border transition-colors duration-300 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/50",
+              autoPlay
+                ? "border-[#FF5500]/20 text-[#FF5500] bg-[#FF5500]/[0.05] hover:bg-[#FF5500]/[0.1]"
+                : "border-white/[0.1] text-zinc-400 bg-white/[0.02] hover:bg-white/[0.04] hover:text-zinc-200",
+            )}
+          >
+            Auto-Play
+            <span aria-hidden="true">
+              {autoPlay ? " On" : " Paused"} &middot; {activeIndex + 1}/{STEP_COUNT}
+            </span>
+          </button>
+        )}
       </div>
     </div>
   );

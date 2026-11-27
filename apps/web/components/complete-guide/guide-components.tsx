@@ -183,7 +183,7 @@ export function GuideSection({ id, children }: { id: string; children: ReactNode
         <h2
           id={headingId}
           tabIndex={-1}
-          className="mt-5 max-w-[22ch] font-serif text-[2.625rem] font-normal leading-[1.02] tracking-[-0.012em] text-white outline-none sm:mt-7 sm:text-[3.375rem] lg:text-[3.875rem]"
+          className="mt-5 max-w-[22ch] font-serif text-[2.625rem] font-normal leading-[1.02] tracking-[-0.012em] text-white outline-hidden sm:mt-7 sm:text-[3.375rem] lg:text-[3.875rem]"
         >
           {part.number ? <span className="sr-only">Part {part.number}: </span> : null}
           {part.title}
@@ -235,7 +235,7 @@ export function SubSection({ title, children }: { title: string; children: React
           data-guide-subsection={title}
           className={cn(
             MEASURE,
-            "scroll-mt-24 text-balance font-serif text-[1.875rem] font-normal leading-[1.08] tracking-[-0.01em] text-white outline-none sm:text-[2.375rem] xl:scroll-mt-10",
+            "scroll-mt-24 text-balance font-serif text-[1.875rem] font-normal leading-[1.08] tracking-[-0.01em] text-white outline-hidden sm:text-[2.375rem] xl:scroll-mt-10",
           )}
         >
           {title}
@@ -323,7 +323,7 @@ export function CodeBlock({
           type="button"
           onClick={() => void copy(text, { selectOnFailure: preRef.current })}
           aria-label={state === "copied" ? "Copied!" : "Copy to clipboard"}
-          className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium text-zinc-300 transition-colors hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/70"
+          className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium text-zinc-300 transition-colors hover:bg-white/[0.07] hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/70"
         >
           {state === "copied" ? (
             <Check aria-hidden="true" className="h-4 w-4 text-[#FF7A33]" />
@@ -350,7 +350,7 @@ export function CodeBlock({
         tabIndex={0}
         role="region"
         aria-label={`Code: ${label}`}
-        className="overflow-x-auto px-4 py-4 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FF5500]/60 sm:px-5"
+        className="overflow-x-auto px-4 py-4 outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FF5500]/60 sm:px-5"
       >
         <pre
           ref={preRef}
@@ -453,7 +453,7 @@ export function PromptBlock({
           type="button"
           onClick={() => void copy(prompt, { selectOnFailure: bodyRef.current })}
           aria-label={`Copy prompt: ${title}`}
-          className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium text-zinc-300 transition-colors hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/70"
+          className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium text-zinc-300 transition-colors hover:bg-white/[0.07] hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/70"
         >
           {state === "copied" ? (
             <Check aria-hidden="true" className="h-4 w-4 text-[#FF7A33]" />
@@ -485,7 +485,7 @@ export function PromptBlock({
           aria-label={`Prompt text: ${title}`}
           role="region"
           className={cn(
-            "whitespace-pre-wrap break-words px-4 py-4 font-mono text-[0.875rem] leading-[1.75] text-zinc-300 outline-none selection:bg-[#FF5500]/25 selection:text-white focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FF5500]/60 sm:px-5 sm:py-5 sm:text-[0.9rem]",
+            "whitespace-pre-wrap break-words px-4 py-4 font-mono text-[0.875rem] leading-[1.75] text-zinc-300 outline-hidden selection:bg-[#FF5500]/25 selection:text-white focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FF5500]/60 sm:px-5 sm:py-5 sm:text-[0.9rem]",
             collapsed && "max-h-[19rem] overflow-hidden",
           )}
         >
@@ -505,7 +505,7 @@ export function PromptBlock({
           aria-expanded={expanded}
           aria-controls={bodyId}
           onClick={toggle}
-          className="flex min-h-11 w-full items-center justify-center gap-2 border-t border-white/[0.07] text-sm font-medium text-zinc-300 transition-colors hover:bg-white/[0.03] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FF5500]/60"
+          className="flex min-h-11 w-full items-center justify-center gap-2 border-t border-white/[0.07] text-sm font-medium text-zinc-300 transition-colors hover:bg-white/[0.03] hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FF5500]/60"
         >
           {expanded ? "Show less" : "Show full prompt"}
           <ChevronDown
@@ -584,7 +584,7 @@ export function DataTable({
       aria-label={`Table: ${headers.join(", ")}`}
       tabIndex={0}
       className={cn(
-        "overflow-x-auto rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/60 md:border md:border-white/[0.08] md:bg-white/[0.015]",
+        "overflow-x-auto rounded-xl outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/60 md:border md:border-white/[0.08] md:bg-white/[0.015]",
         BLOCK_SPACING,
       )}
     >
@@ -647,7 +647,7 @@ function CompactTable({ headers, rows }: { headers: string[]; rows: string[][] }
       aria-label={`Table: ${headers.join(", ")}`}
       tabIndex={0}
       className={cn(
-        "overflow-x-auto rounded-xl border border-white/[0.08] bg-white/[0.015] outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/60",
+        "overflow-x-auto rounded-xl border border-white/[0.08] bg-white/[0.015] outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/60",
         BLOCK_SPACING,
       )}
     >
@@ -1115,7 +1115,7 @@ export function GuideNav({
                     aria-current={isActive ? "location" : undefined}
                     onClick={(e) => onNavClick(e, item.id)}
                     className={cn(
-                      "group/link relative inline-flex min-h-11 items-center gap-2 whitespace-nowrap rounded-full px-3 text-[0.8125rem] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/70",
+                      "group/link relative inline-flex min-h-11 items-center gap-2 whitespace-nowrap rounded-full px-3 text-[0.8125rem] font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/70",
                       "xl:flex xl:min-h-0 xl:items-baseline xl:gap-3 xl:whitespace-normal xl:rounded-md xl:py-[0.45rem] xl:pl-3 xl:pr-2 xl:text-[0.875rem] xl:leading-snug",
                       isActive
                         ? "bg-white/[0.08] text-white xl:bg-white/[0.05]"
@@ -1149,7 +1149,7 @@ export function GuideNav({
                               onClick={(e) => onNavClick(e, sub.id)}
                               data-active={subActive || undefined}
                               className={cn(
-                                "-ml-px block border-l py-1.5 pl-4 pr-2 text-[0.8125rem] leading-snug transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/70",
+                                "-ml-px block border-l py-1.5 pl-4 pr-2 text-[0.8125rem] leading-snug transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/70",
                                 subActive
                                   ? "border-[#FF5500] text-zinc-100"
                                   : "border-transparent text-zinc-500 hover:text-zinc-200",
@@ -1172,7 +1172,7 @@ export function GuideNav({
             onClick={() => setSheetOpen(true)}
             aria-label="Open contents"
             aria-haspopup="dialog"
-            className="mr-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-zinc-300 transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/70 sm:mr-5 xl:hidden"
+            className="mr-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-zinc-300 transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/70 sm:mr-5 xl:hidden"
           >
             <ListTree aria-hidden="true" className="h-5 w-5" />
           </button>
@@ -1183,7 +1183,7 @@ export function GuideNav({
             type="button"
             onClick={openLibrary}
             aria-haspopup="dialog"
-            className="flex items-center gap-2.5 rounded-md py-2 pl-3 pr-2 text-left text-[0.8125rem] font-medium text-zinc-300 transition-colors hover:bg-white/[0.04] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/70"
+            className="flex items-center gap-2.5 rounded-md py-2 pl-3 pr-2 text-left text-[0.8125rem] font-medium text-zinc-300 transition-colors hover:bg-white/[0.04] hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/70"
           >
             <SquareTerminal aria-hidden="true" className="h-3.5 w-3.5 text-[#FF7A33]" />
             Prompt library
@@ -1191,7 +1191,7 @@ export function GuideNav({
           </button>
           <a
             href="#main-content"
-            className="flex items-center gap-2.5 rounded-md py-2 pl-3 text-[0.8125rem] font-medium text-zinc-500 transition-colors hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/70"
+            className="flex items-center gap-2.5 rounded-md py-2 pl-3 text-[0.8125rem] font-medium text-zinc-500 transition-colors hover:text-zinc-200 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/70"
           >
             <ArrowUp aria-hidden="true" className="h-3.5 w-3.5" />
             Back to top
@@ -1230,7 +1230,7 @@ export function GuideNav({
             setSheetOpen(false);
             requestAnimationFrame(() => requestAnimationFrame(openLibrary));
           }}
-          className="mb-5 flex min-h-16 w-full items-center gap-3.5 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-left transition-colors active:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/70"
+          className="mb-5 flex min-h-16 w-full items-center gap-3.5 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-left transition-colors active:bg-white/[0.06] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/70"
         >
           <SquareTerminal aria-hidden="true" className="h-5 w-5 shrink-0 text-[#FF7A33]" />
           <span className="min-w-0 flex-1">

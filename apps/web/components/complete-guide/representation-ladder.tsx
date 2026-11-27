@@ -66,7 +66,7 @@ export function RepresentationLadder() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               onClick={handleReset}
-              className="flex items-center gap-3 px-6 py-3 rounded-2xl border border-white/10 bg-white/[0.02] text-xs font-black uppercase tracking-[0.2em] text-zinc-300 hover:text-white transition duration-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/60"
+              className="flex items-center gap-3 px-6 py-3 rounded-2xl border border-white/10 bg-white/[0.02] text-xs font-black uppercase tracking-[0.2em] text-zinc-300 hover:text-white transition duration-500 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/60"
             >
               <Repeat className="h-3 w-3" />
               Reset Simulation
@@ -157,7 +157,7 @@ export function RepresentationLadder() {
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         onClick={() => handleBugClick(index)}
-                        className="w-full flex items-center justify-center gap-3 px-5 py-3 rounded-2xl border border-white/10 bg-white/[0.02] text-xs font-black uppercase tracking-[0.1em] text-zinc-300 hover:bg-[#FF5500]/10 hover:border-[#FF5500]/20 hover:text-[#FF5500] transition duration-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/60"
+                        className="w-full flex items-center justify-center gap-3 px-5 py-3 rounded-2xl border border-white/10 bg-white/[0.02] text-xs font-black uppercase tracking-[0.1em] text-zinc-300 hover:bg-[#FF5500]/10 hover:border-[#FF5500]/20 hover:text-[#FF5500] transition duration-500 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/60"
                       >
                         <Bug className="h-3.5 w-3.5" />
                         Inject Bug

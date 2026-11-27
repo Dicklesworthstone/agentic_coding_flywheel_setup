@@ -68,7 +68,9 @@ const PLAN_TO_BEAD_CONCEPTS: {
     insight:
       "Not a bead of its own, so no bead waits on it. Each bead checks the SSO session on the endpoints it adds.",
     mapsTo: ["br-101", "br-102", "br-103"],
-    color: "#71717A",
+    // A neutral grey for a cross-cutting rule, light enough for its label
+    // text (zinc-500 #71717A was 3.9:1 on its badge).
+    color: "#8E8E96",
   },
   {
     id: "e2e",
@@ -265,7 +267,7 @@ export function PlanToBeadsViz() {
               aria-pressed={mode === nextMode}
               onClick={() => setMode(nextMode)}
               className={cn(
-                "min-h-[44px] whitespace-nowrap rounded-xl px-4 py-2 text-xs font-bold transition duration-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#05070a] sm:px-5",
+                "min-h-[44px] whitespace-nowrap rounded-xl px-4 py-2 text-xs font-bold transition duration-500 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#05070a] sm:px-5",
                 mode === nextMode
                   ? "bg-primary text-black shadow-[0_0_20px_rgba(var(--primary-rgb),0.3)]"
                   : "text-zinc-400 hover:bg-white/[0.03] hover:text-zinc-100",
@@ -307,7 +309,7 @@ export function PlanToBeadsViz() {
                       delay: reducedMotion ? 0 : index * 0.06,
                     }}
                     className={cn(
-                      "w-full rounded-xl border p-3 text-left transition duration-300 relative overflow-hidden group/btn focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/60 xl:p-4",
+                      "w-full rounded-xl border p-3 text-left transition duration-300 relative overflow-hidden group/btn focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/60 xl:p-4",
                       isSelected
                         ? "border-primary/30 bg-primary/5 shadow-[0_0_20px_rgba(var(--primary-rgb),0.1)]"
                         : "border-white/[0.04] bg-white/[0.01] hover:border-white/[0.1] hover:bg-white/[0.03]",

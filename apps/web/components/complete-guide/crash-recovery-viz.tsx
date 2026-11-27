@@ -368,7 +368,7 @@ export function CrashRecoveryViz() {
                 }
                 // flex-col + justify-start: a button centres its content
                 // vertically, which misaligned cards sharing a grid row.
-                className={`relative flex min-w-0 flex-col justify-start rounded-xl border p-3 sm:p-4 text-left transition-colors min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/60 ${
+                className={`relative flex min-w-0 flex-col justify-start rounded-xl border p-3 sm:p-4 text-left transition-colors min-h-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/60 ${
                   agent.alive
                     ? agent.justCompleted > 0
                       ? "border-emerald-500/30 bg-emerald-500/[0.05] cursor-pointer group"

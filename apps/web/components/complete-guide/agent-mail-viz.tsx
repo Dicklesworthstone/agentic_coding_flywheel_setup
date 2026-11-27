@@ -2,7 +2,7 @@
 
 import { CheckCircle2, Mail, XOctagon, Zap } from "lucide-react";
 import { useId, useRef, useState } from "react";
-import { AnimatePresence, motion, useInView } from "@/components/motion";
+import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
 import { cn } from "@/lib/utils";
 
 type Mode = "broadcast" | "agentmail";
@@ -24,6 +24,12 @@ export function AgentMailViz() {
   const [mode, setMode] = useState<Mode>("agentmail");
   const ref = useRef<HTMLDivElement>(null);
   const isInView = useInView(ref, { once: true, margin: "-100px" });
+  // The marching dashes and recipient pings loop forever, so Reduce Motion
+  // shows the lines still. The hook reports no preference during hydration,
+  // and a changed transition alone never stops a running repeat, so the
+  // looping elements carry the preference in their key and remount with it.
+  const reducedMotion = useReducedMotion();
+  const motionKey = reducedMotion ? "still" : "live";
   // A page-unique filter id: a bare id="glow" would resolve to whichever
   // element with that id comes first in the document.
   const glowId = `agent-mail-glow-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
@@ -46,8 +52,8 @@ export function AgentMailViz() {
   }
 
   // Targeted lines for Agent Mail. `at` is how far along the path (0 = sender,
-  // 1 = recipient) the message pill sits; the two values keep the pills on
-  // their own lines without overlapping each other on a phone.
+  // 1 = recipient) the message pill sits. These two values keep the pills
+  // apart on phones; at 320px their edges just meet.
   const directLines = [
     { from: agents[0], to: agents[2], msg: "Need /api/users", at: 0.56 },
     { from: agents[1], to: agents[2], msg: "Schema updated", at: 0.38 },
@@ -101,7 +107,7 @@ export function AgentMailViz() {
             aria-pressed={mode === "broadcast"}
             onClick={() => setMode("broadcast")}
             className={cn(
-              "px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold tracking-wide whitespace-nowrap transition duration-500 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/60",
+              "px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold tracking-wide whitespace-nowrap transition duration-500 flex items-center gap-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/60",
               mode === "broadcast"
                 ? "bg-[#FF5F56]/10 text-[#FF5F56] shadow-sm border border-[#FF5F56]/20"
                 : "text-zinc-400 hover:text-zinc-100 border border-transparent",
@@ -115,7 +121,7 @@ export function AgentMailViz() {
             aria-pressed={mode === "agentmail"}
             onClick={() => setMode("agentmail")}
             className={cn(
-              "px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold tracking-wide whitespace-nowrap transition duration-500 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/60",
+              "px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold tracking-wide whitespace-nowrap transition duration-500 flex items-center gap-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/60",
               mode === "agentmail"
                 ? "bg-[#FF5500]/10 text-[#FF5500] shadow-sm border border-[#FF5500]/20"
                 : "text-zinc-400 hover:text-zinc-100 border border-transparent",
@@ -202,7 +208,7 @@ export function AgentMailViz() {
                 ? // Broadcast Lines
                   broadcastLines.map((line, i) => (
                     <motion.line
-                      key={`bc-${i}`}
+                      key={`bc-${i}-${motionKey}`}
                       x1={`${line.from.x}%`}
                       y1={`${line.from.y}%`}
                       x2={`${line.to.x}%`}
@@ -215,14 +221,16 @@ export function AgentMailViz() {
                       exit={{ opacity: 0 }}
                       transition={{
                         opacity: { duration: 0.5 },
-                        strokeDashoffset: { duration: 0.8, repeat: Infinity, ease: "linear" },
+                        strokeDashoffset: reducedMotion
+                          ? { duration: 0 }
+                          : { duration: 0.8, repeat: Infinity, ease: "linear" },
                       }}
                       filter={`url(#${glowId})`}
                     />
                   ))
                 : // Targeted Lines
                   directLines.map((line, i) => (
-                    <g key={`dl-${i}`}>
+                    <g key={`dl-${i}-${motionKey}`}>
                       <motion.line
                         x1={`${line.from.x}%`}
                         y1={`${line.from.y}%`}
@@ -236,18 +244,29 @@ export function AgentMailViz() {
                         exit={{ opacity: 0 }}
                         transition={{
                           opacity: { duration: 0.5 },
-                          strokeDashoffset: { duration: 1.5, repeat: Infinity, ease: "linear" },
+                          strokeDashoffset: reducedMotion
+                            ? { duration: 0 }
+                            : { duration: 1.5, repeat: Infinity, ease: "linear" },
                         }}
                         filter={`url(#${glowId})`}
                       />
+                      {/* Recipient ping; with Reduce Motion, a still dot. */}
                       <motion.circle
                         cx={`${line.to.x}%`}
                         cy={`${line.to.y}%`}
                         r="4"
                         fill="#FF5500"
-                        initial={{ opacity: 0, scale: 0 }}
-                        animate={{ opacity: [0, 1, 0], scale: [1, 2, 3] }}
-                        transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.5 }}
+                        initial={{ opacity: 0, scale: reducedMotion ? 1 : 0 }}
+                        animate={
+                          reducedMotion
+                            ? { opacity: 0.9, scale: 1 }
+                            : { opacity: [0, 1, 0], scale: [1, 2, 3] }
+                        }
+                        transition={
+                          reducedMotion
+                            ? { duration: 0.3 }
+                            : { duration: 1.5, repeat: Infinity, delay: i * 0.5 }
+                        }
                       />
                     </g>
                   ))}

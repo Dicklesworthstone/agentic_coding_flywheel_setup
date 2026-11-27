@@ -129,7 +129,7 @@ export function CoordinationTrioViz() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               onClick={() => setDisabledTool(null)}
-              className="flex items-center gap-3 whitespace-nowrap px-6 py-3 rounded-2xl border border-white/10 bg-white/[0.03] text-xs font-black uppercase tracking-[0.2em] text-zinc-300 hover:text-white transition duration-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/70"
+              className="flex items-center gap-3 whitespace-nowrap px-6 py-3 rounded-2xl border border-white/10 bg-white/[0.03] text-xs font-black uppercase tracking-[0.2em] text-zinc-300 hover:text-white transition duration-500 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-violet-400/70"
             >
               <Repeat className="h-3 w-3" />
               Restore {TOOL_MAP.get(disabledTool)?.label}
@@ -219,7 +219,13 @@ export function CoordinationTrioViz() {
                       fill={color}
                       fillOpacity={isDisabled ? 0.6 : 1}
                       animate={{ scale: isHovered && !reducedMotion ? [1, 1.35, 1] : 1 }}
-                      transition={{ duration: 2, repeat: Infinity }}
+                      // Repeat only while pulsing, or the settle-to-1 animation
+                      // repeats from mid-pulse every 2s after the hover ends.
+                      transition={
+                        isHovered && !reducedMotion
+                          ? { duration: 2, repeat: Infinity }
+                          : { duration: 0.3, ease: "easeOut" }
+                      }
                     />
                   </g>
                 );
@@ -283,13 +289,15 @@ export function CoordinationTrioViz() {
                     setHoveredTool(null);
                     setDisabledTool(isDisabled ? null : tool.id);
                   }}
-                  className={`group absolute flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 cursor-crosshair items-center justify-center rounded-full transition-opacity duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/70 sm:h-16 sm:w-16 ${
+                  className={`group absolute flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 cursor-crosshair items-center justify-center rounded-full transition-opacity duration-300 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-violet-400/70 sm:h-16 sm:w-16 ${
                     isConnected ? "opacity-100" : "opacity-40"
                   }`}
                   style={{ left: pct(tool.x, VIEW_W), top: pct(tool.y, VIEW_H) }}
                 >
+                  {/* Inside the button, so clicking or hovering the name
+                      works like the circle does. */}
                   <span
-                    className={`pointer-events-none absolute left-1/2 -translate-x-1/2 whitespace-nowrap text-xs font-black uppercase tracking-[0.14em] sm:tracking-[0.18em] ${
+                    className={`absolute left-1/2 -translate-x-1/2 whitespace-nowrap text-xs font-black uppercase tracking-[0.14em] sm:tracking-[0.18em] ${
                       tool.labelSide === "top" ? "bottom-full mb-1 sm:mb-2" : "top-full mt-1 sm:mt-2"
                     } ${isDisabled ? "text-red-400 line-through" : ""}`}
                     style={isDisabled ? undefined : { color: isHovered ? "#fff" : tool.color }}
@@ -306,7 +314,10 @@ export function CoordinationTrioViz() {
             })}
           </div>
 
-          <ul className="relative mt-6 space-y-2 sm:hidden">
+          {/* The relationships as text: visible on phones, where the edge
+              labels above are hidden, and screen-reader-only from sm up,
+              where those labels show but are aria-hidden. */}
+          <ul className="relative mt-6 space-y-2 sm:sr-only">
             {TRIO_EDGES.map((edge) => (
               <li
                 key={`list-${edge.from}-${edge.to}`}
@@ -323,7 +334,10 @@ export function CoordinationTrioViz() {
           </ul>
         </motion.div>
 
-        <div className="mt-8 grid gap-6 md:grid-cols-2 md:items-start">
+        {/* Polite live region: focusing a tool announces what it does, and
+            removing one announces what breaks. The capability map never
+            changes, so only the swapped card is read. */}
+        <div aria-live="polite" className="mt-8 grid gap-6 md:grid-cols-2 md:items-start">
           <div className="p-7 rounded-[2rem] bg-white/[0.015] border border-white/[0.05] sm:p-8 sm:rounded-[2.5rem]">
             <span className="text-xs font-black text-zinc-500 uppercase tracking-[0.4em]">
               Capability Map

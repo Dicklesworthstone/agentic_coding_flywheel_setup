@@ -219,10 +219,12 @@ function TerminalBlock({
                 : undefined
             }
           >
+            {/* Line numbers count toward the card's "N lines" badge, so they
+                meet 4.5:1 (at /50 they were 2.5:1 and 3.2:1). */}
             <span
               className={cn(
                 "select-none tabular-nums shrink-0 w-5 text-right",
-                isWeak ? "text-red-400/50" : "text-emerald-400/50",
+                isWeak ? "text-red-400/80" : "text-emerald-400/75",
               )}
             >
               {i + 1}
@@ -375,7 +377,7 @@ export function BeadComparisonViz() {
                 aria-pressed={activeTab === tab}
                 onClick={() => setActiveTab(tab)}
                 className={cn(
-                  "relative z-10 px-5 py-3 sm:py-2.5 rounded-xl text-sm sm:text-sm font-bold tracking-wide transition-colors duration-300 flex items-center gap-2 min-h-[48px] sm:min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/60",
+                  "relative z-10 px-5 py-3 sm:py-2.5 rounded-xl text-sm sm:text-sm font-bold tracking-wide transition-colors duration-300 flex items-center gap-2 min-h-[48px] sm:min-h-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/60",
                   activeTab === tab ? "text-[#FF5500]" : "text-zinc-400 hover:text-white/80",
                 )}
               >

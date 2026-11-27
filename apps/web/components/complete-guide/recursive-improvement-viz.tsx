@@ -122,7 +122,7 @@ export function RecursiveImprovementViz() {
     <div
       ref={ref}
       tabIndex={0}
-      className="relative my-16 overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0A0D14] shadow-xl outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/40"
+      className="relative my-16 overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0A0D14] shadow-xl outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/40"
     >
       <div className="absolute inset-0 noise-overlay opacity-[0.03] mix-blend-overlay pointer-events-none" />
 
@@ -155,7 +155,7 @@ export function RecursiveImprovementViz() {
               // in view), so only that tab may reference it.
               aria-controls={i === activeLayer && isInView ? `layer-panel-${l.id}` : undefined}
               onClick={() => setActiveLayer(i)}
-              className={`relative min-w-0 rounded-t-lg px-3 py-3 text-left text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FF5500]/60 ${
+              className={`relative min-w-0 rounded-t-lg px-3 py-3 text-left text-xs font-semibold transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FF5500]/60 ${
                 i === activeLayer ? "text-white" : "text-zinc-400 hover:text-zinc-200"
               }`}
             >
@@ -196,7 +196,7 @@ export function RecursiveImprovementViz() {
             onClick={goPrev}
             disabled={activeLayer === 0}
             aria-label="Previous layer"
-            className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-zinc-300 disabled:opacity-30 active:scale-95 transition min-h-[44px] min-w-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/60"
+            className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-zinc-300 disabled:opacity-30 active:scale-95 transition min-h-[44px] min-w-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/60"
           >
             &larr;
           </button>
@@ -211,7 +211,7 @@ export function RecursiveImprovementViz() {
             onClick={goNext}
             disabled={activeLayer === LAYERS.length - 1}
             aria-label="Next layer"
-            className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-zinc-300 disabled:opacity-30 active:scale-95 transition min-h-[44px] min-w-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/60"
+            className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-zinc-300 disabled:opacity-30 active:scale-95 transition min-h-[44px] min-w-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/60"
           >
             &rarr;
           </button>
@@ -225,7 +225,7 @@ export function RecursiveImprovementViz() {
               onClick={() => setActiveLayer(i)}
               aria-label={`Go to layer ${i + 1}`}
               aria-current={i === activeLayer ? "step" : undefined}
-              className="p-2 -m-1 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/60"
+              className="p-2 -m-1 rounded-full focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/60"
             >
               <div
                 className="h-2.5 w-2.5 rounded-full transition"

@@ -77,7 +77,7 @@ export function GuideHero({
         <div className="flex h-16 items-center justify-between gap-4 sm:h-20">
           <Link
             href="/"
-            className="-ml-1 inline-flex min-h-11 items-center gap-2.5 whitespace-nowrap rounded-md px-1 text-[0.9375rem] font-semibold tracking-[-0.01em] text-zinc-100 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/70"
+            className="-ml-1 inline-flex min-h-11 items-center gap-2.5 whitespace-nowrap rounded-md px-1 text-[0.9375rem] font-semibold tracking-[-0.01em] text-zinc-100 transition-colors hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/70"
           >
             <DialMark className="h-5 w-5 text-zinc-300" />
             Agent Flywheel
@@ -90,7 +90,7 @@ export function GuideHero({
                   key={link.key}
                   href={link.href}
                   aria-current={active ? "page" : undefined}
-                  className={`inline-flex min-h-11 items-center whitespace-nowrap rounded-full px-2.5 font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/70 sm:px-3 ${
+                  className={`inline-flex min-h-11 items-center whitespace-nowrap rounded-full px-2.5 font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/70 sm:px-3 ${
                     active ? "text-white" : "text-zinc-400 hover:text-zinc-100"
                   }`}
                 >
@@ -116,14 +116,14 @@ export function GuideHero({
             <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
               <a
                 href={primary.href}
-                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[#FF5500] px-6 text-[0.9375rem] font-semibold text-black transition-colors hover:bg-[#FF7A33] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#020408]"
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[#FF5500] px-6 text-[0.9375rem] font-semibold text-black transition-colors hover:bg-[#FF7A33] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#020408]"
               >
                 {primary.label}
                 <ArrowDown aria-hidden="true" className="h-4 w-4" />
               </a>
               <Link
                 href={secondary.href}
-                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-white/15 px-6 text-[0.9375rem] font-semibold text-zinc-100 transition-colors hover:border-white/30 hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/70"
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-white/15 px-6 text-[0.9375rem] font-semibold text-zinc-100 transition-colors hover:border-white/30 hover:bg-white/[0.04] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/70"
               >
                 {secondary.label}
                 <ArrowRight aria-hidden="true" className="h-4 w-4" />
@@ -166,7 +166,7 @@ export function GuideHero({
                   <li key={item.id}>
                     <a
                       href={`#${item.id}`}
-                      className="group flex items-baseline gap-3 py-2.5 text-[0.9375rem] leading-snug text-zinc-300 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/70"
+                      className="group flex items-baseline gap-3 py-2.5 text-[0.9375rem] leading-snug text-zinc-300 transition-colors hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/70"
                     >
                       <span className="w-6 shrink-0 font-mono text-xs tabular-nums text-zinc-500 group-hover:text-[#FF7A33]">
                         {item.number ? item.number.padStart(2, "0") : "··"}
@@ -178,7 +178,7 @@ export function GuideHero({
               </ol>
               <PromptLibraryButton
                 count={promptCount}
-                className="-mx-2 mt-3 flex w-[calc(100%+1rem)] items-center justify-between gap-3 rounded-xl border border-white/[0.08] bg-white/[0.025] px-3.5 py-3 text-left text-[0.9375rem] transition-colors hover:border-[#FF5500]/40 hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/70"
+                className="-mx-2 mt-3 flex w-[calc(100%+1rem)] items-center justify-between gap-3 rounded-xl border border-white/[0.08] bg-white/[0.025] px-3.5 py-3 text-left text-[0.9375rem] transition-colors hover:border-[#FF5500]/40 hover:bg-white/[0.05] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/70"
               />
             </div>
           </div>
@@ -228,14 +228,14 @@ export function GuideFooterCTA({ eyebrow, title, body, primary, secondary }: Gui
       <div className="mt-9 flex flex-col gap-3 sm:flex-row">
         <Link
           href={primary.href}
-          className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[#FF5500] px-6 text-[0.9375rem] font-semibold text-black transition-colors hover:bg-[#FF7A33] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#06080C]"
+          className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[#FF5500] px-6 text-[0.9375rem] font-semibold text-black transition-colors hover:bg-[#FF7A33] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#06080C]"
         >
           {primary.label}
           <ArrowRight aria-hidden="true" className="h-4 w-4" />
         </Link>
         <Link
           href={secondary.href}
-          className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-white/15 px-6 text-[0.9375rem] font-semibold text-zinc-100 transition-colors hover:border-white/30 hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/70"
+          className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-white/15 px-6 text-[0.9375rem] font-semibold text-zinc-100 transition-colors hover:border-white/30 hover:bg-white/[0.04] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/70"
         >
           {secondary.label}
         </Link>
@@ -248,7 +248,7 @@ export function GuideFooterCTA({ eyebrow, title, body, primary, secondary }: Gui
 // Colophon: when the guide was last checked, and where to correct it
 // -----------------------------------------------------------------------------
 const COLOPHON_LINK =
-  "inline-flex min-h-11 items-center gap-1.5 rounded-md text-zinc-300 underline decoration-white/20 underline-offset-4 transition-colors hover:text-white hover:decoration-[#FF5500]/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/70";
+  "inline-flex min-h-11 items-center gap-1.5 rounded-md text-zinc-300 underline decoration-white/20 underline-offset-4 transition-colors hover:text-white hover:decoration-[#FF5500]/70 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/70";
 
 export function GuideColophon({ reviewedOn, sourcePath }: { reviewedOn: string; sourcePath: string }) {
   return (

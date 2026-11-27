@@ -125,9 +125,9 @@ export function PlanEvolutionStudio() {
             Best-of-all-worlds synthesis
           </h4>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-zinc-400 font-light">
-            Toggle proposal plans on and off, then drag the refinement dial. Models with different
-            strengths, revised over several fresh rounds, produce a plan that leaves fewer surprises
-            for implementation.
+            Toggle proposal plans on and off, then drag the slider through the refinement stages.
+            Plans from models with different strengths, merged and then revised over many fresh
+            review rounds, leave fewer surprises for implementation.
           </p>
         </div>
 
@@ -192,7 +192,7 @@ export function PlanEvolutionStudio() {
                     delay: reducedMotion ? 0 : index * 0.06,
                   }}
                   className={cn(
-                    "min-w-0 rounded-2xl border p-5 text-left transition duration-300 relative overflow-hidden group/model focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/60",
+                    "min-w-0 rounded-2xl border p-5 text-left transition duration-300 relative overflow-hidden group/model focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/60",
                     enabled
                       ? "border-white/[0.08] bg-white/[0.02] shadow-lg"
                       : "border-white/[0.03] bg-transparent opacity-50 hover:opacity-80",

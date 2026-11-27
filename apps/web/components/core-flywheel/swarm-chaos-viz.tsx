@@ -3,7 +3,6 @@
 import { Lock, Play, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
-import { isInteractiveKeyboardTarget } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                         */
@@ -568,25 +567,8 @@ export function SwarmChaosViz() {
 
   useEffect(() => () => clearTimers(), [clearTimers]);
 
-  /* Keyboard navigation — only when this viz is in the viewport */
-  useEffect(() => {
-    if (!isInView) return;
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.defaultPrevented || e.isComposing || e.ctrlKey || e.metaKey || e.altKey
-        || isInteractiveKeyboardTarget(e.target)) return;
-      const bounds = ref.current?.getBoundingClientRect();
-      if (!bounds || bounds.bottom <= 0 || bounds.top >= window.innerHeight) return;
-      if (e.key === " ") {
-        e.preventDefault();
-        if (!isPlaying) play();
-      } else if (e.key === "r" || e.key === "R") {
-        e.preventDefault();
-        reset();
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isInView, isPlaying, play, reset]);
+  // No page-level shortcuts: Space scrolls the page, and a bare "R" anywhere
+  // on screen fails WCAG 2.1.4. The Play and Reset buttons cover both.
 
   const currentPhase = PHASES[phase];
   const isDone = phase === TOTAL_PHASES - 1 && !isPlaying;

@@ -170,22 +170,29 @@ export function FlywheelDiagram() {
               ))}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setAutoTour((current) => !current)}
-            className={`group flex items-center gap-3 px-5 py-2.5 rounded-xl border transition duration-500 ${
-              autoTour
-                ? "border-primary/30 bg-primary/10 text-primary shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]"
-                : "border-white/10 bg-white/[0.02] text-white/40 hover:bg-white/[0.04]"
-            }`}
-          >
-            <div
-              className={`w-2 h-2 rounded-full ${autoTour ? "bg-primary shadow-[0_0_8px_rgba(var(--primary-rgb),0.8)] animate-pulse" : "bg-white/20"}`}
-            />
-            <span className="text-xs font-bold uppercase tracking-widest">
-              {autoTour ? "Auto-Tour Active" : "Tour Paused"}
-            </span>
-          </button>
+          {/* Not offered with Reduce Motion, where the tour never runs. A
+              toggle with a fixed name: aria-pressed carries the state and the
+              visible On/Paused suffix is aria-hidden. Paused text is zinc-400
+              (white/40 was 3.6:1). */}
+          {!rm && (
+            <button
+              type="button"
+              onClick={() => setAutoTour((current) => !current)}
+              aria-pressed={autoTour}
+              className={`group flex items-center gap-3 px-5 py-2.5 rounded-xl border transition duration-500 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FF5500]/60 ${
+                autoTour
+                  ? "border-primary/30 bg-primary/10 text-primary shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]"
+                  : "border-white/10 bg-white/[0.02] text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200"
+              }`}
+            >
+              <div
+                className={`w-2 h-2 rounded-full ${autoTour ? "bg-primary shadow-[0_0_8px_rgba(var(--primary-rgb),0.8)] animate-pulse" : "bg-white/20"}`}
+              />
+              <span className="text-xs font-bold uppercase tracking-widest">
+                Auto-Tour<span aria-hidden="true">{autoTour ? " On" : " Paused"}</span>
+              </span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -195,7 +202,9 @@ export function FlywheelDiagram() {
             instead of shrinking with the drawing or scrolling sideways. */}
         <div className="relative mx-auto w-full max-w-[720px] py-6">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(var(--primary-rgb),0.05),transparent_60%)]" />
-          <div className="relative aspect-[640/420] w-full">
+          {/* A size container: the hub readout sizes itself to the drawing
+              (the hub is 170/640 of its width), not to the viewport. */}
+          <div className="@container relative aspect-[640/420] w-full">
           <svg viewBox="0 0 640 420" className="absolute inset-0 h-full w-full" aria-hidden="true">
             {/* Main structural orbits */}
             <ellipse
@@ -306,7 +315,14 @@ export function FlywheelDiagram() {
                     fill={isActive ? stage.color : "white"}
                     fillOpacity={isActive ? 1 : 0.45}
                     animate={{ scale: isActive && !rm ? [1, 1.4, 1] : 1 }}
-                    transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                    // Repeat only while pulsing: an infinite repeat on the
+                    // settle-to-1 animation re-ran it from mid-pulse every 2s,
+                    // so dots the tour had left kept ticking.
+                    transition={
+                      isActive && !rm
+                        ? { duration: 2, repeat: Infinity, ease: "easeInOut" }
+                        : { duration: 0.3, ease: "easeOut" }
+                    }
                     filter={isActive ? "url(#nodeGlow)" : undefined}
                   />
 
@@ -326,13 +342,20 @@ export function FlywheelDiagram() {
           </svg>
 
           <div className="pointer-events-none absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center">
-            <span className="text-xs font-bold uppercase tracking-[0.12em] text-zinc-400 sm:tracking-[0.35em]">
-              <span className="hidden sm:inline">System </span>Output
+            {/* The 12px label needs a hub of ~76px (diagram 288px+), and
+                "System Output" one of ~175px (660px+); below that the label
+                is for screen readers only. */}
+            <span className="sr-only text-xs font-bold uppercase tracking-[0.15em] text-zinc-400 @min-[18rem]:not-sr-only @min-[41.25rem]:tracking-[0.3em]">
+              <span className="hidden @min-[41.25rem]:inline">System </span>Output
             </span>
             <motion.span
-              className="mt-0.5 text-[1.75rem] font-black leading-none tracking-tighter text-white tabular-nums sm:mt-2 sm:text-[3.5rem]"
-              animate={rm ? undefined : { scale: [1, 1.05, 1] }}
-              transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+              className="text-[clamp(1.25rem,7.5cqw,3.5rem)] font-black leading-none tracking-tighter text-white tabular-nums @min-[18rem]:mt-0.5 @min-[30rem]:mt-2"
+              // Not `rm ? undefined`: the hook reports no preference during
+              // hydration, and an undefined animate never stops the pulse.
+              animate={{ scale: rm ? 1 : [1, 1.05, 1] }}
+              transition={
+                rm ? { duration: 0 } : { duration: 2, repeat: Infinity, ease: "easeInOut" }
+              }
             >
               {loopVelocity.toFixed(1)}x
             </motion.span>
@@ -350,11 +373,13 @@ export function FlywheelDiagram() {
                 onMouseEnter={() => {
                   if (isFinePointer.current) selectStage(index);
                 }}
-                className="group absolute flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70"
+                className="group absolute flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/70"
                 style={{ left: `${(stage.x / 640) * 100}%`, top: `${(stage.y / 420) * 100}%` }}
               >
+                {/* Inside the button, so the name is part of the click and
+                    hover target, as the old SVG hit circles made it. */}
                 <span
-                  className={`pointer-events-none absolute whitespace-nowrap text-xs font-bold uppercase tracking-[0.08em] transition-colors duration-300 sm:tracking-[0.2em] ${
+                  className={`absolute whitespace-nowrap text-xs font-bold uppercase tracking-[0.08em] transition-colors duration-300 sm:tracking-[0.2em] ${
                     isActive ? "text-white" : "text-zinc-400 group-hover:text-zinc-200"
                   } ${place.side === "top" ? "bottom-full mb-0.5 sm:mb-2.5" : "top-full mt-0.5 sm:mt-2.5"} ${
                     place.align === "end" ? "right-2" : "left-1/2 -translate-x-1/2"

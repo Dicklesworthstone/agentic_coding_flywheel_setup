@@ -568,7 +568,7 @@ export function SwarmExecutionViz() {
               setPhaseIndex(index);
             }}
             className={cn(
-              "min-w-0 rounded-xl border py-2.5 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFBD2E]/60 md:rounded-[22px] md:px-4 md:py-3 md:text-left",
+              "min-w-0 rounded-xl border py-2.5 text-center transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FFBD2E]/60 md:rounded-[22px] md:px-4 md:py-3 md:text-left",
               phaseIndex === index
                 ? "border-white/18 bg-white/[0.09]"
                 : "border-white/8 bg-white/[0.03] hover:border-white/14 hover:bg-white/[0.05]",
@@ -577,7 +577,9 @@ export function SwarmExecutionViz() {
             <div
               className={cn(
                 "font-mono text-sm font-semibold tabular-nums md:font-sans md:text-xs md:uppercase md:tracking-[0.22em]",
-                phaseIndex === index ? "text-white md:text-white/45" : "text-white/55 md:text-white/45",
+                // /60, not /55 or md:/45: the page's AA floor rule only lifts
+                // bare text-white/NN classes, and /55 measured 4.48:1.
+                phaseIndex === index ? "text-white md:text-white/60" : "text-white/60",
               )}
             >
               {index + 1}
