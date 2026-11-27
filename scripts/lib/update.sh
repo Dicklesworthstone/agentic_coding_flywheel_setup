@@ -5465,7 +5465,7 @@ update_check_grok_command() {
     case "$mode" in preflight|ready) ;; *) return 1 ;; esac
     local helper_source="" target_env="" env_bin="" bash_bin="" assignment=""
     local -a env_args=()
-    if ! helper_source="$(declare -f acfs_grok_payload_path acfs_grok_check)"; then
+    if ! helper_source="$(declare -f acfs_gnu_timeout_path acfs_grok_payload_path acfs_grok_is_self_update_payload acfs_grok_check)"; then
         printf 'Grok update: canonical command ownership verification is unavailable.\n' >&2
         return 1
     fi

@@ -6,7 +6,7 @@
 # ============================================================
 # Data-only manifest index. Safe to source.
 
-ACFS_MANIFEST_SHA256="dd924dc5a20ba5d216d399bb90537764d243db0af936742b46a550b206c1ea95"
+ACFS_MANIFEST_SHA256="291110a76e1c4c00bee44ec4e110994ab8eb20a843e1ba31a5ce2d58605f096d"
 
 ACFS_MODULES_IN_ORDER=(
   "base.system"
@@ -761,6 +761,19 @@ grep -qE '\''^ClientAliveInterval[[:space:]]+[1-9]'\'' /etc/ssh/sshd_config 2>/d
 # The generator embeds this exact block in Grok'\''s child-shell checks. Keep it
 # self-contained: the updater runs the same functions as the target user.
 # This checks command ownership, not the authenticity of the downloaded binary.
+acfs_gnu_timeout_path() {
+    # Ubuntu 26.04'\''s uutils timeout cannot KILL TERM-resistant descendants.
+    local version=""
+    if [[ -x /usr/bin/gnutimeout ]]; then
+        builtin printf '\''%s\n'\'' /usr/bin/gnutimeout
+    elif [[ -x /usr/bin/timeout ]] && version="$(LC_ALL=C /usr/bin/timeout --version 2>/dev/null)" \
+        && [[ "$version" == '\''timeout (GNU coreutils) '\''* ]]; then
+        builtin printf '\''%s\n'\'' /usr/bin/timeout
+    else
+        return 1
+    fi
+}
+
 acfs_grok_payload_path() {
     local arch=""
     [[ "${HOME:-}" == /* && "$HOME" != / ]] || return 1
@@ -790,7 +803,7 @@ acfs_grok_is_self_update_payload() {
 }
 
 acfs_grok_check() {
-    local mode="${1:-ready}" payload="" primary_bin="" record="" record_size=""
+    local mode="${1:-ready}" payload="" primary_bin="" record="" record_size="" timeout_bin=""
     local cursor_dir="" candidate="" name="" resolved="" expected=""
     local -a cursor_dirs=() bin_dirs=()
     case "$mode" in preflight|ready) ;; *) return 1 ;; esac
@@ -827,7 +840,8 @@ acfs_grok_check() {
             printf '\''Grok CLI: invalid Cursor switch record; existing commands were preserved.\n'\'' >&2
             return 1
         fi
-        if ! /usr/bin/timeout --kill-after=1s 2s /usr/bin/jq -e -s '\''
+        timeout_bin="$(acfs_gnu_timeout_path)" || return 1
+        if ! "$timeout_bin" --kill-after=1s 2s /usr/bin/jq -e -s '\''
             length == 1 and (.[0] | type == "object" and .schema == 1 and .state == "inactive")
         '\'' "$record" >/dev/null 2>&1; then
             printf '\''Grok CLI: Cursor switch is active, pending, or unrecognized. Switch back to Grok in Cursor and retry; existing commands were preserved.\n'\'' >&2
@@ -1157,6 +1171,19 @@ acfs_generated_system_binary_path() {
     local candidate=""
 
     [[ -n "$name" ]] || return 1
+    if [[ "$name" == timeout ]]; then
+        # Ubuntu 26.04'\''s uutils timeout cannot KILL TERM-resistant descendants.
+        local version=""
+        if [[ -x /usr/bin/gnutimeout ]]; then
+            builtin printf '\''%s\n'\'' /usr/bin/gnutimeout
+        elif [[ -x /usr/bin/timeout ]] && version="$(LC_ALL=C /usr/bin/timeout --version 2>/dev/null)" \
+            && [[ "$version" == '\''timeout (GNU coreutils) '\''* ]]; then
+            builtin printf '\''%s\n'\'' /usr/bin/timeout
+        else
+            return 1
+        fi
+        return 0
+    fi
     case "$name" in
         .|..)
             return 1
@@ -1441,6 +1468,19 @@ PY'
 # The generator embeds this exact block in Grok'\''s child-shell checks. Keep it
 # self-contained: the updater runs the same functions as the target user.
 # This checks command ownership, not the authenticity of the downloaded binary.
+acfs_gnu_timeout_path() {
+    # Ubuntu 26.04'\''s uutils timeout cannot KILL TERM-resistant descendants.
+    local version=""
+    if [[ -x /usr/bin/gnutimeout ]]; then
+        builtin printf '\''%s\n'\'' /usr/bin/gnutimeout
+    elif [[ -x /usr/bin/timeout ]] && version="$(LC_ALL=C /usr/bin/timeout --version 2>/dev/null)" \
+        && [[ "$version" == '\''timeout (GNU coreutils) '\''* ]]; then
+        builtin printf '\''%s\n'\'' /usr/bin/timeout
+    else
+        return 1
+    fi
+}
+
 acfs_grok_payload_path() {
     local arch=""
     [[ "${HOME:-}" == /* && "$HOME" != / ]] || return 1
@@ -1470,7 +1510,7 @@ acfs_grok_is_self_update_payload() {
 }
 
 acfs_grok_check() {
-    local mode="${1:-ready}" payload="" primary_bin="" record="" record_size=""
+    local mode="${1:-ready}" payload="" primary_bin="" record="" record_size="" timeout_bin=""
     local cursor_dir="" candidate="" name="" resolved="" expected=""
     local -a cursor_dirs=() bin_dirs=()
     case "$mode" in preflight|ready) ;; *) return 1 ;; esac
@@ -1507,7 +1547,8 @@ acfs_grok_check() {
             printf '\''Grok CLI: invalid Cursor switch record; existing commands were preserved.\n'\'' >&2
             return 1
         fi
-        if ! /usr/bin/timeout --kill-after=1s 2s /usr/bin/jq -e -s '\''
+        timeout_bin="$(acfs_gnu_timeout_path)" || return 1
+        if ! "$timeout_bin" --kill-after=1s 2s /usr/bin/jq -e -s '\''
             length == 1 and (.[0] | type == "object" and .schema == 1 and .state == "inactive")
         '\'' "$record" >/dev/null 2>&1; then
             printf '\''Grok CLI: Cursor switch is active, pending, or unrecognized. Switch back to Grok in Cursor and retry; existing commands were preserved.\n'\'' >&2
@@ -1556,7 +1597,8 @@ acfs_grok_check() {
 # acfs-summary: verify the Grok payload and command binding
 acfs_grok_check ready || exit 1
 grok_payload="$(acfs_grok_payload_path)" || exit 1
-/usr/bin/timeout --kill-after=2s 10s "$grok_payload" --version'
+timeout_bin="$(acfs_gnu_timeout_path)" || exit 1
+"$timeout_bin" --kill-after=2s 10s "$grok_payload" --version'
   ['tools.vault.0']='vault --version'
   ['db.postgres18.0']='for package in postgresql-18 postgresql-client-18; do
   package_status=$(dpkg-query -W -f='\''${db:Status-Status}'\'' "$package" 2>/dev/null) || exit 1

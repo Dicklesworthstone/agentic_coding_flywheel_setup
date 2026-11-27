@@ -59,6 +59,19 @@ acfs_generated_system_binary_path() {
     local candidate=""
 
     [[ -n "$name" ]] || return 1
+    if [[ "$name" == timeout ]]; then
+        # Ubuntu 26.04's uutils timeout cannot KILL TERM-resistant descendants.
+        local version=""
+        if [[ -x /usr/bin/gnutimeout ]]; then
+            builtin printf '%s\n' /usr/bin/gnutimeout
+        elif [[ -x /usr/bin/timeout ]] && version="$(LC_ALL=C /usr/bin/timeout --version 2>/dev/null)" \
+            && [[ "$version" == 'timeout (GNU coreutils) '* ]]; then
+            builtin printf '%s\n' /usr/bin/timeout
+        else
+            return 1
+        fi
+        return 0
+    fi
     case "$name" in
         .|..)
             return 1
@@ -397,6 +410,19 @@ acfs_generated_system_binary_path() {
     local candidate=""
 
     [[ -n "$name" ]] || return 1
+    if [[ "$name" == timeout ]]; then
+        # Ubuntu 26.04's uutils timeout cannot KILL TERM-resistant descendants.
+        local version=""
+        if [[ -x /usr/bin/gnutimeout ]]; then
+            builtin printf '%s\n' /usr/bin/gnutimeout
+        elif [[ -x /usr/bin/timeout ]] && version="$(LC_ALL=C /usr/bin/timeout --version 2>/dev/null)" \
+            && [[ "$version" == 'timeout (GNU coreutils) '* ]]; then
+            builtin printf '%s\n' /usr/bin/timeout
+        else
+            return 1
+        fi
+        return 0
+    fi
     case "$name" in
         .|..)
             return 1
@@ -630,6 +656,19 @@ acfs_generated_system_binary_path() {
     local candidate=""
 
     [[ -n "$name" ]] || return 1
+    if [[ "$name" == timeout ]]; then
+        # Ubuntu 26.04's uutils timeout cannot KILL TERM-resistant descendants.
+        local version=""
+        if [[ -x /usr/bin/gnutimeout ]]; then
+            builtin printf '%s\n' /usr/bin/gnutimeout
+        elif [[ -x /usr/bin/timeout ]] && version="$(LC_ALL=C /usr/bin/timeout --version 2>/dev/null)" \
+            && [[ "$version" == 'timeout (GNU coreutils) '* ]]; then
+            builtin printf '%s\n' /usr/bin/timeout
+        else
+            return 1
+        fi
+        return 0
+    fi
     case "$name" in
         .|..)
             return 1

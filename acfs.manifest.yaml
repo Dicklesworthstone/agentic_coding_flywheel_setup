@@ -1442,7 +1442,8 @@ modules:
         # acfs-summary: verify the Grok payload and command binding
         acfs_grok_check ready || exit 1
         grok_payload="$(acfs_grok_payload_path)" || exit 1
-        /usr/bin/timeout --kill-after=2s 10s "$grok_payload" --version
+        timeout_bin="$(acfs_gnu_timeout_path)" || exit 1
+        "$timeout_bin" --kill-after=2s 10s "$grok_payload" --version
     notes:
       - "Auth is 'grok login' (browser) or GROK_DEPLOYMENT_KEY; GROK_CHANNEL selects stable/alpha/enterprise"
       - "No documented native self-update; acfs update re-runs the verified installer"

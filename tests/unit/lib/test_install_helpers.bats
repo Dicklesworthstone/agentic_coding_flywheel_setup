@@ -1440,12 +1440,37 @@ EOF
     done
 }
 
+@test "installer deadlines prefer the GNU alias and refuse a uutils-only system" {
+    local bin="$BATS_TEST_TMPDIR/deadline-bin" resolver=""
+    mkdir -p "$bin"
+    # Redirect the shipped resolver's /usr/bin lookups inside this test only.
+    resolver="$(declare -f _acfs_system_binary_path)"
+    eval "${resolver//\/usr\/bin\//"$bin/"}"
+    printf '#!/bin/sh\nprintf "timeout (uutils coreutils) 0.10.0\\n"\n' > "$bin/timeout"
+    chmod +x "$bin/timeout"
+    run _acfs_system_binary_path timeout
+    assert_failure
+    [[ -z "$output" ]]
+
+    printf '#!/bin/sh\nprintf "timeout (GNU coreutils) 9.7\\n"\n' > "$bin/timeout"
+    run _acfs_system_binary_path timeout
+    assert_success
+    [[ "$output" == "$bin/timeout" ]]
+
+    touch "$bin/gnutimeout"
+    chmod +x "$bin/gnutimeout"
+    run _acfs_system_binary_path timeout
+    assert_success
+    [[ "$output" == "$bin/gnutimeout" ]]
+}
+
 # Use the real timeout and strict-shell runners. The fixture scales only the
 # declared 120-second production allowance to keep a regression test short;
 # its TERM-resistant child still exercises timeout's real kill escalation.
 setup_verification_deadline_fixture() {
     export ACFS_VERIFY_FIXTURE_ROOT="$BATS_TEST_TMPDIR/verification"
     export ACFS_VERIFY_FIXTURE_SOURCE="$PROJECT_ROOT"
+    ACFS_VERIFY_REAL_TIMEOUT="$(_acfs_system_binary_path timeout)" || return 1
     mkdir -p "$ACFS_VERIFY_FIXTURE_ROOT"
     # The timeout and hanging-tool fixtures also run in the root context. A
     # non-root caller reaches it through run_as_root_shell's sudo allow-list,
@@ -1455,6 +1480,7 @@ setup_verification_deadline_fixture() {
     printf -v fixture_root_assignment 'ACFS_VERIFY_FIXTURE_ROOT=%q\n' "$ACFS_VERIFY_FIXTURE_ROOT"
     {
         printf '#!/usr/bin/env bash\nset -euo pipefail\n%s' "$fixture_root_assignment"
+        printf 'real_timeout=%q\n' "$ACFS_VERIFY_REAL_TIMEOUT"
         cat <<'EOF'
 printf '%s\n' "$1 $2" >> "$ACFS_VERIFY_FIXTURE_ROOT/timeouts"
 [[ "$1" == --kill-after=2s && "$2" == 120s ]] || exit 98
@@ -1462,7 +1488,7 @@ shift 2
 printf '%s\n' "$BASHPID" > "$ACFS_VERIFY_FIXTURE_ROOT/timeout-pid"
 duration=0.3s
 [[ "${ACFS_VERIFY_FIXTURE_INTERRUPT:-false}" != true ]] || duration=7s
-exec /usr/bin/timeout --kill-after=0.3s "$duration" "$@"
+exec "$real_timeout" --kill-after=0.3s "$duration" "$@"
 EOF
     } > "$ACFS_VERIFY_FIXTURE_ROOT/timeout"
     {
@@ -1611,7 +1637,7 @@ assert_verification_fixture_stopped() {
 @test "acfs_verify_module: bounds a TERM-resistant check before later checks" {
     setup_verification_deadline_fixture
 
-    run /usr/bin/timeout --kill-after=0.2s 8s "$ACFS_VERIFY_FIXTURE_ROOT/runner" verify \
+    run "$ACFS_VERIFY_REAL_TIMEOUT" --kill-after=0.2s 8s "$ACFS_VERIFY_FIXTURE_ROOT/runner" verify \
         '"$ACFS_VERIFY_FIXTURE_ROOT/hanging-tool" & wait'
     [[ -f "$ACFS_VERIFY_FIXTURE_ROOT/started" ]]
     assert_equal "$status" 1
@@ -1624,7 +1650,7 @@ assert_verification_fixture_stopped() {
 @test "acfs_run_verification_shell: interruption kills a resistant check and its child" {
     setup_verification_deadline_fixture
 
-    run /usr/bin/timeout --kill-after=0.2s 15s "$ACFS_VERIFY_FIXTURE_ROOT/runner" interrupt \
+    run "$ACFS_VERIFY_REAL_TIMEOUT" --kill-after=0.2s 15s "$ACFS_VERIFY_FIXTURE_ROOT/runner" interrupt \
         '"$ACFS_VERIFY_FIXTURE_ROOT/hanging-tool" & wait'
     assert_equal "$status" 137
     assert_output --partial 'returned:137'
@@ -1637,7 +1663,7 @@ assert_verification_fixture_stopped() {
     # Expand the path now: the root context's environment does not carry it.
     printf -v check 'exec %q' "$ACFS_VERIFY_FIXTURE_ROOT/hanging-tool"
     for context in current root target_user; do
-        run /usr/bin/timeout --kill-after=0.2s 8s "$ACFS_VERIFY_FIXTURE_ROOT/runner" present \
+        run "$ACFS_VERIFY_REAL_TIMEOUT" --kill-after=0.2s 8s "$ACFS_VERIFY_FIXTURE_ROOT/runner" present \
             "$check" "$context"
         assert_equal "$status" 137
         assert_output --partial 'returned:137'
@@ -1712,7 +1738,7 @@ EOF
 @test "run_phase: a timed-out verifier never creates a completed checkpoint" {
     setup_verification_deadline_fixture
 
-    run /usr/bin/timeout --kill-after=0.2s 15s "$ACFS_VERIFY_FIXTURE_ROOT/runner" phase \
+    run "$ACFS_VERIFY_REAL_TIMEOUT" --kill-after=0.2s 15s "$ACFS_VERIFY_FIXTURE_ROOT/runner" phase \
         'exec "$ACFS_VERIFY_FIXTURE_ROOT/hanging-tool"'
     assert_equal "$status" 1
     assert_output --partial 'returned:1'
@@ -1727,7 +1753,7 @@ EOF
     mkdir -p "$node_bin"
     cp "$ACFS_VERIFY_FIXTURE_ROOT/hanging-tool" "$node_bin/node"
 
-    run /usr/bin/timeout --kill-after=0.2s 15s "$ACFS_VERIFY_FIXTURE_ROOT/runner" nvm ''
+    run "$ACFS_VERIFY_REAL_TIMEOUT" --kill-after=0.2s 15s "$ACFS_VERIFY_FIXTURE_ROOT/runner" nvm ''
     assert_success
     assert_output --partial 'returned:0'
     [[ -f "$ACFS_VERIFY_FIXTURE_ROOT/nvm-installer-attempted" ]]
@@ -1742,7 +1768,7 @@ EOF
     mkdir -p "$node_bin"
     cp "$ACFS_VERIFY_FIXTURE_ROOT/hanging-tool" "$node_bin/node"
 
-    run /usr/bin/timeout --kill-after=0.2s 15s "$ACFS_VERIFY_FIXTURE_ROOT/runner" nvm ''
+    run "$ACFS_VERIFY_REAL_TIMEOUT" --kill-after=0.2s 15s "$ACFS_VERIFY_FIXTURE_ROOT/runner" nvm ''
     assert_equal "$status" 1
     assert_output --partial 'returned:1'
     [[ -f "$ACFS_VERIFY_FIXTURE_ROOT/nvm-installer-attempted" ]]
