@@ -47,13 +47,14 @@ declare -ga _ACFS_STATE_REINSTALL_REQUESTED_MODULES=()
 _ACFS_PENDING_REINSTALL_FILE=""
 ACFS_STATE_SELECTION_MODE=invalid
 ACFS_STATE_INSTALL_MODE=""
+ACFS_STATE_REPAIR_REF=""
 declare -ga ACFS_STATE_SELECTED_MODULES=()
 declare -ga ACFS_STATE_REQUESTED_MODULES=()
 export -n _ACFS_STATE_SH_LOADED _ACFS_STATE_LOCKED _ACFS_STATE_LOCK_DEPTH \
     _ACFS_STATE_LOCK_FILE _ACFS_STATE_LOCK_OWNER_PID _ACFS_STATE_SOURCE_LEDGER_SHA256 _ACFS_STATE_REPAIR_PIN \
     _ACFS_STATE_REPAIR_CANDIDATE _ACFS_STATE_SAVED_REPAIR_BINDING _ACFS_STATE_REINSTALL_REPAIR_BINDING \
     _ACFS_STATE_REINSTALL_SELECTION_MODE _ACFS_STATE_REINSTALL_SELECTION_FILE _ACFS_PENDING_REINSTALL_FILE \
-    ACFS_STATE_SELECTION_MODE ACFS_STATE_INSTALL_MODE
+    ACFS_STATE_SELECTION_MODE ACFS_STATE_INSTALL_MODE ACFS_STATE_REPAIR_REF
 
 _ACFS_STATE_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if ! type -t local_progress_record_installer_phase >/dev/null 2>&1 && [[ -f "$_ACFS_STATE_SCRIPT_DIR/progress.sh" ]]; then
@@ -559,6 +560,7 @@ state_requested_modules_for_plan() {
 state_load_module_selection() {
     ACFS_STATE_SELECTION_MODE=invalid
     ACFS_STATE_INSTALL_MODE=""
+    ACFS_STATE_REPAIR_REF=""
     _ACFS_STATE_SAVED_REPAIR_BINDING=""
     declare -ga ACFS_STATE_SELECTED_MODULES=()
     declare -ga ACFS_STATE_REQUESTED_MODULES=()
@@ -620,8 +622,12 @@ state_load_module_selection() {
              elif (.pinned_ref | type == "string" and test("\\A[0-9a-f]{40}\\z")) and
                   (.pinned_ref_ledger_sha256 | type == "string" and test("\\A[0-9a-f]{64}\\z"))
              then .pinned_ref + ":" + .pinned_ref_ledger_sha256 else "unbound" end) as $binding |
+            # Historical checkpoints may have a branch, tag or short SHA.
+            # Only emit safe single-line fields into the shell record stream.
+            (.pinned_ref | if type == "string" and test("\\A[A-Za-z0-9._/-]{1,120}\\z")
+                then . else "" end) as $repair_ref |
             (.mode // "") as $install_mode |
-            if has("module_selection") | not then "legacy", $install_mode, $binding
+            if has("module_selection") | not then "legacy", $install_mode, $binding, $repair_ref
             else .module_selection | . as $selection |
                 if type != "object" or .schema_version != 1 then
                     error("unsupported module selection schema")
@@ -644,7 +650,7 @@ state_load_module_selection() {
                 elif any((.requested_modules // [])[];
                     . as $module | $selection.selected_modules | index($module) == null) then
                     error("requested_modules must be a subset of selected_modules")
-                else "scoped", $install_mode, $binding, .selected_modules[], "--requested--", (.requested_modules // [])[] end
+                else "scoped", $install_mode, $binding, $repair_ref, .selected_modules[], "--requested--", (.requested_modules // [])[] end
             end
         ' -- "$state_file"); then
             printf 'Invalid ACFS module selection in %s\n' "$state_file" >&2
@@ -668,15 +674,18 @@ try:
     install_mode = state.get("mode", "")
     if "mode" in state and install_mode not in ("safe", "vibe"):
         raise ValueError("invalid installation mode")
+    pin = state.get("pinned_ref")
+    repair_ref = pin if isinstance(pin, str) and re.fullmatch(r"[A-Za-z0-9._/-]{1,120}", pin) else ""
     binding = ""
     if "pinned_ref" in state or "pinned_ref_ledger_sha256" in state:
-        pin, digest = state.get("pinned_ref"), state.get("pinned_ref_ledger_sha256")
+        digest = state.get("pinned_ref_ledger_sha256")
         binding = (pin + ":" + digest if isinstance(pin, str) and re.fullmatch(r"[0-9a-f]{40}", pin)
                    and isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest) else "unbound")
     if "module_selection" not in state:
         print("legacy")
         print(install_mode)
         print(binding)
+        print(repair_ref)
     else:
         selection = state["module_selection"]
         if not isinstance(selection, dict) or type(selection.get("schema_version")) not in (int, float) or selection["schema_version"] != 1:
@@ -694,6 +703,7 @@ try:
         print("scoped")
         print(install_mode)
         print(binding)
+        print(repair_ref)
         print("\n".join(modules))
         print("--requested--")
         if requested:
@@ -713,6 +723,7 @@ ACFS_SELECTION_PY
     local -a records=()
     mapfile -t records <<< "$parsed"
     _ACFS_STATE_SAVED_REPAIR_BINDING="${records[2]:-}"
+    ACFS_STATE_REPAIR_REF="${records[3]:-}"
     case "${records[0]:-}" in
         legacy)
             ACFS_STATE_SELECTION_MODE=legacy
@@ -720,7 +731,7 @@ ACFS_SELECTION_PY
             ;;
         scoped)
             local record="" reading_requests=false
-            for record in "${records[@]:3}"; do
+            for record in "${records[@]:4}"; do
                 if [[ "$record" == --requested-- ]]; then
                     reading_requests=true
                 elif [[ "$reading_requests" == true ]]; then

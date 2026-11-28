@@ -830,6 +830,38 @@ EOF
     mapfile -d '' -t DOCTOR_REPAIR_SOURCE_CAPTURED < "$DOCTOR_REPAIR_SOURCE_CAPTURE"
 }
 
+@test "doctor repair handoff: both parsers use only the top-level pin from the diagnosed checkpoint" {
+    doctor_custom_checkpoint_fixture
+    local parser="" metadata="" repair="" checkpoint="$ACFS_STATE_FILE"
+    command() {
+        if [[ "$parser" == python && "${1:-}" == -v && "${2:-}" == jq ]]; then return 1; fi
+        builtin command "$@"
+    }
+    for parser in jq python; do
+        for metadata in '{}' '{"nested":{"pinned_ref":"other/revision"}}' \
+            '{"pinned_ref":null,"nested":{"pinned_ref":"other/revision"}}' \
+            '{"pinned_ref":["wrong"],"nested":{"pinned_ref":"other/revision"}}' \
+            '{"pinned_ref":"release\nutils.lsr","nested":{"pinned_ref":"other/revision"}}'; do
+            jq -n --arg home "$TARGET_HOME" --arg user "$TARGET_USER" --argjson metadata "$metadata" '
+                {target_home:$home,target_user:$user} + $metadata' > "$checkpoint"
+            doctor_load_module_selection
+            repair=$(build_fix_suggestion lang.bun)
+            [[ "$repair" == *" --ref main" && "$repair" != *other/revision* ]]
+        done
+        jq -n --arg home "$TARGET_HOME" --arg user "$TARGET_USER" '
+            {target_home:$home,target_user:$user,pinned_ref:"release/known",
+             nested:{pinned_ref:"other/revision"}}' > "$checkpoint"
+        doctor_load_module_selection
+        jq '.pinned_ref = "release/later"' "$checkpoint" > "$checkpoint.tmp"
+        mv "$checkpoint.tmp" "$checkpoint"
+        repair=$(build_fix_suggestion lang.bun)
+        [[ "$repair" == *"/release/known/install.sh"* && "$repair" == *" --ref release/known" ]]
+        doctor_load_module_selection
+        repair=$(build_fix_suggestion lang.bun)
+        [[ "$repair" == *" --ref release/later" ]]
+    done
+}
+
 @test "doctor repair handoff: rendered command preserves validated custom scope source and target" {
     doctor_custom_checkpoint_fixture
     TARGET_HOME="$BATS_TEST_TMPDIR/"'repair $(touch injected) `touch backtick` ; home'

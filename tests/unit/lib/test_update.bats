@@ -14234,9 +14234,10 @@ EOF
 
 @test "doctor.sh: fix suggestions do not emit malicious pinned refs from state" {
     local doctor_lib="$PROJECT_ROOT/scripts/lib/doctor.sh"
-    local fixture_state_file="$BATS_TEST_TMPDIR/doctor-state.json"
     TARGET_USER=doctor_target
     TARGET_HOME="$BATS_TEST_TMPDIR/doctor-target"
+    local fixture_state_file="$TARGET_HOME/.acfs/state.json"
+    mkdir -p "$TARGET_HOME/.acfs"
     ACFS_BIN_DIR="$TARGET_HOME/.local/bin"
     ACFS_STATE_FILE="$fixture_state_file"
 
@@ -14253,7 +14254,7 @@ EOF
     # shellcheck disable=SC1090
     eval "$(sed -n '/^_acfs_doctor_system_binary_path()/,/^}$/p' "$doctor_lib")"
     # shellcheck disable=SC1090
-    eval "$(sed -n '/^_acfs_doctor_read_json_string_key()/,/^}$/p' "$doctor_lib")"
+    eval "$(sed -n '/^doctor_load_module_selection()/,/^}$/p' "$doctor_lib")"
     # shellcheck disable=SC1090
     eval "$(sed -n '/^_acfs_doctor_normalize_mode()/,/^}$/p' "$doctor_lib")"
     # shellcheck disable=SC1090
@@ -14261,12 +14262,14 @@ EOF
     # shellcheck disable=SC1090
     eval "$(sed -n '/^build_fix_suggestion()/,/^}$/p' "$doctor_lib")"
 
+    _acfs_doctor_find_lib_script() { printf '%s/scripts/lib/%s\n' "$PROJECT_ROOT" "$1"; }
     _acfs_doctor_find_project_path() {
         [[ "${1:-}" == "state.json" ]] || return 1
         printf '%s\n' "$fixture_state_file"
     }
 
     ACFS_MODE="safe --skip-cloud"
+    doctor_load_module_selection
     run build_fix_suggestion "stack.ntm"
     assert_success
     assert_output --partial "--mode vibe"
@@ -14281,6 +14284,7 @@ EOF
 EOF
 
     ACFS_MODE="safe"
+    doctor_load_module_selection
     run build_fix_suggestion "stack.ntm"
     assert_success
     assert_output --partial "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/abc1234/install.sh"
@@ -14293,6 +14297,7 @@ EOF
 }
 EOF
 
+    doctor_load_module_selection
     run build_fix_suggestion "stack.ntm"
     assert_success
     assert_output --partial "curl -fsSL https://agent-flywheel.com/install | env "

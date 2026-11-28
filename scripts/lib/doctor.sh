@@ -1123,13 +1123,12 @@ build_fix_suggestion() {
         "ACFS_CHECKSUMS_REF="
     )
 
-    # The accepted checkpoint also owns the source revision. Looking up the
-    # installed default here would pair custom scope with an unrelated source.
+    # Use the source captured with the accepted target and module selection.
+    # The checkpoint can be atomically replaced while diagnostics are running.
     local pinned_ref=""
-    if [[ -f "$state_file" ]]; then
-        pinned_ref="$(_acfs_doctor_read_json_string_key "$state_file" "pinned_ref" 2>/dev/null || true)"
-        pinned_ref="$(_acfs_doctor_normalize_ref "$pinned_ref" 2>/dev/null || true)"
-        if [[ -n "$pinned_ref" && "$pinned_ref" != "main" ]]; then
+    if [[ -n "${DOCTOR_SELECTION_STATE_FILE:-}" ]]; then
+        pinned_ref="$(_acfs_doctor_normalize_ref "${DOCTOR_SELECTION_REPAIR_REF:-}" 2>/dev/null || true)"
+        if [[ -n "$pinned_ref" && "$pinned_ref" != main ]]; then
             install_url="https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/${pinned_ref}/install.sh"
         fi
     fi
@@ -2220,6 +2219,7 @@ doctor_check_module_id() {
 doctor_load_module_selection() {
     DOCTOR_SELECTION_ERROR=""
     DOCTOR_SELECTION_STATE_FILE=""
+    DOCTOR_SELECTION_REPAIR_REF=""
     ACFS_STATE_SELECTION_MODE=invalid
     ACFS_STATE_SELECTED_MODULES=()
     local state_script=""
@@ -2297,6 +2297,7 @@ doctor_load_module_selection() {
         export ACFS_MODE
     fi
     DOCTOR_SELECTION_STATE_FILE="$state_file"
+    DOCTOR_SELECTION_REPAIR_REF="${ACFS_STATE_REPAIR_REF:-}"
 }
 
 # Return success only when this check was emitted as an intentional skip.
