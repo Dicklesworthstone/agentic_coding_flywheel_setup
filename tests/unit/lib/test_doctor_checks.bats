@@ -851,7 +851,7 @@ EOF
     [[ "${DOCTOR_REPAIR_CAPTURED[2]}" == "$TARGET_HOME/.acfs" ]] || fail "repair inherited caller runtime"
     [[ "${DOCTOR_REPAIR_CAPTURED[3]}" == "$ACFS_STATE_FILE" ]] || fail "repair lost custom checkpoint"
     [[ "${DOCTOR_REPAIR_CAPTURED[4]}" == "$ACFS_BIN_DIR" ]] || fail "repair lost custom bin directory"
-    [[ "${DOCTOR_REPAIR_CAPTURED[*]:5}" == '--yes --force-reinstall --mode safe --only lang.bun --ref selected/revision' ]] \
+    [[ "${DOCTOR_REPAIR_CAPTURED[*]:5}" == '--yes --force-reinstall --mode safe --only lang.bun --no-deps --ref selected/revision' ]] \
         || fail "unexpected installer arguments: ${DOCTOR_REPAIR_CAPTURED[*]:5}"
     [[ "$(tail -n 1 "$DOCTOR_REPAIR_URL_CAPTURE")" == https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/selected/revision/install.sh ]]
     [[ "${DOCTOR_REPAIR_SOURCE_CAPTURED[0]}" == Dicklesworthstone ]] || fail "repair inherited an unrelated repository owner"
@@ -872,10 +872,44 @@ EOF
     [[ "${DOCTOR_REPAIR_CAPTURED[2]}" == "$DOCTOR_CONTEXT_HOME/.acfs" ]]
     [[ "${DOCTOR_REPAIR_CAPTURED[3]}" == "$DOCTOR_TEST_STATE" ]]
     [[ "${DOCTOR_REPAIR_CAPTURED[4]}" == "$DOCTOR_CONTEXT_HOME/canonical-bin" ]]
-    [[ "${DOCTOR_REPAIR_CAPTURED[*]:5}" == '--yes --force-reinstall --mode vibe --only-phase 6 --ref main' ]]
+    [[ "${DOCTOR_REPAIR_CAPTURED[*]:5}" == '--yes --force-reinstall --mode vibe --only lang.bun --no-deps --ref main' ]]
     [[ "$(tail -n 1 "$DOCTOR_REPAIR_URL_CAPTURE")" == https://agent-flywheel.com/install ]]
     [[ "${DOCTOR_REPAIR_SOURCE_CAPTURED[0]}" == Dicklesworthstone && "${DOCTOR_REPAIR_SOURCE_CAPTURED[1]}" == agentic_coding_flywheel_setup ]]
     [[ "${DOCTOR_REPAIR_SOURCE_CAPTURED[2]}" == "" ]] || fail "canonical repair inherited an explicit checksum source"
+}
+
+@test "doctor repair handoff: the actual installer plan stays inside the diagnosed module or phase" {
+    doctor_custom_checkpoint_fixture
+    jq '.module_selection.selected_modules = ["agents.codex", "agents.claude", "lang.rust"]' \
+        "$ACFS_STATE_FILE" > "$ACFS_STATE_FILE.new"
+    mv "$ACFS_STATE_FILE.new" "$ACFS_STATE_FILE"
+    doctor_load_module_selection
+
+    source "$PROJECT_ROOT/scripts/lib/install_helpers.sh"
+    source "$PROJECT_ROOT/scripts/generated/manifest_index.sh"
+    eval "$(sed -n -e '/^parse_args() {$/,/^}$/p' -e '/^append_comma_or_space_separated() {$/,/^}$/p' \
+        -e '/^acfs_require_ref_arg_value() {$/,/^}$/p' "$PROJECT_ROOT/install.sh")"
+    local ACFS_REPO_OWNER=Dicklesworthstone ACFS_REPO_NAME=agentic_coding_flywheel_setup
+    local kind repair expected
+    for kind in module phase; do
+        if [[ "$kind" == module ]]; then
+            repair="$(fix_for_module agents.codex)"
+            expected=agents.codex
+        else
+            repair="$(fix_for_phase 7)"
+            expected="agents.claude agents.codex"
+        fi
+        doctor_capture_repair_command "$repair"
+        ONLY_MODULES=()
+        ONLY_PHASES=()
+        NO_DEPS=false
+        parse_args "${DOCTOR_REPAIR_CAPTURED[@]:5}"
+        acfs_resolve_selection
+        [[ "${ACFS_EFFECTIVE_PLAN[*]}" == "$expected" ]] \
+            || fail "$kind repair selected: ${ACFS_EFFECTIVE_PLAN[*]}"
+    done
+    [[ -z "$(fix_for_module agents.gemini)" ]]
+    [[ -z "$(fix_for_phase 8)" ]]
 }
 
 @test "doctor repair handoff: a missing saved bin directory is retained as the repair destination" {
@@ -934,6 +968,8 @@ EOF
     [[ "${DOCTOR_REPAIR_CAPTURED[4]}" == "$TARGET_HOME/.local/bin" ]]
     [[ "${DOCTOR_REPAIR_CAPTURED[*]:5}" == '--yes --force-reinstall --mode vibe --only lang.bun --ref main' ]]
     [[ "$(tail -n 1 "$DOCTOR_REPAIR_URL_CAPTURE")" == https://agent-flywheel.com/install ]]
+    doctor_capture_repair_command "$(fix_for_phase 6)"
+    [[ "${DOCTOR_REPAIR_CAPTURED[*]:5}" == '--yes --force-reinstall --mode vibe --only-phase 6 --ref main' ]]
 }
 
 @test "doctor selection: an explicit custom checkpoint overrides installed scope for the resolved account" {

@@ -1012,6 +1012,24 @@ _acfs_doctor_source_first "doctor_fix.sh" || true
 # installation context, mode (vibe/safe), and pinned ref when known.
 # ============================================================
 
+# Return the saved members of a phase as an installer's --only list. Read
+# the deployed index in a subshell so its global arrays stay out of Doctor.
+_doctor_selected_phase_modules() (
+    local index module
+    local -a members=()
+    index="$(_acfs_doctor_find_project_path scripts/generated/manifest_index.sh)" || return 1
+    # shellcheck source=../generated/manifest_index.sh
+    source "$index" || return 1
+    for module in "${ACFS_STATE_SELECTED_MODULES[@]}"; do
+        [[ -n "${ACFS_MODULE_PHASE[$module]:-}" ]] || return 1
+        if [[ "${ACFS_MODULE_PHASE[$module]}" == "$1" ]]; then
+            members+=("$module")
+        fi
+    done
+    local IFS=,
+    printf '%s' "${members[*]}"
+)
+
 # Build a fix suggestion command for a given module
 # Usage: build_fix_suggestion <module_id> [--phase <phase_num>]
 # Returns: A copy-pasteable install command
@@ -1047,8 +1065,19 @@ build_fix_suggestion() {
     mode="$(_acfs_doctor_normalize_mode "$mode" 2>/dev/null || true)"
     flag_args+=(--mode "${mode:-vibe}")
 
-    # Add module/phase selector
-    if [[ -n "$phase_value" ]]; then
+    [[ -z "${DOCTOR_SELECTION_ERROR:-}" && "${ACFS_STATE_SELECTION_MODE:-}" != invalid ]] || return 1
+    if [[ "${ACFS_STATE_SELECTION_MODE:-legacy}" == scoped ]]; then
+        # A repair names only the diagnosed modules. A new --only root would
+        # otherwise add omitted prerequisites, and --only-phase would select
+        # omitted peers. These flags also work with older pinned installers.
+        if [[ -n "$phase_value" ]]; then
+            module_id="$(_doctor_selected_phase_modules "$phase_value")" || return 1
+        else
+            state_module_is_selected "$module_id" || return 0
+        fi
+        [[ -n "$module_id" ]] || return 0
+        flag_args+=(--only "$module_id" --no-deps)
+    elif [[ -n "$phase_value" ]]; then
         flag_args+=(--only-phase "$phase_value")
     elif [[ -n "$module_id" ]]; then
         flag_args+=(--only "$module_id")
@@ -1058,7 +1087,6 @@ build_fix_suggestion() {
     # command may run in a fresh or administrative shell with unrelated exported
     # hints; the installer's side of the pipeline must carry the resolved target
     # and exact checkpoint rather than rediscovering another account or scope.
-    [[ -z "${DOCTOR_SELECTION_ERROR:-}" && "${ACFS_STATE_SELECTION_MODE:-}" != invalid ]] || return 1
     local target_user="${TARGET_USER:-}"
     local target_home=""
     local runtime_dir=""
