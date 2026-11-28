@@ -20,9 +20,11 @@ import {
   Zap,
 } from "lucide-react";
 import Link from "next/link";
+import { useMemo, useRef } from "react";
 import { fadeUp, motion, springs, staggerContainer } from "@/components/motion";
 import CopyCommand from "@/components/omarchy/copy-command";
 import StormCanvas from "@/components/omarchy/storm-canvas";
+import type { StormTools } from "@/components/omarchy/tool-storm";
 import { TldrSynergyDiagram } from "@/components/tldr/tldr-synergy-diagram";
 import { Button } from "@/components/ui/button";
 import { manifestModules } from "@/lib/generated/manifest-modules";
@@ -425,6 +427,15 @@ const TOOLS: ToolEntry[] = [
 
 const FLYWHEEL_TOOL_COUNT = TOOLS.filter((tool) => tool.tier !== "thirdParty").length;
 
+// The hero's orbit rings are this index's tiers, so the two cannot disagree.
+const toolNames = (tier: ToolTier) =>
+  TOOLS.filter((tool) => tool.tier === tier).map((tool) => tool.name);
+const STORM_TOOLS: StormTools = {
+  cornerstone: toolNames("cornerstone"),
+  flywheel: toolNames("flywheel"),
+  thirdParty: toolNames("thirdParty"),
+};
+
 const STATS = [
   { value: String(MODULE_COUNT), label: "Modules" },
   { value: String(AGENT_COUNT), label: "Agent CLIs" },
@@ -477,7 +488,7 @@ function ToolTile({ tool, featured }: { tool: ToolEntry; featured: boolean }) {
     </>
   );
   const shell =
-    "group relative block h-full overflow-hidden rounded-xl border border-border/40 bg-card/40 transition-[border-color,background-color,box-shadow] duration-300 hover:bg-card focus-visible:bg-card focus-visible:outline-none";
+    "group relative block h-full overflow-hidden rounded-xl border border-border/40 bg-card/40 transition-[border-color,background-color,box-shadow] duration-300 hover:bg-card focus-visible:bg-card focus-visible:outline-hidden";
   return (
     <motion.li
       variants={fadeUp}
@@ -542,9 +553,14 @@ function SectionHeading({ eyebrow, title }: { eyebrow?: string; title: string })
 }
 
 const footerLink =
-  "inline-flex min-h-6 items-center rounded-sm underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60";
+  "inline-flex min-h-6 items-center rounded-sm underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60";
 
 export default function OmarchyPage() {
+  // The storm fades tool plates while they pass behind the hero's text.
+  const navBrandRef = useRef<HTMLAnchorElement>(null);
+  const navLinksRef = useRef<HTMLDivElement>(null);
+  const heroCopyRef = useRef<HTMLDivElement>(null);
+  const stormAvoid = useMemo(() => [navBrandRef, navLinksRef, heroCopyRef], []);
   return (
     <div className="relative min-h-screen overflow-x-clip bg-background">
       <main id="main-content" tabIndex={-1}>
@@ -552,7 +568,11 @@ export default function OmarchyPage() {
         {/* Fixed min-height + absolutely-positioned canvas: zero layout shift.
             Always dark, regardless of site theme — see TN above. */}
         <section className="relative flex min-h-[100svh] flex-col overflow-hidden bg-gradient-to-b from-[#0a0e1a] via-[#10121f] to-[#1a1b26] text-[#c0caf5]">
-          <StormCanvas className="absolute inset-0 h-full w-full" />
+          <StormCanvas
+            className="absolute inset-0 h-full w-full"
+            tools={STORM_TOOLS}
+            avoid={stormAvoid}
+          />
 
           {/* Readability scrims — solid navy under the text column, clearing
               toward the storm on the right; vertical fade on small screens */}
@@ -585,15 +605,16 @@ export default function OmarchyPage() {
           {/* Navigation — same items as the home page, overlaid on the storm */}
           <nav className="relative z-20 mx-auto flex w-full max-w-7xl items-center justify-between px-6 py-6">
             <Link
+              ref={navBrandRef}
               href="/"
-              className="flex items-center gap-2 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7dcfff]/60"
+              className="flex items-center gap-2 rounded-md focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#7dcfff]/60"
             >
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#7dcfff]/15">
                 <Terminal className="h-5 w-5 text-[#7dcfff]" />
               </div>
               <span className="font-mono text-lg font-bold tracking-tight">Agent Flywheel</span>
             </Link>
-            <div className="flex items-center gap-2 sm:gap-4">
+            <div ref={navLinksRef} className="flex items-center gap-2 sm:gap-4">
               <a
                 href={GITHUB_URL}
                 target="_blank"
@@ -638,6 +659,7 @@ export default function OmarchyPage() {
           {/* Text column sits left on the scrim; the storm owns the right side */}
           <div className="relative z-10 mx-auto grid w-full max-w-7xl flex-1 grid-cols-1 items-center px-6 pb-24 pt-8 lg:grid-cols-[minmax(0,42rem)_1fr]">
             <motion.div
+              ref={heroCopyRef}
               variants={staggerContainer}
               initial="hidden"
               animate="visible"
@@ -814,7 +836,7 @@ export default function OmarchyPage() {
                   tabIndex={0}
                   role="region"
                   aria-label="acfs doctor output"
-                  className="overflow-x-auto p-5 font-mono text-xs leading-6 text-[#c0caf5] sm:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  className="overflow-x-auto p-5 font-mono text-xs leading-6 text-[#c0caf5] sm:text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
                 >
                   <p className="mb-2 text-[#a9b1d6]/70">
                     <span className="select-none text-[#9ece6a]">$ </span>acfs doctor

@@ -1,143 +1,158 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { type RefObject, useEffect, useRef } from "react";
 import * as THREE from "three";
 import { Timer } from "three";
-import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
-import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
-import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
-import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 
 /**
- * ToolStorm v2 — a tilted accretion-disk vortex of 16k GPU-animated particles
- * with real bloom, off-centered to the right so the hero's text column stays
- * on clean navy. Tool-name sprites ride the disk's differential rotation and
- * auto-fade whenever their projected position would cross the text column.
+ * ToolStorm: the /omarchy hero, a living orbital map of the tool system.
+ * A small "acfs" hub, three concentric orbit rings and glowing tool-name
+ * plates riding each ring, off-centered to the right of the hero copy. The
+ * rings are the page's own tool-index tiers (cornerstone, flywheel,
+ * third-party), so the hero and the index below it never disagree. No sun
+ * and no bloom: a technical orrery that stays legible behind the copy.
+ *
+ * Plates fade while they pass behind hero text. The page passes the text
+ * elements (copy column, nav items) as `avoid`, and the storm measures them,
+ * so the text stays on clean navy at every width.
  *
  * Guards:
- * - DPR ≤ 1.5, adaptive down-grade to 1 if the warm-up FPS probe sags
+ * - DPR ≤ 1.5, one-step downgrade to 1 if the warm-up FPS probe sags
  * - RAF loop pauses while document.hidden or the hero is scrolled off-screen
- * - no WebGL available → component renders nothing (CSS gradient hero remains)
- * - lost GL context stops the loop; restored context resumes it
- * - prefers-reduced-motion renders a single composed frame, no animation
+ * - no WebGL available → renders nothing (the CSS gradient hero remains)
+ * - lost GL context stops the loop; a restored context resumes it
+ * - prefers-reduced-motion renders one still frame, with the same
+ *   text fade as the animation
  * - full teardown via AbortController + explicit disposal, aria-hidden canvas
  */
 
-const PALETTE = {
-  bg: 0x0a0e1a,
-  green: "#9ece6a",
-  cyan: "#7dcfff",
-  purple: "#bb9af7",
-  magenta: "#f7768e",
-  amber: "#e0af68",
-} as const;
+export type StormTier = "cornerstone" | "flywheel" | "thirdParty";
+/** Tool names per ring, in the order the page's tool index lists them. */
+export type StormTools = Readonly<Record<StormTier, readonly string[]>>;
 
-// Tools rendered as glowing name plates riding the disk. Binary names as they
-// land on PATH (see lib/generated/manifest-tools.ts). Kept to a readable
-// handful: the full index lives further down the page.
-const TOOL_NAMES = [
-  "ntm",
-  "cass",
-  "am",
-  "dcg",
-  "bv",
-  "slb",
-  "ubs",
-  "cm",
-  "ru",
-  "rch",
-  "fsfs",
-  "caam",
-  "ee",
-  "ms",
-  "pt",
-  "asb",
-  "jfp",
-  "br",
-] as const;
+const BG = 0x0a0e1a;
 
-const SPRITE_COLORS = [PALETTE.green, PALETTE.cyan, PALETTE.purple, PALETTE.amber] as const;
+interface Ring {
+  color: string;
+  radius: number;
+  plateHeight: number;
+  /** Orbital speed in radians per second; inner rings run faster. */
+  speed: number;
+  /** Starting angle, so the three rings' plates never line up radially. */
+  phase: number;
+  ringOpacity: number;
+  plateOpacity: number;
+  /** Plates that fit the ring without crowding; the index lists the rest. */
+  maxPlates: number;
+}
 
-/** Disk geometry tuning */
-const DISK_RADIUS = 16;
-const ARM_COUNT = 3;
-const SPIRAL_PITCH = 2.6; // strength of the log-spiral winding
-const SHEAR = 0.55; // differential-rotation strength (higher = more shear)
-const DISK_TILT_X = -1.08; // radians — how far the disk tips toward camera
-const DISK_TILT_Z = 0.22;
-const STORM_OFFSET_X = 3.4; // world units right — reserves the text column
-const CAMERA_Z = 13.2;
-const PLATE_HEIGHT = 0.8;
+// Third-party CLIs ride the outer ring in dim slate so the flywheel's own
+// tools carry the picture.
+const RINGS: Record<StormTier, Ring> = {
+  cornerstone: {
+    color: "#9ece6a",
+    radius: 4.1,
+    plateHeight: 0.82,
+    speed: 0.21,
+    phase: 4,
+    ringOpacity: 0.4,
+    plateOpacity: 1,
+    maxPlates: 10,
+  },
+  flywheel: {
+    color: "#7dcfff",
+    radius: 6.9,
+    plateHeight: 0.68,
+    speed: 0.13,
+    phase: 8,
+    ringOpacity: 0.3,
+    plateOpacity: 0.9,
+    maxPlates: 10,
+  },
+  thirdParty: {
+    color: "#8b93b8",
+    radius: 9.7,
+    plateHeight: 0.54,
+    speed: 0.085,
+    phase: 9,
+    ringOpacity: 0.22,
+    plateOpacity: 0.72,
+    maxPlates: 10,
+  },
+};
+const RING_ORDER: readonly StormTier[] = ["cornerstone", "flywheel", "thirdParty"];
+
+const STORM_OFFSET_X = 3.3; // world units right: reserves the text column
+const CAMERA_Z = 13.0;
+const CAMERA_Y = 2.3;
+/** Breathing room around each measured text box, in CSS pixels. */
+const TEXT_ZONE_PAD = 24;
+/** Width of a text box's soft edge, in normalized device coordinates. */
+const TEXT_ZONE_EDGE = 0.12;
+/** Opacity factor for a plate fully behind text. */
+const TEXT_ZONE_FLOOR = 0.08;
+
+/** A screen-space box in normalized device coordinates (y up). */
+interface TextZone {
+  left: number;
+  right: number;
+  bottom: number;
+  top: number;
+}
+/** Stand-in when the page passes nothing measurable: the hero's left quarter. */
+const FALLBACK_TEXT_ZONE: TextZone = { left: -2, right: -0.5, bottom: -2, top: 2 };
+const PLATE_FONT_SIZE = 52;
+const FALLBACK_PLATE_FONT = `700 ${PLATE_FONT_SIZE}px "JetBrains Mono", ui-monospace, monospace`;
 
 /** Approximate standard normal (Irwin–Hall, n=3). */
 function randn(): number {
   return Math.random() + Math.random() + Math.random() - 1.5;
 }
 
-function pick<T>(items: readonly T[]): T {
-  return items[Math.floor(Math.random() * items.length)] as T;
+/**
+ * Canvas font for the plates. next/font registers the site's JetBrains Mono
+ * under a generated family name exposed as --font-jetbrains; the literal
+ * "JetBrains Mono" only matches a copy installed on the visitor's machine.
+ */
+function plateFont(element: Element): string {
+  const siteFamily = getComputedStyle(element).getPropertyValue("--font-jetbrains").trim();
+  if (!siteFamily) return FALLBACK_PLATE_FONT;
+  return `700 ${PLATE_FONT_SIZE}px ${siteFamily}, "JetBrains Mono", ui-monospace, monospace`;
 }
 
-/** Color ramp by disk radius: white-gold core → green → cyan → purple/magenta rim. */
-function diskColor(r: number): THREE.Color {
-  const c = new THREE.Color();
-  if (r < 2.0) c.set(pick(["#fff6df", "#ffe9b8", PALETTE.amber]));
-  else if (r < 4.5) c.set(pick([PALETTE.green, "#d7ffab", PALETTE.cyan]));
-  else if (r < 8.5) c.set(pick([PALETTE.cyan, PALETTE.green, PALETTE.purple, "#89ddff"]));
-  else if (r < 12.5) c.set(pick([PALETTE.purple, "#89b4fa", PALETTE.magenta]));
-  else c.set(pick(["#565f89", PALETTE.magenta, "#414868"]));
-  return c;
-}
-
-/** Radial-gradient glow texture. */
-function makeGlowTexture(inner: string, mid: string): THREE.CanvasTexture {
-  const size = 256;
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("2D canvas context unavailable");
-  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-  g.addColorStop(0, inner);
-  g.addColorStop(0.22, mid);
-  g.addColorStop(1, "rgba(10, 14, 26, 0)");
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, size, size);
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
-
-/** Monospace tool-name plate with neon glow. */
-function makeToolTexture(
+/** Monospace tool-name plate: dark pill, tier-colored ring, glowing text. */
+function makePlateTexture(
   name: string,
   color: string,
+  font: string,
 ): { texture: THREE.CanvasTexture; aspect: number } {
-  const fontSize = 52;
   const pad = 30;
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("2D canvas context unavailable");
-  const font = `700 ${fontSize}px "JetBrains Mono", ui-monospace, monospace`;
-  ctx.font = font;
+  // An unparsable font string is ignored by the canvas, which would leave the
+  // 10px default; setting the fallback first keeps the plates full size.
+  const applyFont = () => {
+    ctx.font = FALLBACK_PLATE_FONT;
+    ctx.font = font;
+  };
+  applyFont();
   const metrics = ctx.measureText(name);
   canvas.width = Math.ceil(metrics.width + pad * 2);
-  canvas.height = fontSize + pad * 2;
-  ctx.font = font;
+  canvas.height = PLATE_FONT_SIZE + pad * 2;
+  applyFont(); // resizing the canvas resets its context state
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  // Backing plate: translucent dark pill keeps names legible over particles
-  const r = 14;
-  ctx.fillStyle = "rgba(10, 14, 26, 0.62)";
+  ctx.fillStyle = "rgba(10, 14, 26, 0.78)";
   ctx.beginPath();
-  ctx.roundRect(4, 4, canvas.width - 8, canvas.height - 8, r);
+  ctx.roundRect(4, 4, canvas.width - 8, canvas.height - 8, 14);
   ctx.fill();
-  ctx.strokeStyle = `${color}66`;
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = `${color}99`;
+  ctx.lineWidth = 2.5;
   ctx.stroke();
-  // Glow pass then crisp core
+  // Glow pass, then a crisp core
   ctx.shadowColor = color;
-  ctx.shadowBlur = 24;
+  ctx.shadowBlur = 18;
   ctx.fillStyle = color;
   ctx.fillText(name, canvas.width / 2, canvas.height / 2 + 1);
   ctx.shadowBlur = 0;
@@ -148,7 +163,35 @@ function makeToolTexture(
   return { texture, aspect: canvas.width / canvas.height };
 }
 
-export default function ToolStorm({ className }: { className?: string }) {
+/** Small soft dot for the hub (deliberately modest: no sun). */
+function makeHubTexture(): THREE.CanvasTexture {
+  const size = 128;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("2D canvas context unavailable");
+  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  g.addColorStop(0, "rgba(210, 255, 170, 0.85)");
+  g.addColorStop(0.35, "rgba(158, 206, 106, 0.35)");
+  g.addColorStop(1, "rgba(10, 14, 26, 0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+export default function ToolStorm({
+  className,
+  tools,
+  avoid,
+}: {
+  className?: string;
+  tools: StormTools;
+  /** Hero text elements; plates fade while they pass behind any of them. Keep the array stable. */
+  avoid?: readonly RefObject<HTMLElement | null>[];
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -165,7 +208,7 @@ export default function ToolStorm({ className }: { className?: string }) {
     let renderer: THREE.WebGLRenderer;
     try {
       renderer = new THREE.WebGLRenderer({
-        antialias: false,
+        antialias: true,
         alpha: true,
         // Mobile GPUs: let the browser pick the power-efficient GPU.
         powerPreference: isMobile ? "default" : "high-performance",
@@ -182,273 +225,124 @@ export default function ToolStorm({ className }: { className?: string }) {
     container.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(PALETTE.bg, 0.024);
+    scene.fog = new THREE.FogExp2(BG, 0.02);
 
     const camera = new THREE.PerspectiveCamera(
-      58,
+      55,
       container.clientWidth / Math.max(container.clientHeight, 1),
       0.1,
       200,
     );
-    camera.position.set(0, 2.7, CAMERA_Z);
+    camera.position.set(0, CAMERA_Y, CAMERA_Z);
 
     const disposables: Array<{ dispose: () => void }> = [];
-    // One AbortController tears down every listener; also used to ignore
-    // async work (font loading) that resolves after unmount.
+    // One AbortController tears down every listener; it also lets async work
+    // (font loading) that resolves after unmount see that it is too late.
     const controller = new AbortController();
     const { signal } = controller;
 
-    const disk = new THREE.Group();
-    disk.position.set(STORM_OFFSET_X, -0.4, 0);
-    disk.rotation.x = DISK_TILT_X;
-    disk.rotation.z = DISK_TILT_Z;
-    scene.add(disk);
+    const system = new THREE.Group();
+    system.position.set(STORM_OFFSET_X, -0.3, 0);
+    system.rotation.x = -0.92; // orrery tilt: rings read as ellipses
+    system.rotation.z = 0.16;
+    scene.add(system);
 
-    // --- Distant static starfield (depth backdrop) -------------------------
+    // --- Sparse in-plane dust for depth (no glare) -----------------------------
     {
-      const STAR_COUNT = isMobile ? 350 : 900;
-      const positions = new Float32Array(STAR_COUNT * 3);
-      for (let i = 0; i < STAR_COUNT; i++) {
-        const v = new THREE.Vector3().randomDirection().multiplyScalar(60 + Math.random() * 40);
-        positions[i * 3] = v.x;
-        positions[i * 3 + 1] = v.y;
-        positions[i * 3 + 2] = v.z;
+      const DUST = isMobile ? 500 : 1300;
+      const positions = new Float32Array(DUST * 3);
+      for (let i = 0; i < DUST; i++) {
+        const r = 2 + Math.random() * 11;
+        const a = Math.random() * Math.PI * 2;
+        positions[i * 3] = Math.cos(a) * r + randn() * 0.3;
+        positions[i * 3 + 1] = randn() * 0.25;
+        positions[i * 3 + 2] = Math.sin(a) * r + randn() * 0.3;
       }
       const geo = new THREE.BufferGeometry();
       geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
       const mat = new THREE.PointsMaterial({
-        color: 0xc0caf5,
-        size: 0.9,
-        sizeAttenuation: false,
+        color: 0x9ece6a,
+        size: isMobile ? 0.045 : 0.055,
+        sizeAttenuation: true,
         transparent: true,
-        opacity: 0.45,
+        opacity: 0.35,
         depthWrite: false,
       });
-      const stars = new THREE.Points(geo, mat);
-      scene.add(stars);
+      system.add(new THREE.Points(geo, mat));
       disposables.push(geo, mat);
     }
 
-    // --- Particle disk (GPU-animated) --------------------------------------
-    const PARTICLES = isMobile ? 6000 : 16000;
-    const radiusAttr = new Float32Array(PARTICLES);
-    const angleAttr = new Float32Array(PARTICLES);
-    const speedAttr = new Float32Array(PARTICLES);
-    const yAttr = new Float32Array(PARTICLES);
-    const sizeAttr = new Float32Array(PARTICLES);
-    const seedAttr = new Float32Array(PARTICLES);
-    const colorArr = new Float32Array(PARTICLES * 3);
-    const tmpColor = new THREE.Color();
-
-    for (let i = 0; i < PARTICLES; i++) {
-      const i3 = i * 3;
-      // Radius: dense toward center, long tail outward
-      const r = Math.random() ** 0.72 * DISK_RADIUS + 0.4;
-      radiusAttr[i] = r;
-
-      // Three log-spiral arms + scatter that widens with radius
-      const arm = (i % ARM_COUNT) * ((Math.PI * 2) / ARM_COUNT);
-      const scatter = 0.22 + (r / DISK_RADIUS) * 0.85;
-      angleAttr[i] = arm + SPIRAL_PITCH * Math.log(r + 1) + randn() * scatter;
-
-      // Differential (Keplerian-ish) rotation: inner orbits much faster
-      speedAttr[i] = (1.15 / (r + 0.9) ** 0.85) * SHEAR;
-
-      // Disk thickness: central bulge, thin rim
-      yAttr[i] = randn() * (1.35 * Math.exp(-r / 4.2) + 0.16);
-      // Power-law sizes: mostly dust, occasional bright stars
-      sizeAttr[i] = 1.4 + Math.random() ** 3.2 * 5.2;
-      seedAttr[i] = Math.random();
-
-      tmpColor.copy(diskColor(r));
-      // Brightness jitter, hotter inward
-      const b = (0.5 + Math.random() * 0.5) * (r < 3 ? 1.25 : 1);
-      colorArr[i3] = tmpColor.r * b;
-      colorArr[i3 + 1] = tmpColor.g * b;
-      colorArr[i3 + 2] = tmpColor.b * b;
-    }
-
-    const particleGeo = new THREE.BufferGeometry();
-    particleGeo.setAttribute(
-      "position",
-      new THREE.BufferAttribute(new Float32Array(PARTICLES * 3), 3),
-    ); // unused by shader but required
-    particleGeo.setAttribute("aRadius", new THREE.BufferAttribute(radiusAttr, 1));
-    particleGeo.setAttribute("aAngle", new THREE.BufferAttribute(angleAttr, 1));
-    particleGeo.setAttribute("aSpeed", new THREE.BufferAttribute(speedAttr, 1));
-    particleGeo.setAttribute("aY", new THREE.BufferAttribute(yAttr, 1));
-    particleGeo.setAttribute("aSize", new THREE.BufferAttribute(sizeAttr, 1));
-    particleGeo.setAttribute("aSeed", new THREE.BufferAttribute(seedAttr, 1));
-    particleGeo.setAttribute("aColor", new THREE.BufferAttribute(colorArr, 3));
-    particleGeo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), DISK_RADIUS + 4);
-
-    const particleUniforms = { uTime: { value: 0 }, uPixelRatio: { value: pixelRatio } };
-    const particleMat = new THREE.ShaderMaterial({
-      uniforms: particleUniforms,
+    // --- Hub: modest acfs marker -------------------------------------------------
+    const hubTexture = makeHubTexture();
+    const hubMaterial = new THREE.SpriteMaterial({
+      map: hubTexture,
       transparent: true,
       depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      vertexShader: /* glsl */ `
-        attribute float aRadius;
-        attribute float aAngle;
-        attribute float aSpeed;
-        attribute float aY;
-        attribute float aSize;
-        attribute float aSeed;
-        attribute vec3 aColor;
-        uniform float uTime;
-        uniform float uPixelRatio;
-        varying vec3 vColor;
-        varying float vTwinkle;
-        void main() {
-          float angle = aAngle + uTime * aSpeed;
-          vec3 pos = vec3(cos(angle) * aRadius, aY, sin(angle) * aRadius);
-          vec4 mv = modelViewMatrix * vec4(pos, 1.0);
-          gl_PointSize = aSize * uPixelRatio * (95.0 / max(-mv.z, 0.1));
-          vColor = aColor;
-          vTwinkle = 0.7 + 0.3 * sin(uTime * (1.2 + fract(aSeed) * 2.4) + aSeed * 41.7);
-          gl_Position = projectionMatrix * mv;
-        }
-      `,
-      fragmentShader: /* glsl */ `
-        varying vec3 vColor;
-        varying float vTwinkle;
-        void main() {
-          vec2 uv = gl_PointCoord - 0.5;
-          float d = length(uv);
-          float alpha = smoothstep(0.5, 0.06, d);
-          alpha *= alpha;
-          gl_FragColor = vec4(vColor * vTwinkle, alpha);
-        }
-      `,
+      opacity: 0.9,
     });
-    const particles = new THREE.Points(particleGeo, particleMat);
-    particles.frustumCulled = false;
-    disk.add(particles);
-    disposables.push(particleGeo, particleMat);
+    const hub = new THREE.Sprite(hubMaterial);
+    hub.scale.setScalar(1.6);
+    system.add(hub);
+    disposables.push(hubTexture, hubMaterial);
 
-    // --- Flywheel core -------------------------------------------------------
-    const glowA = makeGlowTexture("rgba(255, 250, 235, 1)", "rgba(158, 206, 106, 0.6)");
-    const glowB = makeGlowTexture("rgba(255, 255, 255, 1)", "rgba(224, 175, 104, 0.75)");
-    const coreMatA = new THREE.SpriteMaterial({
-      map: glowA,
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    });
-    const coreMatB = new THREE.SpriteMaterial({
-      map: glowB,
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    });
-    const coreOuter = new THREE.Sprite(coreMatA);
-    coreOuter.scale.setScalar(4.6);
-    disk.add(coreOuter);
-    const coreInner = new THREE.Sprite(coreMatB);
-    coreInner.scale.setScalar(1.7);
-    disk.add(coreInner);
-    disposables.push(glowA, coreMatA, glowB, coreMatB);
-
-    const composer = new EffectComposer(renderer);
-    composer.setPixelRatio(pixelRatio);
-    composer.setSize(container.clientWidth, container.clientHeight);
-    composer.addPass(new RenderPass(scene, camera));
-    const bloom = new UnrealBloomPass(
-      new THREE.Vector2(container.clientWidth, container.clientHeight),
-      0.42, // strength
-      0.5, // radius
-      0.42, // threshold — mid particles stay clean; only the core and hot stars bloom
-    );
-    composer.addPass(bloom);
-    composer.addPass(new OutputPass());
-    disposables.push(bloom, composer as unknown as { dispose: () => void });
-
-    // Bright rim ring + soft halo, lying in the disk plane
-    const ringGeo = new THREE.TorusGeometry(3.6, 0.05, 8, 180);
-    const ringMat = new THREE.MeshBasicMaterial({
-      color: 0xb8ee7a,
-      transparent: true,
-      opacity: 0.85,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    });
-    const ring = new THREE.Mesh(ringGeo, ringMat);
-    ring.rotation.x = Math.PI / 2;
-    disk.add(ring);
-    const haloGeo = new THREE.TorusGeometry(3.6, 0.22, 8, 180);
-    const haloMat = new THREE.MeshBasicMaterial({
-      color: 0xbb9af7,
-      transparent: true,
-      opacity: 0.22,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    });
-    const halo = new THREE.Mesh(haloGeo, haloMat);
-    halo.rotation.x = Math.PI / 2;
-    disk.add(halo);
-    disposables.push(ringGeo, ringMat, haloGeo, haloMat);
-
-    // --- Tool-name sprites riding the disk -----------------------------------
-    interface ToolRider {
+    // --- Rings: orbit line + plates ----------------------------------------------
+    interface Plate {
+      name: string;
+      ring: Ring;
       sprite: THREE.Sprite;
       material: THREE.SpriteMaterial;
-      radius: number;
       angle: number;
-      speed: number;
-      baseOpacity: number;
+      wobblePhase: number;
     }
-    const riders: ToolRider[] = [];
-    TOOL_NAMES.forEach((name, index) => {
-      const color = SPRITE_COLORS[index % SPRITE_COLORS.length];
-      const { texture, aspect } = makeToolTexture(name, color);
-      const material = new THREE.SpriteMaterial({
-        map: texture,
+    const plates: Plate[] = [];
+    const font = plateFont(container);
+
+    for (const tier of RING_ORDER) {
+      const ring = RINGS[tier];
+      const SEGMENTS = 160;
+      const ringPositions = new Float32Array((SEGMENTS + 1) * 3);
+      for (let i = 0; i <= SEGMENTS; i++) {
+        const a = (i / SEGMENTS) * Math.PI * 2;
+        ringPositions[i * 3] = Math.cos(a) * ring.radius;
+        ringPositions[i * 3 + 1] = 0;
+        ringPositions[i * 3 + 2] = Math.sin(a) * ring.radius;
+      }
+      const ringGeo = new THREE.BufferGeometry();
+      ringGeo.setAttribute("position", new THREE.BufferAttribute(ringPositions, 3));
+      const ringMat = new THREE.LineBasicMaterial({
+        color: new THREE.Color(ring.color),
         transparent: true,
+        opacity: ring.ringOpacity,
         depthWrite: false,
-        opacity: 0,
       });
-      const sprite = new THREE.Sprite(material);
-      sprite.scale.set(PLATE_HEIGHT * aspect, PLATE_HEIGHT, 1);
-      const radius = 5.2 + ((index * 2.7) % 8.5) + Math.random() * 1.2;
-      riders.push({
-        sprite,
-        material,
-        radius,
-        angle: (index / TOOL_NAMES.length) * Math.PI * 2 + Math.random() * 0.8,
-        speed: (1.15 / (radius + 0.9) ** 0.85) * SHEAR,
-        baseOpacity: 1,
-      });
-      disk.add(sprite);
-      disposables.push(texture, material);
-    });
+      system.add(new THREE.Line(ringGeo, ringMat));
+      disposables.push(ringGeo, ringMat);
 
-    // The plates are baked onto <canvas> with "JetBrains Mono". With
-    // font-display: swap the webfont is usually not ready on first paint, so
-    // every plate would be rasterised in the fallback face. Re-bake once the
-    // real font is available (no-op if it already was).
-    if (typeof document.fonts?.load === "function") {
-      document.fonts
-        .load('700 52px "JetBrains Mono"')
-        .then(() => {
-          if (signal.aborted) return;
-          riders.forEach((rider, index) => {
-            const color = SPRITE_COLORS[index % SPRITE_COLORS.length];
-            const { texture, aspect } = makeToolTexture(TOOL_NAMES[index] as string, color);
-            rider.material.map?.dispose();
-            rider.material.map = texture;
-            rider.material.needsUpdate = true;
-            rider.sprite.scale.set(PLATE_HEIGHT * aspect, PLATE_HEIGHT, 1);
-            disposables.push(texture);
-          });
-          if (prefersReducedMotion) composer.render();
-        })
-        .catch(() => {
-          /* font unavailable — keep the fallback rasterisation */
+      const names = tools[tier].slice(0, ring.maxPlates);
+      names.forEach((name, index) => {
+        const { texture, aspect } = makePlateTexture(name, ring.color, font);
+        const material = new THREE.SpriteMaterial({
+          map: texture,
+          transparent: true,
+          depthWrite: false,
+          opacity: 0,
         });
+        const sprite = new THREE.Sprite(material);
+        sprite.scale.set(ring.plateHeight * aspect, ring.plateHeight, 1);
+        plates.push({
+          name,
+          ring,
+          sprite,
+          material,
+          angle: (index / names.length) * Math.PI * 2 + ring.phase,
+          wobblePhase: Math.random() * Math.PI * 2,
+        });
+        system.add(sprite);
+        disposables.push(texture, material);
+      });
     }
 
-    // --- Interaction state ----------------------------------------------------
+    // --- Frame state -------------------------------------------------------------
     let raf = 0;
     let running = false;
     let angularVel = 0;
@@ -459,72 +353,130 @@ export default function ToolStorm({ className }: { className?: string }) {
     // THREE.Clock is deprecated (r176+, warns on construction); Timer is the
     // replacement. It needs one update() per frame before getDelta() is read.
     const timer = new Timer();
-    const projHelper = new THREE.Vector3();
+    const plateWorld = new THREE.Vector3();
+    const plateScreen = new THREE.Vector3();
+
+    // Each hero text element as a padded box in normalized device
+    // coordinates, re-measured on layout changes rather than every frame.
+    let textZones: TextZone[] = [FALLBACK_TEXT_ZONE];
+    const measureTextZones = () => {
+      const frame = container.getBoundingClientRect();
+      if (frame.width === 0 || frame.height === 0) return;
+      const measured: TextZone[] = [];
+      for (const ref of avoid ?? []) {
+        const box = ref.current?.getBoundingClientRect();
+        if (!box || box.width === 0 || box.height === 0) continue;
+        measured.push({
+          left: ((box.left - TEXT_ZONE_PAD - frame.left) / frame.width) * 2 - 1,
+          right: ((box.right + TEXT_ZONE_PAD - frame.left) / frame.width) * 2 - 1,
+          top: 1 - ((box.top - TEXT_ZONE_PAD - frame.top) / frame.height) * 2,
+          bottom: 1 - ((box.bottom + TEXT_ZONE_PAD - frame.top) / frame.height) * 2,
+        });
+      }
+      textZones = measured.length > 0 ? measured : [FALLBACK_TEXT_ZONE];
+    };
+    measureTextZones();
+
+    /** 0 clear of every text box, 1 well inside one, eased across the soft edge. */
+    const behindText = (x: number, y: number) => {
+      let deepest = 0;
+      for (const zone of textZones) {
+        // How far inside this box the point sits (negative outside)
+        const inside = Math.min(x - zone.left, zone.right - x, y - zone.bottom, zone.top - y);
+        deepest = Math.max(
+          deepest,
+          THREE.MathUtils.smoothstep(inside, -TEXT_ZONE_EDGE / 2, TEXT_ZONE_EDGE / 2),
+        );
+      }
+      return deepest;
+    };
 
     // Adaptive quality: if the average FPS sags early, drop internal resolution
     let warmupFrames = 0;
     let warmupTime = 0;
     let qualityDegraded = false;
 
-    const applyFrame = (dt: number) => {
-      const t = timer.getElapsed();
-      particleUniforms.uTime.value = t;
-
-      // Rigid slow precession + flick inertia; the shader handles shear
-      disk.rotation.y += (0.02 + angularVel) * dt;
-      angularVel *= Math.exp(-1.7 * dt);
-      ring.rotation.z += 0.5 * dt;
-      halo.rotation.z -= 0.3 * dt;
-      coreOuter.scale.setScalar(7 + Math.sin(t * 1.2) * 0.35);
-
-      // Camera: parallax toward pointer + scroll-driven dive
-      const damp = 1 - Math.exp(-3 * dt);
-      camera.position.x += (mouse.x * 0.9 - camera.position.x) * damp;
-      camera.position.y += (2.7 - mouse.y * 0.7 - camera.position.y) * damp;
-      camera.position.z += (CAMERA_Z - scrollDive * 1.6 - camera.position.z) * damp;
-      camera.lookAt(STORM_OFFSET_X * 0.55, 0.1, 0);
-
-      // Tool riders: Keplerian orbit on the disk plane…
-      for (const rider of riders) {
-        rider.angle += rider.speed * dt;
-        rider.sprite.position.set(
-          Math.cos(rider.angle) * rider.radius,
-          Math.sin(rider.angle * 0.5) * 0.12,
-          Math.sin(rider.angle) * rider.radius,
+    /**
+     * Orbit the plates, then fade each one out while it is behind hero text
+     * and dim it toward the far side of its ring. `settle` applies the target
+     * opacity at once (the still frame) instead of easing toward it.
+     */
+    const updatePlates = (dt: number, t: number, settle: boolean) => {
+      system.updateMatrixWorld();
+      camera.updateMatrixWorld();
+      const hubDistance = camera.position.distanceTo(system.position);
+      for (const plate of plates) {
+        plate.angle += plate.ring.speed * dt;
+        plate.sprite.position.set(
+          Math.cos(plate.angle) * plate.ring.radius,
+          Math.sin(t * 0.9 + plate.wobblePhase) * 0.08,
+          Math.sin(plate.angle) * plate.ring.radius,
         );
-
-        // …projected into screen space so we can fade them out of the
-        // left-hand text column and dim far-side plates.
-        projHelper.copy(rider.sprite.position).applyMatrix4(disk.matrixWorld).project(camera);
-        const inTextZone = projHelper.x < -0.52 && projHelper.z < 1;
-        const depthDim = THREE.MathUtils.clamp(1.25 - (projHelper.z + 1) * 0.5, 0.35, 1);
-        const target = (inTextZone ? 0.1 : 1) * depthDim * rider.baseOpacity;
-        rider.material.opacity += (target - rider.material.opacity) * Math.min(dt * 6, 1);
+        plateWorld.copy(plate.sprite.position).applyMatrix4(system.matrixWorld);
+        plateScreen.copy(plateWorld).project(camera);
+        // The soft edge lets plates glide out from behind the text instead of popping.
+        const hidden = plateScreen.z < 1 ? behindText(plateScreen.x, plateScreen.y) : 0;
+        const textFade = 1 - (1 - TEXT_ZONE_FLOOR) * hidden;
+        // -1 on the near side of the ring, +1 on the far side. Projected NDC
+        // depth cannot carry this: at 10–20 units from a 0.1–200 frustum it
+        // sits near 0.98 for every plate.
+        const depth = THREE.MathUtils.clamp(
+          (plateWorld.distanceTo(camera.position) - hubDistance) / plate.ring.radius,
+          -1,
+          1,
+        );
+        const depthDim = 0.7 - 0.3 * depth;
+        const target = textFade * depthDim * plate.ring.plateOpacity;
+        plate.material.opacity = settle
+          ? target
+          : plate.material.opacity + (target - plate.material.opacity) * Math.min(dt * 6, 1);
       }
-
-      composer.render();
     };
 
-    const loop = (timestamp?: number) => {
+    const applyFrame = (dt: number) => {
+      const t = timer.getElapsed();
+
+      // Slow system precession + drag-flick inertia
+      system.rotation.y += (0.05 + angularVel) * dt;
+      angularVel *= Math.exp(-1.6 * dt);
+
+      // Hub breathing: subtle, definitely not a sun
+      hub.scale.setScalar(1.55 + Math.sin(t * 1.1) * 0.08);
+
+      // Camera: parallax toward the pointer + scroll-driven dive
+      const damp = 1 - Math.exp(-3 * dt);
+      camera.position.x += (mouse.x * 0.8 - camera.position.x) * damp;
+      camera.position.y += (CAMERA_Y - mouse.y * 0.6 - camera.position.y) * damp;
+      camera.position.z += (CAMERA_Z - scrollDive * 1.4 - camera.position.z) * damp;
+      camera.lookAt(STORM_OFFSET_X * 0.5, 0, 0);
+
+      updatePlates(dt, t, false);
+      renderer.render(scene, camera);
+    };
+
+    // Reduced motion: one composed frame from the resting camera position.
+    const renderStill = () => {
+      camera.position.set(0, CAMERA_Y, CAMERA_Z);
+      camera.lookAt(STORM_OFFSET_X * 0.5, 0, 0);
+      updatePlates(0, 0, true);
+      renderer.render(scene, camera);
+    };
+
+    const loop = () => {
       raf = requestAnimationFrame(loop);
-      timer.update(timestamp);
+      timer.update();
       const dt = Math.min(timer.getDelta(), 0.05);
       applyFrame(dt);
 
-      // Warmup FPS probe → degrade resolution once if this GPU struggles
+      // Warm-up FPS probe → degrade resolution once if this GPU struggles
       if (!qualityDegraded && warmupFrames < 120) {
         warmupFrames += 1;
         warmupTime += dt;
-        if (warmupFrames === 120) {
-          const fps = warmupFrames / warmupTime;
-          if (fps < 40) {
-            qualityDegraded = true;
-            pixelRatio = 1;
-            renderer.setPixelRatio(pixelRatio);
-            composer.setPixelRatio(pixelRatio);
-            composer.setSize(container.clientWidth, container.clientHeight);
-            particleUniforms.uPixelRatio.value = pixelRatio;
-          }
+        if (warmupFrames === 120 && warmupFrames / warmupTime < 40) {
+          qualityDegraded = true;
+          pixelRatio = 1;
+          renderer.setPixelRatio(pixelRatio);
+          renderer.setSize(container.clientWidth, container.clientHeight);
         }
       }
     };
@@ -540,13 +492,36 @@ export default function ToolStorm({ className }: { className?: string }) {
       cancelAnimationFrame(raf);
     };
 
-    // --- Listeners (all via the shared AbortController for clean teardown) ---
+    // The plates are baked onto <canvas>. With font-display: swap the webfont
+    // is usually not ready on first paint, so every plate would be rasterised
+    // in the fallback face. Re-bake once the real font is available.
+    if (typeof document.fonts?.load === "function") {
+      document.fonts
+        .load(font)
+        .then(() => {
+          if (signal.aborted) return;
+          for (const plate of plates) {
+            const { texture, aspect } = makePlateTexture(plate.name, plate.ring.color, font);
+            plate.material.map?.dispose();
+            plate.material.map = texture;
+            plate.material.needsUpdate = true;
+            plate.sprite.scale.set(plate.ring.plateHeight * aspect, plate.ring.plateHeight, 1);
+            disposables.push(texture);
+          }
+          if (prefersReducedMotion) renderStill();
+        })
+        .catch(() => {
+          /* font unavailable: keep the fallback rasterisation */
+        });
+    }
+
+    // --- Listeners (all via the shared AbortController for clean teardown) -------
     const onPointerMove = (event: PointerEvent) => {
       if (dragging) {
         angularVel = THREE.MathUtils.clamp(
           angularVel + (event.clientX - lastPointerX) * 0.004,
-          -1.8,
-          1.8,
+          -1.6,
+          1.6,
         );
         lastPointerX = event.clientX;
         return;
@@ -573,7 +548,7 @@ export default function ToolStorm({ className }: { className?: string }) {
     window.addEventListener("pointermove", onPointerMove, { signal });
     window.addEventListener("pointerup", onPointerUp, { signal });
     // touch-action: pan-y hands vertical swipes to the browser, which then
-    // fires pointercancel (never pointerup) — without this `dragging` sticks
+    // fires pointercancel (never pointerup). Without this `dragging` sticks
     // and the next touch injects a stale-delta velocity jump.
     window.addEventListener("pointercancel", onPointerUp, { signal });
     container.addEventListener("pointerleave", onPointerLeave, { signal });
@@ -592,7 +567,7 @@ export default function ToolStorm({ className }: { className?: string }) {
       "webglcontextrestored",
       () => {
         // Reduced motion never starts the loop, so repaint the still frame.
-        if (prefersReducedMotion) composer.render();
+        if (prefersReducedMotion) renderStill();
         else start();
       },
       { signal },
@@ -605,9 +580,8 @@ export default function ToolStorm({ className }: { className?: string }) {
     window.addEventListener("scroll", onScroll, { passive: true, signal });
 
     // Pause whenever the hero is not being looked at: tab in the background
-    // OR scrolled past. The page is ~5 screens tall; 16k particles plus a
-    // bloom pass at 60fps while the user reads the tool index is pure battery
-    // burn.
+    // or hero scrolled past. The page is several screens tall, and animating
+    // the orrery while the visitor reads the tool index is battery burn.
     let heroVisible = true;
     const syncRunning = () => {
       if (document.hidden || !heroVisible) stop();
@@ -623,9 +597,7 @@ export default function ToolStorm({ className }: { className?: string }) {
     );
     observer.observe(container);
 
-    // Coalesce resize events into one layout pass per frame: composer.setSize
-    // reallocates the bloom render targets, which is far too expensive to do
-    // on every event of a window drag.
+    // Coalesce resize events into one layout pass per frame.
     let resizeRaf = 0;
     const applyResize = () => {
       resizeRaf = 0;
@@ -634,8 +606,8 @@ export default function ToolStorm({ className }: { className?: string }) {
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
       renderer.setSize(width, height);
-      composer.setSize(width, height);
-      if (prefersReducedMotion) composer.render();
+      measureTextZones();
+      if (prefersReducedMotion) renderStill();
     };
     const onResize = () => {
       if (resizeRaf) return;
@@ -643,19 +615,18 @@ export default function ToolStorm({ className }: { className?: string }) {
     };
     window.addEventListener("resize", onResize, { signal });
 
-    // Reduced motion: one composed frame, no loop
+    // Hero text reflows without a window resize too (webfont swap, wrapping),
+    // so re-measure whenever it or the hero changes size.
+    const zoneObserver = new ResizeObserver(() => {
+      measureTextZones();
+      if (prefersReducedMotion) renderStill();
+    });
+    zoneObserver.observe(container);
+    for (const ref of avoid ?? []) if (ref.current) zoneObserver.observe(ref.current);
+
     if (prefersReducedMotion) {
-      particleUniforms.uTime.value = 42; // developed spiral for the still frame
-      disk.rotation.y = 0.5;
-      for (const rider of riders) {
-        rider.material.opacity = rider.baseOpacity;
-        rider.sprite.position.set(
-          Math.cos(rider.angle) * rider.radius,
-          0,
-          Math.sin(rider.angle) * rider.radius,
-        );
-      }
-      composer.render();
+      system.rotation.y = 0.4;
+      renderStill();
     } else {
       start();
     }
@@ -665,13 +636,14 @@ export default function ToolStorm({ className }: { className?: string }) {
       stop();
       if (resizeRaf) cancelAnimationFrame(resizeRaf);
       observer.disconnect();
+      zoneObserver.disconnect();
       controller.abort();
       for (const d of disposables) d.dispose();
       scene.clear();
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, []);
+  }, [tools, avoid]);
 
   return (
     <div
