@@ -499,6 +499,7 @@ function fixture(sessionEntries = new Map(), initialPath = "/wizard/run-installe
   let rootLayout;
   function getRootLayout() {
     return (rootLayout ??= load(new URL("../app/layout.tsx", import.meta.url), {
+      react: { Suspense: "suspense" },
       "react/jsx-runtime": common["react/jsx-runtime"],
       "./globals.css": {},
       "next/font/local": {
@@ -507,6 +508,7 @@ function fixture(sessionEntries = new Map(), initialPath = "/wizard/run-installe
       "@/components/query-provider": { QueryProvider: "query-provider" },
       "@/components/analytics-provider": { AnalyticsProvider: "analytics-provider" },
       "@/components/motion/motion-provider": { MotionProvider: "motion-provider" },
+      "@/components/third-party-scripts": { ThirdPartyScripts: "third-party-scripts" },
       "@/components/wizard-installation-provider": component,
     }));
   }
@@ -1068,6 +1070,27 @@ test("root layout mounts one persistent installation provider below QueryProvide
     if (node.type === f.providerType) {
       found++;
       assert.ok(ancestors.includes("query-provider"));
+    }
+    visit(node.props.children, [...ancestors, node.type]);
+  }
+  visit(f.root());
+  assert.equal(found, 1);
+});
+
+// ThirdPartyScripts reads useSearchParams, so it needs its own Suspense
+// boundary or every statically rendered route bails out to client rendering.
+test("root layout mounts ThirdPartyScripts once, directly inside a Suspense boundary", () => {
+  const f = fixture();
+  let found = 0;
+  function visit(node, ancestors = []) {
+    if (Array.isArray(node)) {
+      node.forEach((child) => visit(child, ancestors));
+      return;
+    }
+    if (!node || typeof node !== "object") return;
+    if (node.type === "third-party-scripts") {
+      found++;
+      assert.equal(ancestors.at(-1), "suspense");
     }
     visit(node.props.children, [...ancestors, node.type]);
   }

@@ -1,8 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
+import { Suspense } from "react";
 import { AnalyticsProvider } from "@/components/analytics-provider";
 import { MotionProvider } from "@/components/motion/motion-provider";
 import { QueryProvider } from "@/components/query-provider";
+import { ThirdPartyScripts } from "@/components/third-party-scripts";
 import { WizardInstallationProvider } from "@/components/wizard-installation-provider";
 import "./globals.css";
 
@@ -109,6 +111,11 @@ export default function RootLayout({
         </a>
         {/* Noise texture overlay */}
         <div className="pointer-events-none fixed inset-0 z-50 bg-noise" />
+        {/* GTM, Clarity, Vercel Analytics and Speed Insights; each loads only
+            when its NEXT_PUBLIC_* variable is set (GA4 is AnalyticsProvider's). */}
+        <Suspense fallback={null}>
+          <ThirdPartyScripts />
+        </Suspense>
         <QueryProvider>
           <MotionProvider>
             <AnalyticsProvider>
