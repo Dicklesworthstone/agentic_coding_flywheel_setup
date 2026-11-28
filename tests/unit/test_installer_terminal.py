@@ -44,12 +44,14 @@ def initializer(name: str) -> str:
 
 
 def gnu_timeout() -> str | None:
-    """Return the GNU timeout the installer itself selects, or None.
+    """Return a GNU timeout, looked up in the installer's order, or None.
 
     Ubuntu 26.04's default timeout is uutils, whose --kill-after reaches only
     the direct child, so the installer's binary resolvers pick GNU coreutils
     (installed there as gnutimeout). Fixtures that stand in for those resolvers
     must hand on the same binary or they test a deadline production never uses.
+    The installer checks only /usr/bin/timeout after gnutimeout; this accepts a
+    GNU timeout anywhere on PATH so the suite also runs on development machines.
     """
     if os.access("/usr/bin/gnutimeout", os.X_OK):
         return "/usr/bin/gnutimeout"
@@ -1029,8 +1031,9 @@ class EarlyTimeoutResolverTests(unittest.TestCase):
 
         timeout.write_text('#!/bin/sh\nprintf "timeout (uutils coreutils) 0.10.0\\n"\n')
         timeout.chmod(0o755)
-        self.assertEqual(resolve()[1], "")
-        self.assertNotEqual(resolve()[0], 0)
+        code, output = resolve()
+        self.assertNotEqual(code, 0)
+        self.assertEqual(output, "")
 
         timeout.write_text('#!/bin/sh\nprintf "timeout (GNU coreutils) 9.7\\n"\n')
         self.assertEqual(resolve(), (0, f"{timeout}\n"))
