@@ -43,6 +43,27 @@ def initializer(name: str) -> str:
     return match[0]
 
 
+def gnu_timeout() -> str | None:
+    """Return the GNU timeout the installer itself selects, or None.
+
+    Ubuntu 26.04's default timeout is uutils, whose --kill-after reaches only
+    the direct child, so the installer's binary resolvers pick GNU coreutils
+    (installed there as gnutimeout). Fixtures that stand in for those resolvers
+    must hand on the same binary or they test a deadline production never uses.
+    """
+    if os.access("/usr/bin/gnutimeout", os.X_OK):
+        return "/usr/bin/gnutimeout"
+    candidate = shutil.which("timeout")
+    if candidate is None:
+        return None
+    try:
+        version = subprocess.run([candidate, "--version"], capture_output=True, text=True,
+                                 timeout=5, env={**os.environ, "LC_ALL": "C"}).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return candidate if version.startswith("timeout (GNU coreutils) ") else None
+
+
 class ContinuationReceiptTests(unittest.TestCase):
     def test_receipt_is_private_single_use_and_bound_to_its_attempt(self):
         # Exercise the literal production path without touching host recovery
@@ -368,8 +389,8 @@ class InstallerTerminalTests(unittest.TestCase):
             guard = "if [[ $EUID -ne 0 ]]; then"
             self.assertEqual(function_source.count(guard), 1)
             function_source = function_source.replace(guard, "if [[ 1000 -ne 0 ]]; then")
-        timeout_bin = shutil.which("timeout")
-        self.assertIsNotNone(timeout_bin, "GNU timeout is required")
+        timeout_bin = gnu_timeout()
+        self.assertIsNotNone(timeout_bin, "GNU timeout (gnutimeout on Ubuntu 26.04) is required")
         setsid_bin = shutil.which("setsid")
         self.assertIsNotNone(setsid_bin, "setsid is required")
         env_bin = shutil.which("env")
@@ -985,6 +1006,40 @@ Path(sys.argv[1]).write_text("finished\n")
         self.assertFalse(timeouts.exists())
 
 
+class EarlyTimeoutResolverTests(unittest.TestCase):
+    """install.sh's own resolver, used before install_helpers.sh is loaded."""
+
+    def test_early_deadlines_prefer_the_gnu_alias_and_refuse_a_uutils_only_system(self):
+        # The gum tests above replace this resolver, so check its timeout
+        # branch directly, as test_install_helpers.bats does for the shared
+        # copy: redirect its /usr/bin lookups into a private directory.
+        resolver = definition("acfs_early_system_binary_path")
+        self.assertIn("/usr/bin/gnutimeout", resolver)
+        root = Path(tempfile.mkdtemp(prefix="acfs-early-timeout-"))
+        self.addCleanup(shutil.rmtree, root, True)
+        resolver = resolver.replace("/usr/bin/", str(root) + "/")
+        timeout, gnu = root / "timeout", root / "gnutimeout"
+
+        def resolve():
+            result = subprocess.run(
+                ["/bin/bash", "--noprofile", "--norc", "-c",
+                 resolver + "\nacfs_early_system_binary_path timeout\n"],
+                capture_output=True, text=True, timeout=10, env={"PATH": "/usr/bin:/bin"})
+            return result.returncode, result.stdout
+
+        timeout.write_text('#!/bin/sh\nprintf "timeout (uutils coreutils) 0.10.0\\n"\n')
+        timeout.chmod(0o755)
+        self.assertEqual(resolve()[1], "")
+        self.assertNotEqual(resolve()[0], 0)
+
+        timeout.write_text('#!/bin/sh\nprintf "timeout (GNU coreutils) 9.7\\n"\n')
+        self.assertEqual(resolve(), (0, f"{timeout}\n"))
+
+        gnu.write_text("#!/bin/sh\nexit 0\n")
+        gnu.chmod(0o755)
+        self.assertEqual(resolve(), (0, f"{gnu}\n"))
+
+
 class InstallerSmokeTests(unittest.TestCase):
     """Real bounded probe processes and production smoke selection/exit logic."""
 
@@ -1006,6 +1061,8 @@ class InstallerSmokeTests(unittest.TestCase):
             "TARGET_HOME": str(self.target), "ACFS_BIN_DIR": str(self.bin),
             "TEST_SMOKE_ROOT": str(self.root),
         }
+        real_timeout = gnu_timeout()
+        self.assertIsNotNone(real_timeout, "GNU timeout (gnutimeout on Ubuntu 26.04) is required")
         self.timeout = self.root / "timeout"
         self.timeout.write_text("#!/bin/bash\n" + r'''
 set -euo pipefail
@@ -1015,8 +1072,7 @@ printf '%s\n' "$$" > "$TEST_SMOKE_ROOT/timeout.pid"
 shift 2
 # Scale only the production allowance/grace, retaining real GNU timeout,
 # its process group, and the production guardian and strict child shells.
-exec /usr/bin/timeout --kill-after=0.2s 0.3s "$@"
-''')
+''' + f'exec {shlex.quote(real_timeout)} --kill-after=0.2s 0.3s "$@"\n')
         self.timeout.chmod(0o755)
 
     def stop_probes(self):
