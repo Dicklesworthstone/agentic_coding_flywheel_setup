@@ -248,6 +248,7 @@ acfs_apply_profile() {
 }
 
 acfs_resolve_selection() {
+    ACFS_PLAN_OMITS_SAVED_DEPENDENCIES=false
     if [[ "${ACFS_MANIFEST_INDEX_LOADED:-false}" != "true" ]]; then
         log_error "Manifest index not loaded. Cannot resolve selection."
         return 1
@@ -519,6 +520,7 @@ acfs_resolve_selection() {
             done
         done
         if [[ "$saved_scope_missing_dependencies" == true ]]; then
+            ACFS_PLAN_OMITS_SAVED_DEPENDENCIES=true
             log_warn "To include dependencies, explicitly select a module with --only or choose a --profile."
         fi
     fi

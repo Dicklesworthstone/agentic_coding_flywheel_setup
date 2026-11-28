@@ -12204,7 +12204,11 @@ acfs_smoke_install_fix_command() {
             fix_args+=(--skip "$selection")
         done
     fi
-    [[ "${NO_DEPS:-false}" == true ]] && fix_args+=(--no-deps)
+    # This repair turns a saved module into a new --only root. Preserve any
+    # omitted prerequisites even when the resumed process had no --no-deps flag.
+    if [[ "${NO_DEPS:-false}" == true || "${ACFS_PLAN_OMITS_SAVED_DEPENDENCIES:-false}" == true ]]; then
+        fix_args+=(--no-deps)
+    fi
     [[ "${SKIP_POSTGRES:-false}" == true ]] && fix_args+=(--skip-postgres)
     [[ "${SKIP_VAULT:-false}" == true ]] && fix_args+=(--skip-vault)
     [[ "${SKIP_CLOUD:-false}" == true ]] && fix_args+=(--skip-cloud)

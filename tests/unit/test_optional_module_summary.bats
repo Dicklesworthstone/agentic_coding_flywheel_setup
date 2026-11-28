@@ -195,6 +195,41 @@ setup() {
     done
 }
 
+@test "a skipped module repair preserves a saved scope with or without its prerequisites" {
+    source "$PROJECT_ROOT/scripts/lib/install_helpers.sh"
+    source "$PROJECT_ROOT/scripts/generated/manifest_index.sh"
+    eval "$(sed -n -e '/^parse_args() {$/,/^}$/p' -e '/^append_comma_or_space_separated() {$/,/^}$/p' -e '/^acfs_require_ref_arg_value() {$/,/^}$/p' "$INSTALL_SH")"
+    record_skipped_tool agents.grok checksum
+    local saved_plan repair_line
+    for saved_plan in "agents.grok" "base.system users.ubuntu agents.grok"; do
+        # A resumed process starts without the --no-deps flag that may have
+        # produced the checkpoint. The saved module list is authoritative.
+        NO_DEPS=false
+        ONLY_MODULES=()
+        ACFS_SAVED_SELECTION_ACTIVE=true
+        read -ra ACFS_SAVED_SELECTION_MODULES <<< "$saved_plan"
+        ACFS_SAVED_REQUESTED_MODULES=()
+        acfs_resolve_selection
+        [[ "${ACFS_EFFECTIVE_PLAN[*]}" == "$saved_plan" ]]
+        run print_summary
+        [[ "$status" -eq 0 ]]
+        repair_line="$(sed -n 's/^[[:space:]]*\(curl -fsSL .*| .*bash -s -- .*\)$/\1/p' <<< "$output")"
+        [[ -n "$repair_line" ]]
+
+        # Replay the rendered, shell-quoted arguments without fetching or installing.
+        eval "set -- ${repair_line#*bash -s -- }"
+        parse_args "$@"
+        [[ "${ONLY_MODULES[*]}" == agents.grok ]]
+        if [[ "$saved_plan" == agents.grok ]]; then
+            [[ "$NO_DEPS" == true ]]
+        else
+            [[ "$NO_DEPS" == false ]]
+        fi
+        acfs_resolve_selection
+        [[ "${ACFS_EFFECTIVE_PLAN[*]}" == "$saved_plan" ]]
+    done
+}
+
 # ------------------------------------------------------------------
 # #389: the default install runs the LEGACY stack phase (no category is
 # migrated to generated dispatch by default), whose optional call sites were
