@@ -191,6 +191,141 @@ EOF
     done
 }
 
+repair_source_fixture() {
+    eval "$(sed -n '/^acfs_bind_checkpoint_source() {$/,/^}$/p; /^acfs_calculate_file_sha256() {$/,/^}$/p' "$PROJECT_ROOT/install.sh")"
+    ACFS_REF=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    ACFS_REPO_OWNER=Dicklesworthstone
+    ACFS_REPO_NAME=agentic_coding_flywheel_setup
+    ACFS_VERIFIED_BOOTSTRAP_SOURCE=remote
+    ACFS_LOCAL_ARCHIVE_SOURCE=false
+    ACFS_EFFECTIVE_PLAN=(lang.bun)
+    TARGET_USER="$(id -un)"
+    TARGET_HOME="$BATS_TEST_TMPDIR/target"
+    mkdir -p "$TARGET_HOME"
+    export PUBLISHED_LEDGER="$BATS_TEST_TMPDIR/published-ledger"
+    export REPAIR_FETCH_LOG="$BATS_TEST_TMPDIR/fetch-log"
+    printf 'runtime closure\n' > "$PUBLISHED_LEDGER"
+    cat > "$BATS_TEST_TMPDIR/fixture-curl" <<'CURL'
+#!/usr/bin/env bash
+printf '%s\n' "${!#}" >> "$REPAIR_FETCH_LOG"
+cat "$PUBLISHED_LEDGER" || exit 22
+exit "${REPAIR_FETCH_STATUS:-0}"
+CURL
+    chmod +x "$BATS_TEST_TMPDIR/fixture-curl"
+    acfs_early_system_binary_path() {
+        case "$1" in
+            curl) printf '%s\n' "$BATS_TEST_TMPDIR/fixture-curl" ;;
+            *) command -v "$1" ;;
+        esac
+    }
+    ACFS_TRUSTED_INTERNAL_LEDGER_SHA256=$(acfs_calculate_file_sha256 "$PUBLISHED_LEDGER")
+}
+
+@test "repair pin: a verified canonical install writes the revision Doctor actually fetches" {
+    repair_source_fixture
+    acfs_bind_checkpoint_source
+    state_init
+    local pin="$ACFS_REF" checkpoint="$ACFS_STATE_FILE" home="" user="$TARGET_USER"
+    home=$(jq -r .target_home "$checkpoint")
+    [[ "$(cat "$REPAIR_FETCH_LOG")" == "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/$pin/scripts/generated/internal_checksums.sh" ]]
+    jq -e --arg pin "$pin" --arg digest "$ACFS_TRUSTED_INTERNAL_LEDGER_SHA256" '
+        .pinned_ref == $pin and .pinned_ref_ledger_sha256 == $digest and .source_ledger_sha256 == null
+    ' "$checkpoint"
+    run bash -c '
+        source <(sed "\$d" "$1/scripts/lib/doctor.sh") >/dev/null 2>&1 || true
+        TARGET_USER="$2" TARGET_HOME="$3" ACFS_HOME="$3/.acfs"
+        ACFS_STATE_FILE="$4" project_root="$1"
+        _acfs_doctor_find_lib_script() { printf "%s/scripts/lib/%s\n" "$project_root" "$1"; }
+        mapfile -t MANIFEST_CHECKS < <(
+            source "$project_root/scripts/generated/doctor_checks.sh"
+            printf "%s\n" "${MANIFEST_CHECKS[@]}"
+        )
+        MANIFEST_CHECKS_LOADED=true
+        doctor_load_module_selection || exit 1
+        build_fix_suggestion lang.bun
+    ' _ "$PROJECT_ROOT" "$user" "$home" "$checkpoint"
+    assert_success
+    assert_output --partial "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/$pin/install.sh"
+    assert_output --partial "--ref $pin"
+}
+
+@test "repair pin: scoped and legacy retries retain only corroborated revisions across network failure" {
+    repair_source_fixture
+    local kind
+    for kind in scoped legacy; do
+        ACFS_STATE_FILE="$ACFS_HOME/$kind.json"
+        if [[ "$kind" == legacy ]]; then unset ACFS_EFFECTIVE_PLAN; fi
+        unset REPAIR_FETCH_STATUS
+        ACFS_REF=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        acfs_bind_checkpoint_source
+        state_init
+        export REPAIR_FETCH_STATUS=22
+        acfs_bind_checkpoint_source
+        cp "$ACFS_STATE_FILE" "$BATS_TEST_TMPDIR/before"
+        state_record_module_selection lang.bun
+        cmp "$BATS_TEST_TMPDIR/before" "$ACFS_STATE_FILE"
+        state_init
+        [[ "$(jq -r .pinned_ref "$ACFS_STATE_FILE")" == "$ACFS_REF" ]]
+        ACFS_REF=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+        acfs_bind_checkpoint_source
+        state_record_module_selection lang.bun
+        jq -e 'has("pinned_ref") == false and has("pinned_ref_ledger_sha256") == false' "$ACFS_STATE_FILE"
+        unset REPAIR_FETCH_STATUS
+        acfs_bind_checkpoint_source
+        state_record_module_selection lang.bun
+        [[ "$(jq -r .pinned_ref "$ACFS_STATE_FILE")" == "$ACFS_REF" ]]
+        # A successful but contradictory response disables cached-pin reuse.
+        printf 'different runtime closure\n' > "$PUBLISHED_LEDGER"
+        acfs_bind_checkpoint_source
+        state_record_module_selection lang.bun
+        jq -e 'has("pinned_ref") == false' "$ACFS_STATE_FILE"
+        printf 'runtime closure\n' > "$PUBLISHED_LEDGER"
+        acfs_bind_checkpoint_source
+        state_record_module_selection lang.bun
+        ACFS_LOCAL_ARCHIVE_SOURCE=true
+        acfs_bind_checkpoint_source
+        state_record_module_selection lang.bun
+        jq -e 'has("pinned_ref") == false and has("pinned_ref_ledger_sha256") == false' "$ACFS_STATE_FILE"
+        ACFS_LOCAL_ARCHIVE_SOURCE=false
+    done
+}
+
+@test "repair pin: offline bootstrap and malformed prior metadata cannot assert a canonical revision" {
+    repair_source_fixture
+    command() {
+        if [[ "${1:-}" == -v && "${2:-}" == jq ]]; then return 1; fi
+        builtin command "$@"
+    }
+    acfs_bind_checkpoint_source
+    state_init
+    state_load_module_selection "$ACFS_STATE_FILE"
+    [[ "$_ACFS_STATE_SAVED_REPAIR_BINDING" == "$ACFS_REF:$ACFS_TRUSTED_INTERNAL_LEDGER_SHA256" ]]
+    ACFS_REF=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    acfs_bind_checkpoint_source
+    state_record_module_selection lang.bun
+    jq -e --arg pin "$ACFS_REF" '.pinned_ref == $pin' "$ACFS_STATE_FILE"
+    ACFS_TRUSTED_INTERNAL_LEDGER_SHA256="$(printf '%064d' 1)"
+    acfs_bind_checkpoint_source
+    state_init
+    jq -e 'has("pinned_ref") == false and has("pinned_ref_ledger_sha256") == false' "$ACFS_STATE_FILE"
+    printf '{"nested":{"pinned_ref":"%s","pinned_ref_ledger_sha256":"%s"},"pinned_ref":null}\n' \
+        "$ACFS_REF" "$ACFS_TRUSTED_INTERNAL_LEDGER_SHA256" > "$ACFS_STATE_FILE"
+    state_init
+    jq -e 'has("pinned_ref") == false' "$ACFS_STATE_FILE"
+
+    : > "$REPAIR_FETCH_LOG"
+    ACFS_REPO_OWNER=example
+    acfs_bind_checkpoint_source
+    ACFS_REPO_OWNER=Dicklesworthstone ACFS_LOCAL_ARCHIVE_SOURCE=true
+    acfs_bind_checkpoint_source
+    ACFS_LOCAL_ARCHIVE_SOURCE=false ACFS_VERIFIED_BOOTSTRAP_SOURCE=""
+    acfs_bind_checkpoint_source
+    ACFS_VERIFIED_BOOTSTRAP_SOURCE=remote ACFS_REF=main
+    acfs_bind_checkpoint_source
+    [[ ! -s "$REPAIR_FETCH_LOG" ]]
+    [[ -z "$_ACFS_STATE_REPAIR_PIN" && -z "$_ACFS_STATE_REPAIR_CANDIDATE" ]]
+}
+
 @test "state: init creates valid json" {
     run state_init
     assert_success

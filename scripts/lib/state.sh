@@ -36,6 +36,10 @@ _ACFS_STATE_LOCK_OWNER_PID=""
 # ledger. An exported digest or a remote branch name is not evidence about the
 # actual scripts being installed (particularly for local/offline archives).
 _ACFS_STATE_SOURCE_LEDGER_SHA256=""
+_ACFS_STATE_REPAIR_PIN=""
+_ACFS_STATE_REPAIR_CANDIDATE=""
+_ACFS_STATE_SAVED_REPAIR_BINDING=""
+_ACFS_STATE_REINSTALL_REPAIR_BINDING=""
 _ACFS_STATE_REINSTALL_SELECTION_MODE=""
 _ACFS_STATE_REINSTALL_SELECTION_FILE=""
 declare -ga _ACFS_STATE_REINSTALL_MODULES=()
@@ -46,7 +50,8 @@ ACFS_STATE_INSTALL_MODE=""
 declare -ga ACFS_STATE_SELECTED_MODULES=()
 declare -ga ACFS_STATE_REQUESTED_MODULES=()
 export -n _ACFS_STATE_SH_LOADED _ACFS_STATE_LOCKED _ACFS_STATE_LOCK_DEPTH \
-    _ACFS_STATE_LOCK_FILE _ACFS_STATE_LOCK_OWNER_PID _ACFS_STATE_SOURCE_LEDGER_SHA256 \
+    _ACFS_STATE_LOCK_FILE _ACFS_STATE_LOCK_OWNER_PID _ACFS_STATE_SOURCE_LEDGER_SHA256 _ACFS_STATE_REPAIR_PIN \
+    _ACFS_STATE_REPAIR_CANDIDATE _ACFS_STATE_SAVED_REPAIR_BINDING _ACFS_STATE_REINSTALL_REPAIR_BINDING \
     _ACFS_STATE_REINSTALL_SELECTION_MODE _ACFS_STATE_REINSTALL_SELECTION_FILE _ACFS_PENDING_REINSTALL_FILE \
     ACFS_STATE_SELECTION_MODE ACFS_STATE_INSTALL_MODE
 
@@ -84,6 +89,8 @@ fi
 #   "schema_version": 3,                      # Schema version for compatibility
 #   "version": "0.1.0",                       # ACFS version that created this state
 #   "source_ledger_sha256": "...",            # Source last deployed by successful finalization
+#   "pinned_ref": "...",                      # Optional canonical revision for Doctor repair commands
+#   "pinned_ref_ledger_sha256": "...",        # Verified runtime ledger for that revision
 #   "module_selection": {                    # Optional; absent means legacy full-install behavior
 #     "schema_version": 1,
 #     "selected_modules": ["base.system", ...], # Cumulative intent, including failed selected installs
@@ -437,11 +444,26 @@ state_get_file() {
 
 # Bind the checksum ledger already verified by the installer orchestrator.
 # The state library also serves non-installer commands, which leave this unset.
-# Usage: state_bind_installer_source <verified-internal-ledger-sha256>
+# Usage: state_bind_installer_source <ledger-sha256> [verified-commit] [candidate-commit]
 state_bind_installer_source() {
-    local digest="${1:-}"
-    [[ "$digest" =~ ^[0-9a-f]{64}$ ]] || return 1
+    local digest="${1:-}" pin="${2:-}" candidate="${3:-${2:-}}"
+    [[ "$digest" =~ ^[0-9a-f]{64}$ &&
+        ( -z "$candidate" || "$candidate" =~ ^[0-9a-f]{40}$ ) &&
+        ( -z "$pin" || "$pin" == "$candidate" ) ]] || return 1
     _ACFS_STATE_SOURCE_LEDGER_SHA256="$digest"
+    _ACFS_STATE_REPAIR_PIN="$pin"
+    _ACFS_STATE_REPAIR_CANDIDATE="$candidate"
+}
+
+# During a temporary network failure a prior verified pin is reusable only for
+# this same remote candidate and this exact set of verified installer bytes.
+_state_effective_repair_pin() {
+    if [[ -n "$_ACFS_STATE_REPAIR_PIN" ]]; then
+        printf '%s\n' "$_ACFS_STATE_REPAIR_PIN"
+    elif [[ -n "$_ACFS_STATE_REPAIR_CANDIDATE" &&
+            "${1:-}" == "$_ACFS_STATE_REPAIR_CANDIDATE:$_ACFS_STATE_SOURCE_LEDGER_SHA256" ]]; then
+        printf '%s\n' "$_ACFS_STATE_REPAIR_CANDIDATE"
+    fi
 }
 
 # A recorded selection is the cumulative set of modules this installation is
@@ -537,6 +559,7 @@ state_requested_modules_for_plan() {
 state_load_module_selection() {
     ACFS_STATE_SELECTION_MODE=invalid
     ACFS_STATE_INSTALL_MODE=""
+    _ACFS_STATE_SAVED_REPAIR_BINDING=""
     declare -ga ACFS_STATE_SELECTED_MODULES=()
     declare -ga ACFS_STATE_REQUESTED_MODULES=()
     local state_file="${1:-}"
@@ -591,8 +614,14 @@ state_load_module_selection() {
             if has("mode") and (.mode != "safe" and .mode != "vibe") then
                 error("invalid installation mode")
             else . end |
+            # Emit only a closed-grammar reference and digest. Older metadata
+            # remains readable, but cannot authenticate a subsequent repair.
+            (if (has("pinned_ref") or has("pinned_ref_ledger_sha256")) | not then ""
+             elif (.pinned_ref | type == "string" and test("\\A[0-9a-f]{40}\\z")) and
+                  (.pinned_ref_ledger_sha256 | type == "string" and test("\\A[0-9a-f]{64}\\z"))
+             then .pinned_ref + ":" + .pinned_ref_ledger_sha256 else "unbound" end) as $binding |
             (.mode // "") as $install_mode |
-            if has("module_selection") | not then "legacy", $install_mode
+            if has("module_selection") | not then "legacy", $install_mode, $binding
             else .module_selection | . as $selection |
                 if type != "object" or .schema_version != 1 then
                     error("unsupported module selection schema")
@@ -615,7 +644,7 @@ state_load_module_selection() {
                 elif any((.requested_modules // [])[];
                     . as $module | $selection.selected_modules | index($module) == null) then
                     error("requested_modules must be a subset of selected_modules")
-                else "scoped", $install_mode, .selected_modules[], "--requested--", (.requested_modules // [])[] end
+                else "scoped", $install_mode, $binding, .selected_modules[], "--requested--", (.requested_modules // [])[] end
             end
         ' -- "$state_file"); then
             printf 'Invalid ACFS module selection in %s\n' "$state_file" >&2
@@ -639,9 +668,15 @@ try:
     install_mode = state.get("mode", "")
     if "mode" in state and install_mode not in ("safe", "vibe"):
         raise ValueError("invalid installation mode")
+    binding = ""
+    if "pinned_ref" in state or "pinned_ref_ledger_sha256" in state:
+        pin, digest = state.get("pinned_ref"), state.get("pinned_ref_ledger_sha256")
+        binding = (pin + ":" + digest if isinstance(pin, str) and re.fullmatch(r"[0-9a-f]{40}", pin)
+                   and isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest) else "unbound")
     if "module_selection" not in state:
         print("legacy")
         print(install_mode)
+        print(binding)
     else:
         selection = state["module_selection"]
         if not isinstance(selection, dict) or type(selection.get("schema_version")) not in (int, float) or selection["schema_version"] != 1:
@@ -658,6 +693,7 @@ try:
             raise ValueError("duplicate module ID in requested_modules")
         print("scoped")
         print(install_mode)
+        print(binding)
         print("\n".join(modules))
         print("--requested--")
         if requested:
@@ -676,6 +712,7 @@ ACFS_SELECTION_PY
 
     local -a records=()
     mapfile -t records <<< "$parsed"
+    _ACFS_STATE_SAVED_REPAIR_BINDING="${records[2]:-}"
     case "${records[0]:-}" in
         legacy)
             ACFS_STATE_SELECTION_MODE=legacy
@@ -683,7 +720,7 @@ ACFS_SELECTION_PY
             ;;
         scoped)
             local record="" reading_requests=false
-            for record in "${records[@]:2}"; do
+            for record in "${records[@]:3}"; do
                 if [[ "$record" == --requested-- ]]; then
                     reading_requests=true
                 elif [[ "$reading_requests" == true ]]; then
@@ -806,27 +843,66 @@ state_record_module_selection() {
     if [[ -n "$install_mode" && "$install_mode" != "$ACFS_STATE_INSTALL_MODE" ]]; then
         update_mode=true
     fi
-    if [[ "$ACFS_STATE_SELECTION_MODE" == legacy ]]; then
-        if [[ "$update_mode" == true ]]; then
-            state_update_with_args '.mode = $mode' --arg mode "$install_mode" || status=1
-            if [[ "$status" -eq 0 ]]; then
-                state_load_module_selection "$state_file" || status=1
+    # The next repair must use this accepted install's source, even when the
+    # installation failed before finalize. Only an installer that bound its
+    # verified ledger may replace a pin; library callers preserve existing data.
+    local update_pin=false pin="" binding=""
+    if [[ -n "$_ACFS_STATE_SOURCE_LEDGER_SHA256" ]]; then
+        pin=$(_state_effective_repair_pin "$_ACFS_STATE_SAVED_REPAIR_BINDING")
+        [[ -z "$pin" ]] || binding="$pin:$_ACFS_STATE_SOURCE_LEDGER_SHA256"
+        [[ "$_ACFS_STATE_SAVED_REPAIR_BINDING" == "$binding" ]] || update_pin=true
+    fi
+    if [[ "$ACFS_STATE_SELECTION_MODE" == scoped ]]; then
+        mapfile -t requested_modules < <(state_requested_modules_for_plan "$@")
+        previous=$(state_module_selection_json --requested "${ACFS_STATE_REQUESTED_MODULES[@]}" -- \
+            "${ACFS_STATE_SELECTED_MODULES[@]}") || status=1
+        merged=$(state_module_selection_json --requested "${ACFS_STATE_REQUESTED_MODULES[@]}" \
+            "${requested_modules[@]}" -- "${ACFS_STATE_SELECTED_MODULES[@]}" "$@") || status=1
+    fi
+    if [[ "$status" -eq 0 && ( "$merged" != "$previous" || "$update_mode" == true || "$update_pin" == true ) ]]; then
+        if command -v jq >/dev/null 2>&1; then
+            state_update_with_args '
+                if $selection != null then
+                    .module_selection.selected_modules = $selection.selected_modules |
+                    .module_selection.requested_modules = $selection.requested_modules
+                else . end |
+                if $mode == "" then . else .mode = $mode end |
+                if $update_pin then
+                    if $pin == "" then del(.pinned_ref, .pinned_ref_ledger_sha256)
+                    else .pinned_ref = $pin | .pinned_ref_ledger_sha256 = $digest end
+                else . end' \
+                --argjson selection "${merged:-null}" --arg mode "$install_mode" \
+                --argjson update_pin "$update_pin" --arg pin "$pin" --arg digest "$_ACFS_STATE_SOURCE_LEDGER_SHA256" || status=1
+        else
+            # An interrupted base-deps phase may still lack jq. The selection
+            # loader validated this checkpoint with Python under the same lock.
+            local updated=""
+            if updated=$(python3 - "$state_file" "${merged:-null}" "$install_mode" "$update_pin" \
+                "$pin" "$_ACFS_STATE_SOURCE_LEDGER_SHA256" <<'ACFS_ACCEPTED_POLICY_PY'
+import json
+import sys
+
+file, selection, mode, update_pin, pin, digest = sys.argv[1:]
+with open(file, encoding="utf-8") as stream:
+    state = json.load(stream)
+if selection != "null":
+    state["module_selection"].update(json.loads(selection))
+if mode:
+    state["mode"] = mode
+if update_pin == "true":
+    if pin:
+        state.update(pinned_ref=pin, pinned_ref_ledger_sha256=digest)
+    else:
+        state.pop("pinned_ref", None)
+        state.pop("pinned_ref_ledger_sha256", None)
+print(json.dumps(state, indent=2))
+ACFS_ACCEPTED_POLICY_PY
+            ); then
+                state_write_atomic "$state_file" "$updated" || status=1
+            else
+                status=1
             fi
         fi
-        _state_release_lock
-        return "$status"
-    fi
-    mapfile -t requested_modules < <(state_requested_modules_for_plan "$@")
-    previous=$(state_module_selection_json --requested "${ACFS_STATE_REQUESTED_MODULES[@]}" -- \
-        "${ACFS_STATE_SELECTED_MODULES[@]}") || status=1
-    merged=$(state_module_selection_json --requested "${ACFS_STATE_REQUESTED_MODULES[@]}" \
-        "${requested_modules[@]}" -- "${ACFS_STATE_SELECTED_MODULES[@]}" "$@") || status=1
-    if [[ "$status" -eq 0 && ( "$merged" != "$previous" || "$update_mode" == true ) ]]; then
-        state_update_with_args '
-            .module_selection.selected_modules = $selection.selected_modules |
-            .module_selection.requested_modules = $selection.requested_modules |
-            if $mode == "" then . else .mode = $mode end' \
-            --argjson selection "$merged" --arg mode "$install_mode" || status=1
         if [[ "$status" -eq 0 ]]; then
             state_load_module_selection "$state_file" || status=1
         fi
@@ -972,11 +1048,12 @@ _state_init_checkpoint() {
     fi
     state_target_user="${state_target_user:-unknown}"
 
-    local module_selection="null"
+    local module_selection="null" repair_pin="" saved_binding=""
     local -a previous_modules=() previous_requests=() current_requests=()
     local preserve_legacy_selection=false
     if [[ -e "$state_file" || -L "$state_file" ]]; then
         state_load_module_selection "$state_file" || return 1
+        saved_binding="$_ACFS_STATE_SAVED_REPAIR_BINDING"
         if [[ "$ACFS_STATE_SELECTION_MODE" == scoped ]]; then
             previous_modules=("${ACFS_STATE_SELECTED_MODULES[@]}")
             previous_requests=("${ACFS_STATE_REQUESTED_MODULES[@]}")
@@ -984,6 +1061,7 @@ _state_init_checkpoint() {
             preserve_legacy_selection=true
         fi
     elif [[ "${_ACFS_STATE_REINSTALL_SELECTION_FILE:-}" == "$state_file" ]]; then
+        saved_binding="$_ACFS_STATE_REINSTALL_REPAIR_BINDING"
         case "${_ACFS_STATE_REINSTALL_SELECTION_MODE:-}" in
             scoped)
                 previous_modules=("${_ACFS_STATE_REINSTALL_MODULES[@]}")
@@ -992,6 +1070,7 @@ _state_init_checkpoint() {
             legacy) preserve_legacy_selection=true ;;
         esac
     fi
+    repair_pin=$(_state_effective_repair_pin "$saved_binding")
     if [[ "$preserve_legacy_selection" != true ]]; then
         if [[ "${ACFS_EFFECTIVE_PLAN+x}" == x && ${#ACFS_EFFECTIVE_PLAN[@]} -gt 0 ]]; then
             mapfile -t current_requests < <(state_requested_modules_for_plan "${ACFS_EFFECTIVE_PLAN[@]}")
@@ -1013,6 +1092,7 @@ _state_init_checkpoint() {
         initial_state=$(jq -n \
             --argjson schema_version "$ACFS_STATE_SCHEMA_VERSION" \
             --arg ver "$state_version" \
+            --arg pin "$repair_pin" --arg pin_digest "$_ACFS_STATE_SOURCE_LEDGER_SHA256" \
             --arg user "$state_target_user" \
             --arg home "$resolved_target_home" \
             --arg bin_dir "${ACFS_BIN_DIR:-$resolved_target_home/.local/bin}" \
@@ -1047,7 +1127,8 @@ _state_init_checkpoint() {
                     upgrade_path: [],
                     completed_upgrades: []
                 }
-            } + (if $module_selection == null then {} else {module_selection: $module_selection} end)')
+            } + (if $pin == "" then {} else {pinned_ref:$pin,pinned_ref_ledger_sha256:$pin_digest} end)
+              + (if $module_selection == null then {} else {module_selection: $module_selection} end)')
     else
         # Fallback to heredoc if jq is not yet installed
         initial_state=$(cat <<EOF
@@ -1055,6 +1136,7 @@ _state_init_checkpoint() {
   "schema_version": $ACFS_STATE_SCHEMA_VERSION,
   "version": "$state_version",
   "source_ledger_sha256": null,
+  $(if [[ -n "$repair_pin" ]]; then printf '"pinned_ref": "%s", "pinned_ref_ledger_sha256": "%s",' "$repair_pin" "$_ACFS_STATE_SOURCE_LEDGER_SHA256"; fi)
   $(if [[ "$module_selection" != null ]]; then printf '"module_selection": %s,' "$module_selection"; fi)
   "target_user": "$state_target_user",
   "target_home": "$resolved_target_home",
@@ -1088,6 +1170,7 @@ EOF
 
     _ACFS_STATE_REINSTALL_SELECTION_MODE=""
     _ACFS_STATE_REINSTALL_SELECTION_FILE=""
+    _ACFS_STATE_REINSTALL_REPAIR_BINDING=""
     _ACFS_STATE_REINSTALL_MODULES=()
     _ACFS_STATE_REINSTALL_REQUESTED_MODULES=()
     state_sync_path_if_enabled "$state_dir"
@@ -1685,6 +1768,7 @@ confirm_resume() {
     if [[ "${_ACFS_STATE_REINSTALL_SELECTION_FILE:-}" != "$state_file" ]]; then
         _ACFS_STATE_REINSTALL_SELECTION_MODE=""
         _ACFS_STATE_REINSTALL_SELECTION_FILE=""
+        _ACFS_STATE_REINSTALL_REPAIR_BINDING=""
         _ACFS_STATE_REINSTALL_MODULES=()
         _ACFS_STATE_REINSTALL_REQUESTED_MODULES=()
     fi
@@ -1703,6 +1787,7 @@ confirm_resume() {
     # back up the checkpoint, including recovery of its outer state fields.
     _ACFS_STATE_REINSTALL_SELECTION_MODE="$ACFS_STATE_SELECTION_MODE"
     _ACFS_STATE_REINSTALL_SELECTION_FILE="$state_file"
+    _ACFS_STATE_REINSTALL_REPAIR_BINDING="$_ACFS_STATE_SAVED_REPAIR_BINDING"
     _ACFS_STATE_REINSTALL_MODULES=("${ACFS_STATE_SELECTED_MODULES[@]}")
     _ACFS_STATE_REINSTALL_REQUESTED_MODULES=("${ACFS_STATE_REQUESTED_MODULES[@]}")
 
@@ -3528,7 +3613,7 @@ state_ensure_valid() {
     if declare -p ACFS_MODULES_IN_ORDER >/dev/null 2>&1; then
         state_validate_module_selection_catalog "${ACFS_MODULES_IN_ORDER[@]}" || return 1
     fi
-    local selection_mode="$ACFS_STATE_SELECTION_MODE"
+    local selection_mode="$ACFS_STATE_SELECTION_MODE" saved_binding="$_ACFS_STATE_SAVED_REPAIR_BINDING"
     local -a selected_modules=("${ACFS_STATE_SELECTED_MODULES[@]}")
     local -a requested_modules=("${ACFS_STATE_REQUESTED_MODULES[@]}")
     state_validate || code=$?
@@ -3542,6 +3627,7 @@ state_ensure_valid() {
         # A valid scope can accompany recoverable progress/schema damage.
         # Preserve both scoped intent and legacy full-install semantics.
         _ACFS_STATE_REINSTALL_SELECTION_MODE="$selection_mode"
+        _ACFS_STATE_REINSTALL_REPAIR_BINDING="$saved_binding"
         _ACFS_STATE_REINSTALL_SELECTION_FILE="$state_file"
         _ACFS_STATE_REINSTALL_MODULES=("${selected_modules[@]}")
         _ACFS_STATE_REINSTALL_REQUESTED_MODULES=("${requested_modules[@]}")

@@ -1257,6 +1257,36 @@ ${commit_line}
     fi
 }
 
+# Doctor can fetch only from the canonical repository. Confirm that the
+# remotely suggested commit contains the exact runtime ledger verified here.
+# Source-kind environment hints alone cannot establish repository provenance.
+acfs_bind_checkpoint_source() {
+    local digest="$ACFS_TRUSTED_INTERNAL_LEDGER_SHA256"
+    local candidate="" pin="" published_digest="" curl_bin=""
+    if [[ "${ACFS_VERIFIED_BOOTSTRAP_SOURCE:-}" == remote &&
+          "${ACFS_LOCAL_ARCHIVE_SOURCE:-false}" != true &&
+          "$ACFS_REPO_OWNER/$ACFS_REPO_NAME" == Dicklesworthstone/agentic_coding_flywheel_setup &&
+          "$ACFS_REF" =~ ^[0-9a-f]{40}$ ]]; then
+        candidate="$ACFS_REF"
+        local ledger_url="https://raw.githubusercontent.com/$ACFS_REPO_OWNER/$ACFS_REPO_NAME/$candidate/scripts/generated/internal_checksums.sh"
+        curl_bin=$(acfs_early_system_binary_path curl 2>/dev/null || true)
+        if [[ -n "$curl_bin" ]] && published_digest=$(
+            set -o pipefail
+            "$curl_bin" -q --proto '=https' --connect-timeout 6 --max-time 10 --max-filesize 4194304 -fsS "$ledger_url" |
+                acfs_calculate_file_sha256 /dev/stdin
+        ); then
+            if [[ "$published_digest" == "$digest" ]]; then
+                pin="$candidate"
+            else
+                # Contradictory bytes invalidate a cached pin. Only an
+                # unavailable lookup may fall back to a matching saved binding.
+                candidate=""
+            fi
+        fi
+    fi
+    state_bind_installer_source "$digest" "$pin" "$candidate"
+}
+
 # ============================================================
 # Pinned Ref Output (bd-31ps.8.1)
 # Prints resolved SHA and copy-pasteable pinned command
@@ -3262,7 +3292,7 @@ detect_environment() {
         # Bind resume to the verified runtime bytes, not a mutable branch or a
         # version label shared by many commits. Local archives use this same
         # identity without claiming an unrelated remote commit was installed.
-        if ! state_bind_installer_source "$ACFS_TRUSTED_INTERNAL_LEDGER_SHA256"; then
+        if ! acfs_bind_checkpoint_source; then
             log_error "Unable to bind installation checkpoints to the verified source"
             exit 1
         fi
