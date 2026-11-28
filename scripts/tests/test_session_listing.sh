@@ -99,6 +99,8 @@ cass() {
     elif [[ "$MODE" == provenance ]]; then
         response='{"hits":[{"source_path":"/same","agent":"codex","workspace":"/p"},{"source_path":"/same","source_id":"remote","agent":"codex","workspace":"/p"}],"_meta":{"next_cursor":null}}'
     fi
+    # A stale index still answers; its warning belongs on stderr only.
+    [[ "$MODE" != warning ]] || printf 'CASS index is stale\n' >&2
     printf '%s\n' "$response"
 }
 passed=0
@@ -282,6 +284,27 @@ run_list --bogus
 assert 'unknown argument is rejected' no_success
 run_list --limit 10001 --json
 assert 'oversized limit is rejected before querying CASS' bash -c '[[ $1 != 0 && ! -s $2 ]]' _ "$STATUS" "$WORK/calls"
+# Values a numeric context would evaluate, or another flag in the value slot,
+# must be refused before CASS, and so must a positional argument.
+for option in --days --limit; do
+    for value in '' +1 '1 2' '$((1+1))' --json; do
+        run_list "$option" "$value"
+        assert "invalid $option=$value fails before CASS" bash -c '[[ $1 != 0 && ! -s $2 ]]' _ "$STATUS" "$WORK/calls"
+    done
+done
+for value in '' --json -1; do
+    run_list --agent "$value"
+    assert "invalid --agent=$value fails before CASS" bash -c '[[ $1 != 0 && ! -s $2 ]]' _ "$STATUS" "$WORK/calls"
+done
+run_list unexpected
+assert 'positional argument is rejected before CASS' bash -c '[[ $1 != 0 && ! -s $2 ]]' _ "$STATUS" "$WORK/calls"
+MODE=warning
+run_list --days 1 --limit 3 --json
+assert 'a stale-index warning does not fail the listing' test "$STATUS" -eq 0
+assert 'the listing under a stale-index warning is complete' json_is '.total == 3'
+assert 'the stale-index warning reaches stderr' grep -q 'CASS index is stale' "$WORK/stderr"
+assert 'the stale-index warning stays out of the JSON' bash -c '! grep -q "CASS index is stale" "$1"' _ "$WORK/stdout"
+MODE=normal
 : > "$WORK/calls"
 STATUS=0
 (
