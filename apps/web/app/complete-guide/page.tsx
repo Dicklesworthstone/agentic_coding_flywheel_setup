@@ -3138,9 +3138,9 @@ When a Rust build or test is needed, offload it with rch (for example, rch exec 
                 manager on Excel, makes the same point. The questions from Bill Gates got harder and
                 more detailed until they reached whether the date functions in the new macro
                 language would work exactly like Excel&apos;s. Spolsky answered &quot;Yes, except
-                for January and February, 1900&quot;: Excel counts 1900 as a leap year, so it
-                numbers the days before March 1900 differently. That answer told Gates the spec had
-                been thought through.
+                for January and February, 1900&quot;: to read Lotus 1-2-3 files, Excel counts 1900
+                as a leap year, so its day numbers before March 1900 are one off from the macro
+                language&apos;s. That answer told Gates the spec had been thought through.
               </P>
 
               <P>
