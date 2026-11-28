@@ -44,7 +44,8 @@ def deployed_cli(home):
     # Source the whole updater library, as test_update_deployment.py does, so
     # the sync keeps every helper it calls (atomic publisher, module selection,
     # runtime mode repair). A hand-cut excerpt broke when the sync gained
-    # helpers and when the function after it changed to a () ( ... ) body.
+    # helpers, and again when the function after it switched from a { ... }
+    # body to a ( ... ) subshell body, which moved the excerpt's end marker.
     subprocess.run(["/bin/bash", "--noprofile", "--norc", "-c",
                     'source "$1" || exit 90\n'
                     'ACFS_REPO_ROOT="$2"\n'
