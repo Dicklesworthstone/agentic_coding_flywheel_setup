@@ -601,7 +601,7 @@ INSTALL_BASE_FILESYSTEM
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: test -d /data/projects (root)"
     else
-        if ! run_as_root_shell <<'INSTALL_BASE_FILESYSTEM'
+        if ! acfs_run_verification_heredoc root <<'INSTALL_BASE_FILESYSTEM'
 test -d /data/projects
 INSTALL_BASE_FILESYSTEM
         then
@@ -612,7 +612,7 @@ INSTALL_BASE_FILESYSTEM
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: if [[ -n \"\$explicit_target_home\" ]]; then (root)"
     else
-        if ! run_as_root_shell <<'INSTALL_BASE_FILESYSTEM'
+        if ! acfs_run_verification_heredoc root <<'INSTALL_BASE_FILESYSTEM'
 # Generated helper functions used by this child shell.
 acfs_generated_system_binary_path() {
     local name="${1:-}"

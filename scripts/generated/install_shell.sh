@@ -403,7 +403,7 @@ INSTALL_SHELL_ZSH
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: zsh --version (root)"
     else
-        if ! run_as_root_shell <<'INSTALL_SHELL_ZSH'
+        if ! acfs_run_verification_heredoc root <<'INSTALL_SHELL_ZSH'
 zsh --version
 INSTALL_SHELL_ZSH
         then
@@ -445,7 +445,7 @@ INSTALL_SHELL_LOGIN
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: source \"\${ACFS_LIB_DIR:-\$HOME/.acfs/scripts/lib}/user.sh\" (current)"
     else
-        if ! run_as_current_shell <<'INSTALL_SHELL_LOGIN'
+        if ! acfs_run_verification_heredoc current <<'INSTALL_SHELL_LOGIN'
 source "${ACFS_LIB_DIR:-$HOME/.acfs/scripts/lib}/user.sh"
 user_login_shell_configured
 INSTALL_SHELL_LOGIN
@@ -763,7 +763,7 @@ INSTALL_SHELL_OMZ
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: test -d ~/.oh-my-zsh (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_SHELL_OMZ'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_SHELL_OMZ'
 test -d ~/.oh-my-zsh
 INSTALL_SHELL_OMZ
         then
@@ -774,7 +774,7 @@ INSTALL_SHELL_OMZ
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: test -f ~/.acfs/zsh/acfs.zshrc (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_SHELL_OMZ'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_SHELL_OMZ'
 test -f ~/.acfs/zsh/acfs.zshrc
 INSTALL_SHELL_OMZ
         then
@@ -785,7 +785,7 @@ INSTALL_SHELL_OMZ
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: test -f ~/.p10k.zsh (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_SHELL_OMZ'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_SHELL_OMZ'
 test -f ~/.p10k.zsh
 INSTALL_SHELL_OMZ
         then
@@ -796,7 +796,7 @@ INSTALL_SHELL_OMZ
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: source \"\${ACFS_LIB_DIR:-\$HOME/.acfs/scripts/lib}/user.sh\" (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_SHELL_OMZ'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_SHELL_OMZ'
 source "${ACFS_LIB_DIR:-$HOME/.acfs/scripts/lib}/user.sh"
 user_login_shell_configured
 INSTALL_SHELL_OMZ

@@ -1526,6 +1526,11 @@ unset -f log_error log_warn log_detail
 unset _ACFS_LOGGING_SH_LOADED
 source "$ACFS_VERIFY_FIXTURE_SOURCE/scripts/lib/logging.sh"
 source "${ACFS_VERIFY_FIXTURE_HELPERS:-$ACFS_VERIFY_FIXTURE_SOURCE/scripts/lib/install_helpers.sh}"
+if [[ "$1" == generated ]]; then
+    # Load the actual generated installer before installing the fixture's
+    # account transport and scaled timeout below.
+    source "$ACFS_VERIFY_FIXTURE_SOURCE/scripts/generated/install_${2%%.*}.sh"
+fi
 _acfs_system_binary_path() {
     if [[ "$1" == timeout ]]; then
         [[ "${ACFS_VERIFY_FIXTURE_NO_TIMEOUT:-false}" != true ]] || return 1
@@ -1553,6 +1558,16 @@ declare -A ACFS_MODULE_VERIFY_COMMAND=([fixture.0]="$2" [fixture.1]='touch "$ACF
 declare -A ACFS_MODULE_VERIFY_RUN_AS=([fixture]="${3:-current}")
 result=0
 case "$1" in
+    generated)
+        SCRIPT_DIR="$ACFS_VERIFY_FIXTURE_SOURCE"
+        MODE=safe TARGET_USER=fixture TARGET_HOME="$ACFS_VERIFY_FIXTURE_ROOT/target-home"
+        export ACFS_BIN_DIR="$TARGET_HOME/.local/bin"
+        ACFS_GENERATED_SELECTION_READY=true
+        if [[ "$3" != excluded ]]; then ACFS_EFFECTIVE_RUN["$2"]=1; fi
+        if [[ "$3" == requested ]]; then ACFS_PLAN_REASON["$2"]="explicitly requested"; fi
+        record_skipped_tool() { printf 'skipped:%s:%s\n' "$1" "$2"; }
+        "acfs_generated_install_${2//./_}" || result=$?
+        ;;
     present) acfs_module_is_installed fixture || result=$? ;;
     verify) acfs_verify_module fixture || result=$? ;;
     skip) acfs_should_skip_module fixture || result=$? ;;
@@ -1645,6 +1660,43 @@ assert_verification_fixture_stopped() {
     [[ ! -e "$ACFS_VERIFY_FIXTURE_ROOT/later-check" ]]
     [[ "$(cat "$ACFS_VERIFY_FIXTURE_ROOT/timeouts")" == '--kill-after=2s 120s' ]]
     assert_verification_fixture_stopped
+}
+
+@test "generated installers bound post-install verification and preserve module failure policy" {
+    setup_verification_deadline_fixture
+    local home="$ACFS_VERIFY_FIXTURE_ROOT/target-home"
+    mkdir -p "$home/.cargo/bin" "$home/.bun/bin" "$home/.local/bin"
+    # Only the package managers and the installed executables are fixtures.
+    # Module selection, the generated functions and their verify shells are real.
+    ln -s /bin/true "$home/.cargo/bin/cargo"
+    ln -s /bin/true "$home/.bun/bin/bun"
+    ln -s "$ACFS_VERIFY_FIXTURE_ROOT/hanging-tool" "$home/.local/bin/sg"
+    ln -s "$ACFS_VERIFY_FIXTURE_ROOT/hanging-tool" "$home/.local/bin/vercel"
+
+    local -a runner=("$ACFS_VERIFY_REAL_TIMEOUT" --kill-after=0.2s 8s "$ACFS_VERIFY_FIXTURE_ROOT/runner" generated)
+    run "${runner[@]}" tools.ast_grep excluded
+    assert_success
+    assert_output --partial 'Skipping tools.ast_grep (not selected)'
+    DRY_RUN=true run "${runner[@]}" tools.ast_grep selected
+    assert_success
+    assert_output --partial 'dry-run: verify: sg --version'
+    [[ ! -e "$ACFS_VERIFY_FIXTURE_ROOT/timeouts" && ! -e "$ACFS_VERIFY_FIXTURE_ROOT/started" ]]
+
+    run "${runner[@]}" tools.ast_grep selected
+    assert_equal "$status" 1
+    assert_output --partial 'tools.ast_grep: verify failed: sg --version'
+    assert_verification_fixture_stopped
+
+    run "${runner[@]}" cloud.vercel selected
+    assert_success
+    assert_output --partial 'skipped:cloud.vercel:verify failed: vercel --version'
+    assert_verification_fixture_stopped
+
+    run "${runner[@]}" cloud.vercel requested
+    assert_equal "$status" 1
+    assert_output --partial 'explicitly requested via --only'
+    assert_verification_fixture_stopped
+    [[ "$(wc -l < "$ACFS_VERIFY_FIXTURE_ROOT/timeouts")" -eq 3 ]]
 }
 
 @test "acfs_run_verification_shell: interruption kills a resistant check and its child" {

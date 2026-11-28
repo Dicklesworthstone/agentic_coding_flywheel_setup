@@ -610,7 +610,7 @@ INSTALL_CLOUD_WRANGLER
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: wrangler --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_CLOUD_WRANGLER'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_CLOUD_WRANGLER'
 wrangler --version
 INSTALL_CLOUD_WRANGLER
         then
@@ -962,7 +962,7 @@ INSTALL_CLOUD_SUPABASE
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: supabase --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_CLOUD_SUPABASE'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_CLOUD_SUPABASE'
 supabase --version
 INSTALL_CLOUD_SUPABASE
         then
@@ -1027,7 +1027,7 @@ INSTALL_CLOUD_VERCEL
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: vercel --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_CLOUD_VERCEL'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_CLOUD_VERCEL'
 vercel --version
 INSTALL_CLOUD_VERCEL
         then

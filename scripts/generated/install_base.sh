@@ -414,7 +414,7 @@ INSTALL_BASE_SYSTEM
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: curl --version (root)"
     else
-        if ! run_as_root_shell <<'INSTALL_BASE_SYSTEM'
+        if ! acfs_run_verification_heredoc root <<'INSTALL_BASE_SYSTEM'
 curl --version
 INSTALL_BASE_SYSTEM
         then
@@ -425,7 +425,7 @@ INSTALL_BASE_SYSTEM
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: git --version (root)"
     else
-        if ! run_as_root_shell <<'INSTALL_BASE_SYSTEM'
+        if ! acfs_run_verification_heredoc root <<'INSTALL_BASE_SYSTEM'
 git --version
 INSTALL_BASE_SYSTEM
         then
@@ -436,7 +436,7 @@ INSTALL_BASE_SYSTEM
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: jq --version (root)"
     else
-        if ! run_as_root_shell <<'INSTALL_BASE_SYSTEM'
+        if ! acfs_run_verification_heredoc root <<'INSTALL_BASE_SYSTEM'
 jq --version
 INSTALL_BASE_SYSTEM
         then
@@ -447,7 +447,7 @@ INSTALL_BASE_SYSTEM
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: gpg --version (root)"
     else
-        if ! run_as_root_shell <<'INSTALL_BASE_SYSTEM'
+        if ! acfs_run_verification_heredoc root <<'INSTALL_BASE_SYSTEM'
 gpg --version
 INSTALL_BASE_SYSTEM
         then

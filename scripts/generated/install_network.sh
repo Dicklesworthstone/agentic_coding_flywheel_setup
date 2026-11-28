@@ -419,7 +419,7 @@ INSTALL_NETWORK_TAILSCALE
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: tailscale version (root)"
     else
-        if ! run_as_root_shell <<'INSTALL_NETWORK_TAILSCALE'
+        if ! acfs_run_verification_heredoc root <<'INSTALL_NETWORK_TAILSCALE'
 tailscale version
 INSTALL_NETWORK_TAILSCALE
         then
@@ -430,7 +430,7 @@ INSTALL_NETWORK_TAILSCALE
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: systemctl is-enabled tailscaled (root)"
     else
-        if ! run_as_root_shell <<'INSTALL_NETWORK_TAILSCALE'
+        if ! acfs_run_verification_heredoc root <<'INSTALL_NETWORK_TAILSCALE'
 systemctl is-enabled tailscaled
 INSTALL_NETWORK_TAILSCALE
         then
@@ -508,7 +508,7 @@ INSTALL_NETWORK_SSH_KEEPALIVE
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: grep -E '^ClientAliveInterval[[:space:]]+60' /etc/ssh/sshd_config (root)"
     else
-        if ! run_as_root_shell <<'INSTALL_NETWORK_SSH_KEEPALIVE'
+        if ! acfs_run_verification_heredoc root <<'INSTALL_NETWORK_SSH_KEEPALIVE'
 grep -E '^ClientAliveInterval[[:space:]]+60' /etc/ssh/sshd_config
 INSTALL_NETWORK_SSH_KEEPALIVE
         then
@@ -532,7 +532,7 @@ INSTALL_NETWORK_SSH_KEEPALIVE
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: grep -E '^ClientAliveCountMax[[:space:]]+3' /etc/ssh/sshd_config (root)"
     else
-        if ! run_as_root_shell <<'INSTALL_NETWORK_SSH_KEEPALIVE'
+        if ! acfs_run_verification_heredoc root <<'INSTALL_NETWORK_SSH_KEEPALIVE'
 grep -E '^ClientAliveCountMax[[:space:]]+3' /etc/ssh/sshd_config
 INSTALL_NETWORK_SSH_KEEPALIVE
         then

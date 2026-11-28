@@ -667,7 +667,7 @@ INSTALL_AGENTS_CLAUDE
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: \"\$target_bin/claude\" --version || \"\$target_bin/claude\" --help (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_AGENTS_CLAUDE'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_AGENTS_CLAUDE'
 target_bin="${ACFS_BIN_DIR:-$HOME/.local/bin}"
 "$target_bin/claude" --version || "$target_bin/claude" --help
 INSTALL_AGENTS_CLAUDE
@@ -916,7 +916,7 @@ INSTALL_AGENTS_CODEX
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: \"\$target_bin/codex\" --version || \"\$target_bin/codex\" --help (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_AGENTS_CODEX'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_AGENTS_CODEX'
 target_bin="${ACFS_BIN_DIR:-$HOME/.local/bin}"
 "$target_bin/codex" --version || "$target_bin/codex" --help
 INSTALL_AGENTS_CODEX
@@ -1260,7 +1260,7 @@ INSTALL_AGENTS_GEMINI
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: \"\$target_bin/gemini\" --version || \"\$target_bin/gemini\" --help (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_AGENTS_GEMINI'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_AGENTS_GEMINI'
 target_bin="${ACFS_BIN_DIR:-$HOME/.local/bin}"
 "$target_bin/gemini" --version || "$target_bin/gemini" --help
 INSTALL_AGENTS_GEMINI
@@ -1460,7 +1460,7 @@ INSTALL_AGENTS_ANTIGRAVITY
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: verify agy-locked launchers and pinned settings (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_AGENTS_ANTIGRAVITY'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_AGENTS_ANTIGRAVITY'
 # acfs-summary: verify agy-locked launchers and pinned settings
 target_bin="${ACFS_BIN_DIR:-$HOME/.local/bin}"
 test -x "$target_bin/agy"
@@ -1858,7 +1858,7 @@ INSTALL_AGENTS_OPENCODE
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: opencode --version || opencode --help (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_AGENTS_OPENCODE'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_AGENTS_OPENCODE'
 opencode --version || opencode --help
 INSTALL_AGENTS_OPENCODE
         then
@@ -2200,7 +2200,7 @@ INSTALL_AGENTS_OMP
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: omp --version || omp --help (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_AGENTS_OMP'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_AGENTS_OMP'
 omp --version || omp --help
 INSTALL_AGENTS_OMP
         then
@@ -2834,7 +2834,7 @@ INSTALL_AGENTS_GROK
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: verify the Grok payload and command binding (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_AGENTS_GROK'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_AGENTS_GROK'
 # Shared Grok command ownership checks from security.sh.
 # The generator embeds this exact block in Grok's child-shell checks. Keep it
 # self-contained: the updater runs the same functions as the target user.

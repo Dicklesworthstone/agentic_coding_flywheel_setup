@@ -484,7 +484,7 @@ INSTALL_DB_POSTGRES18
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: for package in postgresql-18 postgresql-client-18; do (root)"
     else
-        if ! run_as_root_shell <<'INSTALL_DB_POSTGRES18'
+        if ! acfs_run_verification_heredoc root <<'INSTALL_DB_POSTGRES18'
 for package in postgresql-18 postgresql-client-18; do
   package_status=$(dpkg-query -W -f='${db:Status-Status}' "$package" 2>/dev/null) || exit 1
   test "$package_status" = installed || exit 1
@@ -513,7 +513,7 @@ INSTALL_DB_POSTGRES18
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify (optional): systemctl status postgresql --no-pager (root)"
     else
-        if ! run_as_root_shell <<'INSTALL_DB_POSTGRES18'
+        if ! acfs_run_verification_heredoc root <<'INSTALL_DB_POSTGRES18'
 systemctl status postgresql --no-pager
 INSTALL_DB_POSTGRES18
         then

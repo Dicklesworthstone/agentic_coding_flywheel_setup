@@ -1276,27 +1276,32 @@ function wrapInstallHeredoc(
   return lines;
 }
 
-function wrapOptionalVerifyHeredoc(
+function wrapVerifyHeredoc(
   module: Module,
   summary: string,
   commandLines: string[],
+  isOptional: boolean,
 ): string[] {
   const lines: string[] = [];
   const escapedSummary = escapeBash(summary);
   const runAs = verifyRunAs(module);
-  const shellHelper = getRunAsShellHelper(runAs);
+  const label = isOptional ? "verify (optional)" : "verify";
   const delimiter = toHeredocDelimiter(module.id);
 
   lines.push('    if [[ "${DRY_RUN:-false}" = "true" ]]; then');
-  lines.push(`        log_info "dry-run: verify (optional): ${escapedSummary} (${runAs})"`);
+  lines.push(`        log_info "dry-run: ${label}: ${escapedSummary} (${runAs})"`);
   lines.push("    else");
-  lines.push(`        if ! ${shellHelper} <<'${delimiter}'`);
+  lines.push(`        if ! acfs_run_verification_heredoc ${runAs} <<'${delimiter}'`);
   for (const cmd of commandLinesWithChildHelperPreludes(commandLines)) {
     lines.push(cmd);
   }
   lines.push(delimiter);
   lines.push("        then");
-  lines.push(`            log_warn "Optional verify failed: ${module.id}"`);
+  if (isOptional) {
+    lines.push(`            log_warn "Optional verify failed: ${module.id}"`);
+  } else {
+    lines.push(...indentLines(moduleFailureLines(module, `verify failed: ${summary}`), 12));
+  }
   lines.push("        fi");
   lines.push("    fi");
 
@@ -2017,19 +2022,7 @@ function generateVerifyCommands(module: Module): string[] {
         : [cleanCmd];
     const summary = summarizeShellBlock(blockLines, "verify command");
 
-    if (isOptional) {
-      lines.push(...wrapOptionalVerifyHeredoc(module, summary, blockLines));
-    } else {
-      lines.push(
-        ...wrapInstallHeredoc(
-          module,
-          `verify: ${summary}`,
-          blockLines,
-          `verify failed: ${summary}`,
-          verifyRunAs(module),
-        ),
-      );
-    }
+    lines.push(...wrapVerifyHeredoc(module, summary, blockLines, isOptional));
   }
 
   return lines;

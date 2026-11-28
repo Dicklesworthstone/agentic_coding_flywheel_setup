@@ -491,7 +491,7 @@ INSTALL_CLI_MODERN
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: rg --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_CLI_MODERN'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_CLI_MODERN'
 rg --version
 INSTALL_CLI_MODERN
         then
@@ -502,7 +502,7 @@ INSTALL_CLI_MODERN
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: tmux -V (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_CLI_MODERN'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_CLI_MODERN'
 tmux -V
 INSTALL_CLI_MODERN
         then
@@ -513,7 +513,7 @@ INSTALL_CLI_MODERN
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: fzf --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_CLI_MODERN'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_CLI_MODERN'
 fzf --version
 INSTALL_CLI_MODERN
         then
@@ -524,7 +524,7 @@ INSTALL_CLI_MODERN
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: direnv version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_CLI_MODERN'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_CLI_MODERN'
 direnv version
 INSTALL_CLI_MODERN
         then
@@ -535,7 +535,7 @@ INSTALL_CLI_MODERN
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: jq --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_CLI_MODERN'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_CLI_MODERN'
 jq --version
 INSTALL_CLI_MODERN
         then
@@ -546,7 +546,7 @@ INSTALL_CLI_MODERN
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: gh --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_CLI_MODERN'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_CLI_MODERN'
 gh --version
 INSTALL_CLI_MODERN
         then
@@ -557,7 +557,7 @@ INSTALL_CLI_MODERN
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: git-lfs version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_CLI_MODERN'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_CLI_MODERN'
 git-lfs version
 INSTALL_CLI_MODERN
         then
@@ -568,7 +568,7 @@ INSTALL_CLI_MODERN
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: rsync --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_CLI_MODERN'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_CLI_MODERN'
 rsync --version
 INSTALL_CLI_MODERN
         then
@@ -579,7 +579,7 @@ INSTALL_CLI_MODERN
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: strace --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_CLI_MODERN'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_CLI_MODERN'
 strace --version
 INSTALL_CLI_MODERN
         then
@@ -590,7 +590,7 @@ INSTALL_CLI_MODERN
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: command -v lsof (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_CLI_MODERN'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_CLI_MODERN'
 command -v lsof
 INSTALL_CLI_MODERN
         then
@@ -601,7 +601,7 @@ INSTALL_CLI_MODERN
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: command -v dig (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_CLI_MODERN'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_CLI_MODERN'
 command -v dig
 INSTALL_CLI_MODERN
         then
@@ -612,7 +612,7 @@ INSTALL_CLI_MODERN
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: command -v nc (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_CLI_MODERN'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_CLI_MODERN'
 command -v nc
 INSTALL_CLI_MODERN
         then
@@ -623,7 +623,7 @@ INSTALL_CLI_MODERN
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: command -v zstd (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_CLI_MODERN'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_CLI_MODERN'
 command -v zstd
 INSTALL_CLI_MODERN
         then
@@ -634,7 +634,7 @@ INSTALL_CLI_MODERN
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: command -v minisign (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_CLI_MODERN'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_CLI_MODERN'
 command -v minisign
 INSTALL_CLI_MODERN
         then
@@ -645,7 +645,7 @@ INSTALL_CLI_MODERN
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify (optional): command -v lsd || command -v eza (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_CLI_MODERN'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_CLI_MODERN'
 command -v lsd || command -v eza
 INSTALL_CLI_MODERN
         then

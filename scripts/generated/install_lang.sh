@@ -465,7 +465,7 @@ acfs_generated_install_lang_bun() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: ~/.bun/bin/bun --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_LANG_BUN'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_LANG_BUN'
 ~/.bun/bin/bun --version
 INSTALL_LANG_BUN
         then
@@ -577,7 +577,7 @@ acfs_generated_install_lang_uv() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: command -v uv >/dev/null 2>&1 && uv --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_LANG_UV'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_LANG_UV'
 command -v uv >/dev/null 2>&1 && uv --version
 INSTALL_LANG_UV
         then
@@ -689,7 +689,7 @@ acfs_generated_install_lang_rust() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: ~/.cargo/bin/cargo --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_LANG_RUST'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_LANG_RUST'
 ~/.cargo/bin/cargo --version
 INSTALL_LANG_RUST
         then
@@ -700,7 +700,7 @@ INSTALL_LANG_RUST
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: ~/.cargo/bin/rustup show | grep -q nightly (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_LANG_RUST'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_LANG_RUST'
 ~/.cargo/bin/rustup show | grep -q nightly
 INSTALL_LANG_RUST
         then
@@ -750,7 +750,7 @@ INSTALL_LANG_GO
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: go version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_LANG_GO'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_LANG_GO'
 go version
 INSTALL_LANG_GO
         then
@@ -876,7 +876,7 @@ INSTALL_LANG_NVM
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: export NVM_DIR=\"\$HOME/.nvm\" (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_LANG_NVM'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_LANG_NVM'
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 node --version

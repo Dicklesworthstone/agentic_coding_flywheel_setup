@@ -149,6 +149,7 @@ chmod() {
 # Retain every fixture, including the production installer's temporary archive.
 rm() { :; }
 export -f uname apt-get curl tar chmod rm
+source "$TEST_HELPERS"
 source "$TEST_MODULE"
 acfs_require_contract() { :; }
 acfs_generated_ensure_selection() { :; }
@@ -158,9 +159,9 @@ log_info() { :; }
 log_success() { :; }
 log_error() { printf '%s\n' "$*" >&2; }
 run_as_root_shell() { bash -euo pipefail; }
-run_as_target_shell() {
+run_as_target() {
   : > "$TEST_ROOT/verify-called"
-  PATH="$TEST_ROOT/bin:/usr/bin:/bin" bash -euo pipefail
+  ACFS_BIN_DIR="$TEST_ROOT/bin" "$@"
 }
 "$TEST_FUNCTION"
 `;
@@ -171,6 +172,7 @@ run_as_target_shell() {
         TEST_ROOT: root, TEST_ARCH: architecture, TEST_SCENARIO: scenario,
         TEST_TOOL: tool, TEST_ARCHIVE: archive, TEST_URL: expectedUrl,
         TEST_MODULE: modulePath, TEST_FUNCTION: functionName,
+        TEST_HELPERS: resolve(PROJECT_ROOT, "scripts/lib/install_helpers.sh"),
       },
     });
     return { root, result, expectedUrl, payload, installed: resolve(installDir, tool),
@@ -1470,17 +1472,56 @@ describe("verify_run_as execution context (#461)", () => {
     // The helper that opens each heredoc is on the line before its body.
     const helperBefore = (at: number) => body.slice(body.lastIndexOf("if !", at), at);
     expect(helperBefore(installAt)).toContain("run_as_root_shell");
-    expect(helperBefore(requiredVerifyAt)).toContain("run_as_target_shell");
-    expect(helperBefore(optionalVerifyAt)).toContain("run_as_target_shell");
+    expect(helperBefore(requiredVerifyAt)).toContain("acfs_run_verification_heredoc target_user");
+    expect(helperBefore(optionalVerifyAt)).toContain("acfs_run_verification_heredoc target_user");
     expect(body).toContain('log_info "dry-run: verify: fixture-tui --version (target_user)"');
     expect(body).toContain('log_info "dry-run: verify (optional): command -v fixture-tui (target_user)"');
   });
 
   test("the installer verifies in run_as when verify_run_as is absent", () => {
     const body = fixtureFunction(generateCategoryScript(fixtureManifest(), "tools"));
-    expect(body).not.toContain("run_as_target_shell");
+    expect(body).toContain("acfs_run_verification_heredoc root");
+    expect(body).not.toContain("acfs_run_verification_heredoc target_user");
     expect(body).toContain('log_info "dry-run: verify: fixture-tui --version (root)"');
   });
+
+  for (const context of ["root", "target_user", "current"] as const) {
+    test(`generated verification runs a literal helper prelude with isolated stdin as ${context}`, () => {
+      const data = fixtureManifest(context);
+      const module = data.modules.find((entry) => entry.id === "tools.fixture_tui")!;
+      module.install = [];
+      module.verify = [
+        'false || true',
+        [
+          '[[ $# -eq 0 && "$0" == "$BASH" ]]',
+          '[[ "$(acfs_generated_system_binary_path bash)" == /usr/bin/bash ]]',
+          'if IFS= read -r line; then exit 1; fi',
+          "printf '%s\\n' 'literal $HOME' \"$CHECK_CONTEXT\"",
+        ].join("\n"),
+      ];
+      const category = resolve(mkdtempSync(resolve(tmpdir(), "acfs-fresh-verify-")), "tools.sh");
+      writeFileSync(category, generateCategoryScript(data, "tools"));
+      const result = spawnSync("/bin/bash", ["-euo", "pipefail", "-c", `
+source "$1"
+source "$2"
+acfs_require_contract() { :; }
+acfs_generated_ensure_selection() { :; }
+should_run_module() { return 0; }
+run_as_root_shell() { CHECK_CONTEXT=root /bin/bash -c "$1"; }
+run_as_target_shell() { CHECK_CONTEXT=target_user /bin/bash -c "$1"; }
+run_as_current_shell() { CHECK_CONTEXT=current /bin/bash -c "$1"; }
+acfs_generated_install_tools_fixture_tui
+IFS= read -r line
+printf 'installer input: %s\\n' "$line"
+`, "_", category, resolve(PROJECT_ROOT, "scripts/lib/install_helpers.sh")], {
+        encoding: "utf8", timeout: 5000, input: "still available\n",
+        env: { PATH: "/usr/bin:/bin", HOME: tmpdir() },
+      });
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stderr).toContain("Optional verify failed: tools.fixture_tui");
+      expect(result.stdout).toBe(`literal $HOME\n${context}\ninstaller input: still available\n`);
+    });
+  }
 
   test("the installer's live verification index verifies in verify_run_as", () => {
     // acfs_verify_module_commands (skip-if-installed, phase completion and
@@ -2651,7 +2692,7 @@ describe("stack.cass per-run installer TMPDIR cleanup", () => {
     "log_step() { :; }",
     "log_info() { :; }",
     "log_success() { :; }",
-    "run_as_target_shell() { cat >/dev/null; }",
+    'acfs_run_verification_heredoc() { [[ "$1" == target_user ]] && grep -Fxq "cass --help || cass --version"; }',
     "log_error() { printf 'ERROR %s\\n' \"$*\" >&2; }",
     "log_warn() { printf 'WARN %s\\n' \"$*\" >&2; }",
     // Record what the shared helper hands back so scenarios prove the exact
@@ -3048,6 +3089,7 @@ describe("uv archive verification prerequisite", () => {
       'log_info() { :; }; log_step() { :; }; log_success() { :; }; log_detail() { :; }',
       'acfs_require_contract() { :; }; acfs_generated_ensure_selection() { :; }; should_run_module() { :; }',
       'run_as_target_shell() { /bin/cat >/dev/null; }',
+      'acfs_run_verification_heredoc() { /bin/cat >/dev/null; }',
       'acfs_security_init() { :; }; acfs_load_upstream_checksums() { :; }',
       'declare -A KNOWN_INSTALLERS=([uv]="https://fixture.invalid/uv.sh" [rust]="https://fixture.invalid/rust.sh")',
       'declare -A ACFS_UPSTREAM_URLS=([uv]="https://fixture.invalid/uv.sh" [rust]="https://fixture.invalid/rust.sh")',

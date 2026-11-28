@@ -541,7 +541,7 @@ INSTALL_ACFS_WORKSPACE
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: test -d /data/projects/my_first_project (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_ACFS_WORKSPACE'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_ACFS_WORKSPACE'
 test -d /data/projects/my_first_project
 INSTALL_ACFS_WORKSPACE
         then
@@ -565,7 +565,7 @@ INSTALL_ACFS_WORKSPACE
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: acfs_has_active_agents_alias ~/.zshrc.local || acfs_has_active_agents_alias ~/.zshrc (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_ACFS_WORKSPACE'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_ACFS_WORKSPACE'
 acfs_has_active_agents_alias() {
   local file="${1:-}"
   [[ -f "$file" ]] || return 1
@@ -817,7 +817,7 @@ INSTALL_ACFS_ONBOARD
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: onboard --help || command -v onboard (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_ACFS_ONBOARD'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_ACFS_ONBOARD'
 onboard --help || command -v onboard
 INSTALL_ACFS_ONBOARD
         then
@@ -1079,7 +1079,7 @@ INSTALL_ACFS_UPDATE
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: acfs-update --help || command -v acfs-update (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_ACFS_UPDATE'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_ACFS_UPDATE'
 acfs-update --help || command -v acfs-update
 INSTALL_ACFS_UPDATE
         then
@@ -1266,7 +1266,7 @@ INSTALL_ACFS_NIGHTLY
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: systemctl --user is-enabled acfs-nightly-update.timer (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_ACFS_NIGHTLY'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_ACFS_NIGHTLY'
 systemctl --user is-enabled acfs-nightly-update.timer
 INSTALL_ACFS_NIGHTLY
         then
@@ -1504,7 +1504,7 @@ INSTALL_ACFS_DOCTOR
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: acfs doctor --help || command -v acfs (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_ACFS_DOCTOR'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_ACFS_DOCTOR'
 acfs doctor --help || command -v acfs
 INSTALL_ACFS_DOCTOR
         then

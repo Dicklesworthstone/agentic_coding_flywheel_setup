@@ -413,7 +413,7 @@ INSTALL_TOOLS_LAZYGIT
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: lazygit --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_TOOLS_LAZYGIT'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_TOOLS_LAZYGIT'
 lazygit --version
 INSTALL_TOOLS_LAZYGIT
         then
@@ -469,7 +469,7 @@ INSTALL_TOOLS_LAZYDOCKER
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: lazydocker --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_TOOLS_LAZYDOCKER'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_TOOLS_LAZYDOCKER'
 lazydocker --version
 INSTALL_TOOLS_LAZYDOCKER
         then
@@ -674,7 +674,7 @@ INSTALL_TOOLS_ATUIN
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: ~/.atuin/bin/atuin --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_TOOLS_ATUIN'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_TOOLS_ATUIN'
 ~/.atuin/bin/atuin --version
 INSTALL_TOOLS_ATUIN
         then
@@ -786,7 +786,7 @@ acfs_generated_install_tools_zoxide() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: command -v zoxide (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_TOOLS_ZOXIDE'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_TOOLS_ZOXIDE'
 command -v zoxide
 INSTALL_TOOLS_ZOXIDE
         then
@@ -825,7 +825,7 @@ INSTALL_TOOLS_AST_GREP
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: sg --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_TOOLS_AST_GREP'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_TOOLS_AST_GREP'
 sg --version
 INSTALL_TOOLS_AST_GREP
         then
@@ -926,7 +926,7 @@ INSTALL_TOOLS_VAULT
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: vault --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_TOOLS_VAULT'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_TOOLS_VAULT'
 vault --version
 INSTALL_TOOLS_VAULT
         then
@@ -1064,7 +1064,7 @@ acfs_generated_install_utils_giil() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: giil --help || giil --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_UTILS_GIIL'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_UTILS_GIIL'
 giil --help || giil --version
 INSTALL_UTILS_GIIL
         then
@@ -1202,7 +1202,7 @@ acfs_generated_install_utils_csctf() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: csctf --help || csctf --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_UTILS_CSCTF'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_UTILS_CSCTF'
 csctf --help || csctf --version
 INSTALL_UTILS_CSCTF
         then
@@ -1340,7 +1340,7 @@ acfs_generated_install_utils_xf() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: xf --help || xf --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_UTILS_XF'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_UTILS_XF'
 xf --help || xf --version
 INSTALL_UTILS_XF
         then
@@ -1478,7 +1478,7 @@ acfs_generated_install_utils_toon_rust() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: toon --help || toon --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_UTILS_TOON_RUST'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_UTILS_TOON_RUST'
 toon --help || toon --version
 INSTALL_UTILS_TOON_RUST
         then
@@ -1616,7 +1616,7 @@ acfs_generated_install_utils_rano() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: rano --help || rano --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_UTILS_RANO'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_UTILS_RANO'
 rano --help || rano --version
 INSTALL_UTILS_RANO
         then
@@ -1754,7 +1754,7 @@ acfs_generated_install_utils_mdwb() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: mdwb --help || mdwb --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_UTILS_MDWB'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_UTILS_MDWB'
 mdwb --help || mdwb --version
 INSTALL_UTILS_MDWB
         then
@@ -1892,7 +1892,7 @@ acfs_generated_install_utils_s2p() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: s2p --help (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_UTILS_S2P'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_UTILS_S2P'
 s2p --help
 INSTALL_UTILS_S2P
         then
@@ -1963,7 +1963,7 @@ INSTALL_UTILS_RUST_PROXY
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: rust_proxy --help || rust_proxy --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_UTILS_RUST_PROXY'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_UTILS_RUST_PROXY'
 rust_proxy --help || rust_proxy --version
 INSTALL_UTILS_RUST_PROXY
         then
@@ -2034,7 +2034,7 @@ INSTALL_UTILS_AADC
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: aadc --help || aadc --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_UTILS_AADC'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_UTILS_AADC'
 aadc --help || aadc --version
 INSTALL_UTILS_AADC
         then
@@ -2105,7 +2105,7 @@ INSTALL_UTILS_CAUT
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: caut --help || caut --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_UTILS_CAUT'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_UTILS_CAUT'
 caut --help || caut --version
 INSTALL_UTILS_CAUT
         then

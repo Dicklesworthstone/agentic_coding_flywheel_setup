@@ -1955,7 +1955,8 @@ acfs_run_verification_shell() {
             set +e
             set +m
             trap '\''trap "" HUP INT QUIT TERM; while :; do "$3" 1; done'\'' HUP INT QUIT TERM
-            "$2" --noprofile --norc -p -c '\''set -euo pipefail; export MODE="$2" ACFS_DISTRO_FAMILY="$3"; eval "$1"'\'' _ "$1" "$4" "$5" &
+            export MODE="$4" ACFS_DISTRO_FAMILY="$5"
+            "$2" --noprofile --norc -p -eu -o pipefail -c "$1" "$2" &
             probe_pid=$!
             probe_status=0
             wait "$probe_pid" || probe_status=$?
@@ -1966,6 +1967,14 @@ acfs_run_verification_shell() {
         target_user|target) run_as_target_shell "$bounded_cmd" </dev/null ;;
         current) run_as_current_shell "$bounded_cmd" </dev/null ;;
     esac
+}
+
+# Generated post-install checks supply a quoted heredoc, including any child
+# helper definitions. Only the source comes from stdin; the probe itself gets EOF.
+acfs_run_verification_heredoc() {
+    local check_cmd=""
+    IFS= read -r -d '' check_cmd || :
+    acfs_run_verification_shell "$1" "$check_cmd"
 }
 
 # Native-command counterpart for authored alternate-layout checks and recovery

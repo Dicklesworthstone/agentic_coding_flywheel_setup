@@ -465,7 +465,7 @@ acfs_generated_install_stack_ntm() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: ntm --help (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_NTM'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_NTM'
 ntm --help
 INSTALL_STACK_NTM
         then
@@ -954,7 +954,7 @@ INSTALL_STACK_MCP_AGENT_MAIL
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: command -v am (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_MCP_AGENT_MAIL'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_MCP_AGENT_MAIL'
 command -v am
 INSTALL_STACK_MCP_AGENT_MAIL
         then
@@ -965,7 +965,7 @@ INSTALL_STACK_MCP_AGENT_MAIL
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: if [[ -d \"\$runtime_dir\" ]]; then (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_MCP_AGENT_MAIL'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_MCP_AGENT_MAIL'
 agent_mail_service_curl() {
   local curl_bin=""
   local candidate=""
@@ -1127,7 +1127,7 @@ acfs_generated_install_stack_meta_skill() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: ms --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_META_SKILL'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_META_SKILL'
 ms --version
 INSTALL_STACK_META_SKILL
         then
@@ -1138,7 +1138,7 @@ INSTALL_STACK_META_SKILL
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify (optional): ms doctor (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_META_SKILL'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_META_SKILL'
 ms doctor
 INSTALL_STACK_META_SKILL
         then
@@ -1262,7 +1262,7 @@ acfs_generated_install_stack_automated_plan_reviser() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: apr --help (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_AUTOMATED_PLAN_REVISER'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_AUTOMATED_PLAN_REVISER'
 apr --help
 INSTALL_STACK_AUTOMATED_PLAN_REVISER
         then
@@ -1286,7 +1286,7 @@ INSTALL_STACK_AUTOMATED_PLAN_REVISER
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify (optional): apr --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_AUTOMATED_PLAN_REVISER'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_AUTOMATED_PLAN_REVISER'
 apr --version
 INSTALL_STACK_AUTOMATED_PLAN_REVISER
         then
@@ -1410,7 +1410,7 @@ acfs_generated_install_stack_jeffreysprompts() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: jfp --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_JEFFREYSPROMPTS'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_JEFFREYSPROMPTS'
 jfp --version
 INSTALL_STACK_JEFFREYSPROMPTS
         then
@@ -1434,7 +1434,7 @@ INSTALL_STACK_JEFFREYSPROMPTS
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify (optional): jfp doctor (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_JEFFREYSPROMPTS'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_JEFFREYSPROMPTS'
 jfp doctor
 INSTALL_STACK_JEFFREYSPROMPTS
         then
@@ -1558,7 +1558,7 @@ acfs_generated_install_stack_process_triage() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: pt --help (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_PROCESS_TRIAGE'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_PROCESS_TRIAGE'
 pt --help
 INSTALL_STACK_PROCESS_TRIAGE
         then
@@ -1582,7 +1582,7 @@ INSTALL_STACK_PROCESS_TRIAGE
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify (optional): pt --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_PROCESS_TRIAGE'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_PROCESS_TRIAGE'
 pt --version
 INSTALL_STACK_PROCESS_TRIAGE
         then
@@ -1693,7 +1693,7 @@ acfs_generated_install_stack_ultimate_bug_scanner() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: ubs --help (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_ULTIMATE_BUG_SCANNER'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_ULTIMATE_BUG_SCANNER'
 ubs --help
 INSTALL_STACK_ULTIMATE_BUG_SCANNER
         then
@@ -1704,7 +1704,7 @@ INSTALL_STACK_ULTIMATE_BUG_SCANNER
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify (optional): cd /tmp && ubs doctor (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_ULTIMATE_BUG_SCANNER'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_ULTIMATE_BUG_SCANNER'
 cd /tmp && ubs doctor
 INSTALL_STACK_ULTIMATE_BUG_SCANNER
         then
@@ -1815,7 +1815,7 @@ acfs_generated_install_stack_beads_rust() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: br --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_BEADS_RUST'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_BEADS_RUST'
 br --version
 INSTALL_STACK_BEADS_RUST
         then
@@ -1826,7 +1826,7 @@ INSTALL_STACK_BEADS_RUST
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify (optional): br list --json 2>/dev/null (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_BEADS_RUST'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_BEADS_RUST'
 br list --json 2>/dev/null
 INSTALL_STACK_BEADS_RUST
         then
@@ -1937,7 +1937,7 @@ acfs_generated_install_stack_beads_viewer() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: bv --help || bv --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_BEADS_VIEWER'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_BEADS_VIEWER'
 bv --help || bv --version
 INSTALL_STACK_BEADS_VIEWER
         then
@@ -2097,7 +2097,7 @@ acfs_generated_install_stack_cass() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: cass --help || cass --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_CASS'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_CASS'
 cass --help || cass --version
 INSTALL_STACK_CASS
         then
@@ -2209,7 +2209,7 @@ acfs_generated_install_stack_cm() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: cm --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_CM'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_CM'
 cm --version
 INSTALL_STACK_CM
         then
@@ -2220,7 +2220,7 @@ INSTALL_STACK_CM
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify (optional): timeout 30 cm doctor --json (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_CM'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_CM'
 timeout 30 cm doctor --json
 INSTALL_STACK_CM
         then
@@ -2331,7 +2331,7 @@ acfs_generated_install_stack_caam() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: caam status || caam --help (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_CAAM'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_CAAM'
 caam status || caam --help
 INSTALL_STACK_CAAM
         then
@@ -2456,7 +2456,7 @@ acfs_generated_install_stack_slb() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: export PATH=\"\$HOME/go/bin:\$PATH\" && slb >/dev/null 2>&1 || slb --help >/dev/null 2>&1 (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_SLB'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_SLB'
 export PATH="$HOME/go/bin:$PATH" && slb >/dev/null 2>&1 || slb --help >/dev/null 2>&1
 INSTALL_STACK_SLB
         then
@@ -2594,7 +2594,7 @@ INSTALL_STACK_DCG
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: dcg --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_DCG'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_DCG'
 dcg --version
 INSTALL_STACK_DCG
         then
@@ -2605,7 +2605,7 @@ INSTALL_STACK_DCG
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: claude_settings_has_command_hook \"\$settings\" \"\$dcg_command_pattern\" || (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_DCG'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_DCG'
 claude_settings_has_command_hook() {
   local settings_file="${1:-}"
   local command_pattern="${2:-}"
@@ -2757,7 +2757,7 @@ acfs_generated_install_stack_ru() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: ru --version (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_RU'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_RU'
 ru --version
 INSTALL_STACK_RU
         then
@@ -2882,7 +2882,7 @@ acfs_generated_install_stack_brenner_bot() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: brenner --version || brenner --help (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_BRENNER_BOT'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_BRENNER_BOT'
 brenner --version || brenner --help
 INSTALL_STACK_BRENNER_BOT
         then
@@ -3020,7 +3020,7 @@ acfs_generated_install_stack_rch() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: rch --version || rch --help (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_RCH'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_RCH'
 rch --version || rch --help
 INSTALL_STACK_RCH
         then
@@ -3090,7 +3090,7 @@ INSTALL_STACK_WEZTERM_AUTOMATA
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: wa --version || wa --help (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_WEZTERM_AUTOMATA'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_WEZTERM_AUTOMATA'
 wa --version || wa --help
 INSTALL_STACK_WEZTERM_AUTOMATA
         then
@@ -3235,7 +3235,7 @@ acfs_generated_install_stack_srps() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: command -v sysmoni (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_SRPS'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_SRPS'
 command -v sysmoni
 INSTALL_STACK_SRPS
         then
@@ -3259,7 +3259,7 @@ INSTALL_STACK_SRPS
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: systemctl is-active ananicy-cpp (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_SRPS'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_SRPS'
 systemctl is-active ananicy-cpp
 INSTALL_STACK_SRPS
         then
@@ -3470,7 +3470,7 @@ acfs_generated_install_stack_frankensearch() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: fsfs version || fsfs --help (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_FRANKENSEARCH'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_FRANKENSEARCH'
 fsfs version || fsfs --help
 INSTALL_STACK_FRANKENSEARCH
         then
@@ -3608,7 +3608,7 @@ acfs_generated_install_stack_storage_ballast_helper() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: command -v sbh (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_STORAGE_BALLAST_HELPER'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_STORAGE_BALLAST_HELPER'
 command -v sbh
 INSTALL_STACK_STORAGE_BALLAST_HELPER
         then
@@ -3746,7 +3746,7 @@ acfs_generated_install_stack_cross_agent_session_resumer() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: casr providers || casr --help (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_CROSS_AGENT_SESSION_RESUMER'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_CROSS_AGENT_SESSION_RESUMER'
 casr providers || casr --help
 INSTALL_STACK_CROSS_AGENT_SESSION_RESUMER
         then
@@ -3884,7 +3884,7 @@ acfs_generated_install_stack_doodlestein_self_releaser() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: dsr --version || dsr --help (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_DOODLESTEIN_SELF_RELEASER'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_DOODLESTEIN_SELF_RELEASER'
 dsr --version || dsr --help
 INSTALL_STACK_DOODLESTEIN_SELF_RELEASER
         then
@@ -4083,7 +4083,7 @@ INSTALL_STACK_AGENT_SETTINGS_BACKUP
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: asb version || asb help (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_AGENT_SETTINGS_BACKUP'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_AGENT_SETTINGS_BACKUP'
 asb version || asb help
 INSTALL_STACK_AGENT_SETTINGS_BACKUP
         then
@@ -4245,7 +4245,7 @@ INSTALL_STACK_PCR_PRE_INSTALL_CHECK
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: test -x \"\$hook_script\" || exit 1 (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_PCR'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_PCR'
 claude_settings_has_command_hook() {
   local settings_file="${1:-}"
   local command_pattern="${2:-}"
@@ -4427,7 +4427,7 @@ acfs_generated_install_stack_eidetic_engine_cli() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: ee --version || ee --help (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_EIDETIC_ENGINE_CLI'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_EIDETIC_ENGINE_CLI'
 ee --version || ee --help
 INSTALL_STACK_EIDETIC_ENGINE_CLI
         then
@@ -4565,7 +4565,7 @@ acfs_generated_install_stack_franken_markdown() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: fmd --version || fmd --help (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_FRANKEN_MARKDOWN'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_FRANKEN_MARKDOWN'
 fmd --version || fmd --help
 INSTALL_STACK_FRANKEN_MARKDOWN
         then
@@ -4703,7 +4703,7 @@ acfs_generated_install_stack_pi_agent_rust() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: pi --version || pi --help (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_PI_AGENT_RUST'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_PI_AGENT_RUST'
 pi --version || pi --help
 INSTALL_STACK_PI_AGENT_RUST
         then
@@ -4841,7 +4841,7 @@ acfs_generated_install_stack_power_failure_resumer() {
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: command -v pfr (target_user)"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_POWER_FAILURE_RESUMER'
+        if ! acfs_run_verification_heredoc target_user <<'INSTALL_STACK_POWER_FAILURE_RESUMER'
 command -v pfr
 INSTALL_STACK_POWER_FAILURE_RESUMER
         then
