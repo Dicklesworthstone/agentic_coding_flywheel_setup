@@ -1207,7 +1207,7 @@ function InteractiveRepoSync() {
             </div>
             <div
               ref={terminalRef}
-              className="flex-1 p-3 overflow-y-auto max-h-64 lg:max-h-80 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+              className="flex-1 p-3 overflow-y-auto max-h-64 lg:max-h-80 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
               tabIndex={0}
               role="region"
               aria-label="Command output (scrollable)"

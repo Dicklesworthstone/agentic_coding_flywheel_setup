@@ -399,7 +399,7 @@ export function TldrToolCard({ tool, allTools }: TldrToolCardProps) {
               <div className="mt-3">
                 <div className="flex items-center gap-1 rounded-lg bg-black/30 pr-1 ring-1 ring-inset ring-white/10">
                   <div
-                    className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/60"
+                    className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto px-3 py-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/60"
                     tabIndex={0}
                     role="region"
                     aria-label={`${tool.name} example command`}
@@ -420,7 +420,7 @@ export function TldrToolCard({ tool, allTools }: TldrToolCardProps) {
                         selectOnFailure: exampleRef.current,
                       });
                     }}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition duration-200 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition duration-200 hover:bg-white/10 hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
                     aria-label={copyExample.copied ? "Copied" : `Copy ${tool.name} example command`}
                   >
                     {copyExample.copied ? (

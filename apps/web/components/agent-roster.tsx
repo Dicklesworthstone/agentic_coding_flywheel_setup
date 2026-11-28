@@ -101,7 +101,7 @@ export function AgentRoster({
         role="region"
         aria-label="Compatible agents"
         tabIndex={0}
-        className="overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+        className="overflow-x-auto focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
       >
         <table className="w-full min-w-[46rem] border-collapse text-left text-sm">
           <caption className="sr-only">

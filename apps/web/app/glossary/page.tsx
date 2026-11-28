@@ -274,7 +274,7 @@ export default function GlossaryPage() {
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search terms (e.g., SSH, tmux, API key)…"
                 aria-label="Search glossary terms"
-                className="w-full rounded-xl border border-border/50 bg-background px-9 py-2 text-sm outline-none transition-colors focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                className="w-full rounded-xl border border-border/50 bg-background px-9 py-2 text-sm focus-visible:outline-hidden transition-colors focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
               />
               {query.length > 0 && (
                 <button
@@ -337,7 +337,7 @@ export default function GlossaryPage() {
                 id={entry.key}
                 className="group overflow-hidden rounded-2xl border border-border/50 bg-card/60"
               >
-                <summary className="flex cursor-pointer list-none items-start justify-between gap-4 p-5 rounded-2xl outline-none transition-colors hover:bg-muted/20 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
+                <summary className="flex cursor-pointer list-none items-start justify-between gap-4 p-5 rounded-2xl focus-visible:outline-hidden transition-colors hover:bg-muted/20 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <h2 className="text-lg font-semibold text-foreground">{entry.term}</h2>
@@ -404,7 +404,7 @@ export default function GlossaryPage() {
                         href={entry.learnMore.href}
                         className={cn(
                           "inline-flex min-h-6 items-center text-sm font-medium text-primary underline-offset-4 hover:underline",
-                          "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm",
+                          "focus:outline-hidden focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm",
                         )}
                       >
                         {entry.learnMore.label} →

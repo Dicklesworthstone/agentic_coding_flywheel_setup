@@ -853,7 +853,7 @@ function InteractiveWebToMarkdown() {
 
             {/* HTML element list */}
             <div
-              className="flex-1 p-2 space-y-1 overflow-y-auto max-h-[260px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+              className="flex-1 p-2 space-y-1 overflow-y-auto max-h-[260px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
               tabIndex={0}
               role="region"
               aria-label="HTML elements (scrollable)"
@@ -954,7 +954,7 @@ function InteractiveWebToMarkdown() {
 
             {/* Markdown content */}
             <div
-              className="flex-1 p-3 overflow-y-auto max-h-[260px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+              className="flex-1 p-3 overflow-y-auto max-h-[260px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
               tabIndex={0}
               role="region"
               aria-label="Markdown output (scrollable)"

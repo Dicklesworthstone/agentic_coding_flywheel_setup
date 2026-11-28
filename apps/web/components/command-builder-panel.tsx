@@ -90,7 +90,7 @@ function CommandRow({
           tabIndex={0}
           role="region"
           aria-label={`${label} command`}
-          className="flex-1 overflow-x-auto rounded-md bg-muted/60 px-3 py-2 font-mono text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          className="flex-1 overflow-x-auto rounded-md bg-muted/60 px-3 py-2 font-mono text-sm text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         >
           {command}
         </code>
@@ -179,7 +179,7 @@ function ExclusionPicker({
             onChange([...selected, value]);
           }
         }}
-        className="min-h-11 w-full rounded-md border border-border/50 bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+        className="min-h-11 w-full rounded-md border border-border/50 bg-background px-3 py-2 text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/40"
       >
         <option value="">Choose a {kind} to exclude</option>
         {options
@@ -564,7 +564,7 @@ function SavedCommandBuilderPanel() {
             aria-invalid={ipError ? "true" : "false"}
             aria-describedby={ipError ? ipErrorId : undefined}
             className={cn(
-              "mt-1 w-full rounded-lg border bg-muted/40 px-3 py-2 font-mono text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/40",
+              "mt-1 w-full rounded-lg border bg-muted/40 px-3 py-2 font-mono text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-hidden focus:ring-2 focus:ring-primary/40",
               ipError ? "border-destructive" : "border-border/50",
             )}
           />
@@ -766,7 +766,7 @@ function SavedCommandBuilderPanel() {
               aria-invalid={usernameError ? "true" : "false"}
               aria-describedby={usernameError ? usernameErrorId : undefined}
               className={cn(
-                "mt-1 w-full rounded-md border bg-muted/40 px-3 py-1.5 font-mono text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40",
+                "mt-1 w-full rounded-md border bg-muted/40 px-3 py-1.5 font-mono text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/40",
                 usernameError ? "border-destructive" : "border-border/50",
               )}
             />
@@ -795,7 +795,7 @@ function SavedCommandBuilderPanel() {
               aria-invalid={refError ? "true" : "false"}
               aria-describedby={refError ? refErrorId : undefined}
               className={cn(
-                "mt-1 w-full rounded-md border bg-muted/40 px-3 py-1.5 font-mono text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40",
+                "mt-1 w-full rounded-md border bg-muted/40 px-3 py-1.5 font-mono text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/40",
                 refError ? "border-destructive" : "border-border/50",
               )}
             />

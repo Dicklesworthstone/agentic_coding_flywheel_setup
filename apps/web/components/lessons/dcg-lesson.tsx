@@ -1152,7 +1152,7 @@ function PipelineView({
                             onBypassReset();
                           }}
                           placeholder="DCG-XXXX"
-                          className="flex-1 rounded-lg border border-white/[0.08] bg-black/40 px-3 py-1.5 text-xs font-mono text-white/80 placeholder:text-muted-foreground focus:outline-none focus:border-amber-500/40"
+                          className="flex-1 rounded-lg border border-white/[0.08] bg-black/40 px-3 py-1.5 text-xs font-mono text-white/80 placeholder:text-muted-foreground focus:outline-hidden focus:border-amber-500/40"
                         />
                         <button
                           type="button"

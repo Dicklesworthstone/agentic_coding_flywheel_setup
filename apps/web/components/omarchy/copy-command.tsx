@@ -62,7 +62,7 @@ export default function CopyCommand({
             tabIndex={0}
             role="region"
             aria-label={label ?? `Command: ${command}`}
-            className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9ece6a]/60"
+            className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#9ece6a]/60"
           >
             {command}
           </code>

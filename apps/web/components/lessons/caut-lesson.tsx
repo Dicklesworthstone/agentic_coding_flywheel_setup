@@ -802,7 +802,7 @@ function LiveLog({ lines }: { lines: string[] }) {
         />
       </div>
       <div
-        className="p-3 space-y-0.5 max-h-32 overflow-y-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+        className="p-3 space-y-0.5 max-h-32 overflow-y-auto focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
         tabIndex={0}
         role="region"
         aria-label="Terminal output (scrollable)"

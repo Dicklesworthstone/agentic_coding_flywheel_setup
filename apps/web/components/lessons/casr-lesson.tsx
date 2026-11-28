@@ -1047,7 +1047,7 @@ function InteractiveSessionHandoffImpl() {
               {/* Terminal content */}
               <div
                 ref={terminalRef}
-                className="p-4 font-mono text-xs space-y-0.5 max-h-[180px] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                className="p-4 font-mono text-xs space-y-0.5 max-h-[180px] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
                 tabIndex={0}
                 role="region"
                 aria-label="Terminal output (scrollable)"
@@ -1263,7 +1263,7 @@ function InteractiveSessionHandoffImpl() {
             </span>
           </div>
           <div
-            className="flex items-center gap-1 overflow-x-auto py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+            className="flex items-center gap-1 overflow-x-auto py-1 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
             tabIndex={0}
             role="region"
             aria-label="Pipeline timeline (scrollable)"

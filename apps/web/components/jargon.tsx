@@ -186,7 +186,7 @@ export function Jargon({ term, children, className, gradientHeading }: JargonPro
           "transition-colors duration-150",
           "hover:decoration-primary/60 hover:text-primary/90",
           // Focus state for accessibility
-          "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm",
+          "focus:outline-hidden focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm",
           // Gradient heading mode: applies gradient text styling to match surrounding h1/h2
           gradientHeading &&
             "bg-gradient-to-r from-foreground via-foreground to-muted-foreground bg-clip-text text-transparent",
@@ -309,7 +309,7 @@ function TooltipContent({ term, termKey }: { term: JargonTerm; termKey: string }
         href={glossaryHref}
         className={cn(
           "inline-block text-xs font-medium text-primary underline-offset-4 hover:underline",
-          "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm",
+          "focus:outline-hidden focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm",
         )}
       >
         Open in glossary →
@@ -392,7 +392,7 @@ function SheetContent({ term, termKey }: { term: JargonTerm; termKey: string }) 
             href={glossaryHref}
             className={cn(
               "inline-block text-sm font-medium text-primary underline-offset-4 hover:underline",
-              "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm",
+              "focus:outline-hidden focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm",
             )}
           >
             View in glossary →

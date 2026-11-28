@@ -249,7 +249,7 @@ function LessonCard({
       onClick={(event) => {
         event.preventDefault();
       }}
-      className="block h-full rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-primary/70 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+      className="block h-full rounded-2xl focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/70 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
     >
       {cardContent}
     </Link>
@@ -485,7 +485,7 @@ export default function LearnDashboard() {
               {learningPath.recommendations.map((recommendation, index) => (
                 <li key={recommendation.id} className="min-w-0">
                   <Link href={recommendation.href} data-recommendation-id={recommendation.id}
-                    className="group flex h-full min-h-11 flex-col gap-3 rounded-xl border border-white/15 bg-white/[0.03] p-4 outline-none transition-colors hover:border-primary/60 hover:bg-primary/5 focus-visible:ring-2 focus-visible:ring-primary">
+                    className="group flex h-full min-h-11 flex-col gap-3 rounded-xl border border-white/15 bg-white/[0.03] p-4 focus-visible:outline-hidden transition-colors hover:border-primary/60 hover:bg-primary/5 focus-visible:ring-2 focus-visible:ring-primary">
                     <span className="flex items-center justify-between gap-3 font-semibold">
                       <span><span className="mr-2 font-mono text-sm text-primary">{index + 1}.</span>{recommendation.title}</span>
                       <ChevronRight aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />

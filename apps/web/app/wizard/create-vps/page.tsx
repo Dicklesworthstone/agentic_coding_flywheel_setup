@@ -515,7 +515,7 @@ export default function CreateVPSPage() {
                     onBlur={field.handleBlur}
                     placeholder="e.g., 203.0.113.42"
                     className={cn(
-                      "w-full rounded-xl border bg-background px-4 py-3 font-mono text-sm outline-none transition",
+                      "w-full rounded-xl border bg-background px-4 py-3 font-mono text-sm focus-visible:outline-hidden transition",
                       "focus:border-primary focus:ring-2 focus:ring-primary/20",
                       showError
                         ? "border-destructive focus:border-destructive focus:ring-destructive/20"

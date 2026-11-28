@@ -103,7 +103,7 @@ function CopyButton({
           ? "min-h-[44px] min-w-[44px] justify-center p-2 text-muted-foreground hover:text-foreground hover:bg-muted active:scale-95"
           : "min-h-11 px-3 py-2 text-white/60 hover:text-white hover:bg-white/10 active:scale-95",
         // Focus ring for keyboard navigation
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+        "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
         className,
       )}
     >
@@ -238,7 +238,7 @@ export function CodeBlock({
 
       {/* Code content (focusable so long lines can be panned by keyboard) */}
       <div
-        className="relative z-10 p-5 overflow-x-auto outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan-400/60"
+        className="relative z-10 p-5 overflow-x-auto focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan-400/60"
         tabIndex={0}
       >
         {/* overflow-visible: the focusable wrapper above is the one scroll

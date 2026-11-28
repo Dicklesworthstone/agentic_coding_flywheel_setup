@@ -746,7 +746,7 @@ export default function CommandReferencePage() {
                 aria-label="Search commands"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full rounded-xl border border-white/[0.08] bg-white/[0.03] py-4 pl-14 pr-5 text-white placeholder:text-white/50 backdrop-blur-xl transition duration-300 focus:border-primary/50 focus:bg-white/[0.05] focus:outline-none focus:shadow-[0_0_30px_rgba(var(--primary-rgb),0.15)]"
+                className="w-full rounded-xl border border-white/[0.08] bg-white/[0.03] py-4 pl-14 pr-5 text-white placeholder:text-white/50 backdrop-blur-xl transition duration-300 focus:border-primary/50 focus:bg-white/[0.05] focus:outline-hidden focus:shadow-[0_0_30px_rgba(var(--primary-rgb),0.15)]"
               />
             </div>
           </div>

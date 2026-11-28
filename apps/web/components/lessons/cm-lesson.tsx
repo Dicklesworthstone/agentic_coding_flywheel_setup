@@ -1044,7 +1044,7 @@ function MemoryRuleBank({
       </div>
 
       <div
-        className="cm-scroll-area overflow-y-auto max-h-[280px] p-2 space-y-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+        className="cm-scroll-area overflow-y-auto max-h-[280px] p-2 space-y-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
         tabIndex={0}
         role="region"
         aria-label="Memory bank rules (scrollable)"

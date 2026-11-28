@@ -258,7 +258,7 @@ export function BottomSheet({
                 "flex h-11 w-11 items-center justify-center",
                 "rounded-full bg-muted text-muted-foreground",
                 "transition-colors hover:bg-muted/80 hover:text-foreground",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
               )}
               aria-label="Close"
             >

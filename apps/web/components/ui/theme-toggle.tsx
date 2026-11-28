@@ -37,7 +37,7 @@ export function ThemeToggle({ className }: ThemeToggleProps) {
         "text-muted-foreground transition duration-200",
         "hover:bg-muted hover:text-foreground hover:scale-105",
         "active:scale-95",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+        "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
         className,
       )}
       aria-label={label}

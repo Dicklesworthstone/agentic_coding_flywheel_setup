@@ -378,7 +378,7 @@ function AliasCard({
 
       <div className="mb-4 rounded-xl bg-black/30 border border-white/[0.06] overflow-hidden">
         <pre
-          className="p-4 text-xs font-mono text-white/80 overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+          className="p-4 text-xs font-mono text-white/80 overflow-x-auto focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
           tabIndex={0}
           role="region"
           aria-label={`${alias} alias definition (scrollable)`}
@@ -425,7 +425,7 @@ function LoginStep({
       </h3>
       <div className="mb-3 rounded-xl bg-black/30 border border-white/[0.06] overflow-hidden group-hover:bg-black/40 transition-colors">
         <pre
-          className="p-3 text-sm font-mono text-emerald-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+          className="p-3 text-sm font-mono text-emerald-400 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
           tabIndex={0}
           role="region"
           aria-label={`${agent} login command (scrollable)`}
@@ -482,7 +482,7 @@ function CodexLoginSection() {
         </ol>
         <div className="rounded-xl bg-black/30 border border-white/[0.06] overflow-hidden">
           <pre
-            className="p-3 text-sm font-mono text-emerald-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+            className="p-3 text-sm font-mono text-emerald-400 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
             tabIndex={0}
             role="region"
             aria-label="Device auth command (scrollable)"
@@ -504,7 +504,7 @@ function CodexLoginSection() {
         </ol>
         <div className="rounded-xl bg-black/30 border border-white/[0.06] overflow-hidden">
           <pre
-            className="p-3 text-xs font-mono text-emerald-400 overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+            className="p-3 text-xs font-mono text-emerald-400 overflow-x-auto focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
             tabIndex={0}
             role="region"
             aria-label="SSH tunnel commands (scrollable)"
@@ -527,7 +527,7 @@ function CodexLoginSection() {
         </p>
         <div className="rounded-xl bg-black/30 border border-white/[0.06] overflow-hidden">
           <pre
-            className="p-3 text-sm font-mono text-emerald-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+            className="p-3 text-sm font-mono text-emerald-400 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
             tabIndex={0}
             role="region"
             aria-label="Standard login command (scrollable)"

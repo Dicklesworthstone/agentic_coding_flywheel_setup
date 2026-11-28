@@ -666,7 +666,7 @@ function CategoryLegend({ categories }: { categories: DiskCategory[] }) {
 function AlertTicker({ alerts }: { alerts: AlertEntry[] }) {
   return (
     <div
-      className="space-y-1 max-h-[120px] overflow-y-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+      className="space-y-1 max-h-[120px] overflow-y-auto focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
       tabIndex={0}
       role="region"
       aria-label="Alerts (scrollable)"
@@ -711,7 +711,7 @@ function MiniTerminal({ lines }: { lines: string[] }) {
         </span>
       </div>
       <div
-        className="p-3 space-y-0.5 overflow-y-auto max-h-[220px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+        className="p-3 space-y-0.5 overflow-y-auto max-h-[220px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
         tabIndex={0}
         role="region"
         aria-label="Terminal output (scrollable)"

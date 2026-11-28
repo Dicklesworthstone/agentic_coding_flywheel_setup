@@ -246,7 +246,7 @@ export function CommandCard({
             focusable so keyboard users can pan a long command (WCAG 2.1.1). */}
         <div className="relative flex-1 overflow-hidden">
           <div
-            className="flex items-center overflow-x-auto px-4 py-3 scrollbar-hide outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            className="flex items-center overflow-x-auto px-4 py-3 scrollbar-hide focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             tabIndex={0}
             role="region"
             // Unique per card: several cards on a page each make a region
@@ -417,7 +417,7 @@ export function CodeBlock({
 
       {/* Code content (focusable so long lines can be panned by keyboard) */}
       <pre
-        className="overflow-x-auto p-4 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        className="overflow-x-auto p-4 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         tabIndex={0}
       >
         <code ref={codeRef} className="font-mono text-sm leading-relaxed text-foreground">

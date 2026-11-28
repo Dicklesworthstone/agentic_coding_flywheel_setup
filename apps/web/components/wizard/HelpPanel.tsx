@@ -128,7 +128,7 @@ export function HelpPanel({ currentStep, title }: HelpPanelProps) {
               </h2>
               <button
                 onClick={closeDialog}
-                className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background outline-none"
+                className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-hidden"
                 aria-label="Close"
               >
                 <X className="h-4 w-4" />
@@ -149,7 +149,7 @@ export function HelpPanel({ currentStep, title }: HelpPanelProps) {
                         key={issue.symptom}
                         className="group rounded-lg border border-border/50 bg-muted/30"
                       >
-                        <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm font-medium text-foreground rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
+                        <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm font-medium text-foreground rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
                           <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
                           {issue.symptom}
                         </summary>

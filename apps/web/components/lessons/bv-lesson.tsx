@@ -1353,7 +1353,7 @@ function InteractiveGraphTriage() {
                   return (
                     <g
                       key={node.id}
-                      className="group/graph-node outline-none"
+                      className="group/graph-node focus-visible:outline-hidden"
                       role="button"
                       tabIndex={clientReady ? 0 : -1}
                       aria-disabled={!clientReady}

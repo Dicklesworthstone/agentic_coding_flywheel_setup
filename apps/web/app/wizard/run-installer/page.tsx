@@ -786,7 +786,7 @@ export default function RunInstallerPage() {
                   aria-describedby={hasRefError ? "pin-ref-error" : undefined}
                   autoComplete="off"
                   spellCheck={false}
-                  className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm font-mono placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary aria-invalid:border-destructive aria-invalid:ring-destructive/30"
+                  className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm font-mono placeholder:text-muted-foreground focus:border-primary focus:outline-hidden focus:ring-1 focus:ring-primary aria-invalid:border-destructive aria-invalid:ring-destructive/30"
                 />
               </div>
               <div className="flex items-start gap-1.5 text-xs text-muted-foreground">

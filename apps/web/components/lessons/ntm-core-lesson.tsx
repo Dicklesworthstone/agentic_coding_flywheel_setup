@@ -548,7 +548,7 @@ function InteractiveNtmOrchestrator() {
       {/* SVG Cockpit Visualization */}
       <div
         ref={cockpitScrollRef}
-        className="relative overflow-x-auto px-2 pb-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 sm:px-4"
+        className="relative overflow-x-auto px-2 pb-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60 sm:px-4"
         tabIndex={0}
         role="region"
         aria-label="NTM cockpit diagram (scrolls sideways on small screens)"

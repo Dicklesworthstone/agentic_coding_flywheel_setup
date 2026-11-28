@@ -91,7 +91,7 @@ export function CommandReference() {
               placeholder="Search commands, aliases, or descriptions..."
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              className="w-full rounded-xl border border-border/60 bg-card/50 py-3 pl-10 pr-4 text-sm text-foreground shadow-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+              className="w-full rounded-xl border border-border/60 bg-card/50 py-3 pl-10 pr-4 text-sm text-foreground shadow-sm focus-visible:outline-hidden transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
             />
           </div>
           <div className="flex flex-wrap items-center gap-2">

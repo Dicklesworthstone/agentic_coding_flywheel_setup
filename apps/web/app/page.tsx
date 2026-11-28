@@ -483,7 +483,7 @@ function WorkflowStepsSection() {
             tabIndex={0}
             role="region"
             aria-label="Workflow steps"
-            className="overflow-x-auto rounded-xl pb-4 scrollbar-hide cursor-grab select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:cursor-grabbing sm:overflow-visible sm:pb-0"
+            className="overflow-x-auto rounded-xl pb-4 scrollbar-hide cursor-grab select-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:cursor-grabbing sm:overflow-visible sm:pb-0"
           >
             <motion.ol
               className="flex gap-3 sm:flex-wrap sm:justify-center"
@@ -1418,19 +1418,19 @@ export default function HomePage() {
                   href="https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex min-h-6 items-center rounded-sm underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  className="inline-flex min-h-6 items-center rounded-sm underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
                   GitHub
                 </a>
                 <Link
                   href="/learn"
-                  className="inline-flex min-h-6 items-center rounded-sm underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  className="inline-flex min-h-6 items-center rounded-sm underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
                   Learning Hub
                 </Link>
                 <Link
                   href="/tldr"
-                  className="inline-flex min-h-6 items-center rounded-sm underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  className="inline-flex min-h-6 items-center rounded-sm underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
                   TL;DR
                 </Link>
@@ -1438,7 +1438,7 @@ export default function HomePage() {
                   href="https://github.com/Dicklesworthstone/ntm"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex min-h-6 items-center rounded-sm underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  className="inline-flex min-h-6 items-center rounded-sm underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
                   NTM
                 </a>
@@ -1446,7 +1446,7 @@ export default function HomePage() {
                   href="https://github.com/Dicklesworthstone/mcp_agent_mail_rust"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex min-h-6 items-center rounded-sm underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  className="inline-flex min-h-6 items-center rounded-sm underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
                   Agent Mail
                 </a>

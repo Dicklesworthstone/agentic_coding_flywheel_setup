@@ -88,7 +88,7 @@ export function SshRehearsal({ target, host }: { target: string; host: string })
             aria-live="polite"
             aria-label="Practice terminal output"
             tabIndex={0}
-            className="dark max-h-72 overflow-y-auto rounded-lg bg-[oklch(0.08_0.015_260)] p-3 font-mono text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="dark max-h-72 overflow-y-auto rounded-lg bg-[oklch(0.08_0.015_260)] p-3 font-mono text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             {state.lines.map((line, index) => (
               <p
@@ -126,7 +126,7 @@ export function SshRehearsal({ target, host }: { target: string; host: string })
                 data-lpignore="true"
                 aria-describedby={secret ? hintId : undefined}
                 className={cn(
-                  "min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
                   // A real terminal shows nothing at all for a typed password.
                   secret && "text-transparent caret-transparent",
                 )}

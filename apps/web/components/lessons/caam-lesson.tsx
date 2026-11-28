@@ -1008,7 +1008,7 @@ function MiniTerminal({ lines }: { lines: string[] }) {
         <span className="ml-2 text-xs text-muted-foreground font-mono">caam</span>
       </div>
       <div
-        className="p-3 font-mono text-xs leading-relaxed space-y-0.5 max-h-[180px] overflow-y-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+        className="p-3 font-mono text-xs leading-relaxed space-y-0.5 max-h-[180px] overflow-y-auto focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
         tabIndex={0}
         role="region"
         aria-label="Terminal output (scrollable)"

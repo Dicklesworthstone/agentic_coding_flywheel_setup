@@ -1036,7 +1036,7 @@ function InteractiveSkillBrowser() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search skills by name, description, or trigger..."
-            className="w-full rounded-xl border border-white/[0.08] bg-white/[0.02] py-2.5 pl-10 pr-10 text-sm text-white placeholder-white/30 outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/20 transition-colors"
+            className="w-full rounded-xl border border-white/[0.08] bg-white/[0.02] py-2.5 pl-10 pr-10 text-sm text-white placeholder-white/30 focus-visible:outline-hidden focus:border-primary/40 focus:ring-1 focus:ring-primary/20 transition-colors"
           />
           {searchQuery && (
             <button

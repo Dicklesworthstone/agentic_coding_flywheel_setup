@@ -41,7 +41,7 @@ export default function CoreFlywheelPage() {
       <main
         id="main-content"
         tabIndex={-1}
-        className="text-aa-floor min-h-screen bg-[#020408] pb-24 outline-none selection:bg-[#FF5500]/25 selection:text-white overflow-x-clip sm:pb-32"
+        className="text-aa-floor min-h-screen bg-[#020408] pb-24 focus-visible:outline-hidden selection:bg-[#FF5500]/25 selection:text-white overflow-x-clip sm:pb-32"
       >
         <GuideHero
           current="core"

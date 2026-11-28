@@ -90,7 +90,7 @@ const ToolSearchBar = memo(function ToolSearchBar({
             onBlur={() => setIsFocused(false)}
             placeholder="Search tools by name, feature, or technology..."
             aria-label="Search flywheel tools"
-            className="w-full rounded-2xl bg-transparent py-4 pl-12 pr-20 text-sm text-white placeholder-muted-foreground focus:outline-none sm:py-5 sm:pl-14 sm:pr-24 sm:text-base"
+            className="w-full rounded-2xl bg-transparent py-4 pl-12 pr-20 text-sm text-white placeholder-muted-foreground focus:outline-hidden sm:py-5 sm:pl-14 sm:pr-24 sm:text-base"
           />
 
           {/* Clear button and keyboard hint */}

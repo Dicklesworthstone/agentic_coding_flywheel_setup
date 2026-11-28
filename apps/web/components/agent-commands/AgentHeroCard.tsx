@@ -147,7 +147,7 @@ export function AgentHeroCard({
       className={cn(
         "group relative cursor-pointer overflow-hidden rounded-2xl",
         "border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl",
-        "outline-none ring-offset-2 ring-offset-background",
+        "focus-visible:outline-hidden ring-offset-2 ring-offset-background",
         "focus-visible:ring-2 focus-visible:ring-primary",
         "transition duration-300",
         "hover:border-white/[0.15] hover:bg-white/[0.04] hover:shadow-lg hover:shadow-primary/10",

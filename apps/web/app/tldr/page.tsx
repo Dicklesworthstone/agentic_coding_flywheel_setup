@@ -119,7 +119,7 @@ function FooterCTA({ id }: { id?: string }) {
                 scrolls away on phones. */}
             <div className="flex items-center gap-2 rounded-xl bg-card/80 pr-2 ring-1 ring-border/50 transition duration-200 hover:ring-primary/30 sm:gap-3 sm:pr-3">
               <div
-                className="min-w-0 flex-1 overflow-x-auto px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-6 sm:py-4"
+                className="min-w-0 flex-1 overflow-x-auto px-4 py-3 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-6 sm:py-4"
                 tabIndex={0}
                 role="region"
                 aria-label="Install command"

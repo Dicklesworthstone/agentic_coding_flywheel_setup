@@ -134,7 +134,7 @@ export function AlertCard({
                 "absolute right-3 top-3 flex h-11 w-11 items-center justify-center",
                 "rounded-lg text-current/60 transition-colors",
                 "hover:bg-current/10 hover:text-current",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
               )}
               aria-label="Dismiss alert"
             >
@@ -207,7 +207,7 @@ export function OutputPreview({
           token-coloured children (text-muted-foreground / text-foreground)
           would render light-theme dark text on a dark box. */}
       <div
-        className="dark overflow-x-auto rounded-lg bg-[oklch(0.08_0.015_260)] p-3 font-mono text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="dark overflow-x-auto rounded-lg bg-[oklch(0.08_0.015_260)] p-3 font-mono text-sm text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         tabIndex={0}
       >
         {children}

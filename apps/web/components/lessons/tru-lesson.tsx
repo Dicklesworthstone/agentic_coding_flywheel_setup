@@ -633,7 +633,7 @@ function HighlightedCode({ code, phase }: { code: string; phase: CompressionPhas
 
   return (
     <pre
-      className="p-4 text-xs font-mono leading-relaxed overflow-x-auto max-h-72 overflow-y-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+      className="p-4 text-xs font-mono leading-relaxed overflow-x-auto max-h-72 overflow-y-auto focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
       tabIndex={0}
       role="region"
       aria-label="Source sample (scrollable)"
@@ -975,7 +975,7 @@ function InteractiveTokenCompressorImpl() {
                     initial={{ opacity: 0, scale: 0.95, y: 10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     transition={{ type: "spring", stiffness: 200, damping: 25 }}
-                    className="p-4 text-xs text-emerald-300/80 font-mono leading-relaxed overflow-x-auto max-h-72 overflow-y-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                    className="p-4 text-xs text-emerald-300/80 font-mono leading-relaxed overflow-x-auto max-h-72 overflow-y-auto focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
                     tabIndex={0}
                     role="region"
                     aria-label="Compressed output (scrollable)"

@@ -395,7 +395,7 @@ function DesktopToolNode({
         aria-pressed={isSelected}
         className={cn(
           "group relative flex h-full w-full flex-col items-center justify-center gap-1.5 rounded-2xl border p-2",
-          "transition duration-300 ease-out outline-none",
+          "transition duration-300 ease-out focus-visible:outline-hidden",
           "focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background",
           isSelected
             ? "border-white/60 bg-white/20 shadow-2xl"

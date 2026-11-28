@@ -1167,7 +1167,7 @@ function InteractiveDependencyGraph() {
       <div className="relative flex flex-col lg:flex-row">
         {/* SVG Dependency Graph */}
         <div
-          className="flex-1 px-3 pb-2 min-w-0 overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+          className="flex-1 px-3 pb-2 min-w-0 overflow-x-auto focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
           tabIndex={0}
           role="region"
           aria-label="Bead dependency graph (scrolls sideways on small screens)"
@@ -1397,7 +1397,7 @@ function InteractiveDependencyGraph() {
                   onBlur={() => setHoveredId(null)}
                   onMouseEnter={() => setHoveredId(bead.id)}
                   onMouseLeave={() => setHoveredId(null)}
-                  className="outline-none"
+                  className="focus-visible:outline-hidden"
                   style={{
                     cursor: isClickable ? "pointer" : "default",
                   }}

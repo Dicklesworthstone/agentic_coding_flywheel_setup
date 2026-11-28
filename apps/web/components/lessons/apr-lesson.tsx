@@ -1086,7 +1086,7 @@ function PlanDocument({
 
       {/* Plan content with diff markers */}
       <div
-        className="max-h-[320px] overflow-y-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+        className="max-h-[320px] overflow-y-auto focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
         tabIndex={0}
         role="region"
         aria-label="Plan content (scrollable)"
@@ -1186,7 +1186,7 @@ function MiniTerminal({ lines, animateIn }: { lines: string[]; animateIn: boolea
         <span className="text-xs font-mono text-muted-foreground">terminal</span>
       </div>
       <div
-        className="p-3 space-y-0.5 max-h-[160px] overflow-y-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+        className="p-3 space-y-0.5 max-h-[160px] overflow-y-auto focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
         tabIndex={0}
         role="region"
         aria-label="Terminal output (scrollable)"

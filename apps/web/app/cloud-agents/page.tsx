@@ -57,7 +57,7 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 const [researchYear, researchMonth, researchDay] = CLOUD_AGENT_RESEARCH_DATE.split("-").map(Number);
 const RESEARCH_DATE_LABEL = `${researchDay} ${MONTHS[researchMonth - 1]} ${researchYear}`;
 
-const focusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+const focusRing = "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 const textLink = `inline-flex min-h-11 items-center gap-1.5 rounded-sm underline-offset-4 transition-colors hover:text-foreground hover:underline ${focusRing}`;
 // The theme's text-3xl/4xl scale is fluid up to 64px; section titles use a fixed, calmer step.
 const sectionTitle = "text-[1.875rem] font-semibold leading-tight tracking-tight text-foreground sm:text-[2.5rem]";
@@ -201,7 +201,7 @@ function CodePanel({ text, title, label, copyLabel, className = "" }: {
         tabIndex={0}
         role="region"
         aria-label={label}
-        className="whitespace-pre-wrap break-words p-4 font-mono text-[13px] leading-relaxed text-[#c0caf5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#9ece6a]/60 sm:p-5"
+        className="whitespace-pre-wrap break-words p-4 font-mono text-[13px] leading-relaxed text-[#c0caf5] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#9ece6a]/60 sm:p-5"
       >
         <code>{text}</code>
       </pre>
@@ -328,7 +328,7 @@ function HandoffCard({ agent }: { agent: CloudAgent }) {
           tabIndex={0}
           role="region"
           aria-label={`Full agent instructions for ${agent.name}`}
-          className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-xl border border-border/60 bg-background/80 p-3 font-mono text-xs leading-relaxed text-foreground/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-xl border border-border/60 bg-background/80 p-3 font-mono text-xs leading-relaxed text-foreground/85 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
         >
           {brief}
         </pre>
@@ -422,7 +422,7 @@ function ShotFigure({ shot, sizes, onOpen }: { shot: SetupScreenshot; sizes: str
             type="button"
             onClick={(event) => onOpen(shot, event.currentTarget)}
             aria-label={`Enlarge screenshot: ${shot.alt}`}
-            className="group absolute inset-0 flex cursor-zoom-in items-end justify-end p-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+            className="group absolute inset-0 flex cursor-zoom-in items-end justify-end p-2.5 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
           >
             <span className="inline-flex size-8 items-center justify-center gap-1.5 rounded-full bg-black/70 text-xs font-medium text-white shadow-lg backdrop-blur transition-opacity sm:size-auto sm:px-3 sm:py-1.5 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-visible:opacity-100">
               <ZoomIn className="size-4 sm:size-3.5" aria-hidden="true" /><span className="max-sm:hidden">Enlarge</span>
@@ -1050,7 +1050,7 @@ function RunPreview({ agent }: { agent: CloudAgent }) {
         tabIndex={0}
         role="region"
         aria-label={`Example setup output for ${agent.name}`}
-        className="overflow-x-auto p-4 font-mono text-[12px] leading-[1.7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#9ece6a]/60 sm:p-5 sm:text-[13px]"
+        className="overflow-x-auto p-4 font-mono text-[12px] leading-[1.7] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#9ece6a]/60 sm:p-5 sm:text-[13px]"
       >
         {lines.map((line, index) => (
           <span
@@ -1198,7 +1198,7 @@ export default function CloudAgentsPage() {
         </div>
       </nav>
 
-      <main id="main-content" tabIndex={-1} className="relative focus:outline-none">
+      <main id="main-content" tabIndex={-1} className="relative focus:outline-hidden">
         <section aria-labelledby="hero-heading" className="mx-auto grid max-w-6xl gap-x-14 gap-y-10 px-5 pb-16 pt-10 sm:px-8 sm:pb-20 sm:pt-16 lg:grid-cols-[minmax(0,1fr)_minmax(0,31rem)] lg:pb-24">
           <div className="min-w-0">
             <p className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/[0.07] px-3 py-1 font-mono text-xs uppercase tracking-[0.18em] text-primary">

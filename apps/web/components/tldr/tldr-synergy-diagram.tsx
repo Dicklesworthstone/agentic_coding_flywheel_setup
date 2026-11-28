@@ -159,7 +159,7 @@ export function TldrSynergyDiagram({ tools, className }: TldrSynergyDiagramProps
   return (
     <div ref={containerRef} className={cn("relative", className)}>
       <div
-        className="overflow-x-auto pb-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+        className="overflow-x-auto pb-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
         role="region"
         tabIndex={0}
         onKeyDown={handleHorizontalScrollKeyDown}

@@ -912,7 +912,7 @@ function ToolCard({
           {example && (
             <div className="mt-4 rounded-xl bg-black/20 border border-white/[0.06] overflow-hidden">
               <pre
-                className="p-3 text-xs font-mono text-white/70 overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                className="p-3 text-xs font-mono text-white/70 overflow-x-auto focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
                 tabIndex={0}
                 role="region"
                 aria-label={`${name} example (scrollable)`}

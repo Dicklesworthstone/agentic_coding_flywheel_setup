@@ -1036,7 +1036,7 @@ function InteractivePaletteBrowser() {
                   }}
                   onKeyDown={handleKeyDown}
                   placeholder="Search commands... (type to filter)"
-                  className="flex-1 bg-transparent text-sm text-white/90 placeholder:text-muted-foreground outline-none"
+                  className="flex-1 bg-transparent text-sm text-white/90 placeholder:text-muted-foreground focus-visible:outline-hidden"
                 />
                 {searchQuery && (
                   <motion.button
