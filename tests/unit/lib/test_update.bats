@@ -17563,6 +17563,101 @@ STUBS
     refute_output --partial "STOP_WAS_CALLED"
 }
 
+# Exercise the actual targeted restart up to its first state change. Only the
+# service manager and, in the missing-watchdog case, timer discovery are faked.
+_run_service_smoke_restart() {
+    run env HOME="$BATS_TEST_TMPDIR" ACFS_SVC_SMOKE_TIMEOUT="$1" ACFS_PROBE_FIXTURE="$BATS_TEST_TMPDIR" \
+        /bin/bash -c '
+        source "$1"
+        _initialize_bins() { _TMUX_BIN=/usr/bin/true; _CM_BIN="$ACFS_PROBE_FIXTURE/cm"; }
+        _session_exists() { return 0; }
+        _stop_pane_service() { printf "%s\n" "$1" > "$ACFS_PROBE_FIXTURE/stopped"; }
+        _repair_service_pane() { :; }
+        _wait_for_service_ready() { :; }
+        cmd_status() { :; }
+        if [[ "$2" == missing ]]; then
+            eval "real_$(declare -f _system_binary_path)"
+            _system_binary_path() { [[ "$1" != timeout ]] && real__system_binary_path "$1"; }
+        fi
+        cmd_restart cm
+    ' _ "$PROJECT_ROOT/scripts/lib/acfs-services.sh" "${2:-}"
+}
+
+@test "acfs services restart leaves a service running when verification is unavailable" {
+    printf '#!/bin/bash\ntouch "$ACFS_PROBE_FIXTURE/probed"\n' > "$BATS_TEST_TMPDIR/cm"
+    chmod +x "$BATS_TEST_TMPDIR/cm"
+    _run_service_smoke_restart 1 missing
+    assert_failure
+    assert_output --partial 'Could not verify cm'
+    assert_output --partial 'GNU timeout'
+    refute_output --partial 'cm is not runnable'
+    local duration
+    for duration in 0 0.0s --help; do
+        _run_service_smoke_restart "$duration"
+        assert_failure
+        assert_output --partial 'ACFS_SVC_SMOKE_TIMEOUT must be a positive duration'
+    done
+    [[ ! -e "$BATS_TEST_TMPDIR/probed" && ! -e "$BATS_TEST_TMPDIR/stopped" ]]
+}
+
+@test "acfs services restart stops an orphaned smoke writer before touching the running service" {
+    cat > "$BATS_TEST_TMPDIR/cm" <<'PY'
+#!/usr/bin/python3
+import os, signal, time
+from pathlib import Path
+ready = Path(os.environ["ACFS_PROBE_FIXTURE"]) / "writer"
+if os.fork() == 0:
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    ready.write_text(Path("/proc/self/stat").read_text())
+    time.sleep(12)
+    os._exit(0)
+while not ready.exists():
+    time.sleep(.01)
+print("cm version 1")
+PY
+    chmod +x "$BATS_TEST_TMPDIR/cm"
+    _run_service_smoke_restart 1
+    assert_failure
+    assert_output --partial 'no service was stopped'
+    [[ ! -e "$BATS_TEST_TMPDIR/stopped" && -s "$BATS_TEST_TMPDIR/writer" ]]
+    /usr/bin/python3 - "$BATS_TEST_TMPDIR/writer" <<'PY'
+import sys, time
+from pathlib import Path
+saved = Path(sys.argv[1]).read_text().split()
+stat = Path("/proc", saved[0], "stat")
+for _ in range(40):
+    try:
+        live = stat.read_text().split()
+    except FileNotFoundError:
+        break
+    if live[2] == "Z" or live[21] != saved[21]:
+        break
+    time.sleep(.025)
+else:
+    raise SystemExit("restart left the TERM-resistant smoke writer running")
+PY
+}
+
+@test "acfs services restart drains verbose rejected probes and preserves native failures" {
+    cat > "$BATS_TEST_TMPDIR/cm" <<'SH'
+#!/bin/bash
+printf 'unknown flag: %s\n' "$1" >&2
+/usr/bin/head -c 1048576 /dev/zero | /usr/bin/tr '\000' x
+exit 2
+SH
+    chmod +x "$BATS_TEST_TMPDIR/cm"
+    _run_service_smoke_restart 3s
+    assert_success
+    assert_output --partial 'treating it as runnable'
+    [[ "$(cat "$BATS_TEST_TMPDIR/stopped")" == cm ]]
+
+    printf '#!/bin/bash\nexit 137\n' > "$BATS_TEST_TMPDIR/cm"
+    _run_service_smoke_restart 3s
+    assert_failure
+    assert_output --partial 'exit 137'
+    assert_output --partial 'no service was stopped'
+}
+
 @test "acfs services preflight accepts a binary whose probes are unsupported (#378 verdicts)" {
     local services="$PROJECT_ROOT/scripts/lib/acfs-services.sh"
     local quirky="$BATS_TEST_TMPDIR/quirky-cm"

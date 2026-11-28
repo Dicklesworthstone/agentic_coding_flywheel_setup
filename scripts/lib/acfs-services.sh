@@ -178,14 +178,24 @@ _no_selected_services() {
 
 _system_binary_path() {
     local name="${1:-}"
-    local dir=""
+    local dir="" candidate=""
+    local -a names=("$name")
 
     [[ "$name" =~ ^[A-Za-z0-9._+-]+$ ]] || return 1
+    if [[ "$name" == timeout ]]; then
+        # Ubuntu 26.04 provides GNU timeout beside uutils; Homebrew names it
+        # gtimeout. The watchdog must escalate signals to the whole group.
+        names=(gnutimeout timeout gtimeout)
+    fi
     for dir in /usr/bin /bin /usr/sbin /sbin /usr/local/bin /usr/local/sbin /opt/homebrew/bin; do
-        if [[ -x "$dir/$name" && ! -d "$dir/$name" ]]; then
-            printf '%s\n' "$dir/$name"
+        for candidate in "${names[@]}"; do
+            [[ -f "$dir/$candidate" && -x "$dir/$candidate" ]] || continue
+            if [[ "$name" == timeout && "$(LC_ALL=C "$dir/$candidate" --version 2>/dev/null)" != *' (GNU coreutils) '* ]]; then
+                continue
+            fi
+            printf '%s\n' "$dir/$candidate"
             return 0
-        fi
+        done
     done
     return 1
 }
@@ -498,6 +508,7 @@ _require_tmux() {
 #   healthy      -- a probe exited 0.
 #   unsupported  -- the binary executed but rejected every probe as an unknown
 #                   argument. Not a broken binary; never a reason to abort.
+#   unverified   -- the configured deadline or its dependencies are unavailable.
 #   broken       -- the binary timed out, could not be executed (wrong
 #                   architecture, missing loader), died by a signal, or failed
 #                   every probe without a usage-style rejection.
@@ -528,17 +539,22 @@ _smoke_output_indicates_probe_rejected() {
 }
 
 _run_smoke_probe() {
-    local binary="${1:-}"
-    shift
-    local timeout_bin=""
+    local duration="$1" timeout_bin="$2" bash_bin="$3"
+    shift 3
 
-    timeout_bin="$(_system_binary_path timeout 2>/dev/null || true)"
-    if [[ -n "$timeout_bin" ]]; then
-        "$timeout_bin" --kill-after=5s "${ACFS_SVC_SMOKE_TIMEOUT:-15}" \
-            "$binary" "$@" </dev/null 2>&1
-    else
-        "$binary" "$@" </dev/null 2>&1
-    fi
+    # Keep the pipe reader inside the deadline. A launcher can exit 0 while
+    # its descendant still holds the pipe. Drain all output to preserve native
+    # status on large help text, but send at most 4096 bytes to the caller.
+    "$timeout_bin" --kill-after=5s -- "$duration" "$bash_bin" --noprofile --norc -p -c '
+        set +m
+        sleep_bin=$1 head_bin=$2 cat_bin=$3
+        shift 3
+        trap '\''trap "" HUP INT QUIT TERM; while :; do "$sleep_bin" 1; done'\'' HUP INT QUIT TERM
+        "$@" 2>&1 | { "$head_bin" -c 4096 && "$cat_bin" >/dev/null; }
+        status=("${PIPESTATUS[@]}")
+        (( status[1] == 0 )) || exit 125
+        exit "${status[0]}"
+    ' _ "$@" </dev/null 2>/dev/null
 }
 
 # Leaves the verdict in $_SMOKE_VERDICT and the human-readable reason in
@@ -547,6 +563,8 @@ _run_smoke_probe() {
 _binary_smoke_verdict() {
     local binary="${1:-}"
     local probe="" output="" status=0
+    local duration="${ACFS_SVC_SMOKE_TIMEOUT-15}" tool="" path=""
+    local -a guard=()
     local all_rejected=true
     local -a attempts=()
 
@@ -557,13 +575,26 @@ _binary_smoke_verdict() {
         return 1
     fi
 
+    _SMOKE_VERDICT="unverified"
+    if ! [[ "$duration" =~ ^([0-9]+([.][0-9]*)?|[.][0-9]+)[smhd]?$ && "$duration" =~ [1-9] ]]; then
+        _SMOKE_DETAIL="ACFS_SVC_SMOKE_TIMEOUT must be a positive duration"
+        return 1
+    fi
+    for tool in timeout bash sleep head cat; do
+        if ! path="$(_system_binary_path "$tool")"; then
+            [[ "$tool" != timeout ]] || tool="GNU timeout"
+            _SMOKE_DETAIL="required watchdog tool unavailable: $tool"
+            return 1
+        fi
+        guard+=("$path")
+    done
+    _SMOKE_VERDICT="broken"
     for probe in "--version" "--help" "version"; do
-        if output="$(_run_smoke_probe "$binary" "$probe")"; then
+        if output="$(_run_smoke_probe "$duration" "${guard[@]}" "$binary" "$probe")"; then
             status=0
         else
             status=$?
         fi
-        output="${output:0:4096}"
         if ((status == 0)); then
             _SMOKE_VERDICT="healthy"
             _SMOKE_DETAIL="'$binary $probe' exited 0"
@@ -572,7 +603,7 @@ _binary_smoke_verdict() {
         attempts+=("'$probe' exit $status")
         if _smoke_exit_status_is_fatal "$status"; then
             case "$status" in
-                124) _SMOKE_DETAIL="'$binary $probe' timed out after ${ACFS_SVC_SMOKE_TIMEOUT:-15}s" ;;
+                124) _SMOKE_DETAIL="'$binary $probe' timed out (ACFS_SVC_SMOKE_TIMEOUT=$duration)" ;;
                 126) _SMOKE_DETAIL="'$binary' exists but cannot be executed (wrong architecture, missing loader, or not executable)" ;;
                 127) _SMOKE_DETAIL="'$binary' could not be started (missing interpreter or shared library)" ;;
                 *)   _SMOKE_DETAIL="'$binary $probe' was killed by a signal (exit $status)" ;;
@@ -629,8 +660,8 @@ _service_needs_own_binary() {
     return 0
 }
 
-# Validate one service's launch binary. Returns 1 only when the binary is
-# missing or provably broken; an unsupported probe is reported and accepted.
+# An unavailable watchdog blocks lifecycle changes while preserving a separate
+# diagnostic from a failed executable. Unsupported arguments remain acceptable.
 _preflight_service_binary() {
     local service="${1:-}"
     local binary="" name="" verdict=""
@@ -656,6 +687,10 @@ _preflight_service_binary() {
         unsupported)
             _warn "$name: ${_SMOKE_DETAIL}; treating it as runnable."
             return 0
+            ;;
+        unverified)
+            _err "Could not verify $name: ${_SMOKE_DETAIL}"
+            return 1
             ;;
         *)
             _err "$name is not runnable: ${_SMOKE_DETAIL}"
