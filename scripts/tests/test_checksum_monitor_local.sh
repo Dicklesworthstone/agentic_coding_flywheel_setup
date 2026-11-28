@@ -126,6 +126,84 @@ done
 printf 'PASS: historical writable state stays refused; fresh state preserves old evidence and grants no authority\n'
 # END MONITOR_STATE_BOOTSTRAP_REGRESSIONS
 
+# BEGIN MONITOR_TIMEOUT_SELECTION_REGRESSIONS
+# uutils timeout, the default on Ubuntu 26.04, sends --kill-after's KILL only
+# to its direct child. The monitor must bound its steps with GNU timeout when
+# the host has one (gnutimeout beside uutils, or a GNU default timeout).
+(
+    set -euo pipefail
+    export ACFS_MONITOR_STATE="$STATE_TMP/timeout-state"
+    export ACFS_MONITOR_REPO="$STATE_TMP/does-not-exist"
+    unset ACFS_NTFY_TOPIC
+    ACFS_MONITOR_LIBRARY_ONLY=1
+    # shellcheck source=../checksum-monitor-local.sh
+    source "$MONITOR"
+    fixture="$STATE_TMP/timeout-selection"
+    mkdir -p "$fixture"
+    printf '#!/bin/sh\nprintf "timeout (uutils coreutils) 0.10.0\\n"\n' > "$fixture/uutils-timeout"
+    printf '#!/bin/sh\nprintf "timeout (GNU coreutils) 9.7\\n"\n' > "$fixture/gnu-timeout"
+    printf '#!/bin/sh\nexit 0\n' > "$fixture/gnutimeout"
+    chmod 755 "$fixture/uutils-timeout" "$fixture/gnu-timeout" "$fixture/gnutimeout"
+
+    selected="$(_monitor_select_timeout "$fixture/gnutimeout" "$fixture/uutils-timeout")" \
+        || fail 'an installed gnutimeout was not accepted'
+    [[ "$selected" == "$fixture/gnutimeout" ]] || fail "gnutimeout was not preferred: $selected"
+    selected="$(_monitor_select_timeout "" "$fixture/gnu-timeout")" \
+        || fail 'a GNU default timeout was not accepted'
+    [[ "$selected" == "$fixture/gnu-timeout" ]] || fail "the GNU default timeout was not selected: $selected"
+    selected="$(_monitor_select_timeout "$fixture/no-gnutimeout" "$fixture/gnu-timeout")" \
+        || fail 'a missing gnutimeout path hid the GNU default timeout'
+    [[ "$selected" == "$fixture/gnu-timeout" ]] || fail "a missing gnutimeout changed the selection: $selected"
+    if selected="$(_monitor_select_timeout "" "$fixture/uutils-timeout")"; then
+        fail 'a uutils-only timeout was reported as GNU'
+    fi
+    [[ "$selected" == "$fixture/uutils-timeout" ]] || fail "the uutils fallback was not named: $selected"
+    printf 'PASS: timeout selection prefers gnutimeout, then a GNU default timeout\n'
+
+    # Both bounded runners call the selected binary with their own deadlines.
+    cat > "$fixture/recording-timeout" <<'RECORDER'
+#!/bin/sh
+printf '%s\n' "$*" >> "$TIMEOUT_CALLS"
+RECORDER
+    chmod 755 "$fixture/recording-timeout"
+    export TIMEOUT_CALLS="$fixture/calls"
+    MONITOR_TIMEOUT_BIN="$fixture/recording-timeout"
+    MONITOR_STARTED_AT_SECONDS=$SECONDS
+    run_bounded 45 git fetch origin || fail 'run_bounded did not run the selected timeout'
+    run_failure_bounded gh issue list || fail 'run_failure_bounded did not run the selected timeout'
+    [[ "$(cat "$TIMEOUT_CALLS")" == $'--signal=TERM --kill-after=10 45s git fetch origin\n--signal=TERM --kill-after=5 20 gh issue list' ]] \
+        || fail "the bounded runners did not use the selected timeout: $(cat "$TIMEOUT_CALLS")"
+    printf 'PASS: bounded runners use the selected timeout\n'
+
+    # On this host, the real selection must stop a TERM-resistant grandchild
+    # at run_bounded's kill-after deadline (1s + 10s).
+    if ! host_timeout="$(_monitor_select_timeout "$(command -v gnutimeout 2>/dev/null || true)" "$(command -v timeout)")"; then
+        printf 'SKIP: no GNU timeout on this host, so no TERM-resistant grandchild check\n'
+        exit 0
+    fi
+    MONITOR_TIMEOUT_BIN="$host_timeout"
+    MONITOR_STARTED_AT_SECONDS=$SECONDS
+    bounded_status=0
+    # GNU timeout's KILL reaches its own process group, timeout included, so
+    # the shell reports "Killed"; the subshell keeps that out of the output.
+    ( run_bounded 1 bash -c 'trap "" TERM; (trap "" TERM; echo "$BASHPID" > "$1"; exec sleep 60) & wait' \
+        _ "$fixture/grandchild.pid" ) 2>/dev/null || bounded_status=$?
+    [[ "$bounded_status" == 137 ]] || fail "run_bounded did not escalate to KILL (exit $bounded_status)"
+    grandchild="$(cat "$fixture/grandchild.pid")"
+    grandchild_state="R"
+    for _ in {1..40}; do
+        grandchild_state="$(awk '{print $3}' "/proc/$grandchild/stat" 2>/dev/null || true)"
+        [[ -n "$grandchild_state" && "$grandchild_state" != Z ]] || break
+        sleep 0.05
+    done
+    if [[ -n "$grandchild_state" && "$grandchild_state" != Z ]]; then
+        kill -KILL "$grandchild" 2>/dev/null || true
+        fail "a TERM-resistant grandchild outlived run_bounded with $host_timeout (state $grandchild_state)"
+    fi
+    printf 'PASS: run_bounded with %s stops a TERM-resistant grandchild\n' "$host_timeout"
+)
+# END MONITOR_TIMEOUT_SELECTION_REGRESSIONS
+
 # Sourcing forces PATH to the monitor's system prefixes; run in a subshell so
 # the assertions below keep this shell's environment.
 (

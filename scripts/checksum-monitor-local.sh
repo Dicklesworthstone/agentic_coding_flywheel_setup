@@ -31,7 +31,9 @@
 #   loginctl enable-linger "$USER"   # so the timer runs without a login session
 #
 # Requirements on the host: git (push access via gh credential helper),
-# gh (authenticated), bun, jq, curl, flock.
+# gh (authenticated), bun, jq, curl, flock, and GNU timeout. Ubuntu 26.04
+# defaults to uutils timeout and installs GNU's as gnutimeout, which is used
+# when present.
 #
 # Environment overrides:
 #   ACFS_MONITOR_REPO   clone to operate on   (default: ~/acfs-monitor)
@@ -712,6 +714,9 @@ umask 022
 # bound separately below because it intentionally lives under the monitor
 # owner's home directory.
 MONITOR_EXEC_PATH="/usr/local/bin:/usr/bin:/bin"
+# Chosen by _monitor_select_timeout once the dependency checks pass. Until
+# then (a failure alert during startup) the bounded runners use `timeout`.
+MONITOR_TIMEOUT_BIN=""
 BUN_BIN="$HOME/.bun/bin/bun"
 export PATH="$MONITOR_EXEC_PATH"
 LOG_DIR="$STATE_DIR/logs"
@@ -1068,7 +1073,23 @@ run_bounded() {
     if (( limit > remaining )); then
         limit="$remaining"
     fi
-    timeout --signal=TERM --kill-after=10 "${limit}s" "$@"
+    "${MONITOR_TIMEOUT_BIN:-timeout}" --signal=TERM --kill-after=10 "${limit}s" "$@"
+}
+
+# uutils timeout (the default on Ubuntu 26.04) sends --kill-after's KILL
+# only to its direct child, so a TERM-resistant descendant of a bounded git,
+# gh or bun step would outlive the step. GNU timeout kills the whole group.
+# Args: the gnutimeout path (empty when absent) and the default timeout path.
+# Prints the binary to use. Returns 1 when that binary is not GNU timeout.
+_monitor_select_timeout() {
+    local gnu_alias="$1" default_timeout="$2" version=""
+    if [[ -n "$gnu_alias" && -x "$gnu_alias" ]]; then
+        printf '%s\n' "$gnu_alias"
+        return 0
+    fi
+    printf '%s\n' "$default_timeout"
+    version="$(LC_ALL=C "$default_timeout" --version 2>/dev/null || true)"
+    [[ "$version" == 'timeout (GNU coreutils) '* ]]
 }
 
 run_clean_bounded() {
@@ -1108,7 +1129,7 @@ run_bun_clean_bounded() {
 }
 
 run_failure_bounded() {
-    timeout --signal=TERM --kill-after=5 20 "$@"
+    "${MONITOR_TIMEOUT_BIN:-timeout}" --signal=TERM --kill-after=5 20 "$@"
 }
 
 sha256_file() {
@@ -2742,7 +2763,12 @@ done
 # /usr/bin. Confining the target to /usr/bin failed closed on every such host
 # (issue #344); the directory and file metadata checks below carry the actual
 # trust decision.
-for dep in bash env git gh jq curl flock sha256sum stat sort uniq awk sed tr cmp mktemp paste head id cp mv timeout readlink date tee mkdir hostname cat; do
+local -a monitor_dependencies=(bash env git gh jq curl flock sha256sum stat sort uniq awk sed tr cmp mktemp paste head id cp mv timeout readlink date tee mkdir hostname cat)
+# GNU timeout installed beside uutils is optional, but held to the same checks.
+if command -v gnutimeout >/dev/null 2>&1; then
+    monitor_dependencies+=(gnutimeout)
+fi
+for dep in "${monitor_dependencies[@]}"; do
     dep_path="$(command -v "$dep" 2>/dev/null || true)"
     [[ "$dep_path" == /* ]] || fail_closed "missing dependency: $dep"
     case "$dep_path" in
@@ -2772,6 +2798,15 @@ for dep in bash env git gh jq curl flock sha256sum stat sort uniq awk sed tr cmp
     (( (dep_mode_value & 022) == 0 )) \
         || fail_closed "dependency is group/world writable: $dep -> $dep_real"
 done
+# Bound every later step with GNU timeout where the host has one. A host with
+# only uutils keeps running: stopping the monitor would be worse than the
+# weaker step deadlines, and the unit's TimeoutStartSec still kills the
+# whole cgroup.
+if MONITOR_TIMEOUT_BIN="$(_monitor_select_timeout "$(command -v gnutimeout 2>/dev/null || true)" "$(command -v timeout)")"; then
+    log "bounded steps use $MONITOR_TIMEOUT_BIN"
+else
+    log "warning: $MONITOR_TIMEOUT_BIN is not GNU timeout and gnutimeout is not installed; a TERM-resistant descendant of a bounded step can outlive its deadline until systemd's TimeoutStartSec"
+fi
 
 bun_unsafe_reason="$(bun_binary_unsafe_reason "$BUN_BIN")" \
     || fail_closed "$bun_unsafe_reason"
